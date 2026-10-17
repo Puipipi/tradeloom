@@ -1,0 +1,6 @@
+# Python 依赖（已验证：Python 3.14.5 / Windows）
+# 安装：.venv\Scripts\python.exe -m pip install -r requirements.txt
+pillow>=13.0
+reportlab>=5.0
+pikepdf>=10.17
+pymupdf>=1.28

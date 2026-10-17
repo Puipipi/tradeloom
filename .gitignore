@@ -36,6 +36,11 @@ tmp/
 .cache/
 *.log
 
+# ---- 二进制资产（用脚本拉，不入库）----
+assets/fonts/*.ttf
+assets/fonts/*.otf
+assets/fonts/*.ttc
+
 # ---- 编辑器 / 系统 ----
 .vscode/
 .idea/

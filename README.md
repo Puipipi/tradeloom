@@ -63,13 +63,19 @@
 ```
 tradeloom/
 ├── README.md                       # 本文件：是什么、为什么、往哪走
+├── requirements.txt                # Python 依赖（Pillow / ReportLab / pikepdf / PyMuPDF）
+├── scripts/
+│   ├── check_env.py                # 环境自检：字体 → PDF → CMYK，9 项逐条验
+│   └── fetch_fonts.ps1             # 拉 Noto Sans/Serif SC（TTF，OFL 可商用）
 ├── docs/
 │   ├── 00-赛题与目标.md             # 赛题 2 原文、评分对齐、交付物清单
 │   ├── 01-业务基线.md               # 从一次真实访谈里拆出的全链路与痛点排序
 │   ├── 02-客户访谈问题表.md          # 下一轮访谈要问的问题（带优先级与「为什么问」）
 │   ├── 03-数据与素材清单.md          # 要企业提供的原始素材（决定 demo 能不能真跑）
+│   ├── 04-环境搭建.md               # 从零复现：装什么、怎么验、装不上的去哪拿
 │   └── specs/
 │       └── 2026-10-17-tradeloom-design.md   # 设计文档 v0.1：A+B 两段式、架构、评测、六周排期
+├── assets/fonts/                   # 字体（二进制，用脚本拉，不入库）
 └── src/                            # 待设计评审通过后创建：节点函数、提示词、知识库语料、评测集
 ```
 
@@ -92,12 +98,30 @@ Loom 是织机。这家企业的日常，本质是把五根线（选品、客户
 
 TradeLoom = Trade + Loom。中文名「贸织」：贸（接单）与织（生产），正好是「工贸一体」的两半。
 
-## 七、English Abstract
+## 七、快速开始（20 分钟复现环境）
+
+```powershell
+cd tradeloom
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+powershell -ExecutionPolicy Bypass -File scripts\fetch_fonts.ps1
+
+chcp 65001 > $null
+$env:PYTHONIOENCODING='utf-8'
+.\.venv\Scripts\python.exe scripts\check_env.py   # 期望 9/9 通过
+```
+
+`check_env.py` 不是摆设：它注册中文字体 → 画 RGB 色块 → 调 Ghostscript 转 CMYK → 解析 PDF 内容流确认 `rg` 消失、`k` 出现。**这段输出就是「处理成印刷厂要的格式」的第一份证据。**
+
+Ghostscript 需单独安装（唯一二进制依赖），装不上的、要账号才能拿的，都在 [docs/04-环境搭建.md](docs/04-环境搭建.md) 里给了网址。
+
+## 八、English Abstract
 
 TradeLoom is an agentic digital workforce for small export-oriented manufacturers that both trade and produce ("工贸一体"). It stitches the five fragmented workflows — product selection, customer acquisition, quotation, shop-floor execution, and cash flow — into one auditable loop. Every recommendation ships with its evidence (which orders, which customer, which cost sheet); human judgement stays in charge, while the agent does the remembering, the drafting, the reconciling, and the chasing.
 
-## 八、参与
+## 九、参与
 
 - 想看「要做什么」→ [docs/00-赛题与目标.md](docs/00-赛题与目标.md)
+- 想跑起来 → [docs/04-环境搭建.md](docs/04-环境搭建.md)
 - 想看「为什么做这个」→ [docs/01-业务基线.md](docs/01-业务基线.md)
 - 想帮着补需求 → [docs/02-客户访谈问题表.md](docs/02-客户访谈问题表.md)
