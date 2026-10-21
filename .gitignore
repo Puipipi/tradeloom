@@ -1,0 +1,61 @@
+# ---- 真实业务数据：一律不入库 ----
+data/raw/
+data/private/
+
+# 文档类与表格类默认忽略（多为客户原件），仅放行样例与测试夹具
+*.xlsx
+*.xls
+*.csv
+*.pdf
+*.docx
+*.pptx
+!data/samples/**
+!data/fixtures/**
+!docs/competition/**
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+
+# ---- Node ----
+node_modules/
+dist/
+.next/
+
+# ---- 本地产物 ----
+out/
+build/
+tmp/
+.cache/
+data/runtime/
+*.log
+
+# ---- 二进制资产（用脚本拉，不入库）----
+assets/fonts/*.ttf
+assets/fonts/*.otf
+assets/fonts/*.ttc
+
+# ---- 编辑器 / 系统 ----
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- SDD 执行账本与临时评审包 ----
+.superpowers/
+
+# ---- 项目外 runtime、运行数据与本地测试证据 ----
+/workspace/
+/testing/
+/0
+/1

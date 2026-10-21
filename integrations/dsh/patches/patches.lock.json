@@ -1,0 +1,119 @@
+{
+  "upstream": {
+    "repository": "https://github.com/deepseek-ai/deepseek-harness",
+    "version": "0.2.1-rc.2",
+    "commit": "687f282e8625c6b8d11ff58211a90524be2e4317",
+    "licenseSha256": "EBB4F09972AEE8608BE255DEBAF78451A68E95C290F55C240DEC2ECFA16EA6BE"
+  },
+  "patches": {
+    "ui-layout-shell-top.patch": "6B03602A3CAE8FE0A3016FB71E47E21AAB43F1B42BACB635951D10E685748F64",
+    "ui-sidebar-agents.patch": "A9FCC3A4653FBC497D1DE39F41F3401BD62F2DE846B808275E2747814F2D7626",
+    "reasoning-hidden.patch": "A3EF22511367CDA95D441D12A719E491E976FA966B699E26EC27661BFC93B56C",
+    "desktop-identity.patch": "C8007D165AB1D7E9076811E05997F7434A09F17A1E73FAF1B3B3C892BA36FB8C",
+    "desktop-host-lan.patch": "7FDAECF4E88FBA9B553F242B21AB5B56AAE1275C27E318BA08303FAC2A4CFB98",
+    "desktop-business-csrf.patch": "AFECC88496458AAB05A42474D6E4439054BBD0A55231AED41B5E9331E6714A84",
+    "desktop-managed-update.patch": "754C0E52E5842780A541C47B2301CEBD352AE78EA001EA68B04651CC6255FF7D",
+    "desktop-websocket-authority.patch": "F1828DE831BBCC7B273E8EDBC554A2CBAE7237BE698539D732647DE8E17AAE89",
+    "native-provider-ui-fix.patch": "AA336767F2B184E2AF2C44D56943699D7CD069A238F991F65619618FEF4B9CEF",
+    "desktop-startup-account-free.patch": "EBBC84EABF414EDB20ECD6951916782564594849C6A67D68B063A96FF8DE5574",
+    "desktop-branding.patch": "D2BE4CB741FD1DD9F4BC5AFBFEF3742BB92E0D9F0437C3E770615C06F6021992"
+  },
+  "targetFiles": {
+    "packages/client/ui-settings-models/src/client/CustomProviderCard.tsx": {
+      "baseSha256": "32f22ebda663139a77372b6cbd698abd9d5b998235e9317f58a6dacd8cfca2a3",
+      "newSha256": "156ad85a3b833fedff30a02c02bac1c2d5af84e38783752ba5ba2307fa571c21"
+    },
+    "packages/client/ui-settings-models/src/client/ProviderEditor.tsx": {
+      "baseSha256": "e6cbcbc471bc4740e97fb2c96f31c46f2ec122d80fbbd12009377c3e83491b04",
+      "newSha256": "0d467458b74c9c8a1d0b2cf0509be052b27273f265d2600eb833c9c7d9f01a90"
+    },
+    "packages/client/ui-settings-models/src/client/locales.ts": {
+      "baseSha256": "b601b6c1b358dcc79a4576f3b674d5d0de92ebea1eab5772c1216beaec64ca5b",
+      "newSha256": "e09da8585b36d31d44e8c54a218bacbf34539abbcca4b134920af3dac6715e46"
+    },
+    "packages/client/ui-settings-models/tests/provider-form.client.spec.tsx": {
+      "baseSha256": "98326c27d1867565585f7e1c4eb54a7f4fe22b1171d12654625014ac6be82ac8",
+      "newSha256": "72e2e133ed6abacd9ef053b3f8fe6a5e26d6e236e6c8470c7f1eaed0ce3203ca"
+    },
+    "apps/desktop/src/main.ts": {
+      "baseSha256": "e345eda0425f2df795d20413bb87bb9a3ddc46e71ceb1cec0755ad1cca3fb847",
+      "newSha256": "2eb18fd3934709be02f7184560351e0db4b563b9a0d50b892a5ca834f6828479"
+    },
+    "apps/desktop/tests/main-startup.spec.ts": {
+      "baseSha256": "ef37e6257004ae386093afa73e63d16f10ead3421ba9d9982a6286437182fd3f",
+      "newSha256": "2cc246a35649d3719a2119ffcad5df6006bd17ece7596c834950e408663c5274"
+    },
+    "apps/desktop/src/locale.ts": {
+      "baseSha256": "8426a3943be0dfe81d0f0ecef1d9fe3cc03dc6cd79d3b8177a316f12ac09b242",
+      "newSha256": "11e9bc93e78e6d6e5c1a6b6e13b9f0e60d7dee6b42a97ab838163efdab9d59b3"
+    },
+    "apps/desktop/renderer/assets/welcome-brand.svg": {
+      "baseSha256": "182f040f9d3eccf25b20f5bbfc9d50a21296a88978b91b4dec7e64cbd16b4039",
+      "newSha256": "a6a33cbc374629b4ff61c75db587724903acae764d7892f2be8ca7860f1afdfd"
+    },
+    "apps/desktop/resources/icon-windows.png": {
+      "baseSha256": "12064ff340e65872715cb18e56cfa9d3afe294fed98c81807d39e230a030d972",
+      "newSha256": "889e20a112437a89b626522b70e335c0b8bc03f29d0a1038c578feb5dcd146d4"
+    },
+    "apps/desktop/resources/icon-windows.svg": {
+      "baseSha256": "0799d196151083f123a8ae28979471da2276f29664b21c562c82a4b789d2104e",
+      "newSha256": "7e2cdb6592de4456295d455056a1d5ca500cf8ef3c759aef90ceba66c76b5849"
+    },
+    "apps/desktop/resources/tray-windows.ico": {
+      "baseSha256": "ec9354edad3eb348144569250a18843ab8d61ebcca32bebcaa3f10d1f5707a86",
+      "newSha256": "0290c96bf75f950b974a712bc2a2ac7b2e3ceb882bc44cf43ceedbf23bcab35d"
+    },
+    "apps/desktop/installer/assets/brand.png": {
+      "baseSha256": "3276df8a1d3491160e9436a4b5690444c96c1351661901a84581ff216d10fd2f",
+      "newSha256": "b13068fab1427484f32a91b3ab6a507dbcc4b781029024605b4795dd300617a5"
+    },
+    "apps/desktop/installer/assets/brand-2x.png": {
+      "baseSha256": "2d3538a84ecf40619053218f9f32ee853d26614377cbcd8d3c96a9a0192ac529",
+      "newSha256": "6829718c3a0df0d188571ff3bff4ba731b4c20172e7fcd067c81edb3ee945cb7"
+    },
+    "apps/desktop/installer/assets/brand-dark.png": {
+      "baseSha256": "59901811702183ee8047b61ca7d0be9adc6c1bbd8f6d630f859b60b0e583cd9a",
+      "newSha256": "f7c00ac36dc27d0fec973a89c05ce24333e1f0dc58e55a269f8e9e9db3632154"
+    },
+    "apps/desktop/installer/assets/brand-dark-2x.png": {
+      "baseSha256": "d9ac067d453cceace270fdf17158a2dccd8df5577f35639699030d6a80c39e40",
+      "newSha256": "0c428460ebed0e1c9baeb570e7527419e917de860bdc8b491f802840ef1f5975"
+    },
+    "apps/desktop/installer/assets/uninstaller-sidebar.png": {
+      "baseSha256": "f853ea4d1d54fc9aa55565ce05ae51c1f577db835636dadb74db54cd8b00e3ea",
+      "newSha256": "441d51b0016d49867f06dfd8a997d902f51f56e37ad25719f7d45421c4b1292c"
+    },
+    "apps/desktop/tests/expected/about-panel.json": {
+      "baseSha256": "36ce12f9dd510329aedbf37e4a3bfa56278682826ddd4033bbb2318f9cddad16",
+      "newSha256": "a7d0b53e5969720bb8a21bc3111b4d2e574af51f865cdd564ab8e5653e88ca6c"
+    },
+    "apps/web/index.html": {
+      "baseSha256": "3ace2fdb342872c40fba22d56fa52441cebdb6227711eb4c19c0818e138c51d2",
+      "newSha256": "de11675676a603b0d269145bcd9ed57ca5af5797b2d5d76cd046e494fa37abdd"
+    },
+    "apps/web/public/manifest.webmanifest": {
+      "baseSha256": "39d993c8e94ab4ce3d2c112fd4eec8c1d91ba32a11b974fdf2fd21d5e596a98b",
+      "newSha256": "c5159ff6636507c1df6c2a0f2b101e979e2fc6a4fc095f26b60ee0394a3c37f1"
+    },
+    "apps/web/public/favicon.svg": {
+      "baseSha256": "9e983b4f649c25c6ca0623a50be1a6e705fd8f49f756638b980fa13b40575ab6",
+      "newSha256": "7e2cdb6592de4456295d455056a1d5ca500cf8ef3c759aef90ceba66c76b5849"
+    },
+    "apps/web/public/favicon-dark.svg": {
+      "baseSha256": "dde7db781f41e7aeb4709ff5485af2bdcf7f4b4ea81b4500cfd5df44efdbd817",
+      "newSha256": "7e2cdb6592de4456295d455056a1d5ca500cf8ef3c759aef90ceba66c76b5849"
+    },
+    "packages/client/ui-conversation/src/client/locales.ts": {
+      "baseSha256": "3dd7500a327926eca88c32192bc7e1ce0f90a1ac0c1a1b305bd7545c10983012",
+      "newSha256": "b4db2fba821e88c9e293c703a87888e7017a6b38067842cff07b789f5630f81a"
+    },
+    "apps/desktop/tests/expected/application-menu-en-US.json": {
+      "baseSha256": "1db865f93e8fa24bae6fdd91ecdf00605eacd923e722564a462ee092db61ddf7",
+      "newSha256": "af093142f2a33a5e5fd5db8356dfa84c44295471e794c0569c2a9b18216a92af"
+    },
+    "apps/desktop/tests/expected/application-menu-zh-CN.json": {
+      "baseSha256": "dff4a93233e4ec307b38e10009c40c58dc1cf942ab322719faf7381d39fff4f1",
+      "newSha256": "46c6161c746e0410a76793059893bb6f3628f10f10ffbd9ba9683654fef6d866"
+    }
+  }
+}

@@ -1,0 +1,49 @@
+{% extends "workbench/base.html" %}
+{% load business_urls %}
+{% block page_eyebrow %}交付物 / 版本{% endblock %}
+{% block page_title %}交付物{% endblock %}
+{% block content %}
+<div class="page-stack">
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <h2>交付物</h2>
+        <p>{{ artifact_count }} 个交付物 · {{ version_count }} 个版本记录。</p>
+      </div>
+      <span class="tag demo-tag">只读</span>
+    </div>
+    <p class="timezone-note">时间均为上海时间（UTC+8）。每个版本显示冻结来源与实际文件校验值。</p>
+    {% if artifacts %}
+    <div class="table-wrap">
+      <table data-testid="artifacts-table" aria-label="交付物列表">
+        <thead><tr><th>类型</th><th>当前版本</th><th>状态</th><th>所属批次</th><th>更新时间</th></tr></thead>
+        <tbody>
+          {% for artifact in artifacts %}
+          <tr data-testid="artifact-row-{{ artifact.id }}">
+            <td><strong>{{ artifact.artifact_type_label }}</strong></td>
+            <td><span class="mono" data-testid="artifact-version-{{ artifact.current_version }}">{{ artifact.current_version }}</span></td>
+            <td><span class="status-pill {{ artifact.status }}">{{ artifact.status_label }}</span></td>
+            <td><a href="{% business_path '/workflow-tasks/' artifact.task_id %}">{{ artifact.task.batch.title }}</a></td>
+            <td class="mono">{{ artifact.updated_at|date:"Y-m-d H:i" }}</td>
+          </tr>
+          {% for version in artifact.version_rows %}
+          <tr><td colspan="5"><strong>v{{ version.version }}</strong> · {{ version.status }} · SHA-256 <span class="mono">{{ version.sha256 }}</span><br>
+            来源：{% for source in version.source_product_versions %}<span class="mono">{{ source.product_id }}/{{ source.revision_id }} v{{ source.version }}</span>{% if not forloop.last %}、{% endif %}{% empty %}—{% endfor %}<br>
+            {% if version.preview_url %}<a href="{{ version.preview_url|business_url }}" rel="noopener">{% if version.artifact_type_label == '样品清单 CSV' %}预览清单{% else %}预览{% endif %}</a> · {% endif %}<a href="{{ version.download_url|business_url }}">下载</a>
+          </td></tr>
+          {% endfor %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="scroll-hint">表格可横向滚动查看完整列。</p>
+    {% else %}
+    <div class="empty-state">
+      <h3>尚未生成交付物</h3>
+      <p>目录 HTML / Markdown、样品清单 CSV / JSON 与真实文件质检报告会按版本出现在这里。</p>
+    </div>
+    {% endif %}
+    <p class="count-note">这里只列出已登记的交付物；尚未生成的文件不提供下载。</p>
+  </section>
+</div>
+{% endblock %}

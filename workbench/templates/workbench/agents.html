@@ -1,0 +1,54 @@
+{% extends "workbench/base.html" %}
+{% block page_title %}Agent 能力接口{% endblock %}
+{% block content %}
+<section class="panel" id="agents-page">
+  <div class="panel-heading">
+    <div>
+      <h2>Agent 能力与协作关系</h2>
+      <p>静态接口规划图；只有本地产品资料能力真正执行。</p>
+    </div>
+    <span class="tag demo-tag">本地演示</span>
+  </div>
+  <div class="agent-layout">
+    <div class="collaboration-panel">
+      <div class="collaboration-map" data-testid="agent-map">
+        <svg class="connection-lines" viewBox="0 0 760 390" role="img" aria-label="协作接口图">
+          <path class="line current" d="M190 105 C285 105, 300 180, 380 195"></path>
+          <path class="line planned" d="M570 105 C475 105, 460 180, 380 195"></path>
+          <path class="line planned" d="M190 285 C285 285, 300 220, 380 205"></path>
+          <circle cx="380" cy="195" r="6" class="junction"></circle>
+        </svg>
+        <button class="agent-node node-product selected" type="button" data-testid="agent-node-product_profile" data-agent-id="product_profile"><span class="node-kicker mono">product_profile</span><strong>产品资料</strong><small>实线 · 当前实现</small></button>
+        <button class="agent-node node-quotation" type="button" data-testid="agent-node-quotation" data-agent-id="quotation"><span class="node-kicker mono">quotation</span><strong>询报价</strong><small>虚线 · 规划接口</small></button>
+        <button class="agent-node node-catalog" type="button" data-testid="agent-node-catalog_package" data-agent-id="catalog_package"><span class="node-kicker mono">catalog_package</span><strong>目录备样</strong><small>虚线 · 规划接口</small></button>
+        <button class="agent-node node-shared" type="button" data-testid="agent-node-shared_task_data" data-agent-id="shared_task_data"><span class="node-kicker mono">task data</span><strong>共享任务资料</strong><small>PostgreSQL · 真实持久化</small></button>
+      </div>
+      <p class="map-caption">实线为当前实现；虚线为保留接口。图不表示运行时 Agent 聊天。</p>
+    </div>
+    <aside class="node-detail" data-testid="agent-node-detail">
+      <p class="mono product-sku" id="agent-kicker">product_profile</p>
+      <h3 id="agent-name">产品资料</h3>
+      <p id="agent-description">归一产品字段，按文件名与货号精确匹配图片，并列出待确认项。</p>
+      <div class="field">
+        <label for="agent-task-select">选择真实任务</label>
+        <select id="agent-task-select" data-testid="agent-task-select">
+          {% for task in tasks %}<option value="{{ task.id }}">{{ task.title }} · {{ task.id|slice:":8" }}</option>{% endfor %}
+        </select>
+      </div>
+      <button class="button primary" type="button" data-testid="run-agent-product_profile" id="run-product">运行产品资料检查</button>
+      <p id="agent-error" class="inline-alert error" hidden></p>
+    </aside>
+  </div>
+  <section class="agent-result-panel" id="agent-result" data-testid="agent-result" hidden>
+    <div class="product-card-heading"><h3>产品资料检查结果</h3><span class="status-pill confirmed" id="agent-result-status" data-testid="agent-result-status"></span></div>
+    <div class="result-metrics"><div><span>产品数</span><strong class="mono" id="result-products" data-testid="result-products">—</strong></div><div><span>待确认项</span><strong class="mono" id="result-pending" data-testid="result-pending">—</strong></div><div><span>执行模式</span><strong class="mono" id="result-mode" data-testid="result-mode">—</strong></div></div>
+    <ul class="pending-list" id="result-pending-list" hidden></ul>
+  </section>
+  <section class="agent-result-panel">
+    <div class="product-card-heading"><h3>真实运行历史</h3><button class="text-button" id="refresh-runs" type="button">刷新记录</button></div>
+    <div id="agent-run-list"></div>
+  </section>
+</section>
+{{ tasks|json_script:"tasks-data" }}
+{{ capabilities|json_script:"capabilities-data" }}
+{% endblock %}

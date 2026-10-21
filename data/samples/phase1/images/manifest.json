@@ -1,0 +1,18 @@
+{
+  "source": "demo_fixture",
+  "demo": true,
+  "images": [
+    {"filename": "P1-DEMO-001.svg", "declared_sku": "P1-DEMO-001", "source": "demo_fixture", "demo": true},
+    {"filename": "P1-DEMO-002.svg", "declared_sku": "P1-DEMO-002", "source": "demo_fixture", "demo": true},
+    {"filename": "P1-DEMO-004.svg", "declared_sku": "P1-DEMO-004", "source": "demo_fixture", "demo": true},
+    {"filename": "P1-DEMO-005.svg", "declared_sku": "P1-DEMO-005", "source": "demo_fixture", "demo": true},
+    {"filename": "P1-DEMO-006.svg", "declared_sku": "P1-DEMO-006", "source": "demo_fixture", "demo": true},
+    {"filename": "P1-DEMO-007.svg", "declared_sku": "P1-DEMO-006", "source": "demo_fixture", "demo": true},
+    {"filename": "P1-IMG-007.svg", "declared_sku": "P1-DEMO-009", "source": "demo_fixture", "demo": true},
+    {"filename": "P1-IMG-009.svg", "declared_sku": "P1-DEMO-009", "source": "demo_fixture", "demo": true},
+    {"filename": "P1-DEMO-010.svg", "declared_sku": "P1-DEMO-010", "source": "demo_fixture", "demo": true}
+  ],
+  "missing_references": [
+    {"sku": "P1-DEMO-003", "filename": "", "reason": "intentional_missing_image", "source": "demo_fixture", "demo": true}
+  ]
+}

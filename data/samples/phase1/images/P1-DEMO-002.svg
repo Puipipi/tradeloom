@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="240" viewBox="0 0 320 240" role="img" aria-label="Demo product image">
+  <rect width="320" height="240" fill="#f3f6fa"/>
+  <rect x="24" y="24" width="272" height="192" rx="18" fill="#ffffff" stroke="#d6e0eb"/>
+  <path d="M60 150 C110 80 210 80 260 150" fill="none" stroke="#1a8176" stroke-width="18" stroke-linecap="round"/>
+  <text x="160" y="205" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="18" fill="#182b49">演示 · P1-DEMO-002</text>
+</svg>

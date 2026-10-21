@@ -1,0 +1,79 @@
+diff --git a/packages/client/ui-layout/src/client/AppFrame.tsx b/packages/client/ui-layout/src/client/AppFrame.tsx
+index 5614947..e097b8d 100644
+--- a/packages/client/ui-layout/src/client/AppFrame.tsx
++++ b/packages/client/ui-layout/src/client/AppFrame.tsx
+@@ -27,13 +27,13 @@ import css from './AppFrame.module.css'
+ /** Full composed props: runtime share + child-slot render share + store share. */
+ export type AppFrameProps =
+   & PropsRuntime<'root'>
+-  & PropsRenderSlots<'sidebar' | 'main' | 'rightbar' | 'shell.bottom' | 'shell.overlay' | 'shell.leading'>
++  & PropsRenderSlots<'sidebar' | 'main' | 'rightbar' | 'shell.top' | 'shell.bottom' | 'shell.overlay' | 'shell.leading'>
+   & PropsStore<ReturnType<typeof createLayoutStore>>
+   & PropsLocale<'common'>
+ 
+ /** Center column grid item (session-body building block). */
+ function CenterColumn(props: { children?: ReactNode }) {
+-  return <div className={css.centerCol}>{props.children}</div>
++  return <div className={css.centerCol} style={{ gridColumn: '2', gridRow: '2' }}>{props.children}</div>
+ }
+ 
+ /** Subscribe to the main key without subscribing the column frame to each panel id. */
+@@ -48,7 +48,7 @@ function MainPanel({ usePanelInfo, renderSlot }: Pick<PropsRuntime<'root'>, 'use
+  * moves, so it can hang over the centre when there is no track.
+  */
+ function RightbarColumn(props: { children?: ReactNode }) {
+-  return <div className={css.rightbarCol} data-rightbar-col>{props.children}</div>
++  return <div className={css.rightbarCol} data-rightbar-col style={{ gridColumn: '3', gridRow: '2' }}>{props.children}</div>
+ }
+ 
+ /**
+@@ -264,6 +264,7 @@ export function AppFrame({
+           ? { '--dsh-windows-sidebar-width': `${cols.sidebar}px` } : {}),
+         gridTemplateColumns:
+           `${cols.sidebar}px minmax(${cols.rightbar === 0 ? 0 : CENTER_MIN}px, 1fr) minmax(0px, ${rightbarMax}px)`,
++        gridTemplateRows: 'auto minmax(0, 1fr) auto',
+       }}
+       data-sidebar-collapsed={sidebarCollapsed || undefined}
+       data-rightbar-collapsed={cols.rightbar === 0 || undefined}
+@@ -277,7 +278,10 @@ export function AppFrame({
+         useSessions={useSessions}
+         usePanelInfo={usePanelInfo}
+       />
+-      <div className={css.sidebarCol}>
++      <div data-shell-top style={{ gridColumn: '1 / -1', gridRow: '1', minWidth: 0 }}>
++        {renderSlot('shell.top', {})}
++      </div>
++      <div className={css.sidebarCol} style={{ gridColumn: '1', gridRow: '2' }}>
+         {sidebar}
+       </div>
+       <>
+@@ -286,7 +290,7 @@ export function AppFrame({
+           {renderSlot('rightbar', { width: normal.rightbar, viewportWidth: viewport, canShow: normal.rightbar > 0 })}
+         </RightbarColumn>
+       </>
+-      <div className={css.bottomRow} data-shell-bottom>
++      <div className={css.bottomRow} data-shell-bottom style={{ gridColumn: '1 / -1', gridRow: '3' }}>
+         {renderSlot('shell.bottom', {})}
+       </div>
+       <div className={css.overlayLayer} data-shell-overlay>
+diff --git a/packages/client/ui-layout/src/client/index.ts b/packages/client/ui-layout/src/client/index.ts
+index 3948c19..72a64c6 100644
+--- a/packages/client/ui-layout/src/client/index.ts
++++ b/packages/client/ui-layout/src/client/index.ts
+@@ -85,6 +85,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
+      * occupant decides when to render its Session-bound content.
+      */
+     'rightbar': { kind: 'single'; scope: 'root'; owner: RightbarOwnerProps }
++    /** Full-width row above the navigation and content columns. */
++    'shell.top': { kind: 'single'; scope: 'root' }
+     /**
+      * Full-width bottom content below all three columns. Its rendered height
+      * reduces the columns' available height; empty content reserves no space.
+@@ -182,6 +184,7 @@ export function apply(ctx: ClientContext): void {
+         'sidebar': { kind: 'single', scope: 'root' },
+         'main': { kind: 'keyed', scope: 'root' },
+         'rightbar': { kind: 'single', scope: 'root' },
++        'shell.top': { kind: 'single', scope: 'root' },
+         'shell.bottom': { kind: 'single', scope: 'root' },
+         'shell.overlay': { kind: 'list', scope: 'root' },
+         'shell.leading': { kind: 'single', scope: 'root' },

@@ -1,0 +1,22 @@
+{
+  "name": "@tradeloom/dsh-business-shell",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./host.js",
+    "./client": "./client.js",
+    "./policy": "./policy.js",
+    "./profile": "./profile-tool.js",
+    "./business-tools": "./business-tools.js",
+    "./step-policy": "./step-policy.js",
+    "./state": "./state.js",
+    "./proxy": "./proxy.js"
+  },
+  "files": ["host.js", "client.js", "client.scenes.js", "client.dockview.js", "capabilities.js", "scenes.json", "scene-layout.js", "dock-layout.js", "policy.js", "profile-tool.js", "business-tools.js", "step-policy.js", "state.js", "roles.js", "proxy.js", "cordis.patch.yml", "assets/tradeloom-mark.svg", "vendor/dockview-entry.ts", "vendor/dockview.css", "vendor/dockview-package-lock.json", "vendor/LICENSE.dockview-react", "scripts/build-dockview-chunk.mjs"],
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": { "platform": "web", "immediately": true, "inject": ["@deepseek-ai/dsh-client-ui-conversation", "@deepseek-ai/dsh-client-ui-layout", "@deepseek-ai/dsh-client-ui-sidebar", "@deepseek-ai/dsh-client-ui-workspace", "@deepseek-ai/dsh-client-ui-model-selection"], "external": ["react", "react-dom", "react-dom/client", "react/jsx-runtime"] }
+  },
+  "scripts": { "build:dockview": "node scripts/build-dockview-chunk.mjs", "test": "node --test tests/*.test.js" }
+}

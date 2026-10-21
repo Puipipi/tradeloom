@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="480" viewBox="0 0 640 480">
+  <rect width="640" height="480" fill="#F3F6FA"/>
+  <path d="M120 250 C220 130, 420 130, 520 250 C420 370, 220 370, 120 250Z" fill="#7B2035"/>
+  <path d="M320 250 C285 215, 250 225, 245 250 C250 275, 285 285, 320 250Z" fill="#9F3550"/>
+  <circle cx="320" cy="250" r="26" fill="#D6A15C"/>
+  <text x="320" y="420" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="28" fill="#182B49">演示图片 · 罗纹丝带</text>
+</svg>

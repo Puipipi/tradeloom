@@ -1,0 +1,242 @@
+diff --git a/apps/desktop/src/main.ts b/apps/desktop/src/main.ts
+index 7683b6c..d3fae09 100644
+--- a/apps/desktop/src/main.ts
++++ b/apps/desktop/src/main.ts
+@@ -464,6 +464,7 @@ async function main(): Promise<void> {
+         if (ready.injections === undefined) throw new Error('Desktop Host did not provide boot injections')
+         injections = ready.injections
+         welcomeBackend = await connectDesktopWelcome(ready.url, (input, init) => net.fetch(input, init), async () => (await session.defaultSession.cookies.get({ url: ready.url })).map(cookie => `${cookie.name}=${cookie.value}`).join('; '))
++        if (productWorkspace) return
+         analyticsEnabled = await welcomeBackend.analyticsEnabled().catch(() => false)
+         if (!reportedLaunch) { reportedLaunch = true; void track('desktop_app_launch', {}) }
+         stopAccount?.()
+@@ -593,6 +594,8 @@ async function main(): Promise<void> {
+   }
+ 
+   const manifest: unknown = JSON.parse(await readFile(join(app.getAppPath(), 'package.json'), 'utf8'))
++  const productWorkspace = typeof manifest === 'object' && manifest !== null
++    && 'dshDesktopAppId' in manifest && manifest.dshDesktopAppId === 'cn.tradeloom.workbench'
+   const updateChannel = desktopUpdateChannel(manifest)
+   const updates = new DesktopUpdateCoordinator(
+     publishUpdate,
+@@ -785,6 +788,7 @@ async function main(): Promise<void> {
+   })
+   ipcMain.handle(DESKTOP_IPC.onboardingApiKey, async (event) => {
+     assertProductSender(event)
++    if (productWorkspace) return false
+     return (await readWelcomeState()).hasApiKey
+   })
+   ipcMain.on(DESKTOP_IPC.onboardingActive, (event, active: unknown) => {
+@@ -1211,6 +1215,16 @@ async function main(): Promise<void> {
+   }
+   const openInitialWindow = async (): Promise<void> => {
+     if (quitting || recovery.active) return
++    if (productWorkspace) {
++      if (welcomeBackend === undefined) throw new Error('desktop welcome: backend unavailable')
++      const preference = await welcomeBackend.readLocalePreference()
++      if (isQuitting() || backend.state.phase !== 'ready') return
++      locale = resolveDesktopStartupLocale(preference, systemLanguages)
++      windowsLanguage = locale.id
++      refreshApplicationMenu()
++      await enterWorkspace()
++      return
++    }
+     const state = await readWelcomeState()
+     if (isQuitting() || backend.state.phase !== 'ready') return
+     locale = resolveDesktopStartupLocale(state.localePreference, systemLanguages)
+@@ -1291,7 +1305,7 @@ async function main(): Promise<void> {
+       if (quitting || shellInstallerOwnsQuit) return
+       if (approved) { finishQuit(); return }
+       // A quit that started from closing the welcome window destroyed it; a cancelled quit needs it back.
+-      if (!enteredWorkspace && !recovery.active) void showWelcome().catch((error: unknown) => { reportFatal(error, 'main') })
++      if (!productWorkspace && !enteredWorkspace && !recovery.active) void showWelcome().catch((error: unknown) => { reportFatal(error, 'main') })
+     }).catch((error: unknown) => { console.error(error); if (!quitting && !shellInstallerOwnsQuit) finishQuit() })
+   })
+ 
+diff --git a/apps/desktop/tests/main-startup.spec.ts b/apps/desktop/tests/main-startup.spec.ts
+index 9b12fa9..98d3bbf 100644
+--- a/apps/desktop/tests/main-startup.spec.ts
++++ b/apps/desktop/tests/main-startup.spec.ts
+@@ -49,6 +49,8 @@ const harness = await vi.hoisted(async () => {
+   let quitCompleted = deferred()
+   let policyBlocked = deferred()
+   let embeddedPolicy: unknown
++  let desktopAppId = 'com.deepseek.dsh'
++  let savedLocalePreference: string | null = null
+   let closeWindowsOnQuit = false
+   let updateState: DesktopUpdateState = { phase: 'idle' }
+   let platformDisposeDeferred: ReturnType<typeof deferred> | undefined
+@@ -181,6 +183,18 @@ const harness = await vi.hoisted(async () => {
+   let accountListener: ((state: AccountView) => void) | undefined
+   let analyticsEnabled = true
+   let analyticsEnabledListener: ((enabled: boolean) => void) | undefined
++  const accountState = vi.fn(async () => ({ status: 'signed-out', attempt: null }))
++  const accountStart = vi.fn(async () => ({ id: 'test-attempt' }))
++  const accountCancel = vi.fn(async () => {})
++  const watchAccount = vi.fn((listener: (state: AccountView) => void, _failed: () => void, _expired: () => void,
++    onAnalyticsEnabledChanged?: (enabled: boolean) => void) => {
++    analyticsEnabledListener = onAnalyticsEnabledChanged
++    accountListener = listener
++    return () => { accountListener = undefined; analyticsEnabledListener = undefined }
++  })
++  const readWelcome = vi.fn(async () => (await hosts.at(-1)!.fetch()).json())
++  const readLocalePreference = vi.fn(async () => savedLocalePreference)
++  const readAnalyticsEnabled = vi.fn(async () => analyticsEnabled)
+   const analytics = vi.fn(async (_event: unknown) => {})
+   const nativeTheme = { themeSource: 'system', shouldUseDarkColors: false }
+   const trays: FakeTray[] = []
+@@ -202,14 +216,11 @@ const harness = await vi.hoisted(async () => {
+ 
+     get analyticsEnabled() { return analyticsEnabled },
+     set analyticsEnabled(value: boolean) { analyticsEnabled = value; analyticsEnabledListener?.(value) },
+-    watchAccount: (
+-      listener: (state: AccountView) => void, _failed: () => void, _expired: () => void,
+-      onAnalyticsEnabledChanged?: (enabled: boolean) => void,
+-    ) => {
+-      analyticsEnabledListener = onAnalyticsEnabledChanged
+-      accountListener = listener
+-      return () => { accountListener = undefined; analyticsEnabledListener = undefined }
+-    },
++    accountState, accountStart, accountCancel, watchAccount, readWelcome, readLocalePreference, readAnalyticsEnabled,
++    get desktopAppId() { return desktopAppId },
++    set desktopAppId(value: string) { desktopAppId = value },
++    get savedLocalePreference() { return savedLocalePreference },
++    set savedLocalePreference(value: string | null) { savedLocalePreference = value },
+     publishAccount(state: AccountView) { accountListener?.(state) },
+     ipcOn: vi.fn<(channel: string, listener: (event: { sender: unknown; senderFrame: unknown }, ...args: unknown[]) => void) => void>(),
+     get updateState() { return updateState },
+@@ -262,6 +273,15 @@ const harness = await vi.hoisted(async () => {
+       navigated = deferred(); dialogShown = deferred(); quitCompleted = deferred()
+       policyBlocked = deferred()
+       embeddedPolicy = undefined
++      desktopAppId = 'com.deepseek.dsh'
++      savedLocalePreference = null
++      accountState.mockReset().mockResolvedValue({ status: 'signed-out', attempt: null })
++      accountStart.mockReset().mockResolvedValue({ id: 'test-attempt' })
++      accountCancel.mockReset().mockResolvedValue(undefined)
++      watchAccount.mockClear()
++      readWelcome.mockReset().mockImplementation(async () => (await hosts.at(-1)!.fetch()).json())
++      readLocalePreference.mockReset().mockImplementation(async () => savedLocalePreference)
++      readAnalyticsEnabled.mockReset().mockImplementation(async () => analyticsEnabled)
+       platformDisposeDeferred = undefined
+       platformCloseDeferred = undefined
+     },
+@@ -310,7 +330,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
+   const original = await importOriginal<typeof import('node:fs/promises')>()
+   return { ...original, readFile: vi.fn((path: Parameters<typeof original.readFile>[0], encoding?: 'utf8') => {
+     if (path === join('desktop-test-app', 'package.json')) {
+-      return Promise.resolve(JSON.stringify({ dshDesktopAppId: 'com.deepseek.dsh', dshMandatoryUpdatePolicy: harness.embeddedPolicy }))
++      return Promise.resolve(JSON.stringify({ dshDesktopAppId: harness.desktopAppId, dshMandatoryUpdatePolicy: harness.embeddedPolicy }))
+     }
+     return encoding === undefined ? original.readFile(path) : original.readFile(path, encoding)
+   }) }
+@@ -365,12 +385,12 @@ vi.mock('../src/platform-view.ts', async importOriginal => ({
+ }))
+ vi.mock('../src/welcome-backend.ts', () => ({
+   connectDesktopWelcome: async () => ({
+-    analyticsEnabled: async () => harness.analyticsEnabled,
++    analyticsEnabled: harness.readAnalyticsEnabled,
+     report: harness.analytics,
+-    readLocalePreference: async () => null,
+-    read: async (): Promise<unknown> => (await harness.hosts.at(-1)!.fetch()).json() as Promise<unknown>,
++    readLocalePreference: harness.readLocalePreference,
++    read: harness.readWelcome,
+     save: async () => ({ ok: true }),
+-    account: { watch: harness.watchAccount, state: async () => ({ status: 'signed-out', attempt: null }) },
++    account: { watch: harness.watchAccount, state: harness.accountState, start: harness.accountStart, cancel: harness.accountCancel },
+   }),
+ }))
+ 
+@@ -446,6 +466,92 @@ afterEach(async () => {
+ })
+ 
+ describe('desktop main startup', () => {
++  it('enters the product workspace without account or analytics RPCs and still bootstraps the saved locale', async () => {
++    harness.desktopAppId = 'cn.tradeloom.workbench'
++    harness.savedLocalePreference = 'zh-CN'
++
++    await readyForUpdate()
++    await vi.waitFor(() => { expect(harness.windows[0]!.show).toHaveBeenCalledOnce() })
++
++    expect(harness.windows).toHaveLength(1)
++    expect(harness.readLocalePreference).toHaveBeenCalledOnce()
++    expect(harness.readWelcome).not.toHaveBeenCalled()
++    expect(harness.readAnalyticsEnabled).not.toHaveBeenCalled()
++    expect(harness.accountState).not.toHaveBeenCalled()
++    expect(harness.watchAccount).not.toHaveBeenCalled()
++    expect(harness.accountStart).not.toHaveBeenCalled()
++    expect(harness.accountCancel).not.toHaveBeenCalled()
++    expect(harness.analytics).not.toHaveBeenCalled()
++
++    await expect(invoke(DESKTOP_IPC.localeBootstrap, 'app')).resolves.toEqual({
++      languages: ['en-US'], preference: 'zh-CN',
++    })
++    await expect(invoke(DESKTOP_IPC.onboardingApiKey, 'app')).resolves.toBe(false)
++    expect(harness.readLocalePreference).toHaveBeenCalledTimes(2)
++    expect(harness.readWelcome).not.toHaveBeenCalled()
++    expect(harness.accountState).not.toHaveBeenCalled()
++  })
++
++  it('does not reopen account welcome when product quit is cancelled during startup preference loading', async () => {
++    harness.desktopAppId = 'cn.tradeloom.workbench'
++    const pendingLocale = Promise.withResolvers<string | null>()
++    const pendingWelcome = Promise.withResolvers<unknown>()
++    harness.readLocalePreference.mockImplementationOnce(() => pendingLocale.promise)
++    harness.readWelcome.mockImplementationOnce(() => pendingWelcome.promise)
++    await import('../src/main.ts')
++    await harness.preparing.promise
++    harness.prepared.resolve()
++    await harness.hostStarted.promise
++    const host = harness.hosts[0]!
++    host.ready.resolve()
++    await vi.waitFor(() => {
++      expect(harness.readWelcome.mock.calls.length + harness.readLocalePreference.mock.calls.length).toBeGreaterThan(0)
++    })
++    host.inspectQuit.mockResolvedValueOnce({ activeTasks: true, scheduledTasks: false })
++
++    const dialogsBeforeQuit = harness.dialog.showMessageBox.mock.calls.length
++    const event = { preventDefault: vi.fn() }
++    harness.app.emit('before-quit', event)
++    expect(event.preventDefault).toHaveBeenCalledOnce()
++    await vi.waitFor(() => { expect(harness.dialog.showMessageBox.mock.calls.length).toBeGreaterThan(dialogsBeforeQuit) })
++    await vi.advanceTimersByTimeAsync(0)
++    await Promise.resolve()
++    await Promise.resolve()
++    await Promise.resolve()
++
++    expect(harness.windows).toHaveLength(1)
++    expect(harness.accountCancel).not.toHaveBeenCalled()
++    pendingLocale.resolve(null)
++    pendingWelcome.resolve({ hasApiKey: true, localePreference: null })
++  })
++
++  it('keeps the upstream Welcome startup failure explicit for the default app identity', async () => {
++    harness.readWelcome.mockRejectedValueOnce(new Error('fixture account RPC failure'))
++
++    await readyForUpdate()
++    await harness.dialogShown.promise
++
++    expect(harness.readWelcome).toHaveBeenCalledOnce()
++    expect(harness.dialog.showMessageBox).toHaveBeenCalledWith(
++      expect.objectContaining({ title: en.startupFailed }),
++    )
++    expect(harness.windows[0]!.urls).toEqual(['dsh-app://app/'])
++  })
++
++  it('keeps product locale settings RPC failures visible during startup', async () => {
++    harness.desktopAppId = 'cn.tradeloom.workbench'
++    harness.readLocalePreference.mockRejectedValueOnce(new Error('fixture locale settings RPC failure'))
++
++    await readyForUpdate()
++    await vi.waitFor(() => { expect(harness.readLocalePreference).toHaveBeenCalledOnce() })
++    await harness.dialogShown.promise
++
++    expect(harness.readWelcome).not.toHaveBeenCalled()
++    expect(harness.dialog.showMessageBox).toHaveBeenCalledWith(
++      expect.objectContaining({ title: en.startupFailed, detail: expect.stringContaining('fixture locale settings RPC failure') }),
++    )
++  })
++
+   it.each([true, false])('selects the package manager before Host startup (packaged=%s)', async (packaged) => {
+     harness.app.isPackaged = packaged
+     await readyForUpdate()

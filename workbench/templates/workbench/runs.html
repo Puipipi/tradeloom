@@ -1,0 +1,94 @@
+{% extends "workbench/base.html" %}
+{% block page_eyebrow %}运行记录 / 真实调用{% endblock %}
+{% block page_title %}运行记录{% endblock %}
+{% block content %}
+<div class="runs-layout">
+  <div class="page-stack">
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <h2>Agent 运行</h2>
+          <p>{{ run_count }} 条运行记录；只展示调用摘要，不展示原始输出或内部推理。</p>
+        </div>
+        <span class="tag demo-tag mono">{{ local_executor_mode }}</span>
+      </div>
+      <p class="timezone-note">时间均为上海时间（UTC+8）。</p>
+      {% if runs %}
+      <div class="table-wrap">
+        <table data-testid="runs-table" aria-label="Agent 运行记录">
+          <thead><tr><th>能力</th><th>状态</th><th>批次</th><th>开始</th><th>结束</th></tr></thead>
+          <tbody>
+            {% for run in runs %}
+            <tr data-testid="run-{{ run.run_id }}">
+              <td>
+                <strong>{{ run.capability_label }}</strong>
+                <span class="cell-subtitle mono">{{ run.run_id|slice:":12" }}</span>
+              </td>
+              <td><span class="status-pill {{ run.status }}">{{ run.status_label }}</span>{% if run.safe_error_summary %}<span class="cell-subtitle">{{ run.safe_error_summary }}</span>{% endif %}</td>
+              <td>{{ run.task.title }}</td>
+              <td class="mono">{{ run.started_at|date:"Y-m-d H:i" }}</td>
+              <td class="mono">{% if run.finished_at %}{{ run.finished_at|date:"Y-m-d H:i" }}{% else %}—{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if run_count > run_list_limit %}<p class="list-limit-note">仅显示最近 {{ run_list_limit }} 条，共 {{ run_count }} 条。</p>{% endif %}
+      <p class="scroll-hint">表格可横向滚动查看完整列。</p>
+      {% else %}
+      <div class="empty-state compact"><h3>暂无运行记录</h3><p>本地产品资料执行器运行后会在这里留下摘要。</p></div>
+      {% endif %}
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <h2>状态事件</h2>
+          <p>{{ event_count }} 条状态事件记录。</p>
+        </div>
+      </div>
+      {% if events %}
+      <div class="timeline">
+        {% for event in events %}
+        <article class="timeline-item">
+          <span class="timeline-dot" aria-hidden="true"></span>
+          <div>
+            <strong>{{ event.event_type_label }}</strong>
+            <p>{{ event.safe_actor_label }} · <span class="mono">{{ event.created_at|date:"Y-m-d H:i" }}</span></p>
+            {% if event.task %}<span class="muted-text">{{ event.task.batch.title }}</span>{% endif %}
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+      {% if event_count > event_list_limit %}<p class="list-limit-note">仅显示最近 {{ event_list_limit }} 条，共 {{ event_count }} 条。</p>{% endif %}
+      {% else %}
+      <div class="empty-state compact"><h3>暂无状态事件</h3><p>业务任务状态变化后会在这里记录。</p></div>
+      {% endif %}
+    </section>
+  </div>
+
+  <aside class="panel platform-card" data-testid="platform-status">
+    <h2>平台状态</h2>
+    <p>当前只启用基础数据与本地产品资料执行器。</p>
+    <dl class="status-list">
+      <div><dt>本地诊断</dt><dd><span class="mono">{{ diagnostics.status }}</span> · 数据库 {{ diagnostics.dependencies.database.status }} · 意图配置 {{ diagnostics.dependencies.intent_config.status }} · Runtime 检查 {{ diagnostics.dependencies.runtime.status }} / 能力 {{ diagnostics.dependencies.runtime.health_status|default:"unavailable" }}</dd></div>
+      <div><dt>规划模式</dt><dd><span class="mono">{{ runtime_health.planning_mode|default:planning_mode }}</span> · {{ planning_status }}</dd></div>
+      <div><dt>业务编排</dt><dd>{{ agent_orchestration }}</dd></div>
+      <div><dt>产品资料整理</dt><dd>Web 工作流当前使用本地 Mock；仅执行本地健康检查（<span class="mono">{{ runtime_health.execution_mode|default:local_executor_mode }}</span>）</dd></div>
+      <div><dt>AgentArts</dt><dd><span class="mono">{{ agentarts_status }}</span> · {{ agentarts_label }}</dd></div>
+      <div><dt>外部 Provider</dt><dd><span class="mono">not_checked</span> · 未调用或验证外部模型</dd></div>
+    </dl>
+    {% if intent %}
+    <h3>当前意图配置</h3>
+    <dl class="status-list" data-testid="current-intent-config">
+      <div><dt>规则版本</dt><dd><span class="mono">{{ intent.rules_version }}</span></dd></div>
+      <div><dt>规则文件 SHA-256</dt><dd class="mono">{{ intent.rules_sha256 }}</dd></div>
+      <div><dt>Prompt 版本</dt><dd><span class="mono">{{ intent.prompt_version }}</span></dd></div>
+      <div><dt>Prompt 文件 SHA-256</dt><dd class="mono">{{ intent.prompt_sha256 }}</dd></div>
+    </dl>
+    <p class="muted-text">以上为当前本地配置，不代表历史运行时版本；文件校验基于实际文件字节。</p>
+    {% else %}<p class="muted-text">当前意图配置无法读取，详细错误已隐藏。</p>{% endif %}
+    <p class="muted-text">运行状态仅覆盖本地数据库、意图配置和 Runtime 健康方法；AgentArts 未配置，外部 Provider 未检查。</p>
+  </aside>
+</div>
+{% endblock %}

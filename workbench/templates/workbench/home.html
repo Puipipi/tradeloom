@@ -1,0 +1,118 @@
+{% extends "workbench/base.html" %}
+{% load business_urls %}
+{% block page_eyebrow %}工作台 / 总览{% endblock %}
+{% block page_title %}首页{% endblock %}
+{% block content %}
+<div class="page-stack">
+  <section class="panel intro-panel">
+    <div class="panel-heading">
+      <div>
+        <h2>产品资料工作台</h2>
+        <p>先核对待确认批次，再进入产品资料补齐缺项。</p>
+      </div>
+      <span class="tag demo-tag">本地演示数据</span>
+    </div>
+    <div class="stat-grid" data-testid="home-stats">
+      <article class="stat-card">
+        <span class="stat-label">批次</span>
+        <strong class="stat-value mono" data-testid="stat-batches">{{ batch_count }}</strong>
+        <span class="stat-note">全部产品批次</span>
+      </article>
+      <article class="stat-card">
+        <span class="stat-label">产品</span>
+        <strong class="stat-value mono" data-testid="stat-products">{{ product_count }}</strong>
+        <span class="stat-note">当前产品记录</span>
+      </article>
+      <article class="stat-card">
+        <span class="stat-label">待确认批次</span>
+        <strong class="stat-value mono" data-testid="stat-pending">{{ pending_count }}</strong>
+        <span class="stat-note">等待资料确认</span>
+      </article>
+      <article class="stat-card">
+        <span class="stat-label">业务任务</span>
+        <strong class="stat-value mono" data-testid="stat-workflows">{{ workflow_count }}</strong>
+        <span class="stat-note">已创建业务任务</span>
+      </article>
+    </div>
+    <p class="count-note"><span class="mono" data-testid="stat-actionable">{{ actionable_count }}</span> 个待确认批次资料齐全，可立即进入确认。</p>
+    <div class="button-row intro-actions">
+      <a class="button primary" href="{% business_path '/tasks/new' %}">新建任务</a>
+      <a class="button secondary" href="{% business_path '/' %}">查看任务列表</a>
+    </div>
+    <p class="timezone-note">时间均为上海时间（UTC+8）。</p>
+  </section>
+
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <h2>可立即确认</h2>
+        <p>这些批次的产品资料没有缺项，可直接打开批次完成确认。</p>
+      </div>
+      <span class="status-pill confirmed">{{ actionable_count }} 个可操作</span>
+    </div>
+    {% if actionable_batches %}
+    <div class="action-list" data-testid="actionable-batches">
+      {% for batch in actionable_batches %}
+      <article class="action-row" data-testid="actionable-batch-{{ batch.id }}">
+        <div>
+          <a class="task-link" href="{% business_path '/tasks/' batch.id %}">{{ batch.title }}</a>
+          <p>{{ batch.product_count }} 个产品 · 更新于 <span class="mono">{{ batch.updated_at_display }}</span></p>
+        </div>
+        <a class="button secondary small" href="{% business_path '/tasks/' batch.id %}">去确认</a>
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state compact">
+      <h3>当前没有可立即确认的批次</h3>
+      <p>先补齐待确认批次的缺项，再回到这里确认。</p>
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <h2>待确认批次</h2>
+        <p>显示最近更新的待确认批次；缺项批次需要先进入详情补齐。</p>
+      </div>
+      <a class="text-button" href="{% business_path '/' %}">查看全部任务</a>
+    </div>
+    {% if pending_batches %}
+    <div class="table-wrap" data-testid="pending-batches">
+      <table aria-label="待确认批次">
+        <thead><tr><th>批次</th><th>产品</th><th>缺项</th><th>更新时间</th><th>状态</th></tr></thead>
+        <tbody>
+          {% for batch in pending_batches %}
+          <tr data-testid="pending-batch-{{ batch.id }}">
+            <td><a class="task-link" href="{% business_path '/tasks/' batch.id %}">{{ batch.title }}</a></td>
+            <td class="mono">{{ batch.product_count }}</td>
+            <td class="mono">{{ batch.missing_count }}</td>
+            <td class="mono">{{ batch.updated_at_display }}</td>
+            <td>
+              {% if batch.product_count == 0 %}
+              <span class="status-pill draft">尚未导入产品</span>
+              {% elif batch.can_confirm %}
+              <span class="status-pill confirmed">可确认</span>
+              {% else %}
+              <span class="status-pill awaiting_confirmation">待补 {{ batch.missing_count }} 项</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="scroll-hint">表格可横向滚动查看完整列。</p>
+    {% if pending_more %}
+    <p class="count-note">还有 {{ pending_more }} 个待确认批次，前往 <a href="{% business_path '/' %}">任务列表</a> 查看。</p>
+    {% endif %}
+    {% else %}
+    <div class="empty-state compact">
+      <h3>当前没有待确认批次</h3>
+      <p>新建任务或导入 CSV 后，批次会出现在这里。</p>
+    </div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

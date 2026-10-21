@@ -1,0 +1,271 @@
+diff --git a/packages/client/ui-settings-models/src/client/CustomProviderCard.tsx b/packages/client/ui-settings-models/src/client/CustomProviderCard.tsx
+index 1a166036..646ca8ba 100644
+--- a/packages/client/ui-settings-models/src/client/CustomProviderCard.tsx
++++ b/packages/client/ui-settings-models/src/client/CustomProviderCard.tsx
+@@ -25,7 +25,7 @@
+  * offers each model those levels.
+  */
+ 
+-import { useEffect, useState } from 'react'
++import { useEffect, useMemo, useState } from 'react'
+ import type { ReactNode } from 'react'
+ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
+ import { apiKeyFailure } from './apiKey.ts'
+@@ -99,6 +99,16 @@ export interface CustomProviderCardProps {
+  */
+ export function CustomProviderCard(props: CustomProviderCardProps): ReactNode {
+   const { taken, protocols, reasoningLevels, operations, t, onBusyChange } = props
++  const modelOperations = useMemo<ModelsOperations>(() => ({
++    ...operations,
++    discoverModels: async (settingsNs, request) => {
++      try {
++        return await operations.discoverModels(settingsNs, request)
++      } catch {
++        return { kind: 'refused', message: t('modelDiscoveryFailed') }
++      }
++    },
++  }), [operations, t])
+   // The write is checked against the revision on which this draft was opened.
+   const [openedAt] = useState(() => props.revision)
+   const [route, setRoute] = useState('')
+@@ -121,7 +131,8 @@ export function CustomProviderCard(props: CustomProviderCardProps): ReactNode {
+   /** Everything but the key stops being editable once the provider exists. */
+   const profileDisabled = disabled || committed
+ 
+-  const routeInvalid = route.length > 0 && !ROUTE_PATTERN.test(route)
++  const routeMissing = route.trim().length === 0
++  const routeInvalid = !routeMissing && !ROUTE_PATTERN.test(route)
+   const routeTaken = taken.includes(route)
+   const normalizedBaseURL = baseURL.trim()
+   const baseUrlInvalid = baseURL.length > 0 && !isHttpUrl(normalizedBaseURL)
+@@ -135,7 +146,7 @@ export function CustomProviderCard(props: CustomProviderCardProps): ReactNode {
+   // string, which the create path reads as "no key supplied" — a route may
+   // legitimately authenticate through the provider's own ambient discovery.
+   const keyValue = keyDraft.trim()
+-  const ready = route.length > 0 && !routeInvalid && !routeTaken
++  const ready = !routeMissing && !routeInvalid && !routeTaken
+     && normalizedBaseURL.length > 0 && !baseUrlInvalid && models.length > 0 && modelFailure === undefined
+     && keyFailure === undefined
+   // The one blocked gate worth a line under the form. A satisfied card says
+@@ -148,7 +159,7 @@ export function CustomProviderCard(props: CustomProviderCardProps): ReactNode {
+     // Same for the route id, and it must be tested rather than assumed: the
+     // fallback arm below reads "no models yet", so an unmet route gate would
+     // fall through to it and contradict the filled-in list right above.
+-    || route.length === 0 || routeInvalid || routeTaken || baseUrlInvalid
++    || routeMissing || routeInvalid || routeTaken || baseUrlInvalid
+     ? undefined
+     : normalizedBaseURL.length === 0
+       ? t('customNeedsBaseUrl')
+@@ -208,6 +219,8 @@ export function CustomProviderCard(props: CustomProviderCardProps): ReactNode {
+         return
+       }
+       props.onClose(true)
++    } catch {
++      setFailure(t('providerSaveFailed'))
+     } finally {
+       setBusy(false)
+     }
+@@ -223,13 +236,20 @@ export function CustomProviderCard(props: CustomProviderCardProps): ReactNode {
+           value={route}
+           placeholder="acme-gateway"
+           aria-label={t('customRoute')}
++          aria-required="true"
++          aria-invalid={routeMissing || routeInvalid || routeTaken}
+           disabled={profileDisabled}
+           onChange={(event) => { setRoute(event.target.value) }}
+         />
+       </div>
+       {/* A rejected id reads as a fault, not as guidance — the same split the
+           key field below already makes between its failure and its hint. */}
+-      {routeInvalid || routeTaken
++      {routeMissing
++        ? <>
++            <p className={styles['error']}>{t('customNeedsRoute')}</p>
++            <p className={styles['advancedHint']}>{t('customRouteHint')}</p>
++          </>
++        : routeInvalid || routeTaken
+         ? <p className={styles['error']}>{t(routeInvalid ? 'customRouteInvalid' : 'customRouteTaken')}</p>
+         : <p className={styles['advancedHint']}>{t('customRouteHint')}</p>}
+       <div className={styles['field']}>
+@@ -302,7 +322,7 @@ export function CustomProviderCard(props: CustomProviderCardProps): ReactNode {
+         probeBlocked={baseUrlInvalid
+           ? 'customBaseUrlInvalid'
+           : keyFailure === 'keyBlank' ? 'keyBlankNew' : keyFailure}
+-        operations={operations}
++        operations={modelOperations}
+         t={t}
+         disabled={profileDisabled}
+         onBusyChange={setListBusy}
+diff --git a/packages/client/ui-settings-models/src/client/ProviderEditor.tsx b/packages/client/ui-settings-models/src/client/ProviderEditor.tsx
+index 262f8c9d..37c55320 100644
+--- a/packages/client/ui-settings-models/src/client/ProviderEditor.tsx
++++ b/packages/client/ui-settings-models/src/client/ProviderEditor.tsx
+@@ -178,6 +178,16 @@ function refFor(
+  */
+ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
+   const { namespace, schema, settingsPath, operations, t } = props
++  const modelOperations = useMemo<ModelsOperations>(() => ({
++    ...operations,
++    discoverModels: async (settingsNs, request) => {
++      try {
++        return await operations.discoverModels(settingsNs, request)
++      } catch {
++        return { kind: 'refused', message: t('modelDiscoveryFailed') }
++      }
++    },
++  }), [operations, t])
+   const [draft, setDraft] = useState<Record<string, unknown>>(() => draftAt(schema, namespace, settingsPath))
+   const [keyDraft, setKeyDraft] = useState('')
+   const [busy, setBusy] = useState(false)
+@@ -323,6 +333,8 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
+         return
+       }
+       props.onClose(true)
++    } catch {
++      setFailure(t('providerSaveFailed'))
+     } finally {
+       setBusy(false)
+     }
+@@ -532,7 +544,7 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
+                   defaultInput={Array.isArray(defaultInput) ? defaultInput : undefined}
+                   probe={probe}
+                   probeBlocked={keyFailure}
+-                  operations={operations}
++                  operations={modelOperations}
+                   onBusyChange={setListBusy}
+                 />
+               )}
+diff --git a/packages/client/ui-settings-models/src/client/locales.ts b/packages/client/ui-settings-models/src/client/locales.ts
+index 9bcfa18e..22de0693 100644
+--- a/packages/client/ui-settings-models/src/client/locales.ts
++++ b/packages/client/ui-settings-models/src/client/locales.ts
+@@ -34,6 +34,8 @@ export const en = {
+   accountSignedIn: 'Signed in',
+   readOnly: 'The settings document is read-only in this deployment.',
+   loadFailed: 'Loading the provider directory failed',
++  modelDiscoveryFailed: 'Could not fetch models from this provider. Check the endpoint and try again.',
++  providerSaveFailed: 'Saving provider settings failed. Check the connection and try again.',
+   conflict: 'Someone else changed these settings while this card was open. Close it and reopen to edit the current values.',
+   retry: 'Retry',
+   keyInput: 'API key',
+@@ -109,6 +111,7 @@ export const en = {
+   fetchAdopt: 'Add selected',
+   customTag: 'Custom',
+   customRoute: 'Provider ID',
++  customNeedsRoute: 'Enter a provider ID to continue.',
+   customRouteHint: 'Lowercase identifier, starting with a letter, that uniquely names this provider in requests and as its credential name.',
+   customRouteInvalid: 'Start with a lowercase letter; then lowercase letters, digits, and dashes.',
+   customRouteTaken: 'A provider already uses this ID.',
+@@ -175,6 +178,8 @@ export const zh: { [Key in keyof typeof en]: string } = {
+   accountSignedIn: '已登录',
+   readOnly: '当前部署的设置文档为只读。',
+   loadFailed: '加载提供商目录失败',
++  modelDiscoveryFailed: '无法从该提供商获取模型，请检查接口地址后重试。',
++  providerSaveFailed: '保存提供商设置失败，请检查连接后重试。',
+   conflict: '这张卡片打开期间，这些设置已被其他地方改动。请关闭后重新打开，在当前值上编辑。',
+   retry: '重试',
+   keyInput: 'API 密钥',
+@@ -250,6 +255,7 @@ export const zh: { [Key in keyof typeof en]: string } = {
+   fetchAdopt: '添加所选',
+   customTag: '自定义',
+   customRoute: 'Provider ID',
++  customNeedsRoute: '请输入提供商 ID。',
+   customRouteHint: '以小写字母开头的标识，在请求中唯一标识该提供商，并用于派生凭据名。',
+   customRouteInvalid: '需以小写字母开头，之后可用小写字母、数字和短横线。',
+   customRouteTaken: '已有提供商使用了这个 ID。',
+diff --git a/packages/client/ui-settings-models/tests/provider-form.client.spec.tsx b/packages/client/ui-settings-models/tests/provider-form.client.spec.tsx
+index 7a49fa45..784281e3 100644
+--- a/packages/client/ui-settings-models/tests/provider-form.client.spec.tsx
++++ b/packages/client/ui-settings-models/tests/provider-form.client.spec.tsx
+@@ -1384,6 +1384,9 @@ describe('hand-declared providers', () => {
+   it('refuses to create until the route, endpoint, and a model are usable', () => {
+     mountCard()
+     expect(buttonNamed(en.create).disabled).toBe(true)
++    expect(screen.getByLabelText(en.customRoute).getAttribute('aria-required')).toBe('true')
++    expect(screen.getByLabelText(en.customRoute).getAttribute('aria-invalid')).toBe('true')
++    expect(screen.getByText(en.customNeedsRoute)).toBeTruthy()
+ 
+     fireEvent.change(screen.getByLabelText(en.customRoute), { target: { value: 'Acme Gateway' } })
+     expect(screen.getByText(en.customRouteInvalid)).toBeTruthy()
+@@ -1403,6 +1406,81 @@ describe('hand-declared providers', () => {
+     expect(buttonNamed(en.create).disabled).toBe(false)
+   })
+ 
++  it('shows a safe error when creating rejects and permits a retry', async () => {
++    const mutate = vi.fn()
++      .mockRejectedValueOnce(new Error('remote failure synthetic-secret'))
++      .mockImplementation(() => Promise.resolve(remoteOk(piAiNamespace({}))))
++    const { onClose } = mountCard({}, { mutate })
++
++    fireEvent.change(screen.getByLabelText(en.customRoute), { target: { value: 'acme' } })
++    fireEvent.change(screen.getByLabelText(en.baseUrl), { target: { value: 'https://acme.test/v1' } })
++    fireEvent.click(screen.getByRole('button', { name: en.addModel }))
++    fireEvent.change(screen.getByLabelText(`${en.modelId} 1`), { target: { value: 'm' } })
++    fireEvent.click(screen.getByText(en.create))
++
++    await screen.findByText(en.providerSaveFailed)
++    expect(document.body.textContent).not.toContain('synthetic-secret')
++    expect(onClose).not.toHaveBeenCalled()
++    fireEvent.click(screen.getByText(en.create))
++    await waitFor(() => { expect(onClose).toHaveBeenCalledWith(true) })
++    expect(mutate).toHaveBeenCalledTimes(2)
++  })
++
++  it('retries a rejected credential write without creating the provider again', async () => {
++    const mutate = vi.fn(() => Promise.resolve(remoteOk(piAiNamespace({}))))
++    const set = vi.fn()
++      .mockRejectedValueOnce(new Error('credential failure synthetic-secret'))
++      .mockResolvedValueOnce(remoteOk(undefined))
++    const { onClose } = mountCard({}, { mutate, set })
++
++    fireEvent.change(screen.getByLabelText(en.customRoute), { target: { value: 'acme' } })
++    fireEvent.change(screen.getByLabelText(en.baseUrl), { target: { value: 'https://acme.test/v1' } })
++    fireEvent.change(screen.getByLabelText(en.keyInput), { target: { value: 'synthetic-key' } })
++    fireEvent.click(screen.getByRole('button', { name: en.addModel }))
++    fireEvent.change(screen.getByLabelText(`${en.modelId} 1`), { target: { value: 'm' } })
++    fireEvent.click(screen.getByText(en.create))
++
++    await screen.findByText(en.providerSaveFailed)
++    expect(document.body.textContent).not.toContain('synthetic-secret')
++    expect(document.body.textContent).not.toContain('synthetic-key')
++    expect(mutate).toHaveBeenCalledOnce()
++    fireEvent.click(screen.getByText(en.create))
++    await waitFor(() => { expect(onClose).toHaveBeenCalledWith(true) })
++    expect(mutate).toHaveBeenCalledOnce()
++    expect(set).toHaveBeenCalledTimes(2)
++  })
++
++  it('shows a safe error when model discovery rejects', async () => {
++    const discover = vi.fn(() => Promise.reject(new Error('discovery failure synthetic-secret')))
++    mountCard({}, { discover })
++    fireEvent.change(screen.getByLabelText(en.customRoute), { target: { value: 'acme' } })
++    fireEvent.change(screen.getByLabelText(en.baseUrl), { target: { value: 'https://acme.test/v1' } })
++    fireEvent.click(screen.getByText(en.fetchModels))
++
++    await screen.findByText(en.modelDiscoveryFailed)
++    expect(document.body.textContent).not.toContain('synthetic-secret')
++  })
++
++  it('shows a safe error when catalog model discovery rejects', async () => {
++    const discover = vi.fn(() => Promise.reject(new Error('catalog failure synthetic-secret')))
++    await mountSection({ discover })
++    openEditor('openai')
++
++    await screen.findByText(en.modelDiscoveryFailed)
++    expect(document.body.textContent).not.toContain('synthetic-secret')
++  })
++
++  it('shows a safe error when applying settings rejects', async () => {
++    const mutate = vi.fn(() => Promise.reject(new Error('settings failure synthetic-secret')))
++    await mountSection({ mutate })
++    openEditor('openai')
++    fireEvent.change(screen.getByLabelText(en.baseUrl), { target: { value: 'https://new.example/v1' } })
++    fireEvent.click(screen.getByText(en.apply))
++
++    await screen.findByText(en.providerSaveFailed)
++    expect(document.body.textContent).not.toContain('synthetic-secret')
++  })
++
+   it('surfaces a refused write without closing', async () => {
+     const refused = vi.fn(() => Promise.resolve(remoteFail('read-only settings', 'settings/rejected')))
+     const { onClose } = mountCard({ operations: operationsWith(scriptedFace({ mutate: refused }).face) })

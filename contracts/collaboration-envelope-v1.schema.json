@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tradeloom.local/contracts/collaboration-envelope-v1.schema.json",
+  "title": "TradeLoom collaboration envelope v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "task", "status", "messages", "messages_truncated", "result", "error"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "task": {
+      "type": "object", "additionalProperties": false,
+      "required": ["system", "id", "batch_id"],
+      "properties": {
+        "system": {"const": "tradeloom"},
+        "id": {"type": "string", "minLength": 1},
+        "batch_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "status": {
+      "type": "object", "additionalProperties": false,
+      "required": ["workflow", "current_step", "subtasks", "reviews"],
+      "properties": {
+        "workflow": {"enum": ["queued", "running", "waiting_human", "failed", "completed", "cancelled"]},
+        "current_step": {"type": "string"},
+        "subtasks": {
+          "type": "array",
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["id", "role", "status"],
+            "properties": {
+              "id": {"type": "string", "minLength": 1},
+              "role": {"type": "string", "minLength": 1},
+              "status": {"enum": ["queued", "running", "waiting_human", "failed", "completed"]}
+            }
+          }
+        },
+        "reviews": {
+          "type": "array",
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["id", "status"],
+            "properties": {
+              "id": {"type": "string", "minLength": 1},
+              "status": {"enum": ["pending", "submitted", "approved"]}
+            }
+          }
+        }
+      }
+    },
+    "messages": {
+      "type": "array", "maxItems": 100,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "type", "actor", "created_at"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "type": {"type": "string", "minLength": 1},
+          "actor": {"type": "string", "minLength": 1},
+          "created_at": {"type": "string", "format": "date-time"}
+        }
+      }
+    },
+    "messages_truncated": {"type": "boolean"},
+    "result": {
+      "type": "object", "additionalProperties": false,
+      "required": ["data", "refs"],
+      "properties": {"data": {"type": "null"}, "refs": {"type": "object"}}
+    },
+    "error": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["code", "summary"],
+          "properties": {"code": {"type": "null"}, "summary": {"type": "string", "minLength": 1}}
+        }
+      ]
+    }
+  }
+}

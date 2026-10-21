@@ -1,0 +1,179 @@
+diff --git a/packages/client/ui-sidebar/src/client/SidebarRoot.tsx b/packages/client/ui-sidebar/src/client/SidebarRoot.tsx
+index 46c0193..d2507ce 100644
+--- a/packages/client/ui-sidebar/src/client/SidebarRoot.tsx
++++ b/packages/client/ui-sidebar/src/client/SidebarRoot.tsx
+@@ -295,6 +295,10 @@ export function SidebarRoot({
+       {/* The browsing region fills the column between the controls and the
+           foot in both states; its rail icon column rides the same slot. */}
+       <div className={css.regionArea}>
++        {renderSlot('sidebar.agents', {
++          wide,
++          expandSidebar: () => { if (collapsed) toggleSidebar() },
++        })}
+         {renderSlot('sidebar.workspaces', {
+           wide,
+           expandSidebar: () => { if (collapsed) toggleSidebar() },
+diff --git a/packages/client/ui-sidebar/src/client/contract/slots.ts b/packages/client/ui-sidebar/src/client/contract/slots.ts
+index c6ba475..a6da186 100644
+--- a/packages/client/ui-sidebar/src/client/contract/slots.ts
++++ b/packages/client/ui-sidebar/src/client/contract/slots.ts
+@@ -33,6 +33,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
+      * the sidebar owns the button and resolves its label from list metadata.
+      */
+     'sidebar.panellist': { kind: 'list'; scope: 'root'; owner: SidebarPanelIconOwnerProps }
++    /** Agent directory rendered above the native workspace/session browser. */
++    'sidebar.agents': { kind: 'single'; scope: 'root'; owner: SidebarSectionOwnerProps }
+     /**
+      * The workspace/session browsing region: section header, search, the
+      * grouped/flat session list, and every workspace dialog. Declared by this
+@@ -141,6 +143,7 @@ export type SidebarRootComponentProps =
+     | 'sidebar.brand.name'
+     | 'sidebar.toggle.badge'
+     | 'sidebar.panellist'
++    | 'sidebar.agents'
+     | 'sidebar.workspaces'
+     | 'sidebar.settings'
+     | 'sidebar.footer.action'
+diff --git a/packages/client/ui-sidebar/src/client/index.ts b/packages/client/ui-sidebar/src/client/index.ts
+index 3cd24cf..41635e4 100644
+--- a/packages/client/ui-sidebar/src/client/index.ts
++++ b/packages/client/ui-sidebar/src/client/index.ts
+@@ -81,6 +81,7 @@ export function apply(ctx: ClientContext): void {
+       'sidebar.brand.name': { kind: 'single', scope: 'root' },
+       'sidebar.toggle.badge': { kind: 'single', scope: 'root' },
+       'sidebar.panellist': { kind: 'list', scope: 'root' },
++      'sidebar.agents': { kind: 'single', scope: 'root' },
+       'sidebar.workspaces': { kind: 'single', scope: 'root' },
+       'sidebar.settings': { kind: 'single', scope: 'root' },
+       'sidebar.footer.action': { kind: 'list', scope: 'root' },
+diff --git a/packages/client/ui-sidebar/tests/__snapshots__/sidebar-snapshot.client.spec.tsx.snap b/packages/client/ui-sidebar/tests/__snapshots__/sidebar-snapshot.client.spec.tsx.snap
+index 652e9f6b..fbd90514 100644
+--- a/packages/client/ui-sidebar/tests/__snapshots__/sidebar-snapshot.client.spec.tsx.snap
++++ b/packages/client/ui-sidebar/tests/__snapshots__/sidebar-snapshot.client.spec.tsx.snap
+@@ -62,6 +62,10 @@ exports[`sidebar shell snapshots > renders Windows caption controls in expanded
+     <div
+       class="regionArea"
+     >
++      <div
++        data-slot="sidebar.agents"
++        style="display: contents;"
++      />
+       <div
+         data-slot="sidebar.workspaces"
+         style="display: contents;"
+@@ -205,6 +209,10 @@ exports[`sidebar shell snapshots > renders Windows caption controls in expanded
+     <div
+       class="regionArea"
+     >
++      <div
++        data-slot="sidebar.agents"
++        style="display: contents;"
++      />
+       <div
+         data-slot="sidebar.workspaces"
+         style="display: contents;"
+@@ -314,6 +322,10 @@ exports[`sidebar shell snapshots > renders the collapsed rail after the crossfad
+     <div
+       class="regionArea"
+     >
++      <div
++        data-slot="sidebar.agents"
++        style="display: contents;"
++      />
+       <div
+         data-slot="sidebar.workspaces"
+         style="display: contents;"
+@@ -457,6 +469,10 @@ exports[`sidebar shell snapshots > renders the expanded column (wordmark, capsul
+     <div
+       class="regionArea"
+     >
++      <div
++        data-slot="sidebar.agents"
++        style="display: contents;"
++      />
+       <div
+         data-slot="sidebar.workspaces"
+         style="display: contents;"
+@@ -600,6 +616,10 @@ exports[`sidebar shell snapshots > renders the expanded column in the default lo
+     <div
+       class="regionArea"
+     >
++      <div
++        data-slot="sidebar.agents"
++        style="display: contents;"
++      />
+       <div
+         data-slot="sidebar.workspaces"
+         style="display: contents;"
+diff --git a/packages/client/ui-sidebar/tests/sidebar-root.client.spec.tsx b/packages/client/ui-sidebar/tests/sidebar-root.client.spec.tsx
+index c0aee40a..43c94480 100644
+--- a/packages/client/ui-sidebar/tests/sidebar-root.client.spec.tsx
++++ b/packages/client/ui-sidebar/tests/sidebar-root.client.spec.tsx
+@@ -35,13 +35,15 @@ type AttentionSnapshot = Parameters<Parameters<SidebarRootComponentProps['useSes
+ const noAttention: AttentionSnapshot = new Map()
+ const useSessionStatus: SidebarRootComponentProps['useSessionStatus'] = selector => selector(noAttention)
+ 
+-function mountShell({ collapsed = false, width = 300, shortcuts = [] }: {
++function mountShell({ collapsed = false, width = 300, shortcuts = [], renderAgents = false }: {
+   collapsed?: boolean
+   width?: number
+   shortcuts?: readonly ShortcutCatalogEntry[]
++  renderAgents?: boolean
+ } = {}) {
+   const startSession = vi.fn()
+   const toggleSidebar = vi.fn()
++  let agentsOwner: SidebarSectionOwnerProps | undefined
+   let regionOwner: SidebarSectionOwnerProps | undefined
+   let settingsOwner: SidebarSettingsOwnerProps | undefined
+   let footerActionOwner: SidebarFooterActionOwnerProps | undefined
+@@ -71,8 +73,15 @@ function mountShell({ collapsed = false, width = 300, shortcuts = [] }: {
+           footerActionOwner = owner
+           return <div data-testid="footer-action-seat" data-wide={owner.wide} />
+         }
+-        regionOwner = owner as SidebarSectionOwnerProps
+-        return <div data-testid="region" data-wide={owner.wide} />
++        if (key === 'sidebar.agents') {
++          agentsOwner = owner as SidebarSectionOwnerProps
++          return renderAgents ? <div data-testid="agents-slot" data-wide={owner.wide} /> : null
++        }
++        if (key === 'sidebar.workspaces') {
++          regionOwner = owner as SidebarSectionOwnerProps
++          return <div data-testid="region" data-wide={owner.wide} />
++        }
++        return null
+       }) as SidebarRootComponentProps['renderSlot']}
+     />
+   )
+@@ -80,6 +89,10 @@ function mountShell({ collapsed = false, width = 300, shortcuts = [] }: {
+   return {
+     startSession,
+     toggleSidebar,
++    agentsOwner: () => {
++      if (agentsOwner === undefined) throw new Error('agents owner not rendered')
++      return agentsOwner
++    },
+     regionOwner: () => {
+       if (regionOwner === undefined) throw new Error('region owner not rendered')
+       return regionOwner
+@@ -202,6 +215,21 @@ describe('SidebarRoot shell', () => {
+     expect(b.toggleSidebar).not.toHaveBeenCalled()
+   })
+ 
++  it('renders agents before workspaces and shares the wide/expand contract', () => {
++    const b = mountShell({ collapsed: true, width: 56, renderAgents: true })
++    const agentsSlot = screen.getByTestId('agents-slot')
++    const workspacesSlot = screen.getByTestId('region')
++    expect(agentsSlot.compareDocumentPosition(workspacesSlot) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
++    expect(b.agentsOwner().wide).toBe(false)
++    b.agentsOwner().expandSidebar()
++    expect(b.toggleSidebar).toHaveBeenCalledOnce()
++
++    b.rerender({ collapsed: false, width: 300 })
++    expect(b.agentsOwner().wide).toBe(true)
++    b.agentsOwner().expandSidebar()
++    expect(b.toggleSidebar).toHaveBeenCalledOnce()
++  })
++
+   it('keeps the region mounted through collapse and expands on its request', () => {
+     vi.useFakeTimers()
+     const b = mountShell()

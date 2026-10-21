@@ -1,0 +1,331 @@
+{% extends "workbench/base.html" %}
+{% load business_urls %}
+{% block page_eyebrow %}Agent / 工作流详情{% endblock %}
+{% block page_title %}业务计划详情{% endblock %}
+{% block content %}
+<div class="page-stack" data-testid="workflow-detail" data-workflow-id="{{ workflow.id }}">
+  <section class="panel workflow-overview">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">{{ task_type_label }}</p>
+        <h2>{{ batch.title }}</h2>
+        <p class="workflow-goal">{{ workflow.user_goal }}</p>
+      </div>
+      <span class="status-pill">{{ status_label }}</span>
+    </div>
+    <dl class="workflow-meta">
+      <div><dt>批次 ID</dt><dd class="mono">{{ workflow.batch_id }}</dd></div>
+      <div><dt>工作流 ID</dt><dd class="mono">{{ workflow.id }}</dd></div>
+      <div><dt>执行模式</dt><dd class="mono">{{ workflow.execution_mode }} · {{ workflow.planning_mode }}</dd></div>
+      <div><dt>AgentArts</dt><dd>{{ workflow.agentarts }}</dd></div>
+      <div><dt>人审待填写</dt><dd>{{ workflow.pending_review_count }}</dd></div>
+      <div><dt>人审未核验</dt><dd>{{ workflow.unresolved_review_count }}</dd></div>
+    </dl>
+    <p class="workflow-boundary">计划与子任务已保存；保存不会执行。点击按钮只运行一个本地模拟子任务。</p>
+    {% if dispatch_target %}
+    <form class="workflow-dispatch-form" data-testid="workflow-dispatch" data-dispatch-url="{{ dispatch_target.url|business_url }}">
+      <input type="hidden" name="subtask_id" value="{{ dispatch_target.subtask_id }}">
+      <input type="hidden" name="idempotency_key" value="{{ dispatch_target.idempotency_key }}">
+      <button class="button primary" type="submit">执行下一步（本地模拟）</button>
+      <p class="form-error" data-dispatch-error role="alert" aria-live="polite" hidden></p>
+      <a class="button secondary" data-dispatch-refresh href="{% business_path '/workflow-tasks/' workflow.id %}" hidden>刷新状态</a>
+    </form>
+    {% else %}
+    <p class="workflow-boundary" data-testid="workflow-dispatch-blocked">{{ dispatch_blocked_reason }}</p>
+    {% endif %}
+  </section>
+
+  <section class="panel" aria-labelledby="deliverables-heading">
+    <div class="panel-heading"><div><h2 id="deliverables-heading">交付文件</h2><p>文件按产品版本冻结并完成落盘质检；审核决定只针对这组文件。</p></div><span class="status-pill">{{ deliverables.workflow_status }}</span></div>
+    {% if english_name_hints %}
+    <aside class="workflow-boundary" data-testid="english-name-hints" aria-label="当前产品资料英文名缺项">
+      <h3>英文名称待补充</h3>
+      <p>以下当前产品资料缺少人工英文名，供下一次生成前核对：</p>
+      <ul>{% for hint in english_name_hints %}<li>第 {{ hint.position }} 项 · <strong>{{ hint.sku }}</strong> · {{ hint.name }}　<a href="{{ hint.review_url|business_url }}">前往当前人审项</a></li>{% endfor %}</ul>
+      <p>请人工填写并提交；提交答案后还需显式应用并确认本批基础资料，再按既有恢复/生成流程继续。</p>
+      <p>这是当前资料的准备提示，不会更改已生成文件版本或其质检状态。</p>
+    </aside>
+    {% endif %}
+    <form class="generation-takeover-pending-form" data-testid="generation-takeover-pending" data-workflow-id="{{ workflow.id }}" hidden>
+      <p>有一条尚待确认的接管请求。</p>
+      <div data-pending-request hidden>
+        <p data-pending-target></p>
+        <p data-pending-key></p>
+        <p data-pending-operator></p>
+        <p data-pending-note></p>
+      </div>
+      <button class="button secondary" type="submit" hidden>按原请求核对接管回执</button>
+      <p class="form-error" data-pending-error role="alert" aria-live="polite" hidden></p>
+    </form>
+    {% if generation_available %}
+    <form class="delivery-generate-form" data-url="{% business_path '/api/workflow-tasks/' workflow.id '/deliverables' %}" data-key="{{ generation_key }}">
+      {% if latest_generation and latest_generation.status == "failed" and workflow.current_step == "generate_deliverables_failed" %}
+      <button class="button primary" type="submit">错误重试（剩余 {{ generation_retry_remaining }} 次）</button>
+      {% else %}
+      <button class="button primary" type="submit">生成交付草稿</button>
+      {% endif %}
+      <p class="form-error" data-delivery-error role="alert" aria-live="polite" hidden></p>
+      <a class="button secondary" data-delivery-refresh href="{% business_path '/workflow-tasks/' workflow.id %}" hidden>刷新状态</a>
+    </form>
+    {% endif %}
+    {% if generation_outcome_unknown %}
+    <p class="workflow-boundary" data-testid="generation-outcome-unknown" data-generation-outcome-unknown="{{ generation_takeover_key }}">本次生成已保存接管回执并封存，结果未知；尚未登记交付版本。
+      {% if generation_retry_remaining > 0 %}请先人工核查实际运行结果，再用新幂等键显式重试或人工处理。{% else %}本轮错误重试额度已耗尽，请人工处理。{% endif %}
+    </p>
+    {% endif %}
+    {% if latest_generation and latest_generation.status == "failed" and workflow.current_step == "generate_deliverables_failed" and generation_retry_remaining == 0 %}
+    <p class="workflow-boundary" data-testid="generation-retries-exhausted">本轮 2 次错误重试额度已耗尽。请人工核查本次结果、来源和遗留文件，再决定后续处理。</p>
+    {% endif %}
+    {% if generation_takeover_available %}
+    <p class="workflow-boundary">接管会将本次尝试标记为结果未知并封存，不会停止旧进程，也不会判断超时进程已经结束。</p>
+    <form class="generation-takeover-form" data-execution-url="{{ generation_takeover_url|business_url }}" data-expected-step-id="{{ latest_generation.id }}" data-idempotency-key="{{ generation_takeover_key }}">
+      <input type="hidden" name="decision" value="outcome_unknown">
+      <div class="field"><label for="generation-takeover-operator-{{ latest_generation.id }}">操作人标签</label><input id="generation-takeover-operator-{{ latest_generation.id }}" name="operator_label" maxlength="120" required></div>
+      <div class="field"><label for="generation-takeover-note-{{ latest_generation.id }}">接管说明</label><textarea id="generation-takeover-note-{{ latest_generation.id }}" name="note" maxlength="1000" rows="2"></textarea></div>
+      <button class="button secondary" type="submit">标记结果未知并封存本次尝试</button>
+      <p class="form-error" data-execution-error role="alert" aria-live="polite" hidden></p>
+      <a class="button secondary" data-execution-refresh href="{% business_path '/workflow-tasks/' workflow.id %}" hidden>刷新并查看已保存状态</a>
+    </form>
+    {% endif %}
+    {% if review_available %}
+    <p class="workflow-boundary">此处仅批准或驳回交付文件，不批准产品事实。</p>
+    <form class="delivery-review-form" data-url="{% business_path '/api/workflow-tasks/' workflow.id '/deliverables/' deliverables.generation_step_id '/review' %}">
+      <div class="field"><label for="delivery-reviewer">审核人标签</label><input id="delivery-reviewer" name="reviewer" maxlength="120" required></div>
+      <div class="field"><label for="delivery-note">审核说明</label><textarea id="delivery-note" name="note" maxlength="1000" rows="2"></textarea></div>
+      <div class="workflow-form-actions"><button class="button primary" name="decision" value="approve" type="submit">批准交付文件</button><button class="button secondary" name="decision" value="reject" type="submit">驳回并重新生成</button></div>
+      <p class="form-error" data-delivery-error role="alert" aria-live="polite" hidden></p>
+      <a class="button secondary" data-delivery-refresh href="{% business_path '/workflow-tasks/' workflow.id %}" hidden>刷新状态</a>
+    </form>
+    {% endif %}
+    {% if complete_available %}
+    <form class="delivery-complete-form" data-url="{% business_path '/api/workflow-tasks/' workflow.id '/complete' %}">
+      <button class="button primary" type="submit">完成工作流</button>
+      <p class="form-error" data-delivery-error role="alert" aria-live="polite" hidden></p>
+      <a class="button secondary" data-delivery-refresh href="{% business_path '/workflow-tasks/' workflow.id %}" hidden>刷新状态</a>
+    </form>
+    {% endif %}
+    {% if deliverables.quality_report %}
+    <details><summary>真实文件质检：{{ deliverables.quality_report.status }} · {{ deliverables.quality_report.product_count }} 个产品</summary>
+      <dl class="reference-list">{% for check in deliverables.quality_checks %}<div><dt>{{ check.filename }}</dt><dd>passed={{ check.passed }} · {{ check.bytes }} bytes · SHA-256 <span class="mono">{{ check.sha256 }}</span></dd></div>{% endfor %}</dl>
+    </details>
+    {% endif %}
+    {% if deliverables.artifacts %}
+    <div class="workflow-track">
+      {% for artifact in deliverables.artifacts %}
+      <article class="workflow-record"><h3>{{ artifact.artifact_type }} · 当前 v{{ artifact.current_version }}</h3><span class="status-pill">{{ artifact.status }}</span>
+        {% for version in artifact.versions %}<p>v{{ version.version }} · {{ version.status }} · SHA-256 <span class="mono">{{ version.sha256 }}</span></p>
+        <p>来源版本：{% for source in version.source_product_versions %}<span class="mono">{{ source.product_id }} / {{ source.revision_id }} v{{ source.version }}</span>{% if not forloop.last %}、{% endif %}{% empty %}—{% endfor %}</p>
+        <p>{% if version.preview_url %}<a href="{{ version.preview_url|business_url }}" rel="noopener">预览</a> · {% endif %}<a href="{{ version.download_url|business_url }}">下载</a></p>{% endfor %}
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}<div class="empty-state compact"><p>尚无登记的交付文件。</p></div>{% endif %}
+  </section>
+
+  <section class="panel" aria-labelledby="plan-heading">
+    <div class="panel-heading"><div><h2 id="plan-heading">已保存计划概述</h2><p>{{ classification_summary }}</p></div></div>
+    {% if workflow.plan.subtasks %}
+    <div class="compact-list">
+      {% for item in workflow.plan.subtasks %}
+      <article class="compact-row">
+        <strong>{{ item.order }} · {{ item.role_label }}</strong>
+        <span>依赖：{% if item.depends_on %}{{ item.depends_on|join:"、" }}{% else %}无{% endif %}</span>
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}<div class="empty-state compact"><p>当前工作流没有已保存的计划摘要。</p></div>{% endif %}
+    {% if workflow.plan.source_summary %}
+    <dl class="workflow-meta">
+      <div><dt>产品数</dt><dd>{{ workflow.plan.source_summary.product_count }}</dd></div>
+      <div><dt>当前版本数</dt><dd>{{ workflow.plan.source_summary.current_revision_count }}</dd></div>
+      <div><dt>已确认版本数</dt><dd>{{ workflow.plan.source_summary.confirmed_current_revision_count }}</dd></div>
+      <div><dt>无当前版本产品数</dt><dd>{{ workflow.plan.source_summary.products_without_current_revision }}</dd></div>
+    </dl>
+    {% endif %}
+  </section>
+
+  <section class="panel" aria-labelledby="steps-heading">
+    <div class="panel-heading"><div><h2 id="steps-heading">步骤轨迹</h2><p>显示已保存的步骤尝试、起止时间与短错误。</p></div><span class="count-badge">{{ workflow.steps|length }}</span></div>
+    {% if workflow.steps %}
+    <div class="workflow-track">
+      {% for step in workflow.steps %}
+      <article class="workflow-record">
+        <div class="workflow-record-heading"><h3>{{ step.step_label }}</h3><span class="status-pill">{{ step.status_label }}</span></div>
+        <p>尝试 {{ step.attempt }} · <span class="mono">{{ step.id }}</span></p>
+        <p>开始：{{ step.started_at_display }} · 结束：{{ step.finished_at_display }}</p>
+        {% if step.error_summary %}<p class="workflow-error">错误：{{ step.error_summary }}</p>{% endif %}
+        {% if step.input_source_rows %}<details><summary>输入来源引用</summary>{% include "workbench/workflow_reference_rows.html" with rows=step.input_source_rows %}</details>{% endif %}
+        {% if step.output_source_rows %}<details><summary>输出来源引用</summary>{% include "workbench/workflow_reference_rows.html" with rows=step.output_source_rows %}</details>{% endif %}
+        {% if step.retry_available %}
+        <form class="workflow-retry-form" data-testid="workflow-retry" data-execution-url="{{ step.retry_url|business_url }}" data-idempotency-key="{{ step.retry_key }}" data-expected-step-id="{{ step.id }}">
+          <button class="button primary" type="submit">错误重试（剩余 {{ step.retry_remaining }} 次额度）</button>
+          <p class="form-error" data-execution-error role="alert" aria-live="polite" hidden></p>
+          <a class="button secondary" data-execution-refresh href="{% business_path '/workflow-tasks/' workflow.id %}" hidden>刷新状态</a>
+        </form>
+        {% elif step.status == "failed" and step.retry_remaining == 0 %}
+        <p class="workflow-boundary">2次错误重试额度耗尽，请人工排查。</p>
+        {% endif %}
+        {% if step.interrupt_available %}
+        <form class="workflow-interrupt-form" data-testid="workflow-interrupt" data-execution-url="{{ step.interrupt_url|business_url }}" data-expected-step-id="{{ step.id }}">
+          <p class="workflow-boundary">接管只标记当前执行中断，不会停止旧进程；其结果和外部副作用仍可能发生，后续重试受执行器安全能力限制。</p>
+          <div class="field"><label for="interrupt-operator-{{ step.id }}">操作人标签</label><input id="interrupt-operator-{{ step.id }}" name="operator_label" maxlength="120" required></div>
+          <div class="field"><label for="interrupt-note-{{ step.id }}">接管说明</label><textarea id="interrupt-note-{{ step.id }}" name="note" maxlength="1000" rows="2"></textarea></div>
+          <button class="button secondary" type="submit">标记中断并接管</button>
+          <p class="form-error" data-execution-error role="alert" aria-live="polite" hidden></p>
+          <a class="button secondary" data-execution-refresh href="{% business_path '/workflow-tasks/' workflow.id %}" hidden>刷新状态</a>
+        </form>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}<div class="empty-state compact"><p>尚无步骤记录。</p></div>{% endif %}
+  </section>
+
+  <section class="panel" aria-labelledby="subtasks-heading">
+    <div class="panel-heading"><div><h2 id="subtasks-heading">子任务</h2><p>显示角色、状态、依赖、来源引用和结构化结果摘要。</p></div><span class="count-badge">{{ workflow.subtasks|length }}</span></div>
+    {% if workflow.subtasks %}
+    <div class="workflow-track">
+      {% for subtask in workflow.subtasks %}
+      <article class="workflow-record">
+        <div class="workflow-record-heading"><h3>{{ subtask.role_label }}</h3><span class="status-pill">{{ subtask.status_label }}</span></div>
+        <p class="mono">子任务 ID：{{ subtask.id }}</p>
+        <p>依赖 ID：{% if subtask.depends_on %}{{ subtask.depends_on|join:"、" }}{% else %}无{% endif %}</p>
+        {% if subtask.error_summary %}<p class="workflow-error">错误：{{ subtask.error_summary }}</p>{% endif %}
+        {% if subtask.result_summary %}<dl class="reference-list">{% for row in subtask.result_summary %}<div><dt>{{ row.label }}</dt><dd>{{ row.value }}</dd></div>{% endfor %}</dl>{% endif %}
+        {% if subtask.input_source_rows %}<details><summary>输入来源引用</summary>{% include "workbench/workflow_reference_rows.html" with rows=subtask.input_source_rows %}</details>{% endif %}
+        {% if subtask.output_source_rows %}<details><summary>输出来源引用</summary>{% include "workbench/workflow_reference_rows.html" with rows=subtask.output_source_rows %}</details>{% endif %}
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}<div class="empty-state compact"><p>尚无子任务记录。</p></div>{% endif %}
+  </section>
+
+  <section class="panel" aria-labelledby="reviews-heading">
+    <div class="panel-heading"><div><h2 id="reviews-heading">人审队列</h2><p>提交说明会形成待核验回执，不代表批准或事实应用。</p></div><span class="count-badge">{{ workflow.reviews|length }}</span></div>
+    {% if workflow.reviews %}
+    <div class="workflow-track">
+      {% for review in workflow.reviews %}
+      <article class="workflow-record" id="review-{{ review.id }}">
+        <div class="workflow-record-heading"><h3>{{ review.item_ref }}</h3><span class="status-pill">{% if review.status == "pending" %}待填写{% elif review.ui_unapplied %}已提交待应用{% elif review.status == "approved" %}已核验{% else %}已提交待核验{% endif %}</span></div>
+        <p>{{ review.question }}</p>
+        {% if review.options_display %}<ul class="review-options">{% for option in review.options_display %}<li>{{ option }}</li>{% endfor %}</ul>{% endif %}
+        <p class="muted-text">创建于 {{ review.created_at_display }}</p>
+        {% if review.source_rows %}<details><summary>来源引用</summary>{% include "workbench/workflow_reference_rows.html" with rows=review.source_rows %}</details>{% endif %}
+        {% if review.status == "pending" and review.ui_kind == "image_selection" %}
+        <p class="muted-text">来源产品与冻结版本：{{ review.ui_product_display }} · RID {{ review.ui_revision_id }}。请选择一张候选图片；系统不会预选。</p>
+        {% if review.ui_image_candidates %}
+        <div class="review-image-candidates">
+          {% for candidate in review.ui_image_candidates %}
+          <figure class="review-image-candidate">
+            <img src="{{ candidate.preview_url|business_url }}" alt="候选图片 {{ candidate.original_name }}">
+            <figcaption><strong>{{ candidate.original_name }}</strong><br><span>文件 ID：{{ candidate.task_file_id }}</span></figcaption>
+          </figure>
+          {% endfor %}
+        </div>
+        <form class="review-typed-form" data-testid="review-typed-form" data-submit-url="{% business_path '/api/workflow-tasks/' workflow.id '/reviews/' review.id '/submit' %}" data-review-key="{{ review.review_key }}" data-answer-type="select_image_candidate">
+          <div class="field"><label for="review-image-{{ review.id }}">明确选择图片</label><select id="review-image-{{ review.id }}" name="task_file_id" required><option value="">请选择一张图片</option>{% for candidate in review.ui_image_candidates %}<option value="{{ candidate.task_file_id }}">{{ candidate.original_name }} · {{ candidate.task_file_id }}</option>{% endfor %}</select></div>
+          <div class="field"><label for="typed-reviewer-{{ review.id }}">操作人标签</label><input id="typed-reviewer-{{ review.id }}" name="reviewer" maxlength="120" required></div>
+          <button class="button primary" type="submit">提交选图回执</button>
+          <p class="form-error" data-review-error role="alert" aria-live="polite" hidden></p>
+          <a class="button secondary" data-review-refresh href="{% business_path '/workflow-tasks/' workflow.id %}" hidden>刷新状态</a>
+        </form>
+        {% else %}<p class="workflow-error">冻结图片候选来源不可验证，当前不能选择图片。</p>{% endif %}
+        {% elif review.status == "pending" and review.ui_kind == "missing_image" %}
+        <p class="muted-text">来源产品与冻结版本：{{ review.ui_product_display }} · RID {{ review.ui_revision_id }}。请上传真实产品图片；上传只保存凭据，不会确认或应用。</p>
+        <form class="review-image-upload-form" data-upload-url="{% business_path '/api/workflow-tasks/' workflow.id '/reviews/' review.id '/image' %}" data-review-key="{{ review.review_key }}">
+          <div class="field"><label for="review-image-file-{{ review.id }}">产品图片</label><input id="review-image-file-{{ review.id }}" name="image" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" required></div>
+          <div class="field"><label for="review-image-uploader-{{ review.id }}">上传人标签</label><input id="review-image-uploader-{{ review.id }}" name="reviewer" maxlength="120" required></div>
+          <button class="button secondary" type="submit">上传并保存补图凭据</button>
+          <p class="form-error" data-upload-error role="alert" aria-live="polite" hidden></p>
+        </form>
+        {% include "workbench/workflow_review_image_uploads.html" with review=review workflow=workflow %}
+        {% elif review.status == "pending" and review.ui_kind == "duplicate_sku" %}
+        <p class="muted-text">本组冻结货号：<strong>{{ review.ui_duplicate_sku }}</strong> · 来源产品与冻结版本：{{ review.ui_product_display }} · RID {{ review.ui_revision_id }}</p>
+        <ul class="review-options duplicate-sku-members">
+          {% for member in review.ui_duplicate_members %}<li>{{ member.name }} · SKU {{ member.sku }} · Product {{ member.product_id }} · Revision {{ member.revision_id }}</li>{% endfor %}
+        </ul>
+        <form class="review-typed-form" data-testid="review-typed-form" data-submit-url="{% business_path '/api/workflow-tasks/' workflow.id '/reviews/' review.id '/submit' %}" data-review-key="{{ review.review_key }}" data-answer-type="resolve_duplicate_sku">
+          <div class="field"><label for="review-value-{{ review.id }}">人工明确填写修正后的货号</label><input id="review-value-{{ review.id }}" name="value" value="" maxlength="{{ review.ui_duplicate_maxlength }}" required></div>
+          <p class="muted-text">应用资料时去除货号首尾空白；原始回执保留输入原文。保留原货号时，请重新输入。</p>
+          <div class="field"><label for="typed-reviewer-{{ review.id }}">填写人标签</label><input id="typed-reviewer-{{ review.id }}" name="reviewer" maxlength="120" required></div>
+          <button class="button primary" type="submit">提交货号裁决回执</button>
+          <p class="form-error" data-review-error role="alert" aria-live="polite" hidden></p>
+          <a class="button secondary" data-review-refresh href="{% business_path '/workflow-tasks/' workflow.id %}" hidden>刷新状态</a>
+        </form>
+        {% elif review.status == "pending" and review.ui_kind == "literal" %}
+        <p class="muted-text">来源产品与冻结版本：{{ review.ui_product_display }} · RID {{ review.ui_revision_id }}</p>
+        <form class="review-typed-form" data-testid="review-typed-form" data-submit-url="{% business_path '/api/workflow-tasks/' workflow.id '/reviews/' review.id '/submit' %}" data-review-key="{{ review.review_key }}" data-answer-type="set_literal_field" data-field="{{ review.ui_field }}">
+          <div class="field"><label for="review-value-{{ review.id }}">{{ review.ui_field_label }}（按原文填写）</label><input id="review-value-{{ review.id }}" name="value" value=""{% if review.ui_maxlength %} maxlength="{{ review.ui_maxlength }}"{% endif %} required></div>
+          <div class="field"><label for="typed-reviewer-{{ review.id }}">填写人标签</label><input id="typed-reviewer-{{ review.id }}" name="reviewer" maxlength="120" required></div>
+          <button class="button primary" type="submit">提交人审回执</button>
+          <p class="form-error" data-review-error role="alert" aria-live="polite" hidden></p>
+          <a class="button secondary" data-review-refresh href="{% business_path '/workflow-tasks/' workflow.id %}" hidden>刷新状态</a>
+        </form>
+        {% elif review.status == "pending" and review.ui_kind == "revision_confirmation" %}
+        <p class="muted-text">来源产品：{{ review.ui_product_display }} · 冻结当前版本 RID {{ review.ui_revision_id }}</p>
+        {% if review.ui_snapshot_rows %}{% include "workbench/workflow_reference_rows.html" with rows=review.ui_snapshot_rows %}{% endif %}
+        <form class="review-typed-form" data-testid="review-typed-form" data-submit-url="{% business_path '/api/workflow-tasks/' workflow.id '/reviews/' review.id '/submit' %}" data-review-key="{{ review.review_key }}" data-answer-type="confirm_current_revision" data-revision-id="{{ review.ui_revision_id }}">
+          <div class="field"><label><input type="checkbox" name="confirmed" value="yes" required> 我已核对并确认此冻结版本中的基础资料</label></div>
+          <div class="field"><label for="typed-reviewer-{{ review.id }}">确认人标签</label><input id="typed-reviewer-{{ review.id }}" name="reviewer" maxlength="120" required></div>
+          <button class="button primary" type="submit">提交版本确认回执</button>
+          <p class="form-error" data-review-error role="alert" aria-live="polite" hidden></p>
+          <a class="button secondary" data-review-refresh href="{% business_path '/workflow-tasks/' workflow.id %}" hidden>刷新状态</a>
+        </form>
+        {% elif review.status == "pending" %}
+        <form class="review-note-form" data-testid="review-note-form" data-submit-url="{% business_path '/api/workflow-tasks/' workflow.id '/reviews/' review.id '/submit' %}" data-review-key="{{ review.review_key }}">
+          <div class="field"><label for="review-note-{{ review.id }}">补充说明</label><textarea id="review-note-{{ review.id }}" name="note" rows="3" required></textarea></div>
+          <div class="field"><label for="reviewer-{{ review.id }}">填写人标签</label><input id="reviewer-{{ review.id }}" name="reviewer" maxlength="120" required></div>
+          <button class="button primary" type="submit">保存说明</button>
+          <p class="form-error" data-review-error role="alert" aria-live="polite" hidden></p>
+        </form>
+        {% else %}
+        <div class="review-receipt">
+          {% if review.ui_kind == "missing_image" %}
+            <p><strong>{% if review.ui_applied %}人工补图（已应用）{% elif review.ui_unapplied %}人工补图（待应用）{% else %}人工补图回执{% endif %}</strong></p>
+            {% include "workbench/workflow_review_image_uploads.html" with review=review workflow=workflow %}
+          {% endif %}
+          {% if review.ui_kind == "image_selection" %}
+            {% for candidate in review.ui_image_candidates %}{% if candidate.task_file_id == review.ui_selected_image_id %}
+              <p><strong>{% if review.ui_applied %}人工选图（已应用）{% else %}人工选图（待应用）{% endif %}：</strong>{{ candidate.original_name }}</p>
+              <img class="review-image-receipt" src="{{ candidate.preview_url|business_url }}" alt="已选择图片 {{ candidate.original_name }}">
+              <p>文件 ID：{{ candidate.task_file_id }} · 来源版本 RID：{{ review.ui_revision_id }}</p>
+            {% endif %}{% endfor %}
+          {% endif %}
+          {% if review.ui_applied and review.ui_kind == "duplicate_sku" %}<p><strong>人工货号裁决（已应用）：</strong>{{ review.ui_typed_value }}</p><p>原始回执保留首尾空白；应用时去除了首尾空白。来源版本 RID：{{ review.ui_revision_id }}</p>
+          {% elif review.ui_unapplied and review.ui_kind == "duplicate_sku" %}<p><strong>人工货号裁决（待应用）：</strong>{{ review.ui_typed_value }}</p><p>来源版本 RID：{{ review.ui_revision_id }} · 应用时去除首尾空白。</p>
+          {% elif review.ui_applied and review.ui_kind == "literal" %}<p><strong>{{ review.ui_field_label }}（已应用）：</strong>{{ review.ui_typed_value }}</p><p>来源版本 RID：{{ review.ui_revision_id }}</p>
+          {% elif review.ui_applied and review.ui_kind == "revision_confirmation" %}<p>已应用当前版本确认：来源 RID {{ review.ui_revision_id }} · 确认 RID {{ review.ui_typed_revision_id }}</p>
+          {% elif review.ui_unapplied and review.ui_kind == "literal" %}<p><strong>{{ review.ui_field_label }}（待应用）：</strong>{{ review.ui_typed_value }}</p><p>来源版本 RID：{{ review.ui_revision_id }}</p>
+          {% elif review.ui_unapplied and review.ui_kind == "revision_confirmation" %}<p>已提交当前版本确认回执（待应用）</p><p>来源版本 RID：{{ review.ui_revision_id }} · 确认 RID：{{ review.ui_typed_revision_id }}</p>
+          {% elif review.note %}<p><strong>补充说明：</strong>{{ review.note }}</p>{% elif review.has_other_answer %}<p>已保存结构化回答（只读）。</p>{% else %}<p>已保存回执。</p>{% endif %}
+          <p>填写人：{{ review.reviewer }}</p>
+          <p>提交时间：{{ review.submitted_at_display }}</p>
+        </div>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}<div class="empty-state compact"><p>当前没有人审事项。</p></div>{% endif %}
+    {% if facts_cycle_applied %}<p class="workflow-boundary">本批基础资料已由操作人明确确认并应用；点击上方执行按钮继续一个子任务。</p>
+    {% else %}<p class="workflow-boundary">保存说明仅形成待核验回执，不会应用产品事实或恢复任务。</p>{% endif %}
+    {% if apply_review_target %}
+    <form class="review-cycle-apply-form" data-testid="review-cycle-apply" data-apply-url="{{ apply_review_target.url|business_url }}" data-idempotency-key="{{ apply_review_target.idempotency_key }}">
+      {% for review_id in apply_review_target.review_ids %}<input type="hidden" name="review_id" value="{{ review_id }}">{% endfor %}
+      <div class="field"><label for="cycle-reviewer">应用确认人标签</label><input id="cycle-reviewer" name="reviewer" maxlength="120" required></div>
+      <p>仅当本轮全部受支持事项均已提交后，显式应用并确认整批基础资料。</p>
+      <button class="button primary" type="submit">应用并确认本批基础资料</button>
+      <p class="form-error" data-apply-error role="alert" aria-live="polite" hidden></p>
+      <a class="button secondary" data-apply-refresh href="{% business_path '/workflow-tasks/' workflow.id %}" hidden>刷新状态</a>
+    </form>
+    {% endif %}
+  </section>
+
+  <section class="panel" aria-labelledby="events-heading">
+    <div class="panel-heading"><div><h2 id="events-heading">工作流事件历史</h2><p>按发生时间和事件 ID 排序。</p></div><span class="count-badge">{{ events|length }}</span></div>
+    {% if events %}<div class="table-wrap"><table class="workflow-events"><thead><tr><th>时间</th><th>事件</th><th>记录者</th><th>摘要</th><th>事件 ID</th></tr></thead><tbody>{% for event in events %}<tr><td>{{ event.created_at_display }}</td><td>{{ event.event_type }}</td><td>{{ event.actor }}</td><td>{{ event.summary|default:"—" }}</td><td class="mono">{{ event.id }}</td></tr>{% endfor %}</tbody></table></div>
+    {% else %}<div class="empty-state compact"><p>尚无事件记录。</p></div>{% endif %}
+  </section>
+  <p><a class="button secondary" href="{% business_path '/agent-center' %}">返回 Agent 中心</a></p>
+  <p id="workflow-detail-error" class="form-error" role="alert" aria-live="polite" hidden></p>
+</div>
+{% endblock %}

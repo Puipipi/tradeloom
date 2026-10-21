@@ -1,0 +1,11 @@
+sku,name,category,material,size,color,image_filename,data_mode
+P1-DEMO-001,[演示] 罗纹缎带 25mm 酒红,丝带,涤纶,25mm,酒红,P1-DEMO-001.svg,demo
+P1-DEMO-002,[演示] 装饰蝴蝶结 香槟金,蝴蝶结,缎面,8cm,香槟金,P1-DEMO-002.svg,demo
+P1-DEMO-003,[演示] 棉质织带 原色,织带,棉,20mm,原色,,demo
+P1-DEMO-004,[演示] 哑光缎带 墨绿,丝带,,25mm,墨绿,P1-DEMO-004.svg,demo
+P1-DEMO-005,[演示] 雪纱带 象牙白,丝带,雪纱,,象牙白,P1-DEMO-005.svg,demo
+P1-DEMO-006,[演示] 仿麻缎带 25mm,丝带,仿麻,25mm,焦糖,P1-DEMO-006.svg,demo
+P1-DEMO-006,[演示] 仿麻缎带 38mm,丝带,仿麻,38mm,焦糖,P1-DEMO-007.svg,demo
+P1-DEMO-008,[演示] 图片编号冲突示例,丝带,涤纶,30mm,宝蓝,P1-IMG-007.svg,demo
+P1-DEMO-009,[演示] 冲突清单目标示例,丝带,涤纶,30mm,宝蓝,P1-IMG-009.svg,demo
+P1-DEMO-010,[演示] 格纹丝带 米白,丝带,涤纶,15mm,米白,P1-DEMO-010.svg,demo

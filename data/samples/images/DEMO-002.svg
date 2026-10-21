@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="480" viewBox="0 0 640 480">
+  <rect width="640" height="480" fill="#F3F6FA"/>
+  <path d="M320 250 C230 155, 115 180, 150 280 C180 355, 270 305, 320 250Z" fill="#D5B47A"/>
+  <path d="M320 250 C410 155, 525 180, 490 280 C460 355, 370 305, 320 250Z" fill="#C79E63"/>
+  <path d="M305 270 L250 390 L320 355Z" fill="#B78B51"/>
+  <path d="M335 270 L390 390 L320 355Z" fill="#B78B51"/>
+  <circle cx="320" cy="250" r="34" fill="#E5C890" stroke="#9A703E" stroke-width="6"/>
+  <text x="320" y="430" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="28" fill="#182B49">演示图片 · 装饰蝴蝶结</text>
+</svg>

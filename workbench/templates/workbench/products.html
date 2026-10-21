@@ -1,0 +1,120 @@
+{% extends "workbench/base.html" %}
+{% load business_urls %}
+{% block page_eyebrow %}产品资料 / 只读总览{% endblock %}
+{% block page_title %}产品资料{% endblock %}
+{% block content %}
+<div class="page-stack">
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <h2>产品资料库</h2>
+        {% if empty_library %}
+        <p>尚未导入产品资料。</p>
+        {% else %}
+        <p>{{ result_count }} 个产品匹配当前筛选 · {{ revision_count }} 个已有最新版本 · {{ missing_count }} 个存在缺项。</p>
+        {% endif %}
+      </div>
+      {% if empty_library %}
+      <span class="tag demo-tag">等待导入</span>
+      {% else %}
+      <span class="tag demo-tag">{{ batch_count }} 个批次</span>
+      {% endif %}
+    </div>
+    {% if empty_library %}
+    <div class="empty-state" data-testid="empty-library">
+      <h3>尚未导入产品资料</h3>
+      <p>新建任务并导入产品 CSV 后，产品与版本会显示在这里。</p>
+      <a class="button primary" href="{% business_path '/tasks/new' %}" data-testid="import-products-link">新建任务 / 导入产品</a>
+    </div>
+    {% else %}
+    <p class="count-note" data-testid="product-result-count">{{ result_count }} 个产品匹配当前筛选。</p>
+    <form class="filter-form" method="get" action="{% business_path '/products' %}" data-testid="product-filter">
+      <div class="filter-field filter-search">
+        <label for="product-q">搜索</label>
+        <input id="product-q" name="q" type="search" value="{{ filters.q }}" placeholder="SKU 或产品名称">
+      </div>
+      <div class="filter-field">
+        <label for="product-state">状态</label>
+        <select id="product-state" name="state">
+          <option value="">全部状态</option>
+          {% for option in status_options %}<option value="{{ option.value }}"{% if filters.state == option.value %} selected{% endif %}>{{ option.label }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="filter-field">
+        <label for="product-batch">批次</label>
+        <select id="product-batch" name="batch">
+          <option value="">全部批次</option>
+          {% for batch in batch_options %}<option value="{{ batch.id }}"{% if filters.batch == batch.id %} selected{% endif %}>{{ batch.label }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="filter-actions">
+        <button class="button primary" type="submit">筛选</button>
+        <a class="button secondary" href="{% business_path '/products' %}" data-testid="clear-product-filter">清空筛选</a>
+      </div>
+    </form>
+    {% if filter_error %}<p class="inline-alert warning" data-testid="product-filter-error">{{ filter_error }}</p>{% endif %}
+    <p class="timezone-note">时间均为上海时间（UTC+8）。</p>
+    {% if products %}
+    <div class="table-wrap">
+      <table class="product-table" data-testid="products-table" aria-label="产品资料列表">
+        <thead>
+          <tr><th>产品</th><th>批次</th><th>最新版本</th><th>版本状态</th><th>来源</th><th>缺项</th></tr>
+        </thead>
+        <tbody>
+          {% for product in products %}
+          <tr data-testid="product-row-{{ product.id }}">
+            <td>
+              <strong class="mono">{{ product.sku }}</strong>
+              <span class="cell-subtitle">{{ product.name }}</span>
+            </td>
+            <td>
+              <a class="task-link" href="{% business_path '/tasks/' product.batch_id %}">{{ product.batch_title }}</a>
+              <span class="cell-subtitle">{{ product.batch_status }}</span>
+            </td>
+            <td>
+              <span class="mono" data-testid="product-version-{{ product.id }}">{{ product.version|default:"—" }}</span>
+              {% if product.revision_updated_at %}<span class="cell-subtitle mono" data-testid="product-time-{{ product.id }}">{{ product.revision_updated_at|date:"Y-m-d H:i" }}</span>{% endif %}
+              {% if product.revisions %}
+              <details class="version-history" data-testid="version-history-{{ product.id }}">
+                <summary>版本历史（{{ product.revisions|length }}）</summary>
+                <div class="revision-list">
+                  {% for revision in product.revisions %}
+                  <article class="revision-item" data-testid="revision-{{ product.id }}-{{ revision.version }}">
+                    <div class="revision-heading">
+                      <strong class="mono">v{{ revision.version }}</strong>
+                      <span class="status-pill {{ revision.status_raw }}">{{ revision.status_label }}</span>
+                    </div>
+                    <p class="revision-meta"><span class="mono">{{ revision.updated_at|date:"Y-m-d H:i" }}</span> · {{ revision.source_label }}</p>
+                    <p class="revision-snapshot">{{ revision.snapshot.sku }} · {{ revision.snapshot.name }} · {{ revision.snapshot.size }} · {{ revision.snapshot.color }}</p>
+                  </article>
+                  {% endfor %}
+                </div>
+              </details>
+              {% endif %}
+            </td>
+            <td><span class="status-pill {{ product.revision_status_raw }}" data-testid="product-status-{{ product.id }}">{{ product.revision_status }}</span></td>
+            <td><span class="mono" data-testid="product-source-{{ product.id }}">{{ product.source }}</span></td>
+            <td>
+              {% if product.missing_fields %}
+              <span class="missing-chips">{% for field in product.missing_fields %}<span class="missing-chip">{{ field }}</span>{% endfor %}</span>
+              {% else %}
+              <span class="muted-text">无</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="scroll-hint">表格可横向滚动查看完整列。</p>
+    {% else %}
+    <div class="empty-state" data-testid="product-empty-state">
+      <h3>没有符合筛选条件的产品</h3>
+      <p>调整搜索、状态或批次，或清空筛选后重试。</p>
+      <a class="button secondary" href="{% business_path '/products' %}" data-testid="clear-empty-filter">清空筛选</a>
+    </div>
+    {% endif %}
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

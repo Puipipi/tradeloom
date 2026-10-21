@@ -1,0 +1,161 @@
+{% extends "workbench/base.html" %}
+{% load business_urls %}
+{% block page_eyebrow %}Agent / 编排状态{% endblock %}
+{% block page_title %}Agent 中心{% endblock %}
+{% block content %}
+<div class="page-stack">
+  <section class="panel workflow-create-panel">
+    <div class="panel-heading">
+      <div>
+        <h2>创建业务计划</h2>
+        <p>先解析目标与只读资料来源；查看候选和模拟标记后，再明确确认保存计划。确认后只保存计划并排队，尚未运行子任务。</p>
+      </div>
+      <span class="tag demo-tag">通用工作流</span>
+    </div>
+    {% if batch_options %}
+    <form id="workflow-create-form" class="workflow-form" data-workflow-create-endpoint="{% business_path '/api/workflow-tasks' %}" data-intent-preview-endpoint="{% business_path '/api/workflow-intent/preview' %}">
+      <div class="workflow-form-grid">
+        <div class="field">
+          <label for="workflow-batch">产品批次</label>
+          <select id="workflow-batch" name="batch_id" required>
+            <option value="">请选择批次</option>
+            {% for batch in batch_options %}<option value="{{ batch.id }}">{{ batch.label }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label for="workflow-goal">用户目标</label>
+          <textarea id="workflow-goal" name="user_goal" rows="3" maxlength="4000" required placeholder="例如：整理本批产品资料；或整理产品资料并生成英文目录"></textarea>
+        </div>
+      </div>
+      <div class="workflow-form-actions">
+        <button class="button primary" type="submit" data-intent-preview-button>解析目标</button>
+        <span class="muted-text">本页使用本地规则解析；也可接收聊天 Agent 的结构化提案，保存前仍需确认。</span>
+      </div>
+      <section id="workflow-intent-preview" class="intent-preview" data-testid="intent-preview" hidden aria-live="polite">
+        <div class="panel-heading"><h3>解析候选</h3><span class="tag demo-tag" data-intent-mode></span></div>
+        <p data-intent-reason></p>
+        <p data-intent-task-type class="muted-text"></p>
+        <p data-intent-evidence></p>
+        <p data-intent-sources class="muted-text"></p>
+        <p data-intent-versions class="muted-text mono"></p>
+        <p data-intent-clarification class="form-error" hidden></p>
+        <button class="button primary" type="button" data-intent-confirm disabled>确认并保存计划</button>
+      </section>
+      <p id="workflow-create-notice" class="muted-text" role="status" aria-live="polite" hidden></p>
+      <button id="workflow-load-agent-proposal" class="button secondary" type="button" hidden>保留旧草稿并载入 Agent 提案</button>
+      <p id="workflow-create-error" class="form-error" role="alert" aria-live="polite" hidden></p>
+    </form>
+    {% else %}
+    <div class="empty-state compact">
+      <h3>还没有可选产品批次</h3>
+      <p>先导入产品资料，再回来创建业务计划。</p>
+      <a class="button secondary" href="{% business_path '/tasks/new' %}">前往导入任务</a>
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <div class="panel-heading">
+      <div>
+        <h2>业务 Agent 状态</h2>
+        <p>这里查看已保存的业务任务、角色分工和人审状态；不会触发任务执行。</p>
+      </div>
+      <span class="tag demo-tag mono">{{ planning_mode }}</span>
+    </div>
+    <div class="stat-grid stat-grid-three">
+      <article class="stat-card">
+        <span class="stat-label">业务任务</span>
+        <strong class="stat-value mono" data-testid="agent-workflow-count">{{ workflow_count }}</strong>
+        <span class="stat-note">已创建业务任务</span>
+      </article>
+      <article class="stat-card">
+        <span class="stat-label">子任务</span>
+        <strong class="stat-value mono" data-testid="agent-subtask-count">{{ subtask_count }}</strong>
+        <span class="stat-note">已分派子任务</span>
+      </article>
+      <article class="stat-card">
+        <span class="stat-label">待人工确认</span>
+        <strong class="stat-value mono" data-testid="agent-review-count">{{ pending_review_count }}</strong>
+        <span class="stat-note">等待人工确认</span>
+      </article>
+    </div>
+  </section>
+
+  <div class="state-grid">
+    <section class="panel state-card">
+      <div class="panel-heading">
+        <div><h2>业务任务</h2><p>已保存的业务任务与当前步骤。</p></div>
+        <span class="mono count-badge">{{ workflow_count }}</span>
+      </div>
+      {% if workflow_tasks %}
+      <div class="compact-list">
+        {% for workflow in workflow_tasks %}
+        <article class="compact-row">
+          <strong><a href="{{ workflow.detail_url|business_url }}">{{ workflow.batch.title }}</a></strong>
+          <span>{{ workflow.task_type_label }} · {{ workflow.status_label }}</span>
+          <span class="muted-text">{{ workflow.current_step_label }}</span>
+          {% if workflow.execution_summary %}<span class="muted-text">{{ workflow.execution_summary }}</span>{% endif %}
+          {% if workflow.error_summary %}<span class="muted-text">错误：{{ workflow.error_summary }}</span>{% endif %}
+        </article>
+        {% endfor %}
+      </div>
+      {% if workflow_count > agent_list_limit %}<p class="list-limit-note">仅显示最近 {{ agent_list_limit }} 条，共 {{ workflow_count }} 条。</p>{% endif %}
+      {% else %}
+      <div class="empty-state compact"><h3>尚无业务任务</h3><p>业务任务创建并纳入编排后将出现在这里。</p></div>
+      {% endif %}
+    </section>
+
+    <section class="panel state-card">
+      <div class="panel-heading">
+        <div><h2>子任务</h2><p>角色分工与执行状态。</p></div>
+        <span class="mono count-badge">{{ subtask_count }}</span>
+      </div>
+      {% if subtasks %}
+      <div class="compact-list">
+        {% for subtask in subtasks %}
+        <article class="compact-row">
+          <strong><a href="{{ subtask.detail_url|business_url }}">{{ subtask.agent_role_label }}</a></strong>
+          <span>{{ subtask.status_label }} · 已用错误重试 {{ subtask.retry_count }}</span>
+          <span class="muted-text">{{ subtask.task.batch.title }} · {{ subtask.source_summary }}</span>
+          <span class="muted-text">{{ subtask.result_summary }}</span>
+          {% if subtask.error_summary %}<span class="muted-text">错误：{{ subtask.error_summary }}</span>{% endif %}
+        </article>
+        {% endfor %}
+      </div>
+      {% if subtask_count > agent_list_limit %}<p class="list-limit-note">仅显示最近 {{ agent_list_limit }} 条，共 {{ subtask_count }} 条。</p>{% endif %}
+      {% else %}
+      <div class="empty-state compact"><h3>尚无子任务</h3><p>编排产生子任务后会在这里显示角色与状态。</p></div>
+      {% endif %}
+    </section>
+
+    <section class="panel state-card">
+      <div class="panel-heading">
+        <div><h2>人工确认</h2><p>需要人工补齐或决策的项目。</p></div>
+        <span class="mono count-badge">{{ pending_review_count }}</span>
+      </div>
+      {% if workflow_reviews %}
+      <div class="compact-list">
+        {% for review in workflow_reviews %}
+        <article class="compact-row">
+          <strong class="mono"><a href="{{ review.workflow_url|business_url }}">{{ review.item_ref }}</a></strong>
+          <span>{% if review.status == "pending" %}待填写{% else %}已提交待核验{% endif %}</span>
+          <span class="muted-text">{{ review.task.batch.title }}</span>
+        </article>
+        {% endfor %}
+      </div>
+      {% if workflow_review_list_count > agent_list_limit %}<p class="list-limit-note">仅显示最近 {{ agent_list_limit }} 条，共 {{ workflow_review_list_count }} 条。</p>{% endif %}
+      {% else %}
+      <div class="empty-state compact"><h3>暂无待人工确认</h3><p>需要人工确认的产品字段会在这里排队。</p></div>
+      {% endif %}
+    </section>
+  </div>
+
+  <section class="panel capability-panel" data-testid="agent-center-capabilities">
+    <div>
+      <h2>能力入口</h2>
+      <p>查看原有 Agent 能力页与本地产品资料执行器；本页不触发执行。</p>
+    </div>
+    <a class="button secondary" href="{% business_path '/agents' %}">查看 Agent 能力</a>
+  </section>
+</div>
+{% endblock %}

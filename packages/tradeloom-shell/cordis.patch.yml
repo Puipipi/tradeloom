@@ -1,0 +1,162 @@
+# TradeLoom Agent Presets are isolated from the standard/coding preset.
+- id: preset-standard
+  disabled: true
+- id: preset-ptc
+  disabled: true
+- id: preset-minimal
+  disabled: true
+- id: preset-cordis
+  disabled: true
+- id: deepseek-account
+  disabled: true
+- id: llm-deepseek-account
+  disabled: true
+- id: account-controller
+  disabled: true
+- id: ui-settings-account
+  disabled: true
+- id: product-analytics
+  disabled: true
+- id: ui-brand-official
+  disabled: true
+- insert:
+    - id: tradeloom-business-shell-host
+      name: '@tradeloom/dsh-business-shell'
+- id: agent-preset-registry
+  name: '@deepseek-ai/dsh-agent-preset-registry'
+  config:
+    default: tradeloom-center
+- id: subagent
+  name: '@deepseek-ai/dsh-subagent'
+  config:
+    maxActiveSubagents: 4
+    maxDepth: 1
+- insert:
+    - id: tradeloom-center-preset
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: tradeloom-center
+        name: 中心
+        description: TradeLoom business coordinator with native, bounded expert delegation.
+        order: 1
+        plugins:
+          - id: business-turn-limit
+            name: '@tradeloom/dsh-business-shell/step-policy'
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: |
+                你是 TradeLoom 工作台的中心协调助手。简明澄清目标，适合时使用原生 subagent 委派给已列出的专家；通过原生 send_message 与直接子 Agent 沟通。涉及用户个人资料时，先请用户资料助手提供当前资料，再向用户核实缺失或需要确认的内容。把市场信息、价格和企业事实视为未核实，除非用户提供或受保护业务接口给出依据。不要编造审批、价格或企业规则。
+                需要创建业务计划时，先澄清目标与批次；只有目标明确后，才调用 tradeloom_preview_workflow_intent，传入用户的字面目标和以下 task_type 之一：prepare_product_data、generate_deliverables。该工具只生成提案预览，不会创建或执行任务。必须把返回的 business_ui_url 交给用户在业务界面检查并明确确认；不得声称提案已执行，也不得用该工具结果代替已有子任务的服务端派遣授权。
+          - id: business-tools
+            name: '@tradeloom/dsh-business-shell/business-tools'
+            config:
+              preset: tradeloom-center
+          - id: delegation
+            name: cordis:group
+            group: true
+            isolate:
+              subagents: true
+              workflowEngine: true
+            config:
+              - id: native-subagents
+                name: '@deepseek-ai/dsh-subagent'
+              - id: native-spawn
+                name: '@deepseek-ai/dsh-subagent-spawn-in-process'
+              - id: native-subagent-control
+                name: '@deepseek-ai/dsh-tool-subagent-control'
+              - id: native-subagent
+                name: '@deepseek-ai/dsh-tool-subagent'
+                config:
+                  provider: spawn
+                  toolName: subagent
+                  agentPreset: tradeloom-product
+                  agentOptions:
+                    maxTokens: 4096
+                  allowedAgentPresets:
+                    - tradeloom-product
+                    - tradeloom-market-placeholder
+                    - tradeloom-quote-placeholder
+                    - tradeloom-delivery
+                    - tradeloom-user-profile-demo
+                  maxDepth: 1
+    - id: tradeloom-product-preset
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: tradeloom-product
+        name: 商品专家
+        description: 商品信息整理；不虚构企业数据。
+        order: 2
+        plugins:
+          - id: business-turn-limit
+            name: '@tradeloom/dsh-business-shell/step-policy'
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: 你是商品信息整理助手。只根据用户提供或已授权业务接口返回的内容工作；缺少字段时明确询问，不猜测商品、库存或价格。
+          - id: business-tools
+            name: '@tradeloom/dsh-business-shell/business-tools'
+            config:
+              preset: tradeloom-product
+    - id: tradeloom-market-preset
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: tradeloom-market-placeholder
+        name: 市场研究（占位）
+        description: 市场研究能力占位，不含价格或企业事实。
+        order: 3
+        plugins:
+          - id: business-turn-limit
+            name: '@tradeloom/dsh-business-shell/step-policy'
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: 你是市场研究能力占位助手。当前没有接入市场数据；不得编造行情、来源或企业事实。需要数据时说明缺少数据并请用户提供。
+    - id: tradeloom-quote-preset
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: tradeloom-quote-placeholder
+        name: 询报价（占位）
+        description: 询报价能力占位，不给出虚构价格。
+        order: 4
+        plugins:
+          - id: business-turn-limit
+            name: '@tradeloom/dsh-business-shell/step-policy'
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: 你是询报价能力占位助手。当前没有报价数据或规则；不得估价或承诺价格。请用户提供已批准的报价依据。
+    - id: tradeloom-delivery-preset
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: tradeloom-delivery
+        name: 交付协同
+        description: 协助梳理交付信息，不替代审批。
+        order: 5
+        plugins:
+          - id: business-turn-limit
+            name: '@tradeloom/dsh-business-shell/step-policy'
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: 你是交付协同助手。仅整理已提供的任务、时间和状态；不编造交付承诺，不代替人工确认或审批。
+          - id: business-tools
+            name: '@tradeloom/dsh-business-shell/business-tools'
+            config:
+              preset: tradeloom-delivery
+    - id: tradeloom-user-profile-preset
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: tradeloom-user-profile-demo
+        name: 用户资料（演示）
+        description: 仅使用可编辑的演示资料占位。
+        order: 6
+        plugins:
+          - id: business-turn-limit
+            name: '@tradeloom/dsh-business-shell/step-policy'
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: 回答用户资料问题前，调用 tradeloom_user_profile_read 读取当前演示资料；仅依据工具返回，空字段请用户补充。保持演示标记，不猜身份、联系方式或偏好。
+          - id: current-user-profile
+            name: '@tradeloom/dsh-business-shell/profile'

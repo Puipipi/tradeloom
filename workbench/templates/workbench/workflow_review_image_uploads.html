@@ -1,0 +1,24 @@
+{% load business_urls %}
+{% if review.ui_image_uploads %}
+<div class="review-image-candidates">
+  {% for upload in review.ui_image_uploads %}
+  <figure class="review-image-candidate">
+    <img src="{{ upload.preview_url|business_url }}" alt="已上传补图 {{ upload.original_name }}">
+    <figcaption><strong>{{ upload.original_name }}</strong><br><span>上传凭据：{{ upload.upload_step_id }}</span><br><span>文件 ID：{{ upload.task_file_id }} · SHA-256：{{ upload.sha256 }}</span></figcaption>
+  </figure>
+  {% endfor %}
+</div>
+{% elif review.status != "pending" %}
+<p class="muted-text">当前没有可验证的补图预览。</p>
+{% endif %}
+{% if review.status == "pending" and review.ui_image_uploads %}
+<form class="review-typed-form" data-testid="review-typed-form" data-submit-url="{% business_path '/api/workflow-tasks/' workflow.id '/reviews/' review.id '/submit' %}" data-review-key="{{ review.review_key }}" data-answer-type="provide_image">
+  <div class="field"><label for="review-upload-step-{{ review.id }}">明确确认使用的补图</label><select id="review-upload-step-{{ review.id }}" name="upload_step_id" required><option value="">请选择已上传图片</option>{% for upload in review.ui_image_uploads %}<option value="{{ upload.upload_step_id }}">{{ upload.original_name }} · {{ upload.upload_step_id }}</option>{% endfor %}</select></div>
+  <div class="field"><label for="typed-reviewer-{{ review.id }}">确认人标签</label><input id="typed-reviewer-{{ review.id }}" name="reviewer" maxlength="120" required></div>
+  <button class="button primary" type="submit">提交明确补图回执</button>
+  <p class="form-error" data-review-error role="alert" aria-live="polite" hidden></p>
+  <a class="button secondary" data-review-refresh href="{% business_path '/workflow-tasks/' workflow.id %}" hidden>刷新状态</a>
+</form>
+{% elif review.status != "pending" and review.ui_selected_upload_step_id %}
+<p>确认使用的上传凭据：{{ review.ui_selected_upload_step_id }}</p>
+{% endif %}

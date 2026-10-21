@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="164" height="314" viewBox="0 0 164 314">
+  <rect width="164" height="314" fill="#F7FAFA"/>
+  <path d="M0 220 164 56M0 270 164 106M0 314 164 150" fill="none" stroke="#D9E5E5" stroke-width="1" opacity=".6"/>
+  <svg x="34" y="76" width="96" height="96" viewBox="0 0 1024 1024">
+    <rect x="32" y="32" width="960" height="960" rx="256" fill="#F7FAFA" stroke="#D9E5E5" stroke-width="24"/>
+    <path d="M224 384h150c82 0 82 128 164 128s82 128 164 128h98" fill="none" stroke="#F7FAFA" stroke-width="204" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M384 224v150c0 82 128 82 128 164s128 82 128 164v98" fill="none" stroke="#F7FAFA" stroke-width="204" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M224 384h150c82 0 82 128 164 128s82 128 164 128h98" fill="none" stroke="#263D70" stroke-width="160" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M384 224v150c0 82 128 82 128 164s128 82 128 164v98" fill="none" stroke="#0B6B67" stroke-width="160" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M512 434v156" stroke="#F7FAFA" stroke-width="30" stroke-linecap="round"/>
+  </svg>
+  <text x="82" y="200" text-anchor="middle" fill="#17313A" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="600">织贸助手</text>
+  <text x="82" y="222" text-anchor="middle" fill="#0B6B67" font-family="Segoe UI, Arial, sans-serif" font-size="10" font-weight="600" letter-spacing="1.4">TradeLoom</text>
+  <path d="M40 254h84" stroke="#0B6B67" stroke-width="2" stroke-linecap="round"/>
+</svg>

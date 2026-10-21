@@ -1,0 +1,41 @@
+{% extends "workbench/base.html" %}
+{% block page_title %}新建任务{% endblock %}
+{% block content %}
+<section class="panel">
+  <div class="panel-heading">
+    <div>
+      <h2>新建产品资料任务</h2>
+      <p>上传 CSV 与图片，或先使用丝带、蝴蝶结演示资料走通流程。</p>
+    </div>
+  </div>
+  <div class="demo-callout">
+    <div>
+      <span class="tag demo-tag">演示数据</span>
+      <h3>丝带与蝴蝶结资料确认</h3>
+      <p>演示任务会故意留一个材质缺项。图片只按文件名去扩展名后与货号精确匹配。</p>
+    </div>
+    <button class="button primary" type="button" data-testid="load-demo">加载演示任务</button>
+  </div>
+  <form class="upload-form" id="upload-form">
+    {% csrf_token %}
+    <div class="form-grid">
+      <div class="field">
+        <label for="task-title">任务标题</label>
+        <input id="task-title" name="title" type="text" maxlength="120" required>
+      </div>
+      <div class="field">
+        <label for="products-csv">商品表 CSV</label>
+        <input id="products-csv" name="products_csv" type="file" accept=".csv,text/csv" required>
+        <small>表头：sku,name,category,material,size,color,image_filename</small>
+      </div>
+      <div class="field field-wide">
+        <label for="product-images">产品图片（可选）</label>
+        <input id="product-images" name="images" type="file" accept="image/*" multiple>
+        <small>文件名去扩展名后必须与货号完全一致；否则图片列为缺项。</small>
+      </div>
+    </div>
+    <p id="new-task-error" class="inline-alert error" role="alert" hidden></p>
+    <button class="button primary" type="submit">上传并检查资料</button>
+  </form>
+</section>
+{% endblock %}

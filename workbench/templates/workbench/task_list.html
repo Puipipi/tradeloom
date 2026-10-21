@@ -1,0 +1,44 @@
+{% extends "workbench/base.html" %}
+{% load business_urls %}
+{% block page_title %}任务列表{% endblock %}
+{% block content %}
+<section class="panel">
+  <div class="panel-heading">
+    <div>
+      <h2>产品资料任务</h2>
+      <p>按任务核对产品字段、图片引用和导出条件。</p>
+    </div>
+    <div class="button-row">
+      <a class="button secondary" href="{% business_path '/' %}">刷新</a>
+      <a class="button primary" href="{% business_path '/tasks/new' %}">新建任务</a>
+    </div>
+  </div>
+  {% if tasks %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>任务</th><th>状态</th><th>产品</th><th>待确认</th><th>更新时间</th></tr></thead>
+      <tbody>
+      {% for task in tasks %}
+        <tr data-testid="task-{{ task.id }}">
+          <td>
+            <a class="task-link" href="{% business_path '/tasks/' task.id %}">{{ task.title }}</a>
+            {% if task.mode == "demo" %}<span class="tag demo-tag">演示</span>{% endif %}
+          </td>
+          <td><span class="status-pill {{ task.status }}">{{ task.status }}</span></td>
+          <td class="mono">{{ task.product_count }}</td>
+          <td class="mono">{{ task.missing_count }}</td>
+          <td class="mono">{{ task.updated_at }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <h3>还没有任务</h3>
+    <p>可以先加载演示资料，确认产品字段后再导出 CSV。</p>
+    <a class="button primary" href="{% business_path '/tasks/new' %}">创建第一个任务</a>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,67 @@
+{% extends "workbench/base.html" %}
+{% load business_urls %}
+{% block page_title %}产品资料确认{% endblock %}
+{% block content %}
+<section class="task-detail" data-testid="task-detail" data-task-id="{{ task.id }}" data-status="{{ task.status }}" data-missing-count="{{ task.missing_count }}">
+  <div class="detail-heading">
+    <div>
+      <a class="text-button back-link" href="{% business_path '/' %}">← 返回任务列表</a>
+      <div class="title-line">
+        <h2>{{ task.title }}</h2>
+        {% if task.mode == "demo" %}<span class="tag demo-tag">演示模式</span>{% endif %}
+        <span class="status-pill {{ task.status }}">{{ task.status }}</span>
+      </div>
+      <p>{{ task.product_count }} 个产品，{{ task.missing_count }} 个存在缺项。</p>
+    </div>
+    <div class="detail-actions">
+      <button class="button primary" type="button" data-testid="confirm-task" {% if task.missing_count > 0 or task.status == "confirmed" %}disabled{% endif %}>确认全部资料</button>
+      <a class="button secondary {% if task.status != 'confirmed' %}disabled{% endif %}" data-testid="export-csv" {% if task.status == 'confirmed' %}href="{% business_path '/api/tasks/' task.id '/export.csv' %}"{% else %}aria-disabled="true"{% endif %}>导出 CSV</a>
+    </div>
+  </div>
+  {% if task.mode == "demo" %}
+  <div class="inline-alert warning">当前使用演示资料，产品名称和图片仅用于功能演示。</div>
+  {% endif %}
+  {% if task.missing_count > 0 %}
+  <div class="inline-alert warning">尚有 {{ task.missing_count }} 个产品未补齐必填项，确认按钮暂不可用。</div>
+  {% endif %}
+  <p id="detail-error" class="inline-alert error" role="alert" hidden></p>
+  <div class="product-grid">
+    {% for product in task.products %}
+    <article class="product-card" data-testid="product-{{ product.sku }}" data-product-id="{{ product.id }}">
+      <div class="product-visual">
+        {% if product.image_url %}<img src="{{ product.image_url|business_url }}" alt="{{ product.name }} 的产品图片">{% else %}<div class="image-placeholder"><strong>缺少图片</strong><span>{{ product.image_filename|default:"未填写文件名" }}</span></div>{% endif %}
+        <span class="file-chip mono">{{ product.image_filename|default:"无图片引用" }}</span>
+      </div>
+      <div class="product-body">
+        <div class="product-card-heading">
+          <div><p class="mono product-sku">{{ product.sku }}</p><h3>{{ product.name }}</h3></div>
+          {% if product.missing_fields %}<span class="status-pill awaiting_confirmation">{{ product.missing_fields|length }} 项待补</span>{% else %}<span class="status-pill confirmed">资料齐全</span>{% endif %}
+        </div>
+        <div class="field-readout">
+          <div><span>品类</span><strong>{{ product.category }}</strong></div>
+          <div><span>材质</span><strong>{{ product.material|default:"未填写" }}</strong></div>
+          <div><span>尺寸</span><strong>{{ product.size }}</strong></div>
+          <div><span>颜色</span><strong>{{ product.color }}</strong></div>
+        </div>
+        {% if product.missing_fields %}
+        <div class="missing-row"><span>待补：</span>{% for field in product.missing_fields %}<span class="missing-chip">{{ field }}</span>{% endfor %}</div>
+        {% endif %}
+        <button class="button secondary small edit-product" type="button" data-testid="edit-{{ product.sku }}">编辑 {{ product.sku }}</button>
+        <form class="edit-grid edit-form" hidden>
+          <div class="field"><label>货号</label><input name="sku" value="{{ product.sku }}" required></div>
+          <div class="field"><label>名称</label><input name="name" value="{{ product.name }}" required></div>
+          <div class="field"><label>品类</label><input name="category" value="{{ product.category }}" required></div>
+          <div class="field"><label>材质</label><input name="material" value="{{ product.material }}" data-testid="material-input"></div>
+          <div class="field"><label>尺寸</label><input name="size" value="{{ product.size }}" required></div>
+          <div class="field"><label>颜色</label><input name="color" value="{{ product.color }}" required></div>
+          <div class="edit-actions">
+            <button class="text-button cancel-edit" type="button">取消</button>
+            <button class="button primary small" type="submit" data-testid="save-product">保存修改</button>
+          </div>
+        </form>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}
