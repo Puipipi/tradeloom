@@ -25,7 +25,7 @@
     },
     {
       "id": "products",
-      "layoutProfile": { "kind": "collaboration_grid", "minimumWidth": 1200, "minimumHeight": 600 },
+      "layoutProfile": { "kind": "collaboration_grid", "minimumWidth": 960, "minimumHeight": 560 },
       "label": "商品",
       "icon": "▦",
       "roleId": "product",
@@ -39,7 +39,7 @@
     },
     {
       "id": "agent-center",
-      "layoutProfile": { "kind": "collaboration_grid", "minimumWidth": 1200, "minimumHeight": 600 },
+      "layoutProfile": { "kind": "collaboration_grid", "minimumWidth": 960, "minimumHeight": 560 },
       "label": "任务",
       "icon": "◉",
       "roleId": "center",
@@ -53,7 +53,7 @@
     },
     {
       "id": "deliverables",
-      "layoutProfile": { "kind": "collaboration_grid", "minimumWidth": 1200, "minimumHeight": 600 },
+      "layoutProfile": { "kind": "collaboration_grid", "minimumWidth": 960, "minimumHeight": 560 },
       "label": "交付物",
       "icon": "⇩",
       "roleId": "delivery",

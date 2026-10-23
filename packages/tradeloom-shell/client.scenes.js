@@ -109,6 +109,7 @@ window.__ModuleLoader__.load({
     function queueDockLayoutSave(sceneId, dockview) {
       const record = dockRecordFor(sceneId, dockview)
       if (!record) return Promise.resolve(false)
+      let failureMessage = '布局保存失败（网络错误），请重试。'
       const nextScenes = { ...(snapshot.dockLayouts?.scenes ?? {}), [sceneId]: record }
       publish({ dockLayouts: { version: 2, scenes: nextScenes }, dockSaveErrors: { ...snapshot.dockSaveErrors, [sceneId]: '' } })
       dockRevision++
@@ -120,13 +121,27 @@ window.__ModuleLoader__.load({
             method: 'PUT', credentials: 'same-origin', headers: { 'content-type': 'application/json' },
             body: JSON.stringify(snapshot.dockLayouts),
           })
-          if (!response.ok) throw new Error('dock-layout-save-failed')
+          if (!response.ok) {
+            const status = Number.isInteger(response.status) && response.status >= 100 && response.status <= 599
+              ? response.status : null
+            const allowedCodes = new Set(['invalid-json', 'invalid-dock-layout', 'request-too-large', 'dock-layout-unavailable'])
+            let code = status === 401 || status === 403 ? 'unauthorized' : 'unknown'
+            if (code === 'unknown' && typeof response.json === 'function') {
+              try {
+                const body = await response.json()
+                if (allowedCodes.has(body?.error)) code = body.error
+              } catch {}
+            }
+            const statusLabel = status === null ? '' : `HTTP ${status}`
+            failureMessage = `布局保存失败${statusLabel || code ? `（${[statusLabel, code].filter(Boolean).join(' · ')}）` : ''}，请重试。`
+            throw new Error('dock-layout-save-failed')
+          }
           dockPersistedRevision = revision
           publish({ dockSaveErrors: Object.fromEntries(Object.keys(snapshot.dockSaveErrors).map(id => [id, ''])) })
         }
         return true
       }).catch(() => {
-        publish({ dockSaveErrors: { ...snapshot.dockSaveErrors, [sceneId]: '布局保存失败，请重试。' } })
+        publish({ dockSaveErrors: { ...snapshot.dockSaveErrors, [sceneId]: failureMessage } })
         return false
       })
       return dockSaveQueue
@@ -281,8 +296,8 @@ window.__ModuleLoader__.load({
           data: [leaf(`${id}a`, leftId, leftSize), leaf(`${id}b`, rightId, rightSize)],
         })
         root = { type: 'branch', size: 100, data: [
-          row('top', 58, 'business-main', 75, 'auxiliary', 25),
-          row('bottom', 42, 'reference', 25, 'native-chat', 75),
+          row('top', 60, 'business-main', 75, 'auxiliary', 25),
+          row('bottom', 40, 'reference', 50, 'native-chat', 50),
         ] }
         orientation = 'VERTICAL'
         activeGroup = 'topa'
@@ -1184,6 +1199,35 @@ window.__ModuleLoader__.load({
       retainedByRole.clear()
     }
 
+    function swapDockPanel(api, sourcePanel, targetPanel) {
+      const sourceGroup = sourcePanel?.api?.group
+      const targetGroup = targetPanel?.api?.group
+      if (!sourceGroup || !targetGroup || sourceGroup.id === targetGroup.id) return false
+      const sourceIndex = sourceGroup.panels.findIndex(panel => panel.id === sourcePanel.id)
+      const targetIndex = targetGroup.panels.findIndex(panel => panel.id === targetPanel.id)
+      if (sourceIndex < 0 || targetIndex < 0) return false
+      try {
+        // The source group may become empty after the first move. Keep the same
+        // group object alive until the displaced target panel has moved back.
+        api.updateOptions({ closeEmptyGroups: false })
+        sourcePanel.api.moveTo({ group: targetGroup, index: targetIndex, skipSetActive: true })
+        targetPanel.api.moveTo({ group: sourceGroup, index: sourceIndex, skipSetActive: true })
+        targetPanel.api.setActive()
+        sourcePanel.api.setActive()
+        return true
+      } finally {
+        api.updateOptions({ closeEmptyGroups: true })
+      }
+    }
+
+    function dockDropIntent(kind, position) {
+      if (kind === 'tab' || kind === 'header_space') return { id: 'merge', label: '合并标签' }
+      if (kind !== 'content') return null
+      return position === 'center'
+        ? { id: 'swap', label: '交换面板' }
+        : { id: 'split', label: '分栏' }
+    }
+
     const dockRenderContexts = new Map()
     const dockGroupRenderers = new Map()
     const dockActionListeners = new Map()
@@ -1321,6 +1365,17 @@ window.__ModuleLoader__.load({
       const layoutEventRef = React.useRef(null)
       const activePanelEventRef = React.useRef(null)
       const maximizeEventRef = React.useRef(null)
+      const dropEventRef = React.useRef(null)
+      const dropEndEventRef = React.useRef(null)
+      const overlayEventRef = React.useRef(null)
+      const dragStartEventRef = React.useRef(null)
+      const headerDoubleClickRef = React.useRef(null)
+      const maximizeAnimationRef = React.useRef(null)
+      const maximizeStartFrameRef = React.useRef(0)
+      const dropIntentRef = React.useRef(null)
+      const dropIntentCleanupTimerRef = React.useRef(0)
+      const dropIntentObserverRef = React.useRef(null)
+      const maximizeRestoreLayoutRef = React.useRef(null)
       const [width, setWidth] = React.useState(0)
       const [height, setHeight] = React.useState(0)
       const [activePanelId, setActivePanelId] = React.useState('')
@@ -1333,6 +1388,106 @@ window.__ModuleLoader__.load({
       const minimumCanvasWidth = scene.layoutProfile?.minimumWidth ?? 1143
       const minimumCanvasHeight = scene.layoutProfile?.minimumHeight ?? 250
       const narrow = width > 0 && height > 0 && (width < minimumCanvasWidth || height < minimumCanvasHeight)
+      function clearMaximizeAnimation() {
+        if (maximizeStartFrameRef.current) cancelAnimationFrame(maximizeStartFrameRef.current)
+        maximizeStartFrameRef.current = 0
+        const running = maximizeAnimationRef.current
+        if (!running) return
+        if (running.frame) cancelAnimationFrame(running.frame)
+        if (running.finishFrame) cancelAnimationFrame(running.finishFrame)
+        if (running.timeout) clearTimeout(running.timeout)
+        running.element.removeEventListener('transitionend', running.onTransitionEnd)
+        running.element.style.transition = running.previousTransition
+        running.element.style.transform = running.previousTransform
+        running.element.style.transformOrigin = running.previousTransformOrigin
+        maximizeAnimationRef.current = null
+      }
+      function animateMaximizeGeometry(element, before) {
+        if (!element || !before || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+        const after = element.getBoundingClientRect()
+        if (!before.width || !before.height || !after.width || !after.height) return
+        const previous = {
+          transition: element.style.transition,
+          transform: element.style.transform,
+          transformOrigin: element.style.transformOrigin,
+        }
+        element.style.transition = 'none'
+        element.style.transformOrigin = 'top left'
+        element.style.transform = `translate(${before.left - after.left}px, ${before.top - after.top}px) scale(${before.width / after.width}, ${before.height / after.height})`
+        void element.offsetWidth
+        const running = { element, previousTransition: previous.transition, previousTransform: previous.transform,
+          previousTransformOrigin: previous.transformOrigin, frame: 0, finishFrame: 0, timeout: 0, onTransitionEnd: null }
+        const finish = () => {
+          if (maximizeAnimationRef.current !== running) return
+          clearMaximizeAnimation()
+        }
+        running.onTransitionEnd = event => { if (event.target === element && event.propertyName === 'transform') finish() }
+        maximizeAnimationRef.current = running
+        element.addEventListener('transitionend', running.onTransitionEnd)
+        running.frame = requestAnimationFrame(() => {
+          if (maximizeAnimationRef.current !== running) return
+          element.style.transition = 'transform 200ms cubic-bezier(.2,.75,.25,1)'
+          running.finishFrame = requestAnimationFrame(() => {
+            if (maximizeAnimationRef.current === running) element.style.transform = previous.transform
+          })
+        })
+        running.timeout = setTimeout(finish, 260)
+      }
+      function rememberRestorableLayout(currentApi) {
+        if (!currentApi || currentApi.hasMaximizedGroup?.()) return
+        maximizeRestoreLayoutRef.current = JSON.parse(JSON.stringify(currentApi.toJSON()))
+      }
+      function restoreMaximizedLayout(currentApi) {
+        const layout = maximizeRestoreLayoutRef.current
+        maximizeRestoreLayoutRef.current = null
+        currentApi?.exitMaximizedGroup?.()
+        if (layout && currentApi) {
+          const restored = currentApi.toJSON()
+          if (JSON.stringify(restored?.grid?.root) !== JSON.stringify(layout?.grid?.root)) {
+            currentApi.fromJSON(layout, { reuseExistingPanels: true })
+          }
+        }
+      }
+      function toggleDockPanel(panel) {
+        if (!panel) return
+        const currentApi = apiRef.current
+        const before = panel.api.group?.element?.getBoundingClientRect?.()
+        clearMaximizeAnimation()
+        if (panel.api.isMaximized()) restoreMaximizedLayout(currentApi)
+        else {
+          if (currentApi?.hasMaximizedGroup()) restoreMaximizedLayout(currentApi)
+          rememberRestorableLayout(currentApi)
+          panel.api.maximize()
+        }
+        if (before) {
+          maximizeStartFrameRef.current = requestAnimationFrame(() => {
+            maximizeStartFrameRef.current = 0
+            const restoredGroupElement = panel.api.group?.element
+            if (restoredGroupElement?.isConnected) animateMaximizeGeometry(restoredGroupElement, before)
+          })
+        }
+      }
+      function clearDropIntent() {
+        if (dropIntentCleanupTimerRef.current) clearTimeout(dropIntentCleanupTimerRef.current)
+        dropIntentCleanupTimerRef.current = 0
+        dropIntentObserverRef.current?.disconnect?.()
+        dropIntentObserverRef.current = null
+        dropIntentRef.current?.remove()
+        dropIntentRef.current = null
+      }
+      function scheduleDropIntentCleanup() {
+        if (dropIntentCleanupTimerRef.current) clearTimeout(dropIntentCleanupTimerRef.current)
+        dropIntentCleanupTimerRef.current = setTimeout(() => {
+          dropIntentCleanupTimerRef.current = 0
+          clearDropIntent()
+        }, 0)
+      }
+      function removeDropIntentBeforeOverlayUpdate() {
+        dropIntentObserverRef.current?.disconnect?.()
+        dropIntentObserverRef.current = null
+        dropIntentRef.current?.remove()
+        dropIntentRef.current = null
+      }
       dockRenderContexts.set(scene.id, {
         SessionProvider, renderSlot, narrow, panels: scene.panels, assistantLabel: assistantLabel(roleId),
         closedPanels: scene.panels.filter(panel => closedPanelIds.includes(panel.id)),
@@ -1348,10 +1503,7 @@ window.__ModuleLoader__.load({
         toggleMaximize: panelId => {
           const currentApi = apiRef.current
           const panel = currentApi?.getPanel(panelId)
-          if (!panel) return
-          if (panel.api.isMaximized()) { panel.api.exitMaximized(); return }
-          if (currentApi.hasMaximizedGroup()) currentApi.exitMaximizedGroup()
-          panel.api.maximize()
+          toggleDockPanel(panel)
         },
       })
 
@@ -1393,10 +1545,10 @@ window.__ModuleLoader__.load({
         if (narrow && !narrowRef.current) {
           narrowRef.current = true
           const panel = currentApi.getPanel(activePanelId) ?? currentApi.getPanel(currentApi.activePanel?.id) ?? currentApi.getPanel(scene.panels[0]?.id)
-          if (panel) { panel.api.setActive(); currentApi.maximizeGroup(panel) }
+          if (panel) { panel.api.setActive(); rememberRestorableLayout(currentApi); currentApi.maximizeGroup(panel) }
         } else if (!narrow && narrowRef.current) {
           narrowRef.current = false
-          if (currentApi.hasMaximizedGroup()) currentApi.exitMaximizedGroup()
+          if (currentApi.hasMaximizedGroup()) restoreMaximizedLayout(currentApi)
         }
       }, [narrow, activePanelId, scene.id])
 
@@ -1404,12 +1556,19 @@ window.__ModuleLoader__.load({
         layoutEventRef.current?.dispose?.()
         activePanelEventRef.current?.dispose?.()
         maximizeEventRef.current?.dispose?.()
+        dropEventRef.current?.dispose?.()
+        dropEndEventRef.current?.dispose?.()
+        overlayEventRef.current?.dispose?.()
+        dragStartEventRef.current?.dispose?.()
+        headerDoubleClickRef.current?.()
+        clearMaximizeAnimation()
+        clearDropIntent()
         dockviewApis.delete(scene.id)
       }, [scene.id])
 
       function persistCurrentLayout() {
         const currentApi = apiRef.current
-        if (!currentApi || narrowRef.current) return Promise.resolve(false)
+        if (!currentApi || narrowRef.current || currentApi.hasMaximizedGroup?.()) return Promise.resolve(false)
         const dockview = currentApi.toJSON()
         return queueDockLayoutSave(scene.id, dockview)
       }
@@ -1451,6 +1610,86 @@ window.__ModuleLoader__.load({
             setMaximized(Boolean(readyApi.hasMaximizedGroup?.()))
             notifyDockActions(scene.id)
           })
+          let dragPanelId = ''
+          dragStartEventRef.current = readyApi.onWillDragPanel(event => {
+            clearDropIntent()
+            dragPanelId = event?.panel?.id ?? ''
+          })
+          dropEndEventRef.current = readyApi.onDidDrop?.(() => clearDropIntent()) ?? null
+          overlayEventRef.current = readyApi.onWillShowOverlay(event => {
+            const transfer = event.getData?.()
+            const sourceId = transfer?.viewId === readyApi.id ? transfer.panelId : dragPanelId
+            const source = sourceId ? readyApi.getPanel(sourceId) : null
+            const targetGroupId = event.group?.id ?? event.group?.model?.id
+            const sourceGroupId = source?.api?.group?.id
+            if (event.kind === 'content' && sourceGroupId && sourceGroupId === targetGroupId) {
+              event.preventDefault()
+              removeDropIntentBeforeOverlayUpdate()
+              return
+            }
+            const intent = dockDropIntent(event.kind, event.position)
+            if (!intent || !event.group?.element) { removeDropIntentBeforeOverlayUpdate(); return }
+            removeDropIntentBeforeOverlayUpdate()
+            const hint = event.group.element.ownerDocument.createElement('div')
+            hint.className = 'tl-dock-drop-intent'
+            hint.dataset.intent = intent.id
+            hint.textContent = intent.label
+            hint.title = intent.label
+            hint.setAttribute('role', 'status')
+            hint.setAttribute('aria-label', intent.label)
+            event.group.element.append(hint)
+            dropIntentRef.current = hint
+            if (typeof MutationObserver === 'function') {
+              const groupElement = event.group.element
+              const observer = new MutationObserver(() => {
+                if (!groupElement.querySelector('.dv-drop-target')) clearDropIntent()
+              })
+              observer.observe(groupElement, { attributes: true, attributeFilter: ['class'], childList: true, subtree: true })
+              dropIntentObserverRef.current = observer
+            }
+          })
+          dropEventRef.current = readyApi.onWillDrop(event => {
+            if (event.kind !== 'content') return
+            const transfer = event.getData?.()
+            if (!transfer || transfer.viewId !== readyApi.id || !transfer.panelId) return
+            const source = readyApi.getPanel(transfer.panelId)
+            const targetPanelId = event.group?.activePanel?.id ?? event.group?.model?.activePanel?.id
+            const target = targetPanelId ? readyApi.getPanel(targetPanelId) : null
+            if (!source || !target) return
+            if (source.id === target.id) { event.preventDefault(); return }
+            if (event.position !== 'center') return
+            if (source.api.group?.id === target.api.group?.id) { event.preventDefault(); return }
+            if (swapDockPanel(readyApi, source, target)) event.preventDefault()
+          })
+          const onHeaderDoubleClick = event => {
+            const header = event.target?.closest?.('.dv-tabs-and-actions-container')
+            if (!header || !hostRef.current?.contains(header)) return
+            const target = event.target?.closest?.('button,[role="button"],input,select,textarea,a,[contenteditable="true"],.dv-default-tab-action,.dv-sash,.dv-right-actions-container,.dv-left-actions-container,[class*="close"]')
+            if (target) return
+            const tab = event.target?.closest?.('.dv-tab[data-tab-panel-id]')
+            const groupElement = header.closest('.dv-groupview')
+            if (!groupElement) return
+            const panelId = tab?.getAttribute('data-tab-panel-id')
+            const group = panelId ? null : readyApi.groups.find(item => item.element === groupElement)
+            const panel = readyApi.getPanel(panelId || group?.activePanel?.id)
+            if (!panel) return
+            event.preventDefault()
+            toggleDockPanel(panel)
+          }
+          hostRef.current?.addEventListener('dblclick', onHeaderDoubleClick)
+          headerDoubleClickRef.current = () => hostRef.current?.removeEventListener('dblclick', onHeaderDoubleClick)
+          const clearOnDropEnd = () => scheduleDropIntentCleanup()
+          window.addEventListener('pointerup', clearOnDropEnd, true)
+          window.addEventListener('pointercancel', clearOnDropEnd, true)
+          window.addEventListener('dragend', clearOnDropEnd, true)
+          const previousHeaderCleanup = headerDoubleClickRef.current
+          headerDoubleClickRef.current = () => {
+            previousHeaderCleanup?.()
+            window.removeEventListener('pointerup', clearOnDropEnd, true)
+            window.removeEventListener('pointercancel', clearOnDropEnd, true)
+            window.removeEventListener('dragend', clearOnDropEnd, true)
+            clearDropIntent()
+          }
           if (hostRef.current) {
             const rect = hostRef.current.getBoundingClientRect()
             if (rect.width > 0 && rect.height > 0) {
@@ -1459,7 +1698,7 @@ window.__ModuleLoader__.load({
               setHeight(rect.height)
             }
           }
-        } catch {
+        } catch (error) {
           setError('工作区布局无法读取，请应用推荐布局后重试。')
         }
       }
@@ -1479,6 +1718,7 @@ window.__ModuleLoader__.load({
         const currentApi = apiRef.current
         const defaultRecord = snapshot.dockDefaults?.[scene.id]
         if (!currentApi || !defaultRecord) return
+        maximizeRestoreLayoutRef.current = null
         if (currentApi.hasMaximizedGroup()) currentApi.exitMaximizedGroup()
         narrowRef.current = narrow
         try { currentApi.fromJSON(defaultRecord.dockview) }
@@ -1513,6 +1753,13 @@ window.__ModuleLoader__.load({
           disableDnd: narrow,
           dndStrategy: 'pointer',
           disableFloatingGroups: true,
+          dndEdges: false,
+          dropOverlayModel: location => location === 'content' ? {
+            activationSize: { type: 'percentage', value: 20 },
+            size: { type: 'percentage', value: 50 },
+            smallWidthBoundary: 160,
+            smallHeightBoundary: 130,
+          } : undefined,
           getTabContextMenuItems: () => [],
           className: 'tl-dockview-theme dockview-spaced',
           proportionalLayout: true,
@@ -1608,10 +1855,10 @@ window.__ModuleLoader__.load({
           }
           .tl-dockview-host { flex: 1 1 auto; min-width: 0; min-height: 0; width: 100%; height: 100%; overflow: hidden; }
           .tl-dockview-host .tl-dockview-theme {
-            height: 100%; width: 100%; color: var(--tl-ink); font-family: inherit;
+            height: 100%; width: 100%; color: var(--tl-ink); font-family: inherit; background: var(--tl-canvas);
             --dv-group-view-background-color: var(--tl-surface);
             --dv-tabs-and-actions-container-background-color: var(--tl-surface-soft);
-            --dv-spacing-padding: 10px;
+            --dv-spacing-padding: 0px;
             --dv-floating-group-border: 1px solid var(--tl-border);
             --dv-tabs-and-actions-container-height: 36px;
             --dv-tabs-and-actions-container-font-size: 13px;
@@ -1628,6 +1875,7 @@ window.__ModuleLoader__.load({
             --dv-separator-border: var(--tl-border);
             --dv-sash-color: var(--tl-border);
             --dv-active-sash-color: var(--tl-accent);
+            --dv-active-sash-transition-delay: 80ms;
             --dv-icon-hover-background-color: var(--tl-surface-soft);
             --dv-tab-border-radius: 7px;
             --dv-border-radius: 9px;
@@ -1647,6 +1895,35 @@ window.__ModuleLoader__.load({
           .tl-dockview-host .tl-dockview-theme .dv-right-actions-container button:hover,
           .tl-dockview-host .tl-dockview-theme .dv-left-actions-container button:hover {
             background: var(--tl-surface-soft); color: var(--tl-ink);
+          }
+          .tl-dockview-host .tl-dockview-theme .dv-split-view-container.dv-horizontal > .dv-sash-container > .dv-sash.dv-enabled::before {
+            content: ''; position: absolute; z-index: 1; inset-block: 0; left: 50%; width: 10px;
+            transform: translateX(-50%); background: transparent; pointer-events: auto;
+          }
+          .tl-dockview-host .tl-dockview-theme .dv-split-view-container.dv-vertical > .dv-sash-container > .dv-sash.dv-enabled::before {
+            content: ''; position: absolute; z-index: 1; inset-inline: 0; top: 50%; height: 10px;
+            transform: translateY(-50%); background: transparent; pointer-events: auto;
+          }
+          .tl-dockview-host .tl-dockview-theme .dv-split-view-container > .dv-sash-container > .dv-sash.dv-enabled::after {
+            content: ''; position: absolute; z-index: 2; display: block; border-radius: 999px;
+            background: var(--tl-accent); opacity: 0; transition: opacity 100ms ease-out; pointer-events: none;
+          }
+          .tl-dockview-host .tl-dockview-theme .dv-split-view-container.dv-horizontal > .dv-sash-container > .dv-sash.dv-enabled::after {
+            width: 3px; height: 30px; top: 50%; left: 50%; transform: translate(-50%, -50%);
+          }
+          .tl-dockview-host .tl-dockview-theme .dv-split-view-container.dv-vertical > .dv-sash-container > .dv-sash.dv-enabled::after {
+            width: 30px; height: 3px; top: 50%; left: 50%; transform: translate(-50%, -50%);
+          }
+          .tl-dockview-host .tl-dockview-theme .dv-split-view-container > .dv-sash-container > .dv-sash.dv-enabled:hover::after,
+          .tl-dockview-host .tl-dockview-theme .dv-split-view-container > .dv-sash-container > .dv-sash.dv-enabled:active::after,
+          .tl-dockview-host .tl-dockview-theme .dv-split-view-container > .dv-sash-container > .dv-sash.dv-enabled:focus-visible::after { opacity: .9; }
+          .tl-dockview-host .tl-dockview-theme .dv-groupview { position: relative; }
+          .tl-dockview-host .tl-dockview-theme .tl-dock-drop-intent {
+            position: absolute; z-index: 1000; left: 50%; top: 50%; transform: translate(-50%, -50%);
+            padding: 5px 10px; border: 1px solid var(--tl-border);
+            border-radius: 6px; background: var(--tl-surface); color: var(--tl-ink); font-family: inherit; font-size: 13px;
+            font-weight: 600; line-height: 1.2;
+            white-space: nowrap; box-shadow: 0 2px 8px rgb(0 0 0 / .2); pointer-events: none;
           }
           .tl-dock-scene.is-narrow .dv-tabs-and-actions-container { pointer-events: none; }
           .tl-dock-scene.is-narrow .tl-dock-group-actions { pointer-events: auto; }
@@ -1729,6 +2006,7 @@ window.__ModuleLoader__.load({
         name: dark ? 'abyss' : 'light',
         className: dark ? 'dockview-theme-abyss' : 'dockview-theme-light',
         colorScheme: dark ? 'dark' : 'light',
+        gap: 10,
         tabGroupIndicator: 'none',
       }
     }

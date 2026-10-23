@@ -1,6 +1,7 @@
 (() => {
   const embeddedBusinessPage = document.documentElement?.dataset?.businessEmbed === "true";
   if (embeddedBusinessPage && window.parent !== window) {
+    document.documentElement.dataset.businessIframe = "true";
     const onThemeMessage = (event) => {
       const value = event.data;
       if (event.source !== window.parent || event.origin !== window.location.origin

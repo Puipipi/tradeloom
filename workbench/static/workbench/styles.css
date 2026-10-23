@@ -177,6 +177,17 @@ html[data-business-embed="true"] {
   --wb-nested-card-inset: 8px;
 }
 
+html[data-business-iframe="true"] {
+  --wb-page-inset-block: 10px;
+  --wb-page-inset-inline: 12px;
+  --wb-page-inset-end: 12px;
+  --wb-section-gap: 10px;
+  --wb-header-gap: 8px;
+  --wb-panel-inset: 14px;
+  --wb-card-inset: 10px;
+  --wb-nested-card-inset: 6px;
+}
+
 .sidebar {
   min-height: 100vh;
   position: sticky;
@@ -364,6 +375,22 @@ html[data-business-embed="true"] .topbar h1 {
   font-size: 18px;
 }
 
+html[data-business-iframe="true"] .topbar {
+  min-height: 40px;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 8px 12px;
+}
+
+html[data-business-iframe="true"] .topbar > div:first-child {
+  display: none;
+}
+
+html[data-business-iframe="true"] .runtime-status {
+  gap: 6px;
+  font-size: 11px;
+}
+
 html[data-color-scheme="dark"] .button.primary {
   color: var(--button-fg);
 }
@@ -483,6 +510,10 @@ html[data-color-scheme="dark"] .button.primary {
   margin: 14px 0 0;
   color: var(--muted);
   line-height: 1.6;
+}
+
+html[data-business-iframe="true"] [data-testid="product-result-count"].count-note {
+  display: none;
 }
 
 .count-note .mono {
@@ -1743,6 +1774,18 @@ textarea.intake-requirement-input {
   margin: 7px 0 0;
   color: var(--muted);
   line-height: 1.65;
+}
+
+html[data-business-iframe="true"] .panel-heading h2,
+html[data-business-iframe="true"] .detail-heading h2 {
+  font-size: 17px;
+}
+
+html[data-business-iframe="true"] .panel-heading p,
+html[data-business-iframe="true"] .detail-heading p {
+  margin-top: 4px;
+  font-size: 14px;
+  line-height: 1.5;
 }
 
 .button-row,

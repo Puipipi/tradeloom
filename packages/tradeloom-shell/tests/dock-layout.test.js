@@ -93,9 +93,9 @@ test('each configured scene gets its mapped recommendation while four-panel scen
       const [top, bottom] = recommendation.dockview.grid.root.data
       assert.equal(top.type, 'branch')
       assert.equal(bottom.type, 'branch')
-      assert.deepEqual([top.size, bottom.size], [58, 42])
+      assert.deepEqual([top.size, bottom.size], [60, 40])
       assert.deepEqual(top.data.map(group => [group.size, group.data.views[0]]), [[75, 'business-main'], [25, 'auxiliary']])
-      assert.deepEqual(bottom.data.map(group => [group.size, group.data.views[0]]), [[25, 'reference'], [75, 'native-chat']])
+      assert.deepEqual(bottom.data.map(group => [group.size, group.data.views[0]]), [[50, 'reference'], [50, 'native-chat']])
       if (scene.id === 'products') {
         collaborationCustom = structuredClone(recommendation)
         collaborationCustom.dockview.grid.root.data[0].data[0].size = 70
@@ -109,6 +109,17 @@ test('each configured scene gets its mapped recommendation while four-panel scen
   const normalizedCustom = normalizeDockLayouts(config, { version: 2, scenes: { products: collaborationCustom } })
   assert.deepEqual(normalizedCustom.scenes.products, collaborationCustom,
     'a saved custom four-panel layout remains unchanged when recommendation profiles are introduced')
+  const customWithClosedPanel = structuredClone(collaborationCustom)
+  customWithClosedPanel.closedPanelIds = ['auxiliary']
+  const [topRow, bottomRow] = customWithClosedPanel.dockview.grid.root.data
+  customWithClosedPanel.dockview.grid.root.data = [
+    { type: 'leaf', size: topRow.size, data: { ...topRow.data[0].data, id: topRow.data[0].data.id } },
+    bottomRow,
+  ]
+  delete customWithClosedPanel.dockview.panels.auxiliary
+  const restoredCustom = normalizeDockLayouts(config, { version: 2, scenes: { products: customWithClosedPanel } })
+  assert.deepEqual(restoredCustom.scenes.products, customWithClosedPanel,
+    'custom proportions and closed-panel state survive recommendation changes')
 })
 
 test('unchanged v1 geometry upgrades to the wider dock default and keeps its first snapshot', () => {
@@ -158,6 +169,16 @@ test('dock layout validation rejects unknown panels and malformed serialized tre
   const malformed = structuredClone(serializedDockviewFixture)
   malformed.grid.root.data[0].data.views.push('missing')
   assert.throws(() => validateDockviewLayout(center, malformed, []), /view/)
+  const unknownComponent = structuredClone(serializedDockviewFixture)
+  unknownComponent.panels['business-main'].contentComponent = 'unregistered-component'
+  assert.throws(() => validateDockviewLayout(center, unknownComponent, []), /registered component/)
+  const unknownParams = structuredClone(serializedDockviewFixture)
+  unknownParams.panels['business-main'].params = { panelId: 'business-main', arbitrary: true }
+  assert.throws(() => validateDockviewLayout(center, unknownParams, []), /not allowlisted/)
+  const unprojectedDockviewDefaults = structuredClone(serializedDockviewFixture)
+  unprojectedDockviewDefaults.panels['business-main'].pinned = false
+  assert.throws(() => validateDockviewLayout(center, unprojectedDockviewDefaults, []), /registered component/,
+    'the server validator remains strict for Dockview UI metadata that survives JSON serialization')
 })
 
 test('normalization initializes dock layouts and legacy scene-layout writes do not replace them', () => {

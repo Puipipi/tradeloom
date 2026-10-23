@@ -48,7 +48,17 @@ if (build.status !== 0) {
 }
 
 try {
-  const body = await readFile(temporaryBundle, 'utf8')
+  let body = await readFile(temporaryBundle, 'utf8')
+  // Narrow pointer-drop compatibility fix for the pinned MIT-licensed dockview-core 8.6.1.
+  // A one-move drag can begin on pointermove and reach pointerup before the controller has
+  // observed a move while active. Re-hit-test the final coordinates only for successful drops;
+  // cancellation still leaves without dropping. Keep this transform exact and fail closed if
+  // the upstream implementation changes so a dependency refresh requires review.
+  const endHandler = '  _handleEnd(e, dropped) {\n    const dragEvent = {'
+  if (body.split(endHandler).length !== 2) {
+    throw new Error('Expected one pinned Dockview PointerDragController._handleEnd implementation')
+  }
+  body = body.replace(endHandler, '  _handleEnd(e, dropped) {\n    if (dropped && this._active) this._handleMove(e);\n    const dragEvent = {')
   const wrapped = `window.__ModuleLoader__.load({\n  id: '@tradeloom/dsh-business-shell',\n  chunk: 'client.dockview.js',\n  factory(require) {\n    var module = { exports: {} };\n    var exports = module.exports;\n${body}\n    return module.exports;\n  }\n});\n`
   await writeFile(output, wrapped, 'utf8')
 } finally {

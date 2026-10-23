@@ -367,7 +367,7 @@
 ### 当前可执行缺口与边界
 
 1. 本节最初的静态审计未读取四份历史 workbook；后续已在明确授权下使用真实原件、项目外隔离目录完成只读解析与来源定位核对，不提升主档、不写主库。详细证据见下方 2026-10-23 Excel 只读审计段；不自动硬链接产品。
-2. Candidate → Product/ProductRevision 提升尚无已核实接口；需先定人工确认、产品身份及版本创建规则，再另立实现/测试范围。现有 `ProductRevision` 版本流并不能代替此合同。
+2. Candidate → Product/ProductRevision 提升尚无已核实接口；需先定人工确认、产品身份及版本创建规则，再另立实现/测试范围。源码中 `candidate-link` 的 confirmed 仅记录候选间关联决策（`workbench/urls.py:29-46,93-100`；`workbench/intake/api.py:850-875`），不是产品入库；生产要求确认只追加 requirement revision（`workbench/intake/api.py:893-941`），不创建 ProductRevision。本轮 Dockview 验证只涉及 UI 布局保存，未改变或重新验收此业务缺口；真实 workbook 只读解析也没有提升主档或写主库。
 3. 劳动日报字段、工时估算口径、金额公式/币种和人工确认尚未定；先确认日常实际日报来源及这些计算口径，再补解析/公式和版本证据测试，不猜业务规则。
 
 真实资料状态：该节记录的静态闭环核查当时未读取真实 Excel、访谈、录音、员工日报或产品主档；下方新增段落单独记录后来获授权的四份 Excel 只读解析，不改变当时对访谈、录音、员工日报和主档的未核验状态。此前 synthetic API 测试不能写成真实资料闭环。整体闭环仅到已确认生产要求对应的执行计划草稿。另，当前 source-mode 窗口状态：bundle `a1393039…` 已打开，Root 看见标题、provider 徽标和空会话 composer；max/restore 点击被物理 Escape 中断，结果未知，不标通过。
@@ -405,3 +405,36 @@
 - [x] 本机已激活 source bundle `424b114a5ad4daa655be745f11cd28c892953972e53c36e8daaaa28a8634a5e2`，包含窄态场景导航修复；该记录确认同步/启动，不替代当前 UI 验收。
 - [!] 工作台 UI 仍在迭代；本地实际手机验收、当前 PostgreSQL 集成验收和 Dockview 跨组拖放均未通过本次证据确认。不要把 Node/DOM 合同测试外推为这些实机结果。
 - [!] 当前验证边界和后续证据按本矩阵分项维护；本检查点不代表整体目标完成。
+
+## Dockview 真实库 JSON 保存与恢复核验（2026-10-23，本地源码候选）
+
+- 使用锁定的 `client.dockview.js` 生产 chunk、runtime8 React 18.3.1/ReactDOM 和 JSDOM，通过真实 `SceneWorkbench` 的 `onReady` API 实例加载推荐布局并调用 `layout(980,650)`、`layout(960,560)`、`fromJSON`、`toJSON` 和真实 `panel.api.close()`。仅对 DOM host 提供合成矩形/ResizeObserver；native conversation 使用简单占位，不据此声称 composer、像素、滚动、拖拽或手机行为已验证。
+- 真实 Dockview 推荐树的外层、上排、下排分别约为 60/40、75/25、50/50（2px内）；自定义外层通过真实 `fromJSON/toJSON` 形成约 63/37，明确不同于推荐值。关闭“任务”面板后，测试捕获生产 `queueDockLayoutSave` 发出的真实 PUT body，按 HTTP `JSON.stringify/parse` 边界送入生产 `validateDockLayouts` 与 `normalizeDockLayouts`，再将 normalized tree 回灌真实 Dockview。四面板/关闭面板拓扑、嵌套方向、closed panel ID 和自定义外层比例（保存/恢复相对尺寸各在 2px内）均保留；React tree unmount 后 host DOM 清空且 scene API 引用释放。
+- 原始 JS `toJSON()` 对象含 Dockview UI 默认字段；运行时检查这些 raw-only 字段为 `undefined` 或函数，JSON HTTP body 中均不保留。直接把未序列化对象交给严格 validator 曾产生拒绝，但不是实际 HTTP 合同。最终 HTTP body 的 panel 字段符合现有 allowlist，生产 validator 接受。故本轮没有修改 `dockRecordFor` 或放宽服务端 schema；validator 仍拒绝未知 panel、component、params 及 JSON 后实际存在的额外字段。
+- 定向 integration 与附近 `dock-layout.test.js`、`scenes.test.js` 共 35 tests：33 pass、2 skip、0 fail、exit 0。该验证仅为本地源码/DOM 集成证据；candidate 未同步/激活，不代表真实桌面布局视觉或交互验收。真实手机、Dockview 跨组标签拖放及业务 ERP/数据库集成仍未验收。
+
+## 业务 iframe 内容密度候选（2026-10-24）
+
+- 仅在 `html[data-business-iframe="true"]` 下，将面板/详情标题设为 17px，说明设为 14px、1.5 行高与 4px 顶距；仅隐藏产品页重复的 `[data-testid="product-result-count"].count-note`。产品标题下完整的匹配/版本/缺项摘要、40px 状态行、警示、表单、筛选、时区提示均保留，独立页面样式不变。
+- RED/GREEN 通过实际执行 `app.js` 产生 iframe 标记，并由 runtime8 jsdom 读取 computed styles 与挂载内容；`workbench/tests/js/*.js` 为 7 pass、0 skip、0 fail。此证据不等同于无遮挡实机像素验收。
+- 当前桌面仍是 `591d5561…f714236` shell bundle；本轮只改 Django 直接服务的 `workbench/static/workbench/styles.css`。旧 `styles.css?v=imgsel2` GET 返回源码当前内容，但无 Cache-Control/ETag；模板静态链接已改为 `?v=iframe-density3`，令现有面板刷新请求新 URL。候选实机显示尚待主控确认。
+
+## 最大化与 Dockview 布局保存诊断（2026-10-24，本地真实库集成）
+
+- 真实 runtime8 Dockview 通过生产 group header 的“展开商品”按钮后，`onDidMaximizedGroupChange` 触发一次，`onDidLayoutChange` 为零，生产保存队列没有发 PUT。`JSON.stringify/parse(api.toJSON())` 后的最大化快照新增 `grid.maximizedNode`；普通布局不含此键，恢复动作会移除它。当前源码 `onDidLayoutChange` 才调用 `queueDockLayoutSave`，因此本测试没有伪造最大化 HTTP body，也未将假设描述为实机错误根因。
+- 同一真实 Dockview 中启用 sash 的 pointerdown→move→up 改变了分支尺寸并触发生产 PUT；捕获的 HTTP JSON body 经生产 `validateDockLayouts` 接受。最大化/恢复各自没有 PUT；恢复后再次真实 sash 操作，HTTP body 不含 `maximizedNode` 且 validator 接受。该证据尚未复现主控所见“布局保存失败”提示，也不能排除实际请求时序、宿主响应或运行时差异；目前不改 validator 或生产保存逻辑。
+- 定向真实库 integration 与附近 `dock-layout.test.js`、`scenes.test.js` 共 35 项：33 pass、2 skip、0 fail，exit 0；两个 skip 是需 Cordis context/Loader 与 pinned source/app-boot libraries 的测试。JSDOM 只提供 host 几何，不代表桌面像素、sash视觉或用户现场请求时序。当前桌面候选为 `591d5561…f714236`，没有因本诊断同步或重启。
+
+## Dockview 快速跨组标签拖放候选（2026-10-24，未激活）
+
+- 以真实 DockviewReact 8.6.0 / core 8.6.1、真实 `client.dockview.js` pointer backend 和公开 `addPanel()`/`toJSON()` 建立两组测试；仅用 JSDOM 几何与 hit-test shim。multi-move 正常拖放可合并；修复前同一 pointer ID 的 down→单次越过5px的 move→up 会留下原两组，RED；修复后单次与多次 move 均合并到目标组。pointercancel 不落位，先命中目标再在外部松手也不沿用陈旧目标，所有场景卸载后 DOM 清空。
+- 根因是阈值 move 期间刚创建 PointerDragController，监听器错过了这次 move；若手势立即 up，`_currentTarget` 仍为空。仅在成功 pointerup 且 controller active 时用最终坐标同步 `_handleMove(e)`，再读取目标执行 drop；取消路径不命中也不落位。`scripts/build-dockview-chunk.mjs` 对锁定 MIT Dockview Core 8.6.1 生成结果做唯一锚点、失败关闭的窄变换；当前生成 chunk 与变换前 HEAD 基线逐字节重放后的结果一致。没有修改 Dockview 源依赖、许可证或通用拖放策略。
+- 定向 pointer DnD、真实布局保存/恢复集成及包合同测试共 4 项：4 pass、0 skip、0 fail，exit 0。此为 JSDOM 真实库事件路径证据，不证明 Chromium/Electron 原生指针事件序列、视觉叠层或跨组拖放现场结果；候选未同步/激活，父控需在实际窗口复测。此前的 Sky 拖放尝试仍按当时证据记录，不能追溯改写为通过。
+
+## Dockview 指针提示清理与 2026-10-24 实机复验
+
+- 在 2026-10-24 激活的 bundle `43fbbba7b150cd7a624dc27756014468e085343259b34924e4ca54b1e60db681` 上，Root 实际将“资料”面板拖到另一组内容中心完成交换；两次相隔的稳定观察均未再看到“交换面板/分栏/合并标签”提示，也没有布局保存错误。提示现随 Dockview 原生 `.dv-drop-target` 生命周期清理，离开所有目标时由目标组观察器同步移除，pointerup 后的 0ms 任务兜底清理，卸载会取消计时器并断开观察器。
+- runtime8 真实 Dockview/React/JSDOM 集成测试覆盖拖离目标后原生 overlay 与提示均消失，以及 pointerup final-hit 更新后 settled 状态无提示；Root 独立复跑两个 integration 测试：2 pass、0 skip、0 warning、exit 0、4.05 秒。JSDOM 结果不替代上述实机观察；测试只合成 host 几何，不测像素和物理输入时序。
+- 同一窗口中 Root 实际验证 1707×1019 最大化窗口的分隔条可从距可见抓手约 4px 的位置命中并调整；此前在 `d61f` 候选实测的根/嵌套竖向分栏、header 合并、多标签中心交换、双击最大化/还原、拖向侧栏无落位继续有效，提示清理是其后窄增量。无录屏或逐帧测量，故不声称动画帧率/平滑度经视频计量；实机只确认展开与还原的起终状态。
+- 重启后持久三组布局为左“资料”、右“商品+任务”（任务活动）、下方“商品助手”；Root 随后在 UI 中手动应用推荐布局。只读 `state.json` 中 products 布局当前为外层 60.2/39.8、上层 75.2/24.8、下层 50/50，面板集合为商品、任务、资料、商品助手，`closedPanelIds` 为空。该布局指纹与重启前保存的三组布局不同，说明 Root 的应用推荐操作已写入状态；激活时的 layout-only 私有备份留在项目外，不纳入仓库。
+- 当前 bundle 来源/desktop profile 同步完成，`client.js`、`client.scenes.js`、`client.dockview.js`、`dock-layout.js`、`scene-layout.js`、`scenes.json`、`package.json` 共 7 项哈希匹配；Host `ui-layout/lib/client.js` 仍为 `567B3E3119FD4D132485AA27D92570B956C3F40481B0D3C3D467F53DD3301697`，app-boot 为 `05FCB004972D3CC9CFE9BE3C4F22E0B166641D0CF0CB60E090BC0BB66182C964`。上述结果不覆盖实体手机验收，也不表示整个项目目标完成。
