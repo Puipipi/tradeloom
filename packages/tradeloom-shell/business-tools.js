@@ -676,11 +676,71 @@ function projectExecutionPlan(response, requestedId) {
     return [{ field_key: row.field_key, evidence_ids: validIds }]
     })
   }
+  const SOURCE_TYPES = new Set(['commercial_source', 'labor_analysis'])
+  const SOURCE_FIELDS = new Set(['document_reference', 'party_text', 'item_description', 'quantity', 'unit', 'unit_price',
+    'amount', 'currency', 'notes', 'process', 'observed_seconds', 'observed_quantity', 'observed_unit',
+    'estimated_hourly_rate', 'estimated_efficiency', 'estimated_capacity', 'estimated_piece_rate'])
+  const SOURCE_STATES = new Set(['present', 'empty', 'type_mismatch', 'formula_error', 'formula_cache_missing', 'formula_cache_empty'])
+  const supportingSources = rows => {
+    if (!Array.isArray(rows)) { truncated = true; return [] }
+    if (rows.length > 20) truncated = true
+    return rows.slice(0, 20).flatMap(source => {
+      if (!source || !INTAKE_OPAQUE_ID.test(source.candidate_id ?? '') || !SOURCE_TYPES.has(source.candidate_type)
+        || !INTAKE_OPAQUE_ID.test(source.evidence_id ?? '') || !SOURCE_FIELDS.has(source.field_key)) {
+        truncated = true
+        return []
+      }
+      const typed = source.typed_value && typeof source.typed_value === 'object' && !Array.isArray(source.typed_value)
+        ? source.typed_value : {}
+      const state = SOURCE_STATES.has(typed.state) ? typed.state : 'unknown'
+      if (state === 'unknown' || typed.state !== state) truncated = true
+      const typedValue = { state }
+      if (['text', 'decimal', 'date'].includes(typed.type)) typedValue.type = typed.type
+      else if (typed.type !== undefined) truncated = true
+      if (typed.value === null || typeof typed.value === 'boolean' || (typeof typed.value === 'number' && Number.isFinite(typed.value))) {
+        typedValue.value = typed.value
+      } else if (typeof typed.value === 'string') {
+        typedValue.value = safeText(typed.value, 2_000)
+      } else if (typed.value !== undefined) truncated = true
+      if (typed.truncated === true) { typedValue.truncated = true; truncated = true }
+      const refs = Array.isArray(source.value_refs) ? source.value_refs : []
+      if (!Array.isArray(source.value_refs)) truncated = true
+      if (refs.length > 20) truncated = true
+      const valueRefs = refs.slice(0, 20).flatMap(ref => {
+        if (!ref || !INTAKE_OPAQUE_ID.test(ref.cell_id ?? '') || !INTAKE_OPAQUE_ID.test(ref.snapshot_id ?? '')
+          || !Number.isInteger(ref.sheet_index) || ref.sheet_index < 1 || !INTAKE_COORDINATE.test(ref.coordinate ?? '')) {
+          truncated = true
+          return []
+        }
+        return [{ cell_id: ref.cell_id, snapshot_id: ref.snapshot_id, sheet_index: ref.sheet_index, coordinate: ref.coordinate }]
+      })
+      const boundedName = safeText(source.source_display_name, 200)
+      const projected = {
+        candidate_id: source.candidate_id, candidate_type: source.candidate_type,
+        source_display_name: boundedName,
+        source_display_name_truncated: source.source_display_name_truncated === true || boundedName !== source.source_display_name,
+        source_id: INTAKE_OPAQUE_ID.test(source.source_id ?? '') ? source.source_id : null,
+        source_sha256: /^[a-f0-9]{64}$/.test(source.source_sha256 ?? '') ? source.source_sha256 : null,
+        mapping_id: INTAKE_OPAQUE_ID.test(source.mapping_id ?? '') ? source.mapping_id : null,
+        mapping_revision: Number.isInteger(source.mapping_revision) && source.mapping_revision > 0 ? source.mapping_revision : null,
+        snapshot_id: INTAKE_OPAQUE_ID.test(source.snapshot_id ?? '') ? source.snapshot_id : null,
+        field_key: source.field_key, evidence_id: source.evidence_id,
+        evidence_status: source.evidence_status === 'unverified' ? 'unverified' : 'unknown',
+        sheet_index: Number.isInteger(source.sheet_index) && source.sheet_index > 0 ? source.sheet_index : null,
+        coordinate: INTAKE_COORDINATE.test(source.coordinate ?? '') ? source.coordinate : null,
+        typed_value: typedValue, value_refs: valueRefs,
+      }
+      if (projected.source_id === null || projected.source_sha256 === null || projected.mapping_id === null
+        || projected.mapping_revision === null || projected.snapshot_id === null || projected.evidence_status === 'unknown'
+        || projected.sheet_index === null || projected.coordinate === null) truncated = true
+      return [projected]
+    })
+  }
   const materials = plan.materials.slice(0, 200).flatMap(item => item?.resolution === 'unresolved' && item?.item_ref === null
-    ? [{ resolution: 'unresolved', item_ref: null, proposal: projectMaterialProposal(item.proposal, safeText), supporting_requirement_inputs: evidenceRefs(item.supporting_requirement_inputs || [], 20) }]
+    ? [{ resolution: 'unresolved', item_ref: null, proposal: projectMaterialProposal(item.proposal, safeText), supporting_requirement_inputs: evidenceRefs(item.supporting_requirement_inputs || [], 20), supporting_sources: supportingSources(item.supporting_sources || []) }]
     : (truncated = true, []))
   const operations = plan.operations.slice(0, 100).flatMap(item => item?.resolution === 'unresolved' && item?.operation_ref === null
-    ? [{ resolution: 'unresolved', operation_ref: null, proposal: projectOperationProposal(item.proposal, safeText), supporting_requirement_inputs: evidenceRefs(item.supporting_requirement_inputs || [], 20) }]
+    ? [{ resolution: 'unresolved', operation_ref: null, proposal: projectOperationProposal(item.proposal, safeText), supporting_requirement_inputs: evidenceRefs(item.supporting_requirement_inputs || [], 20), supporting_sources: supportingSources(item.supporting_sources || []) }]
     : (truncated = true, []))
   if (plan.materials.length > 200 || plan.operations.length > 100) truncated = true
   return {

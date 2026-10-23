@@ -1849,6 +1849,18 @@ textarea.intake-requirement-input {
 .execution-plan-evidence summary { cursor: pointer; }
 .execution-plan-check { display: flex; align-items: flex-start; gap: 8px; }
 .execution-plan-check input { width: auto; margin-top: 3px; }
+.execution-plan-source-picker {
+  display: grid;
+  gap: var(--wb-space-2, 8px);
+  padding: var(--wb-space-2, 8px);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+.execution-plan-source-picker summary { cursor: pointer; font-weight: 600; }
+.execution-plan-source-picker label { display: grid; gap: 4px; }
+.execution-plan-source-picker select { width: 100%; max-width: 100%; min-width: 0; }
+.execution-plan-source-linked { display: grid; gap: 4px; overflow-wrap: anywhere; }
 
 .panel-heading,
 .detail-heading,

@@ -180,8 +180,12 @@ def _serialize(obj, *, cell_reference_count: int | None = None):
                 "candidate_type": obj.candidate_type, "schema_version": obj.schema_version,
                 "revision": obj.revision, "mapping_sha256": obj.mapping_sha256, "mapping": obj.mapping}
     if isinstance(obj, IntakeCandidate):
+        source_name = Path(obj.mapping_revision.snapshot.source.original_name or "").name.strip()
+        if not source_name or source_name in {".", ".."}:
+            source_name = f"工作簿-{obj.pk[:8]}.xlsx"
         return {"id": obj.pk, "mapping_id": obj.mapping_revision_id, "source_sha256": obj.source_sha256,
                 "mapping_revision": obj.mapping_revision.revision,
+                "source_display_name": source_name[:200], "source_display_name_truncated": len(source_name) > 200,
                 "candidate_type": obj.candidate_type, "schema_version": obj.schema_version, "status": obj.status,
                 "fields": obj.typed_payload["fields"], "semantics": obj.typed_payload["semantics"],
                 "provenance": obj.provenance}

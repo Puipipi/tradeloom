@@ -184,7 +184,18 @@ test('execution plan reader is bounded, read-only, role-gated before HTTP, and p
     ok: true,
     plan: { id, requirement_revision_id: 'b'.repeat(32), revision: 2, status: 'draft',
       requirement_refs: [{ field_key: 'description', evidence_ids: ['c'.repeat(32)] }],
-      materials: [{ item_ref: null, resolution: 'unresolved', proposal: { description: 'M'.repeat(700), quantity: '0', unit: 'U'.repeat(100), expected_date: null }, supporting_requirement_inputs: [] }],
+      materials: [{ item_ref: null, resolution: 'unresolved', proposal: { description: 'M'.repeat(700), quantity: '0', unit: 'U'.repeat(100), expected_date: null }, supporting_requirement_inputs: [],
+        supporting_sources: [{ candidate_id: 'e'.repeat(32), candidate_type: 'commercial_source', source_display_name: 'quote.xlsx', source_id: 'f'.repeat(32),
+          source_sha256: 'a'.repeat(64), source_display_name_truncated: false, mapping_id: 'b'.repeat(32), mapping_revision: 3,
+          snapshot_id: 'c'.repeat(32), field_key: 'unit_price', evidence_id: 'd'.repeat(32), evidence_status: 'unverified',
+          sheet_index: 1, coordinate: 'B4', typed_value: { state: 'present', type: 'decimal', value: '0' },
+          value_refs: [{ cell_id: '9'.repeat(32), snapshot_id: 'c'.repeat(32), sheet_index: 1, coordinate: 'B4' }],
+          path: 'secret/source.xlsx', raw_value: 'private raw value', formula: '=SUM(A1:A2)' },
+        { candidate_id: '7'.repeat(32), candidate_type: 'labor_analysis', source_display_name: 'L'.repeat(250), source_id: '8'.repeat(32),
+          source_sha256: 'b'.repeat(64), mapping_id: '9'.repeat(32), mapping_revision: 1, snapshot_id: 'a'.repeat(32),
+          field_key: 'process', evidence_id: 'b'.repeat(32), evidence_status: 'unverified', sheet_index: 1, coordinate: 'C2',
+          typed_value: { state: 'formula_error', type: 'text', value: null },
+          value_refs: Array.from({ length: 21 }, (_, index) => ({ cell_id: String(index + 10).padStart(32, '0'), snapshot_id: 'a'.repeat(32), sheet_index: 1, coordinate: `C${index + 2}` })) }] }],
       operations: [{ operation_ref: null, resolution: 'unresolved', proposal: { description: 'cut', sequence: 1 }, supporting_requirement_inputs: [] }] },
     requirement_revision: { id: 'b'.repeat(32), revision: 7, status: 'confirmed', fields: { description: 'F'.repeat(700) },
       source_refs: { description: [{ id: 'c'.repeat(32), field_key: 'description', kind: 'source_record', status: 'unverified', snapshot_id: 'd'.repeat(32), sheet_index: 1, coordinate: 'A1', summary: 'S'.repeat(200), path: 'secret/path', filename: 'secret.xlsx' }, { id: 'invalid-evidence-id', field_key: 'description' }] } },
@@ -221,8 +232,14 @@ test('execution plan reader is bounded, read-only, role-gated before HTTP, and p
   assert.equal(projected.requirement.fields.description.length, 500)
   assert.equal(projected.requirement.source_refs.description[0].summary.length, 160)
   assert.deepEqual(projected.plan.requirement_refs[0].evidence_ids, ['c'.repeat(32)])
+  assert.equal(projected.plan.materials[0].supporting_sources[0].typed_value.value, '0')
+  assert.equal(projected.plan.materials[0].supporting_sources[0].value_refs[0].coordinate, 'B4')
+  assert.equal(projected.plan.materials[0].supporting_sources[1].typed_value.state, 'formula_error')
+  assert.equal(projected.plan.materials[0].supporting_sources[1].typed_value.value, null)
+  assert.equal(projected.plan.materials[0].supporting_sources[1].value_refs.length, 20)
+  assert.equal(projected.plan.materials[0].supporting_sources[1].source_display_name_truncated, true)
   const serialized = JSON.stringify(projected)
-  for (const secret of ['secret/path', 'secret.xlsx', 'private/path', 'drop-me', '999']) assert.equal(serialized.includes(secret), false)
+  for (const secret of ['secret/path', 'secret.xlsx', 'private/path', 'drop-me', '"quantity":999', 'secret/source.xlsx', 'private raw value', '=SUM(A1:A2)']) assert.equal(serialized.includes(secret), false)
   const deliveryFixture = await fixture(t, async (record, res) => {
     if (record.path === '/') return defaultHandler(record, res)
     res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify(responseDto))

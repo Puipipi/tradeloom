@@ -1,18 +1,22 @@
 from __future__ import annotations
 
 import json
+import re
+import zipfile
 from unittest.mock import patch
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from django.test import Client, TransactionTestCase, override_settings
+from django.db import connection
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from openpyxl import Workbook
 
 from workbench.intake.storage import INTAKE_MARKER, INTAKE_MARKER_CONTENT
-from workbench.models import EvidenceRecord, ProductionRequirementDraft, ProductionRequirementRevision
+from workbench.models import EvidenceRecord, IntakeCandidate, IntakeOperationReceipt, ProductionRequirementDraft, ProductionRequirementRevision
+from workbench.intake.mapping import fingerprint
 from workbench.requirements.schemas import REQUIREMENT_FIELDS
 
 
@@ -84,6 +88,67 @@ class ExecutionPlanApiTests(TransactionTestCase):
         )
         self.assertEqual(candidate.status_code, 201, candidate.content)
         return candidate.json()["candidate"]
+
+    def create_source_reference_candidate(self, candidate_type, suffix):
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet["A1"] = "synthetic source label"
+        sheet["A2"] = 0
+        sheet["A3"] = "=1/0"
+        sheet["A4"] = ""
+        output = BytesIO()
+        workbook.save(output)
+        workbook.close()
+        rewritten = BytesIO()
+        with zipfile.ZipFile(BytesIO(output.getvalue())) as original, zipfile.ZipFile(rewritten, "w") as changed:
+            for item in original.infolist():
+                content = original.read(item.filename)
+                if item.filename == "xl/worksheets/sheet1.xml":
+                    content = re.sub(rb'<c r="A3"[^>]*>.*?</c>',
+                                     b'<c r="A3" t="e"><f>1/0</f><v>#DIV/0!</v></c>', content)
+                changed.writestr(item, content)
+        output = rewritten
+        source_response = self.client.post(
+            "/api/intake/sources",
+            {"file": SimpleUploadedFile(f"{suffix}.xlsx", output.getvalue(), "application/octet-stream")},
+            HTTP_IDEMPOTENCY_KEY=f"plan-source-ref-source-{suffix}",
+        )
+        self.assertIn(source_response.status_code, (200, 201), source_response.content)
+        source = source_response.json()["source"]
+        preview = self.client.post(
+            f"/api/intake/sources/{source['id']}/previews", data="{}", content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY=f"plan-source-ref-preview-{suffix}",
+        )
+        self.assertIn(preview.status_code, (200, 201), preview.content)
+        field = "unit_price" if candidate_type == "commercial_source" else "observed_seconds"
+        empty_field = "currency" if candidate_type == "commercial_source" else "observed_unit"
+        mapping = {"schema_version": 1, "candidate_type": candidate_type, "source_sha256": source["sha256"],
+                   "expected_revision": 0, "fields": {
+                       field: {"cells": [{"sheet_index": 1, "coordinate": "A2"}]},
+                       "notes": {"cells": [{"sheet_index": 1, "coordinate": "A3"}]},
+                       empty_field: {"cells": [{"sheet_index": 1, "coordinate": "A4"}]}}}
+        mapped = self.client.post(
+            f"/api/intake/previews/{preview.json()['preview']['id']}/mappings", data=json.dumps(mapping),
+            content_type="application/json", HTTP_IDEMPOTENCY_KEY=f"plan-source-ref-mapping-{suffix}",
+        )
+        self.assertIn(mapped.status_code, (200, 201), mapped.content)
+        created = self.client.post(
+            f"/api/intake/mappings/{mapped.json()['mapping']['id']}/candidates", data="{}",
+            content_type="application/json", HTTP_IDEMPOTENCY_KEY=f"plan-source-ref-candidate-{suffix}",
+        )
+        self.assertIn(created.status_code, (200, 201), created.content)
+        candidate = created.json()["candidate"]
+        evidence_ids = {}
+        for field_key, coordinate in ((field, "A2"), ("notes", "A3"), (empty_field, "A4")):
+            evidence = self.client.post(
+                f"/api/intake/candidates/{candidate['id']}/evidence",
+                data=json.dumps({"schema_version": 1, "kind": "source_record", "field_key": field_key,
+                                 "snapshot_id": preview.json()["preview"]["id"], "sheet_index": 1, "coordinate": coordinate}),
+                content_type="application/json", HTTP_IDEMPOTENCY_KEY=f"plan-source-ref-evidence-{suffix}-{field_key}",
+            )
+            self.assertIn(evidence.status_code, (200, 201), evidence.content)
+            evidence_ids[field_key] = evidence.json()["evidence"]["id"]
+        return candidate, field, evidence_ids[field], evidence_ids["notes"], empty_field, evidence_ids[empty_field], preview.json()["preview"]["id"]
 
     def confirmed_requirement(self, suffix="plan"):
         candidate = self.create_production_candidate(suffix)
@@ -207,6 +272,74 @@ class ExecutionPlanApiTests(TransactionTestCase):
         self.assertEqual(old_detail.json()["requirement_revision"]["id"], requirement.pk)
         self.assertEqual(old_detail.json()["requirement_revision"]["fields"]["description"], requirement.fields["description"])
         self.assertEqual(old_detail.json()["requirement_revision"]["source_refs"]["description"][0]["id"], evidence.pk)
+
+    def test_source_reference_is_bound_and_frozen_for_commercial_and_labor_candidates(self):
+        draft, requirement = self.confirmed_requirement("source-reference")
+        references = [self.create_source_reference_candidate(candidate_type, f"source-reference-{index}")
+                      for index, candidate_type in enumerate(("commercial_source", "labor_analysis"))]
+        for index, candidate_type in enumerate(("commercial_source", "labor_analysis")):
+            candidate, field, evidence_id, error_evidence_id, empty_field, empty_evidence_id, snapshot_id = references[index]
+            body = self.empty_plan(requirement.pk, expected=index)
+            body["materials"] = [{"item_ref": None, "resolution": "unresolved",
+                "proposal": {"description": "synthetic reference", "quantity": None, "unit": None, "expected_date": None},
+                "supporting_requirement_inputs": [],
+                "supporting_source_inputs": [{"candidate_id": candidate["id"], "field_key": field, "evidence_ids": [evidence_id]},
+                    {"candidate_id": candidate["id"], "field_key": "notes", "evidence_ids": [error_evidence_id]},
+                    {"candidate_id": candidate["id"], "field_key": empty_field, "evidence_ids": [empty_evidence_id]}]}]
+            wrong_binding = json.loads(json.dumps(body))
+            wrong_binding["materials"][0]["supporting_source_inputs"][0]["candidate_id"] = references[1 - index][0]["id"]
+            self.assertEqual(self.post_plan(draft.pk, wrong_binding, f"plan-source-reference-wrong-{index}").status_code, 422)
+            wrong_field = json.loads(json.dumps(body))
+            wrong_field["materials"][0]["supporting_source_inputs"][0]["field_key"] = empty_field
+            self.assertEqual(self.post_plan(draft.pk, wrong_field, f"plan-source-reference-field-{index}").status_code, 422)
+            response = self.post_plan(draft.pk, body, f"plan-source-reference-{index}")
+            self.assertEqual(response.status_code, 201, response.content)
+            plan = response.json()["plan"]
+            frozen = plan["materials"][0]["supporting_sources"][0]
+            self.assertEqual(frozen["candidate_id"], candidate["id"])
+            self.assertEqual(frozen["candidate_type"], candidate_type)
+            self.assertEqual(frozen["field_key"], field)
+            self.assertEqual(frozen["evidence_id"], evidence_id)
+            self.assertEqual(frozen["typed_value"]["state"], "present")
+            self.assertEqual(frozen["typed_value"]["value"], "0")
+            self.assertEqual(frozen["value_refs"][0]["coordinate"], "A2")
+            formula_error = plan["materials"][0]["supporting_sources"][1]
+            self.assertEqual(formula_error["typed_value"]["state"], "formula_error")
+            self.assertIsNone(formula_error["typed_value"]["value"])
+            empty_value = plan["materials"][0]["supporting_sources"][2]
+            self.assertEqual(empty_value["typed_value"]["state"], "empty")
+            self.assertIsNone(empty_value["typed_value"]["value"])
+            self.assertNotIn("price_nature", frozen)
+            self.assertNotIn("labor_basis", frozen)
+            replay = self.post_plan(draft.pk, body, f"plan-source-reference-{index}")
+            self.assertEqual(replay.status_code, 200, replay.content)
+            self.assertEqual(replay.json()["plan"]["materials"][0]["supporting_sources"], plan["materials"][0]["supporting_sources"])
+            changed = json.loads(json.dumps(body))
+            changed["materials"][0]["proposal"]["description"] = "different valid request"
+            conflict = self.post_plan(draft.pk, changed, f"plan-source-reference-{index}")
+            self.assertEqual(conflict.status_code, 409, conflict.content)
+            detail = self.client.get(f"/api/execution-plans/{plan['id']}")
+            self.assertEqual(detail.status_code, 200, detail.content)
+            self.assertEqual(detail.json()["plan"]["materials"][0]["supporting_sources"], plan["materials"][0]["supporting_sources"])
+            later_evidence = self.client.post(
+                f"/api/intake/candidates/{candidate['id']}/evidence",
+                data=json.dumps({"schema_version": 1, "kind": "source_record", "field_key": field,
+                                 "snapshot_id": snapshot_id, "sheet_index": 1, "coordinate": "A2"}),
+                content_type="application/json", HTTP_IDEMPOTENCY_KEY=f"plan-source-ref-later-{index}",
+            )
+            self.assertEqual(later_evidence.status_code, 201, later_evidence.content)
+            old_after_new_source = self.client.get(f"/api/execution-plans/{plan['id']}").json()["plan"]
+            self.assertEqual(old_after_new_source["materials"][0]["supporting_sources"], plan["materials"][0]["supporting_sources"])
+            corrupted_provenance = json.loads(json.dumps(candidate["provenance"]))
+            corrupted_provenance[field][0]["source_sha256"] = "0" * 64
+            with connection.cursor() as cursor:
+                cursor.execute("UPDATE workbench_intakecandidate SET provenance = %s::jsonb WHERE id = %s",
+                               [json.dumps(corrupted_provenance), candidate["id"]])
+            next_body = json.loads(json.dumps(body))
+            next_body["expected_revision"] = index + 1
+            mismatch = self.post_plan(draft.pk, next_body, f"plan-source-reference-provenance-{index}")
+            self.assertEqual(mismatch.status_code, 422, mismatch.content)
+            self.assertEqual(mismatch.json()["error_code"], "invalid_execution_evidence")
 
     def test_synthetic_public_import_confirm_then_plan_readback(self):
         draft_id, requirement, candidate = self.public_confirmed_requirement()
@@ -338,6 +471,45 @@ class ExecutionPlanApiTests(TransactionTestCase):
         self.assertEqual(history.status_code, 200, history.content)
         self.assertEqual(len(history.json()["revisions"]), 1)
         self.assertEqual(history.json()["next_offset"], 1)
+
+    def test_legacy_material_and_operation_receipt_replays_without_new_source_keys(self):
+        draft, requirement = self.confirmed_requirement("legacy-source-idempotency")
+        body = self.empty_plan(requirement.pk)
+        body["materials"] = [{"item_ref": None, "resolution": "unresolved",
+            "proposal": {"description": "legacy material", "quantity": None, "unit": None, "expected_date": None},
+            "supporting_requirement_inputs": []}]
+        body["operations"] = [{"operation_ref": None, "resolution": "unresolved",
+            "proposal": {"description": "legacy operation", "sequence": None},
+            "supporting_requirement_inputs": []}]
+        key = "execution-plan-legacy-source-replay-001"
+        created = self.post_plan(draft.pk, body, key)
+        self.assertEqual(created.status_code, 201, created.content)
+        legacy_canonical_plan = {
+            "requirement_revision_id": requirement.pk, "expected_revision": 0, "requirement_refs": [],
+            "materials": [{"item_ref": None, "resolution": "unresolved", "proposal": body["materials"][0]["proposal"],
+                           "supporting_requirement_inputs": []}],
+            "operations": [{"operation_ref": None, "resolution": "unresolved", "proposal": body["operations"][0]["proposal"],
+                            "supporting_requirement_inputs": []}],
+        }
+        receipt = IntakeOperationReceipt.objects.get(idempotency_key=key)
+        receipt.fingerprint = fingerprint({"action": "execution_plan_revision", "draft_id": draft.pk, **legacy_canonical_plan})
+        receipt.save(update_fields=["fingerprint"])
+
+        replay = self.post_plan(draft.pk, body, key)
+
+        self.assertEqual(replay.status_code, 200, replay.content)
+        self.assertEqual(replay.json()["plan"]["id"], created.json()["plan"]["id"])
+        self.assertEqual(replay.json()["plan"], created.json()["plan"])
+        explicit_empty = json.loads(json.dumps(body))
+        explicit_empty["materials"][0]["supporting_source_inputs"] = []
+        explicit_empty["operations"][0]["supporting_source_inputs"] = []
+        same_empty = self.post_plan(draft.pk, explicit_empty, key)
+        self.assertEqual(same_empty.status_code, 200, same_empty.content)
+        self.assertEqual(same_empty.json()["plan"], created.json()["plan"])
+        changed = json.loads(json.dumps(body))
+        changed["materials"][0]["proposal"]["description"] = "changed after legacy receipt"
+        conflict = self.post_plan(draft.pk, changed, key)
+        self.assertEqual(conflict.status_code, 409, conflict.content)
 
     def test_history_can_filter_one_requirement_lineage_and_reports_empty_latest(self):
         draft, requirement = self.confirmed_requirement("history-filter")

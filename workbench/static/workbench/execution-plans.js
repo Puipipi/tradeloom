@@ -6,6 +6,13 @@
   const csrf = document.querySelector('meta[name="csrf-token"]')?.content || "";
   const businessUrl = globalThis.TradeLoomBusiness?.businessUrl || (value => value);
   const opaque = /^[a-f0-9]{32}$/;
+  const sourceTypeLabels = { commercial_source: "采购/报价参考", labor_analysis: "工时/产能估算参考" };
+  const sourceStateLabels = { present: "有值", empty: "空单元格", type_mismatch: "类型不匹配",
+    formula_error: "公式错误缓存", formula_cache_missing: "公式缓存缺失", formula_cache_empty: "公式缓存为空", unknown: "状态未知" };
+  const sourceFieldLabels = { document_reference: "单据编号", party_text: "往来方文本", item_description: "品名文本",
+    quantity: "数量", unit: "单位", unit_price: "单价", amount: "金额", currency: "币种文本", notes: "备注",
+    process: "工序文本", observed_seconds: "观察秒数", observed_quantity: "观察数量", observed_unit: "观察单位",
+    estimated_hourly_rate: "估算小时费率", estimated_efficiency: "估算效率", estimated_capacity: "估算产能", estimated_piece_rate: "估算计件费率" };
   let selected = null;
   let contextGeneration = 0;
   let historyRequestGeneration = 0;
@@ -16,6 +23,9 @@
   let requirementRefs = [];
   let materials = [];
   let operations = [];
+  let sourceCandidates = [];
+  const sourceEvidenceRequests = new Map();
+  const sourceEvidenceMetadata = new Map();
   let busy = false;
   let localDirty = false;
   let pendingRequest = null;
@@ -88,6 +98,166 @@
     return details;
   }
 
+  function addSourceReferencePicker(parent, item, collection, index) {
+    const details = node("details", "execution-plan-source-picker");
+    details.append(node("summary", "", "采购/报价/估算参考（未核实）"));
+    details.append(node("p", "intake-muted", "仅关联已有采购/报价或工时/产能估算导入格；不会确认订单、价格性质或工时口径。"));
+    const candidateSelect = node("select", "intake-requirement-input");
+    candidateSelect.setAttribute("aria-label", "选择采购或劳动估算来源");
+    candidateSelect.append(new Option("选择已有导入来源…", ""));
+    const fieldSelect = node("select", "intake-requirement-input");
+    fieldSelect.setAttribute("aria-label", "选择来源字段");
+    fieldSelect.append(new Option("先选择来源", ""));
+    const cellSelect = node("select", "intake-requirement-input");
+    cellSelect.setAttribute("aria-label", "选择来源工作表和单元格");
+    cellSelect.append(new Option("再选择来源格", ""));
+    const controls = [candidateSelect, fieldSelect, cellSelect];
+    controls.forEach((control, controlIndex) => {
+      const label = node("label", "", ["已有导入来源", "来源字段", "来源工作表格"][controlIndex]);
+      label.append(control); details.append(label);
+    });
+    const linked = node("div", "execution-plan-source-linked");
+    const renderLinked = () => {
+      linked.replaceChildren();
+      for (const reference of item.sourceInputs || []) {
+        for (const evidenceId of reference.evidence_ids) {
+          const metadata = sourceEvidenceMetadata.get(evidenceId);
+          const candidate = sourceCandidates.find(row => row.id === reference.candidate_id);
+          const wrapper = node("div", "execution-plan-source-reference");
+          wrapper.append(node("small", "execution-plan-provenance", `${metadata?.source_display_name || candidate?.source_display_name || "已导入来源"} · ${sourceFieldLabels[reference.field_key] || "来源字段"} · ${metadata ? `工作表 ${metadata.sheet_index}!${metadata.coordinate}` : "来源格"} · 未核实引用`));
+          const remove = button("移除引用", () => {
+            const currentItem = collection[index] || item;
+            currentItem.sourceInputs = (currentItem.sourceInputs || []).map(row => ({ ...row,
+              evidence_ids: row.evidence_ids.filter(id => id !== evidenceId) }))
+              .filter(row => row.evidence_ids.length);
+            collection[index] = currentItem;
+            localDirty = true;
+            render();
+          }, "button secondary small");
+          wrapper.append(remove);
+          linked.append(wrapper);
+        }
+      }
+    };
+    const contextToken = contextGeneration;
+    let candidateNext = { commercial_source: null, labor_analysis: null };
+    let candidateRows = [];
+    const candidateLoaded = { commercial_source: false, labor_analysis: false };
+    const loadCandidatePage = async (type, offset) => {
+      const result = await request(`/api/intake/candidates?candidate_type=${type}&offset=${offset}&limit=20`);
+      if (contextToken !== contextGeneration || !details.isConnected) return;
+      const rows = result.candidates || [];
+      candidateRows.push(...rows.filter(row => !candidateRows.some(existing => existing.id === row.id)));
+      sourceCandidates = [...sourceCandidates.filter(row => !rows.some(candidate => candidate.id === row.id)), ...rows];
+      const next = result.next_offset;
+      if (next !== null && (!Number.isInteger(next) || next <= offset || next > 100000)) throw new Error("来源分页游标无效");
+      candidateNext[type] = next;
+      candidateLoaded[type] = true;
+    };
+    const appendOptions = () => {
+      for (const row of candidateRows) {
+        if (candidateSelect.querySelector(`option[value="${row.id}"]`)) continue;
+        candidateSelect.append(new Option(`${row.source_display_name || "导入文件"} · ${sourceTypeLabels[row.candidate_type] || "其他来源"} · 映射版本 ${row.mapping_revision} · ${row.id.slice(0, 8)}`, row.id));
+      }
+      if (Object.values(candidateNext).some(value => value !== null) && !candidateSelect.querySelector('option[value="__more__"]')) {
+        candidateSelect.append(new Option("加载更多导入来源…", "__more__"));
+      }
+    };
+    details.addEventListener("toggle", async () => {
+      if (!details.open || Object.values(candidateLoaded).every(Boolean)) return;
+      candidateSelect.disabled = fieldSelect.disabled = cellSelect.disabled = true;
+      try {
+        for (const type of Object.keys(candidateLoaded).filter(type => !candidateLoaded[type])) {
+          try {
+            await loadCandidatePage(type, 0);
+            appendOptions();
+          } catch (error) {
+            details.append(node("p", "intake-message is-error", `来源读取失败：${error.message}。重新展开可重试。`));
+          }
+        }
+        candidateSelect.disabled = busy || contextToken !== contextGeneration || !details.isConnected;
+        if (!candidateRows.length) details.append(node("p", "intake-muted", "没有可选的采购/报价或工时估算候选。"));
+      } finally {
+        if (contextToken === contextGeneration && details.isConnected) {
+          fieldSelect.disabled = cellSelect.disabled = busy;
+          candidateSelect.disabled = busy || !Object.values(candidateLoaded).some(Boolean);
+        }
+      }
+    });
+    candidateSelect.addEventListener("change", () => {
+      if (candidateSelect.value === "__more__") {
+        candidateSelect.querySelector('option[value="__more__"]')?.remove();
+        candidateSelect.disabled = true;
+        Promise.all(Object.entries(candidateNext).filter(([, offset]) => offset !== null)
+          .map(([type, offset]) => loadCandidatePage(type, offset))).then(() => appendOptions()).catch(error => {
+            if (contextToken === contextGeneration) announce(`来源读取失败：${error.message}`, true);
+          }).finally(() => { if (contextToken === contextGeneration && details.isConnected) candidateSelect.disabled = busy; });
+        return;
+      }
+      fieldSelect.replaceChildren(new Option("选择来源字段…", ""));
+      cellSelect.replaceChildren(new Option("再选择来源格", ""));
+      const candidate = candidateRows.find(row => row.id === candidateSelect.value);
+      for (const field of Object.keys(candidate?.fields || {})) fieldSelect.append(new Option(sourceFieldLabels[field] || "其他字段", field));
+    });
+    fieldSelect.addEventListener("change", () => {
+      cellSelect.replaceChildren(new Option("选择工作表和单元格…", ""));
+      const candidate = candidateRows.find(row => row.id === candidateSelect.value);
+      for (const ref of candidate?.provenance?.[fieldSelect.value] || []) {
+        const option = new Option(`工作表 ${ref.sheet_index} · ${ref.coordinate}`, `${ref.snapshot_id}|${ref.sheet_index}|${ref.coordinate}`);
+        cellSelect.append(option);
+      }
+    });
+    cellSelect.addEventListener("change", async () => {
+      const candidate = candidateRows.find(row => row.id === candidateSelect.value);
+      if (!candidate || !fieldSelect.value || !cellSelect.value) return;
+      const candidateId = candidate.id;
+      const fieldKey = fieldSelect.value;
+      const [snapshot_id, sheetIndex, coordinate] = cellSelect.value.split("|");
+      const token = contextGeneration;
+      const requirementId = selected?.requirementId;
+      const revisionId = selected?.revision?.id;
+      const sourceIdentity = JSON.stringify([requirementId, revisionId, collection === materials ? "material" : "operation",
+        index, candidateId, fieldKey, snapshot_id, Number(sheetIndex), coordinate]);
+      const priorEvidence = sourceEvidenceRequests.get(sourceIdentity);
+      busy = true; updateSave();
+      try {
+        let evidence = priorEvidence?.evidence;
+        if (!evidence) {
+          const requestKey = priorEvidence?.key || key();
+          sourceEvidenceRequests.set(sourceIdentity, { key: requestKey });
+          const created = await request(`/api/intake/candidates/${encodeURIComponent(candidateId)}/evidence`, {
+            method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": requestKey },
+            body: JSON.stringify({ schema_version: 1, kind: "source_record", field_key: fieldKey,
+              snapshot_id, sheet_index: Number(sheetIndex), coordinate }),
+          });
+          evidence = created.evidence;
+          sourceEvidenceRequests.set(sourceIdentity, { key: requestKey, evidence });
+          sourceEvidenceMetadata.set(evidence.id, { candidate_id: candidateId, source_display_name: candidate.source_display_name,
+            field_key: fieldKey, snapshot_id, sheet_index: Number(sheetIndex), coordinate });
+        }
+        if (!currentContext(token, requirementId, revisionId) || !details.isConnected) return;
+        const currentItem = collection[index] || item;
+        currentItem.sourceInputs ||= [];
+        let reference = currentItem.sourceInputs.find(value => value.candidate_id === candidateId && value.field_key === fieldKey);
+        if (!reference) { reference = { candidate_id: candidateId, field_key: fieldKey, evidence_ids: [] }; currentItem.sourceInputs.push(reference); }
+        if (!reference.evidence_ids.includes(evidence.id)) reference.evidence_ids.push(evidence.id);
+        collection[index] = currentItem;
+        localDirty = true; renderLinked(); announce("已创建未核实来源引用；计划保存后将冻结到新版本。");
+        render();
+      } catch (error) {
+        if (currentContext(token, requirementId, revisionId)) announce(`来源证据创建失败：${error.message}`, true);
+      } finally {
+        if (contextToken === contextGeneration) {
+          busy = false;
+          for (const control of content.querySelectorAll("input, textarea, select, button")) control.disabled = false;
+          updateSave();
+        }
+      }
+    });
+    details.append(linked); parent.append(details); renderLinked();
+    return details;
+  }
+
   function selectedRefs(container) {
     const refs = new Map();
     for (const input of container.querySelectorAll("input[type=checkbox]:checked")) {
@@ -125,14 +295,15 @@
         control.id = `${prefix}-${suffix}`; const label = node("label", "", title); label.htmlFor = control.id; form.append(label, control);
       });
       const support = addEvidencePicker(form, "关联需求依据（可选）", item.support.flatMap(ref => ref.evidence_ids));
-      const values = () => ({ description: description.value || null, quantity: quantity.value || null, unit: unit.value || null, expected_date: expectedDate.value || null, support: selectedRefs(support) });
+      addSourceReferencePicker(form, item, materials, index);
+      const values = () => ({ description: description.value || null, quantity: quantity.value || null, unit: unit.value || null, expected_date: expectedDate.value || null, support: selectedRefs(support), sourceInputs: item.sourceInputs || [] });
       [description, quantity, unit, expectedDate, ...support.querySelectorAll("input")].forEach(input => input.addEventListener("input", () => { materials[index] = values(); localDirty = true; updateSave(); }));
       support.addEventListener("change", () => { materials[index] = values(); localDirty = true; updateSave(); });
       form.append(button("移除", () => { materials.splice(index, 1); localDirty = true; render(); }));
       materialList.append(form);
       materials[index] = values();
     });
-    materialList.append(button("添加物料提议", () => { materials.push({ description: "", quantity: "", unit: "", expected_date: "", support: [] }); localDirty = true; render(); }, "button secondary small"));
+    materialList.append(button("添加物料提议", () => { materials.push({ description: "", quantity: "", unit: "", expected_date: "", support: [], sourceInputs: [] }); localDirty = true; render(); }, "button secondary small"));
     proposalArea.append(materialList);
 
     const operationList = node("div", "execution-plan-item-list");
@@ -147,14 +318,15 @@
         control.id = `${prefix}-${suffix}`; const label = node("label", "", title); label.htmlFor = control.id; form.append(label, control);
       });
       const support = addEvidencePicker(form, "关联需求依据（可选）", item.support.flatMap(ref => ref.evidence_ids));
-      const values = () => ({ description: description.value || null, sequence: sequence.value, support: selectedRefs(support) });
+      addSourceReferencePicker(form, item, operations, index);
+      const values = () => ({ description: description.value || null, sequence: sequence.value, support: selectedRefs(support), sourceInputs: item.sourceInputs || [] });
       [description, sequence, ...support.querySelectorAll("input")].forEach(input => input.addEventListener("input", () => { operations[index] = values(); localDirty = true; updateSave(); }));
       support.addEventListener("change", () => { operations[index] = values(); localDirty = true; updateSave(); });
       form.append(button("移除", () => { operations.splice(index, 1); localDirty = true; render(); }));
       operationList.append(form);
       operations[index] = values();
     });
-    operationList.append(button("添加工序提议", () => { operations.push({ description: "", sequence: "", support: [] }); localDirty = true; render(); }, "button secondary small"));
+    operationList.append(button("添加工序提议", () => { operations.push({ description: "", sequence: "", support: [], sourceInputs: [] }); localDirty = true; render(); }, "button secondary small"));
     proposalArea.append(operationList);
     return proposalArea;
   }
@@ -162,7 +334,7 @@
   function updateSave() {
     const save = content.querySelector("[data-plan-save]");
     if (save) save.disabled = !activeConfirmed() || selected.dirty || selected.saving || busy || !localDirty;
-    if (busy) content.querySelectorAll("input, textarea, button").forEach(control => { control.disabled = true; });
+    if (busy) content.querySelectorAll("input, textarea, select, button").forEach(control => { control.disabled = true; });
   }
 
   function render() {
@@ -193,6 +365,25 @@
       }
       for (const item of plan.materials || []) row.append(node("p", "execution-plan-proposal", `物料人工提议·未核实：${item.proposal?.description || "（未填写描述）"}${item.proposal?.quantity !== null ? ` · ${item.proposal?.quantity ?? ""} ${item.proposal?.unit ?? ""}` : ""}`));
       for (const item of plan.operations || []) row.append(node("p", "execution-plan-proposal", `工序人工提议·未核实：${item.proposal?.description || "（未填写描述）"}${item.proposal?.sequence !== null ? ` · 顺序 ${item.proposal?.sequence ?? ""}` : ""}`));
+      const referencedItems = [...(plan.materials || []).map((item, index) => ({ item, label: `物料提议 ${index + 1}` })),
+        ...(plan.operations || []).map((item, index) => ({ item, label: `工序提议 ${index + 1}` }))];
+      for (const { item, label } of referencedItems) {
+        for (const source of item.supporting_sources || []) {
+          const typed = source.typed_value || {};
+          const typedText = typed.state === "present" ? ` · ${String(typed.value ?? "（空值）").slice(0, 100)}` : ` · ${sourceStateLabels[typed.state] || "状态未知"}`;
+          const provenance = node("small", "execution-plan-provenance", `${label} · 来源参考·未核实：${source.source_display_name || source.candidate_id} · ${sourceTypeLabels[source.candidate_type] || "来源参考"} · 映射版本 ${source.mapping_revision} · ${sourceFieldLabels[source.field_key] || "来源字段"} · 工作表 ${source.sheet_index}!${source.coordinate}${typedText}`);
+          const trace = node("details", "execution-plan-trace");
+          trace.append(node("summary", "", "查看来源标识"));
+          trace.append(node("small", "", `候选 ${source.candidate_id} · 文件 SHA-256 ${source.source_sha256} · 快照 ${source.snapshot_id}`));
+          if (opaque.test(source.source_id || "")) {
+            const link = node("a", "", "打开原文件");
+            link.href = businessUrl(`/api/intake/sources/${encodeURIComponent(source.source_id)}/download`);
+            link.target = "_blank"; link.rel = "noopener";
+            provenance.append(link);
+          }
+          row.append(provenance, trace);
+        }
+      }
       list.append(row);
     }
     if (!history.length) list.append(node("p", "intake-muted", "该需求版本尚无计划草稿。"));
@@ -237,11 +428,11 @@
     const token = contextGeneration;
     const requirementId = selected.requirementId;
     const revision = selected.revision;
-    for (const control of content.querySelectorAll("input, textarea, button")) control.disabled = true;
+    for (const control of content.querySelectorAll("input, textarea, select, button")) control.disabled = true;
     const sequenceInvalid = operations.some(item => item.sequence !== "" && (!/^[1-9]\d*$/.test(item.sequence) || !Number.isSafeInteger(Number(item.sequence))));
     if (sequenceInvalid) {
       announce("工序顺序必须是正整数；当前输入已保留。", true);
-      for (const control of content.querySelectorAll("input, textarea, button")) control.disabled = false;
+      for (const control of content.querySelectorAll("input, textarea, select, button")) control.disabled = false;
       updateSave();
       return;
     }
@@ -251,9 +442,9 @@
       requirement_refs: requirementRefs,
       materials: materials.map(item => ({ item_ref: null, resolution: "unresolved",
         proposal: { description: item.description || null, quantity: item.quantity || null, unit: item.unit || null, expected_date: item.expected_date || null },
-        supporting_requirement_inputs: item.support || [] })),
+        supporting_requirement_inputs: item.support || [], supporting_source_inputs: item.sourceInputs || [] })),
       operations: operations.map(item => ({ operation_ref: null, resolution: "unresolved",
-        proposal: { description: item.description || null, sequence: item.sequence === "" ? null : Number(item.sequence) }, supporting_requirement_inputs: item.support || [] })),
+        proposal: { description: item.description || null, sequence: item.sequence === "" ? null : Number(item.sequence) }, supporting_requirement_inputs: item.support || [], supporting_source_inputs: item.sourceInputs || [] })),
     };
     const serialized = JSON.stringify(body);
     if (!pendingRequest || pendingRequest.serialized !== serialized) pendingRequest = { serialized, key: key() };
@@ -274,7 +465,7 @@
     } finally {
       if (currentContext(token, requirementId, revision.id)) {
         busy = false;
-        for (const control of content.querySelectorAll("input, textarea, button")) control.disabled = false;
+        for (const control of content.querySelectorAll("input, textarea, select, button")) control.disabled = false;
         const currentSave = content.querySelector("[data-plan-save]");
         if (currentSave) currentSave.textContent = "追加保存计划草稿";
         updateSave();
@@ -299,6 +490,7 @@
       contextGeneration++;
       historyRequestGeneration++;
       history = []; requirementRefs = []; materials = []; operations = []; localDirty = false; pendingRequest = null;
+      sourceCandidates = [];
       latestRevision = 0; nextOffset = null; pageOffset = 0; busy = false;
     }
     selected = { phase: next.phase, candidateId: next.candidateId || "", requirementId: next.requirementId || "",
