@@ -4,7 +4,11 @@
 
 **新克隆前请先看：** 仓库包含 TradeLoom 产品源码，但不包含 pinned DSH runtime、PostgreSQL 实例、Python 运行环境、provider API 配置或既有演示数据。源码开发需先按[运行时准备说明](docs/upgrade-harness.md)取得受支持的外部 runtime，并准备 Python 与 PostgreSQL；安装依赖或初始化服务不是 clone 的自动步骤。
 
-当前开发优先级是本地 source-mode。较早记录中的本机桌面快捷方式“织贸助手（本地开发）”依赖该机器仓库外的 candidate7、独立数据根和用户自己的 provider 设置；这不表示该快捷方式已更新为本轮 candidate8 bundle。本轮 candidate8 的本地激活与有限服务验收见下方验证记录。source-mode 已验证真实 DeepSeek Flash 的有限提案与只读工具调用；工作流执行仍使用 `local_mock`/`simulated_rules`，不是完整真实模型业务执行。实体手机尚未验收；p8 安装版不含最近 source 更新且其历史首启问题仍待单独处理。
+### 本轮本地源码候选
+
+`codex/native-workflow-bridge` 分支当前源码检查点为 `c8b3cb5`。本地候选尚未合入或发布，且该分支当前未列在 `origin`；队友从共享 `main` 拉取不到这些候选功能。实现契约和源码验证范围见[商品资料应用契约](docs/plans/2026-10-24-intake-product-application-contract.md)、[原生工作流桥验证](docs/verification/2026-10-24-native-workflow-bridge.md)、[执行计划来源参考验证](docs/verification/2026-10-24-execution-plan-source-references.md)。记录中的合成验证不证明真实 Host、真实模型、GUI 或真实四文件导入已验收。
+
+当前开发优先级是本地 source-mode。较早的本机启动记录涉及既有 candidate7/8 与已发布 UI bundle；不能据此说本轮 launcher/shell/UI 候选已经在运行中的应用里生效。普通 launcher 默认 runtime 仍为 `0.2.1-rc.2-tradeloom-desktop-2`；候选开发可显式指定已准备并带匹配 build receipt 的受管 runtime，示例见[快速开始](docs/quick-start.md)。source-mode 的既有模型/工作流边界及手机、安装版状态见下方说明与验证记录。
 
 快速入口：[快速开始](docs/quick-start.md) · [Agent 开发与接入](docs/agent-development.md) · [验收矩阵](docs/acceptance-matrix.md) · [工作报告](docs/work-report.md) · [2026-10-23 本地工作台验收](docs/verification/2026-10-23-workbench-local-activation.md)
 
@@ -27,7 +31,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\stop-tradeloom.ps1 -DataRoot 
 
 `DataRoot` 首次必须是空目录，启动器会创建所有权标记；后续启动必须继续使用同一目录。启动脚本会从当前活动物理网卡中选择 LAN 地址，多网卡时要求选择。Django 绑定 loopback `3090`，桌面 Host 使用所选私网地址的 `3088`，PostgreSQL 绑定 loopback `55432`。这些命令只管理本 launcher 实例。普通窗口 X 是隐藏窗口；要彻底退出桌面应用，请使用应用菜单。不要用本项目脚本关闭其他 DSH 实例。
 
-本机专用入口仍是桌面快捷方式“织贸助手（本地开发）”；它使用机器外部 runner、candidate7、DataRoot 与自定义 API 配置。只有已在该机器配置这些依赖时才可使用，仓库 clone 不提供其快捷方式或数据。模型通过织贸助手自身的自定义 API 配置保存；不要求 DeepSeek 官方账号登录，API 密钥只应保存在产品自己的数据根/服务端配置，不进入命令、日志或仓库。
+本机专用入口和 provider 配置属于各自机器的既有设置，不随仓库 clone 提供。模型仍通过应用原生 provider 设置路径配置；不要求登录 DeepSeek 官方账号。候选启动时 launcher 为 Django 与 Host 建立同次临时桥接配对；不要手工复制密钥或把密钥放进 `.env`、命令、文档或日志。手机与电脑连接同一 Wi-Fi 后，可使用 Host 的局域网地址和 `3088` 端口；Django `3090` 与 PostgreSQL `55432` 仍绑定 loopback。真实 GUI、手机、模型及 ERP 尚未由本轮候选验收；报价的单位、币种和利润口径待业务确认。
 
 ERPNext 当前默认未配置。后端状态接口与只读查询在管理员显式配置服务端连接前不会访问外部 ERP；普通桌面用户无需安装 Linux、WSL、Docker 或 ERPNext。真实 ERPNext 部署与实体手机验收尚未完成。
 
