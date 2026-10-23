@@ -438,3 +438,10 @@
 - 同一窗口中 Root 实际验证 1707×1019 最大化窗口的分隔条可从距可见抓手约 4px 的位置命中并调整；此前在 `d61f` 候选实测的根/嵌套竖向分栏、header 合并、多标签中心交换、双击最大化/还原、拖向侧栏无落位继续有效，提示清理是其后窄增量。无录屏或逐帧测量，故不声称动画帧率/平滑度经视频计量；实机只确认展开与还原的起终状态。
 - 重启后持久三组布局为左“资料”、右“商品+任务”（任务活动）、下方“商品助手”；Root 随后在 UI 中手动应用推荐布局。只读 `state.json` 中 products 布局当前为外层 60.2/39.8、上层 75.2/24.8、下层 50/50，面板集合为商品、任务、资料、商品助手，`closedPanelIds` 为空。该布局指纹与重启前保存的三组布局不同，说明 Root 的应用推荐操作已写入状态；激活时的 layout-only 私有备份留在项目外，不纳入仓库。
 - 当前 bundle 来源/desktop profile 同步完成，`client.js`、`client.scenes.js`、`client.dockview.js`、`dock-layout.js`、`scene-layout.js`、`scenes.json`、`package.json` 共 7 项哈希匹配；Host `ui-layout/lib/client.js` 仍为 `567B3E3119FD4D132485AA27D92570B956C3F40481B0D3C3D467F53DD3301697`，app-boot 为 `05FCB004972D3CC9CFE9BE3C4F22E0B166641D0CF0CB60E090BC0BB66182C964`。上述结果不覆盖实体手机验收，也不表示整个项目目标完成。
+
+## Dockview 整组标题拖放语义修复（2026-10-24，bundle `cdcd6411…`）
+
+- 真实 Dockview 对空白组标题栏拖动提供 `{viewId, groupId, panelId: null}`。shell 现在按同一 view 的 `groupId` 取源组活动面板：拖到另一组内容中心执行已有交换，源组其余标签与分组几何保留；跨组同组边缘落位仍交给 Dockview 原生分栏，同组中心不交换；缺少或属于其他 view 的 transfer 不改变布局。
+- Root 在 runtime8 实际验证：助手同组标签拖至内容边缘后恢复四组；空白助手组标题拖至资料内容中心成功交换；助手标签拖至资料内容中心反向交换成功；根分隔条 y=546 调整至约 y=656 后恢复；双击下方标题最大化，再双击还原；任务标题拖向侧栏后布局无变化。验证均为合成工作台面板，不涉及业务数据。另此前对同组助手标签边缘拆分、目标组标题合并和中心多标签交换的实机记录继续有效。
+- Node shell 全套使用 runtime8 React/ReactDOM/JSDOM：232 项，219 pass、13 skip、0 fail、exit 0；13 项为需要本机未配置 pinned DSH/Cordis/WebServer 等依赖的条件测试。最终真实 Dockview integration 与 pointer 测试由 Root 独立复跑为 2 pass、0 skip、0 warning、exit 0。全套结果在最后实机复验前已完成；没有把 GUI 实测描述为全套自动化。
+- 官方同步后的 desktop-8 bundle hash 为 `cdcd6411f614adb65085cb609a6e954b1ed752de12ee893165b05af59c24695e`，runtime/profile 中 package 文件与源码逐项一致；app-boot `05FCB004…82C964` 和 ui-layout `567B3E31…01697` 保持不变。JSDOM 事件测试不替代物理输入之外的浏览器/手机验收；本节不代表整体项目目标完成。

@@ -279,7 +279,9 @@ test('real Dockview snapshot survives the client HTTP save and server restore co
       return hit ? [hit] : []
     }
     const previewEvents = []
-    const previewListener = api.onWillShowOverlay(event => previewEvents.push({ kind: event.kind, position: event.position }))
+    const previewListener = api.onWillShowOverlay(event => previewEvents.push({
+      kind: event.kind, position: event.position, transfer: event.getData?.(),
+    }))
     const dragStarts = []
     const dragStartListener = api.onWillDragPanel(event => dragStarts.push(event.panel?.id))
     let pointerId = 90
@@ -392,6 +394,93 @@ test('real Dockview snapshot survives the client HTTP save and server restore co
     await act(async () => { api.fromJSON(recommendation, { reuseExistingPanels: true }); await settle(50) })
     assert.deepEqual(walkLeaves(api.toJSON().grid.root).map(leaf => leaf.views),
       [['business-main'], ['auxiliary'], ['reference'], ['native-chat']], 'the fixture can restore its recommendation after the multitab swap')
+
+    const edgeSource = api.getPanel('auxiliary')
+    const edgeTarget = api.getPanel('business-main')
+    const edgeSourceGroup = edgeTarget.api.group
+    await act(async () => {
+      edgeSource.api.moveTo({ group: edgeSourceGroup, index: 1, skipSetActive: true })
+      edgeTarget.api.setActive()
+      await settle(30)
+    })
+    targetContent = edgeTarget.api.group.element.querySelector('.dv-content-container')
+    targetContent.getBoundingClientRect = () => dropRect
+    edgeTarget.api.group.element.getBoundingClientRect = () => dropRect
+    Object.defineProperties(targetContent, {
+      offsetWidth: { configurable: true, get: () => dropRect.width },
+      offsetHeight: { configurable: true, get: () => dropRect.height },
+    })
+    pointerHits.length = 0
+    previewEvents.length = 0
+    pointerId++
+    const sameGroupTab = activeScene.querySelector('.dv-tab[data-tab-panel-id="auxiliary"]')
+    assert.ok(sameGroupTab?.isConnected)
+    const sameGroupIdBeforeEdge = edgeSourceGroup.id
+    await act(async () => {
+      sameGroupTab.dispatchEvent(dragPointer('pointerdown', 120, 20))
+      dom.window.dispatchEvent(dragPointer('pointermove', 915, 510))
+      dom.window.dispatchEvent(dragPointer('pointermove', 916, 511))
+      assert.ok(previewEvents.some(event => event.kind === 'content' && event.position === 'right'),
+        `same-group tab drag previews a right-edge split; previews=${JSON.stringify(previewEvents)}`)
+      dom.window.dispatchEvent(dragPointer('pointerup', 916, 511))
+      await settle(60)
+    })
+    assert.notEqual(api.getPanel('auxiliary').api.group.id, sameGroupIdBeforeEdge,
+      'dragging a tab out of a same-group multitab center edge creates the native split shown by its preview')
+    assert.equal(api.getPanel('business-main').api.group.id, sameGroupIdBeforeEdge)
+    assert.deepEqual(walkLeaves(api.toJSON().grid.root).map(leaf => leaf.views),
+      [['business-main'], ['auxiliary'], ['reference'], ['native-chat']])
+
+    await act(async () => { api.fromJSON(recommendation, { reuseExistingPanels: true }); await settle(50) })
+    const groupSource = api.getPanel('business-main')
+    const groupTarget = api.getPanel('native-chat')
+    const groupSourceGroup = groupSource.api.group
+    const groupTargetGroup = groupTarget.api.group
+    await act(async () => {
+      api.getPanel('auxiliary').api.moveTo({ group: groupSourceGroup, index: 1, skipSetActive: true })
+      groupSource.api.setActive()
+      await settle(40)
+    })
+    assert.deepEqual(groupSourceGroup.panels.map(panel => panel.id), ['business-main', 'auxiliary'])
+    const groupHeaderSpace = groupSourceGroup.element.querySelector('.dv-void-container')
+    targetContent = groupTargetGroup.element.querySelector('.dv-content-container')
+    assert.ok(groupHeaderSpace && targetContent, 'the source group exposes blank header space and the target exposes its content')
+    targetContent.getBoundingClientRect = () => dropRect
+    groupTargetGroup.element.getBoundingClientRect = () => dropRect
+    Object.defineProperties(targetContent, {
+      offsetWidth: { configurable: true, get: () => dropRect.width },
+      offsetHeight: { configurable: true, get: () => dropRect.height },
+    })
+    pointerHits.length = 0
+    previewEvents.length = 0
+    pointerId++
+    const geometryBeforeGroupSwap = geometrySignature(api.toJSON().grid)
+    const groupIdBeforeGroupSwap = groupSourceGroup.id
+    const targetGroupIdBeforeGroupSwap = groupTargetGroup.id
+    await act(async () => {
+      groupHeaderSpace.dispatchEvent(dragPointer('pointerdown', 120, 20))
+      dom.window.dispatchEvent(dragPointer('pointermove', 700, 510))
+      dom.window.dispatchEvent(dragPointer('pointermove', 701, 511))
+      assert.ok(pointerHits.length > 0, 'group-header drag reaches real Dockview target hit testing')
+      const groupTransfer = previewEvents.find(event => event.kind === 'content')?.transfer
+      assert.ok(groupTransfer, `the real group drag publishes its Dockview transfer; previews=${JSON.stringify(previewEvents)}`)
+      assert.equal(groupTransfer.viewId, api.id)
+      assert.equal(groupTransfer.groupId, groupIdBeforeGroupSwap)
+      assert.equal(groupTransfer.panelId, null, 'a blank-header drag is a group transfer with no panel ID')
+      assert.ok(previewEvents.some(event => event.kind === 'content' && event.position === 'center'),
+        `group drag shows a center content preview; previews=${JSON.stringify(previewEvents)}`)
+      dom.window.dispatchEvent(dragPointer('pointerup', 701, 511))
+      await settle(80)
+    })
+    assert.equal(api.getPanel('business-main').api.group.id, targetGroupIdBeforeGroupSwap,
+      'dropping a whole-group header source at the content center swaps its active panel into the target group')
+    assert.equal(api.getPanel('native-chat').api.group.id, groupIdBeforeGroupSwap,
+      'the content target active panel moves into the dragged source group')
+    assert.deepEqual(api.getPanel('auxiliary').api.group.panels.map(panel => panel.id), ['native-chat', 'auxiliary'],
+      'a group swap preserves the source group nonactive tab')
+    assert.deepEqual(geometrySignature(api.toJSON().grid), geometryBeforeGroupSwap,
+      'a group-header center swap preserves the existing Dockview topology and split sizes')
+    await act(async () => { api.fromJSON(recommendation, { reuseExistingPanels: true }); await settle(50) })
     previewListener.dispose?.()
     dragStartListener.dispose?.()
     const rawPanelRecord = recommendation.panels['business-main']
