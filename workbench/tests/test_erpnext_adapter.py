@@ -36,6 +36,16 @@ def client(transport):
 
 
 class ErpNextAdapterTests(unittest.TestCase):
+    def test_site_url_is_validated_and_credential_free(self):
+        configured = ErpNextConfig(
+            base_url="https://erp.example.test/tenant/",
+            instance_id="demo-instance",
+            api_key="TEST_KEY_DO_NOT_LEAK",
+            api_secret="TEST_SECRET_DO_NOT_LEAK",
+        )
+        self.assertEqual(ErpNextClient(configured).site_url, "https://erp.example.test/tenant")
+        self.assertNotIn("TEST_", ErpNextClient(configured).site_url)
+
     def test_list_uses_endpoint_doctype_allowlists_and_safe_external_reference(self):
         transport = FakeTransport([response({"data": [{
             "name": "ITEM-1",

@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { lstat, readFile, writeFile, realpath, link, unlink } from 'node:fs/promises'
 import path from 'node:path'
+import { sameDirectoryIdentity } from './prepare-profile.mjs'
 
 export const RECEIPT_NAME = '.tradeloom-desktop-build-receipt.json'
 export const RECEIPT_FILES = [
@@ -50,7 +51,7 @@ export async function writeDesktopBuildReceipt({
     throw new Error('receipt 需要外部 builder 的 patch 应用、官方 build 成功及 pinned source 证据。')
   }
   const runtime = await validateOwnedRuntime(runtimePath, releaseRoot)
-  if (await fs.realpath(runtime) !== path.resolve(runtime)) throw new Error('receipt runtime realpath 不匹配。')
+  if (!(await sameDirectoryIdentity(await fs.realpath(runtime), runtime))) throw new Error('receipt runtime realpath 不匹配。')
   const compiledFiles = Object.create(null)
   for (const relative of RECEIPT_FILES) compiledFiles[relative] = await hashOrdinaryFile(runtime, relative, fs)
   const receipt = {

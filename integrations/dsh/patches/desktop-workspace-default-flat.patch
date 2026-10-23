@@ -1,0 +1,90 @@
+diff --git a/packages/client/ui-workspace/src/client/stores.ts b/packages/client/ui-workspace/src/client/stores.ts
+index bf32225b..f86eab8d 100644
+--- a/packages/client/ui-workspace/src/client/stores.ts
++++ b/packages/client/ui-workspace/src/client/stores.ts
+@@ -82,7 +82,7 @@ function copySessionOrders(
+ export function createWorkspaceViewStore(): EngineStoreHandle<WorkspaceViewState, WorkspaceViewActions> {
+   return defineStore({
+     init: (): WorkspaceViewState => ({
+-      groupBy: 'workspace',
++      groupBy: 'flat',
+       orderBy: 'updated',
+       groupExpansion: {},
+       sessionOrderByAccount: {},
+diff --git a/packages/client/ui-workspace/tests/tree.client.spec.ts b/packages/client/ui-workspace/tests/tree.client.spec.ts
+index 9fb549c5..d8eaf4dd 100644
+--- a/packages/client/ui-workspace/tests/tree.client.spec.ts
++++ b/packages/client/ui-workspace/tests/tree.client.spec.ts
+@@ -757,7 +757,7 @@ describe('deriveSearchResults', () => {
+ describe('createWorkspaceViewStore', () => {
+   it('stores view preferences and selects Manual when saving a drag order', () => {
+     const store = createWorkspaceViewStore().create()
+-    expect(store.getSnapshot().groupBy).toBe('workspace')
++    expect(store.getSnapshot().groupBy).toBe('flat')
+     expect(store.getSnapshot().orderBy).toBe('updated')
+     store.actions.setGroupBy('flat')
+     store.actions.setOrderBy('updated', {})
+diff --git a/packages/client/ui-workspace/tests/workspace-browser.client.spec.tsx b/packages/client/ui-workspace/tests/workspace-browser.client.spec.tsx
+index 4b62826c..3aade054 100644
+--- a/packages/client/ui-workspace/tests/workspace-browser.client.spec.tsx
++++ b/packages/client/ui-workspace/tests/workspace-browser.client.spec.tsx
+@@ -28,7 +28,9 @@ afterEach(cleanup)
+ const scrollIntoView = vi.fn()
+ beforeEach(() => {
+   localStorage.clear()
+-  createWorkspaceViewStore().create().actions.setOrderBy('manual', {})
++  const preferences = createWorkspaceViewStore().create()
++  preferences.actions.setGroupBy('workspace')
++  preferences.actions.setOrderBy('manual', {})
+   Element.prototype.scrollIntoView = scrollIntoView
+   scrollIntoView.mockClear()
+ })
+@@ -434,16 +436,19 @@ describe('WorkspaceBrowser', () => {
+     }
+   })
+ 
+-  it('renders the grouped tree by default and switches to the flat list via Group by', () => {
++  it('renders the flat list by default and preserves stored workspace grouping', () => {
++    localStorage.clear()
+     const sessions = sessionState([summary('alpha-s', 2), summary('beta-s', 1)])
+     const b = mount({
+       useSessions: hook(sessions),
+       useWorkspaces: hook(workspaceState([workspace('alpha', ['alpha-s']), workspace('beta', ['beta-s'])])),
+     })
+-    expect(screen.getByText('工作区')).toBeTruthy()
+-    expect(screen.getByText('alpha')).toBeTruthy()
+-    // Sessions hidden while their group is folded.
+-    expect(screen.queryByText('alpha-s')).toBeNull()
++    expect(b.store.getSnapshot().groupBy).toBe('flat')
++    expect(screen.getByText('会话')).toBeTruthy()
++    expect(screen.queryByText('工作区')).toBeNull()
++    expect(screen.queryByText('alpha')).toBeNull()
++    expect(screen.getByText('alpha-s')).toBeTruthy()
++    expect(screen.getByText('beta-s')).toBeTruthy()
+ 
+     fireEvent.click(screen.getByRole('button', { name: '视图选项' }))
+     expect(screen.getByText('分组方式')).toBeTruthy() // the menu heading label
+@@ -453,15 +458,19 @@ describe('WorkspaceBrowser', () => {
+     ])
+     expect(screen.getByRole('menuitem', { name: '按工作区' }).querySelector('svg')).toBeTruthy()
+     expect(screen.getByRole('menuitem', { name: '手动排序' }).querySelector('svg')).toBeTruthy()
++    fireEvent.click(screen.getByRole('menuitem', { name: '按工作区' }))
++    expect(b.store.getSnapshot().groupBy).toBe('workspace')
++    expect(screen.getByText('工作区')).toBeTruthy()
++    expect(screen.getByText('alpha')).toBeTruthy()
++
++    // Return to the single list through the same view menu.
++    fireEvent.click(screen.getByRole('button', { name: '视图选项' }))
+     fireEvent.click(screen.getByRole('menuitem', { name: '单列表' }))
+-    // Store-driven flip: title changes, rows flatten newest-first, headers gone.
+     expect(b.store.getSnapshot().groupBy).toBe('flat')
+     expect(screen.getByText('会话')).toBeTruthy()
+-    expect(screen.queryByText('alpha')).toBeNull()
+     expect(screen.getByText('alpha-s')).toBeTruthy()
+-    expect(screen.getByText('beta-s')).toBeTruthy()
+ 
+-    // Back to workspace grouping through the same menu.
++    // Existing explicit view selection remains available.
+     fireEvent.click(screen.getByRole('button', { name: '视图选项' }))
+     expect(screen.getByRole('menuitem', { name: '手动排序' }).hasAttribute('disabled')).toBe(false)
+     fireEvent.click(screen.getByRole('menuitem', { name: '按工作区' }))

@@ -1,0 +1,13 @@
+# Execution plan final regression gates
+
+Date: 2026-10-22. This adds broad regression evidence after local activation. It does not establish native desktop rendering, an authenticated proxy session, model inference, mobile behavior, deployment readiness, or the unresolved real-world intake/approval process.
+
+The full Django suite ran through the existing owned runner under label `workbench.tests` against the fresh, uniquely named PostgreSQL 17 test database `tradeloom_test_phase4_final_gates_20261022_01` on the owned 127.0.0.1:55435 cluster. Run ID `2026-10-22T105536-020Z-72048`, runner exit 0: **492 passed, 0 failed, 0 skipped**, 99.135 seconds. Candidate8 Node and ToolRuntime paths were explicitly injected for the live loopback execution-plan HTTP test; all business data in that test is synthetic and written only to the test database and its guarded external test directory. Existing product settings were not relaxed.
+
+All `packages/tradeloom-shell/tests/*.test.js` ran with the fixed candidate8 Node v24.21.0 and local candidate8 ToolRuntime, Cordis, WebServer, React, and app-boot modules, plus the existing external jsdom 30.1.3 runtime. Exit 0: **154 passed, 0 failed, 0 skipped**. These tests use mocks, synthetic payloads, and local test servers; no model provider or ERP connection was invoked.
+
+The first shell run is retained as a harness dependency-selection failure: it passed the Web capability module where the test expected the WebServer implementation, producing 153 passed and 1 failed. Updating only the test invocation to candidate8 `packages/host/webserver/lib/index.js` made the full shell suite pass. No product source or expected result was changed.
+
+Commands, exact runner and dependency hashes, stdout/stderr, test database identity, per-run results, and pre-run source hashes are in the external evidence directory `<LOCAL_USER_ROOT>\Desktop\ICT\workspace\testing\execution-plan-final-gates-20261022\`. `final-gates-result.json` summarizes the two successful full runs; the failed initial Node attempt remains in `node-initial-wrong-webserver-library/`. The test runner reported “Using existing test database” because Django's keepdb runner prints that line for keepdb mode; the owned runner had first rejected any already-existing database with this unique name, so that message is not evidence of test database reuse.
+
+The main database remains at migration 0009 with zero execution plan rows. No source or product behavior was changed by these final test runs. The full application goal remains incomplete: the original desktop window and logged-in proxy were not visually verified, no real model was called, and actual material arrival/reporting, review, and correction practices still need business confirmation.

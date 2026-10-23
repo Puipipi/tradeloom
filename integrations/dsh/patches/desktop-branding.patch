@@ -8553,3 +8553,171 @@ index f1f7080..7c8cc87 100644
    'hero.preview': 'Preview',
    'hero.chooseWorkspace': 'Choose workspace',
    'session.hierarchy': 'Session hierarchy',
+
+diff --git a/apps/desktop/tests/expected/fatal-address-in-use-en.txt b/apps/desktop/tests/expected/fatal-address-in-use-en.txt
+index 1e9a9b62..e350d22a 100644
+--- a/apps/desktop/tests/expected/fatal-address-in-use-en.txt
++++ b/apps/desktop/tests/expected/fatal-address-in-use-en.txt
+@@ -1,5 +1,5 @@
+-DeepSeek Harness is unavailable
++TradeLoom is unavailable
+ The application could not start or stopped unexpectedly.
+-Another DSH instance (such as dsh web or the desktop app) is running. They cannot start at the same time. Quit the other running DSH instance, then restart.
++A local TradeLoom service address is already in use. Check whether TradeLoom is already running, then try again.
+ Exit
+ Restart
+diff --git a/apps/desktop/tests/expected/fatal-address-in-use-zh-CN.txt b/apps/desktop/tests/expected/fatal-address-in-use-zh-CN.txt
+index 30cad3d0..478a4f8b 100644
+--- a/apps/desktop/tests/expected/fatal-address-in-use-zh-CN.txt
++++ b/apps/desktop/tests/expected/fatal-address-in-use-zh-CN.txt
+@@ -1,5 +1,5 @@
+-DeepSeek Harness 无法使用
++织贸助手无法使用
+ 应用无法启动或已意外停止。
+-有其他正在运行的 DSH（如其他 dsh web、桌面端），无法同时启动，请退出其他正在运行的 DSH 后重启。
++织贸助手本地服务地址被占用。请检查织贸助手是否已运行，然后重试。
+ 退出
+ 重启
+diff --git a/apps/desktop/tests/expected/fatal-dialog-en.txt b/apps/desktop/tests/expected/fatal-dialog-en.txt
+index 0dd0a62e..67f92ff5 100644
+--- a/apps/desktop/tests/expected/fatal-dialog-en.txt
++++ b/apps/desktop/tests/expected/fatal-dialog-en.txt
+@@ -1,4 +1,4 @@
+-DeepSeek Harness is unavailable
++TradeLoom is unavailable
+ The application could not start or stopped unexpectedly.
+ Desktop Host failed
+ Plugin initialization failed
+@@ -6,4 +6,4 @@ Plugin initialization failed
+ If application files are missing or damaged, close the application and reinstall it. Your tasks are stored separately.
+ Exit
+ Restart
+-Disable third-party plugins, back up profile patch, and restart
++Back up settings, disable third-party plugins, and exit
+diff --git a/apps/desktop/tests/expected/fatal-dialog-with-report-en.txt b/apps/desktop/tests/expected/fatal-dialog-with-report-en.txt
+index aaa637ca..fba83141 100644
+--- a/apps/desktop/tests/expected/fatal-dialog-with-report-en.txt
++++ b/apps/desktop/tests/expected/fatal-dialog-with-report-en.txt
+@@ -1,4 +1,4 @@
+-DeepSeek Harness is unavailable
++TradeLoom is unavailable
+ The application could not start or stopped unexpectedly.
+ Desktop Host failed
+ Plugin initialization failed
+@@ -7,4 +7,4 @@ Diagnostic report: C:\Users\someone\AppData\Roaming\DeepSeek Harness\logs\crash-
+ If application files are missing or damaged, close the application and reinstall it. Your tasks are stored separately.
+ Exit
+ Restart
+-Disable third-party plugins, back up profile patch, and restart
++Back up settings, disable third-party plugins, and exit
+diff --git a/apps/desktop/tests/expected/fatal-dialog-with-report-zh-CN.txt b/apps/desktop/tests/expected/fatal-dialog-with-report-zh-CN.txt
+index 353b59f4..924d4fb8 100644
+--- a/apps/desktop/tests/expected/fatal-dialog-with-report-zh-CN.txt
++++ b/apps/desktop/tests/expected/fatal-dialog-with-report-zh-CN.txt
+@@ -1,4 +1,4 @@
+-DeepSeek Harness 无法使用
++织贸助手无法使用
+ 应用无法启动或已意外停止。
+ Desktop Host failed
+ Plugin initialization failed
+@@ -7,4 +7,4 @@ Plugin initialization failed
+ 如果应用文件缺失或损坏，请关闭应用并重新安装。任务数据存储在独立位置。
+ 退出
+ 重启
+-禁用第三方插件、备份 profile patch 并重启
++备份设置、禁用第三方插件并退出
+diff --git a/apps/desktop/tests/expected/fatal-dialog-zh-CN.txt b/apps/desktop/tests/expected/fatal-dialog-zh-CN.txt
+index 6c40644c..967ce3c8 100644
+--- a/apps/desktop/tests/expected/fatal-dialog-zh-CN.txt
++++ b/apps/desktop/tests/expected/fatal-dialog-zh-CN.txt
+@@ -1,4 +1,4 @@
+-DeepSeek Harness 无法使用
++织贸助手无法使用
+ 应用无法启动或已意外停止。
+ Desktop Host failed
+ Plugin initialization failed
+@@ -6,4 +6,4 @@ Plugin initialization failed
+ 如果应用文件缺失或损坏，请关闭应用并重新安装。任务数据存储在独立位置。
+ 退出
+ 重启
+-禁用第三方插件、备份 profile patch 并重启
++备份设置、禁用第三方插件并退出
+diff --git a/apps/desktop/package.json b/apps/desktop/package.json
+--- a/apps/desktop/package.json
++++ b/apps/desktop/package.json
+@@ -1,5 +1,6 @@
+ {
+   "name": "@deepseek-ai/dsh-desktop",
++  "dshDesktopAppId": "cn.tradeloom.workbench",
+   "description": "Electron desktop shell for a bundled dsh runtime and external plugins",
+   "version": "0.2.1-rc.2",
+   "private": true,
+diff --git a/scripts/client-build-environment.client.spec.ts b/scripts/client-build-environment.client.spec.ts
+index 3c89262..3ca5bed 100644
+--- a/scripts/client-build-environment.client.spec.ts
++++ b/scripts/client-build-environment.client.spec.ts
+@@ -83,7 +83,7 @@ describe('client build environment', () => {
+     const expected = {
+       DSH_CLIENT_BUILD_PROFILE: 'official',
+       DSH_CLIENT_COMMIT_HASH: COMMIT_HASH.slice(0, 7),
+-      DSH_CLIENT_TITLE: 'DeepSeek Harness',
++      DSH_CLIENT_TITLE: '织贸助手',
+       DSH_CLIENT_VERSION: '1.2.3',
+     } as const
+ 
+@@ -113,7 +113,7 @@ describe('client build environment', () => {
+     expect(resolveClientBuildEnvironment(parent)).toEqual({
+       DSH_CLIENT_BUILD_PROFILE: 'official',
+       DSH_CLIENT_COMMIT_HASH: COMMIT_HASH.slice(0, 7),
+-      DSH_CLIENT_TITLE: 'DeepSeek Harness',
++      DSH_CLIENT_TITLE: '织贸助手',
+       DSH_CLIENT_VERSION: '1.2.3',
+     })
+     expect(() => {
+@@ -129,13 +129,13 @@ describe('client build environment', () => {
+     expect(clientBuildProcessEnvironment(parent, {
+       DSH_CLIENT_BUILD_PROFILE: 'official',
+       DSH_CLIENT_COMMIT_HASH: COMMIT_HASH.slice(0, 7),
+-      DSH_CLIENT_TITLE: 'DeepSeek Harness',
++      DSH_CLIENT_TITLE: '织贸助手',
+       DSH_CLIENT_VERSION: '1.2.3',
+     })).toEqual({
+       PATH: '/bin',
+       DSH_CLIENT_BUILD_PROFILE: 'official',
+       DSH_CLIENT_COMMIT_HASH: COMMIT_HASH.slice(0, 7),
+-      DSH_CLIENT_TITLE: 'DeepSeek Harness',
++      DSH_CLIENT_TITLE: '织贸助手',
+       DSH_CLIENT_VERSION: '1.2.3',
+     })
+     expect(repositoryCommitHash('/unused', { DSH_CLIENT_COMMIT_HASH: COMMIT_HASH })).toBe(COMMIT_HASH.slice(0, 7))
+@@ -160,7 +160,7 @@ describe('client build environment', () => {
+     expect(officialClientBuildEnvironment(fixtureRoot)).toEqual({
+       DSH_CLIENT_BUILD_PROFILE: 'official',
+       DSH_CLIENT_COMMIT_HASH: commit,
+-      DSH_CLIENT_TITLE: 'DeepSeek Harness',
++      DSH_CLIENT_TITLE: '织贸助手',
+       DSH_CLIENT_VERSION: '1.2.3-rc.4',
+     })
+ 
+@@ -269,7 +269,7 @@ describe('client build environment', () => {
+     const officialEnvironment = {
+       DSH_CLIENT_BUILD_PROFILE: 'official',
+       DSH_CLIENT_COMMIT_HASH: COMMIT_HASH.slice(0, 7),
+-      DSH_CLIENT_TITLE: 'DeepSeek Harness',
++      DSH_CLIENT_TITLE: '织贸助手',
+       DSH_CLIENT_VERSION: '1.2.3',
+     }
+     const official = buildFixture(officialEnvironment)
+diff --git a/scripts/client-build-environment.ts b/scripts/client-build-environment.ts
+index 6c616cf..eecba73 100644
+--- a/scripts/client-build-environment.ts
++++ b/scripts/client-build-environment.ts
+@@ -19,7 +19,7 @@ export const CLIENT_BUILD_PROFILE_SELECTOR = 'DSH_BUILD_CLIENT_PROFILE'
+ /** Public client environment required by official DSH artifacts. */
+ const OFFICIAL_CLIENT_BUILD_ENVIRONMENT = {
+   DSH_CLIENT_BUILD_PROFILE: 'official',
+-  DSH_CLIENT_TITLE: 'DeepSeek Harness',
++  DSH_CLIENT_TITLE: '织贸助手',
+ } as const
+ 
+ /** Public variable carrying the source commit embedded in client artifacts. */

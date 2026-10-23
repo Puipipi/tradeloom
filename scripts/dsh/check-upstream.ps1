@@ -12,7 +12,7 @@ $workspaceRoot = Split-Path -Parent $repoRoot
 $runtimeRoot = [IO.Path]::GetFullPath((Join-Path $workspaceRoot 'workspace\runtime\tradeloom-harness'))
 $releaseRoot = Join-Path $runtimeRoot 'releases'
 $testRoot = [IO.Path]::GetFullPath((Join-Path $workspaceRoot 'workspace\testing\dsh-slot-patches\temp-runtimes'))
-$patchNames = @('ui-layout-shell-top.patch', 'ui-sidebar-agents.patch', 'reasoning-hidden.patch', 'desktop-identity.patch', 'desktop-host-lan.patch', 'desktop-business-csrf.patch', 'desktop-managed-update.patch', 'desktop-websocket-authority.patch', 'native-provider-ui-fix.patch', 'desktop-startup-account-free.patch', 'desktop-branding.patch')
+$patchNames = @('ui-layout-shell-top.patch', 'ui-sidebar-agents.patch', 'reasoning-hidden.patch', 'desktop-identity.patch', 'desktop-host-lan.patch', 'desktop-business-csrf.patch', 'desktop-managed-update.patch', 'desktop-websocket-authority.patch', 'native-provider-ui-fix.patch', 'desktop-startup-account-free.patch', 'desktop-branding.patch', 'desktop-fatal-restart-in-place.patch', 'desktop-workspace-default-flat.patch')
 $patchedFiles = @(
   'packages/client/ui-layout/src/client/index.ts',
   'packages/client/ui-layout/src/client/AppFrame.tsx',
@@ -28,11 +28,15 @@ $patchedFiles = @(
   'apps/desktop/scripts/electron-builder-config.mjs',
   'apps/desktop/scripts/desktop-package-environment.mjs',
   'apps/desktop/scripts/desktop-package-environment.d.mts',
+  'scripts/client-build-environment.ts',
+  'scripts/client-build-environment.client.spec.ts',
   'apps/desktop/scripts/package-target.ts',
   'apps/desktop/scripts/desktop-build-paths.mjs',
   'apps/desktop/scripts/desktop-build-paths.d.mts',
   'apps/desktop/scripts/smoke-packaged-runtime.ts',
+  'apps/desktop/package.json',
   'apps/desktop/src/main.ts',
+  'apps/desktop/src/fatal-recovery.ts',
   'apps/desktop/src/locale.ts',
   'apps/desktop/renderer/assets/welcome-brand.svg',
   'apps/desktop/resources/icon-windows.png',
@@ -49,9 +53,16 @@ $patchedFiles = @(
   'apps/desktop/tests/desktop-package-environment.spec.ts',
   'apps/desktop/tests/desktop-build-paths.spec.ts',
   'apps/desktop/tests/main-startup.spec.ts',
+  'apps/desktop/tests/fatal-recovery.spec.ts',
   'apps/desktop/tests/expected/about-panel.json',
   'apps/desktop/tests/expected/application-menu-en-US.json',
   'apps/desktop/tests/expected/application-menu-zh-CN.json',
+  'apps/desktop/tests/expected/fatal-address-in-use-en.txt',
+  'apps/desktop/tests/expected/fatal-address-in-use-zh-CN.txt',
+  'apps/desktop/tests/expected/fatal-dialog-en.txt',
+  'apps/desktop/tests/expected/fatal-dialog-zh-CN.txt',
+  'apps/desktop/tests/expected/fatal-dialog-with-report-en.txt',
+  'apps/desktop/tests/expected/fatal-dialog-with-report-zh-CN.txt',
   'apps/web/index.html',
   'apps/web/public/manifest.webmanifest',
   'apps/web/public/favicon.svg',
@@ -61,7 +72,10 @@ $patchedFiles = @(
   'packages/client/ui-settings-models/src/client/CustomProviderCard.tsx',
   'packages/client/ui-settings-models/src/client/ProviderEditor.tsx',
   'packages/client/ui-settings-models/src/client/locales.ts',
-  'packages/client/ui-settings-models/tests/provider-form.client.spec.tsx'
+  'packages/client/ui-settings-models/tests/provider-form.client.spec.tsx',
+  'packages/client/ui-workspace/src/client/stores.ts',
+  'packages/client/ui-workspace/tests/tree.client.spec.ts',
+  'packages/client/ui-workspace/tests/workspace-browser.client.spec.tsx'
 )
 $generatedPatchFiles = @('apps/desktop/src/websocket-authority.ts', 'apps/desktop/tests/websocket-authority.spec.ts', 'apps/desktop/tests/desktop-installer-include.spec.ts')
 
@@ -105,7 +119,7 @@ function Invoke-Git([string]$WorkingDirectory, [string[]]$Arguments) {
   return (($output | ForEach-Object { [string]$_ }) -join "`n").Trim()
 }
 
-function Test-PatchSet([string]$SourceDirectory, [bool]$Reverse) {
+function Test-PatchSet([string]$SourceDirectory, [bool]$Reverse, [bool]$ValidatePinnedTargets = $true) {
   $conflicts = @()
   $requiredFiles = @($patchedFiles)
   if ($Reverse) { $requiredFiles += $generatedPatchFiles }
@@ -115,17 +129,86 @@ function Test-PatchSet([string]$SourceDirectory, [bool]$Reverse) {
     }
   }
   if ($conflicts.Count -gt 0) { return ,$conflicts }
-  foreach ($name in $patchNames) {
-    $patch = Join-Path $patchRoot $name
-    $gitArgs = @('-C', $SourceDirectory, 'apply', '--check')
-    if ($Reverse) { $gitArgs += '--reverse' }
-    $gitArgs += $patch
-    $output = & git @gitArgs 2>&1
-    if ($LASTEXITCODE -ne 0) {
-      $conflicts += [ordered]@{ patch = $name; details = @($output | ForEach-Object { [string]$_ }) }
+
+  $orderedNames = @($patchNames)
+  $checkDirectory = $SourceDirectory
+  $temporaryReverseRoot = $null
+  if ($Reverse) {
+    [Array]::Reverse($orderedNames)
+    if (-not (Test-Path -LiteralPath $testRootCanonical)) { New-Item -ItemType Directory -Path $testRootCanonical -Force | Out-Null }
+    $temporaryReverseRoot = Join-Path $testRootCanonical ('reverse-' + [guid]::NewGuid().ToString('N'))
+    if (-not (Test-NoReparseAncestors $temporaryReverseRoot)) {
+      return ,@([ordered]@{ patch = 'patch-set'; details = @('Reverse check scratch path has a reparse-point ancestor.') })
+    }
+    New-Item -ItemType Directory -Path $temporaryReverseRoot | Out-Null
+    $checkDirectory = $temporaryReverseRoot
+    foreach ($relativePath in $requiredFiles) {
+      $sourcePath = Join-Path $SourceDirectory $relativePath
+      $destinationPath = Join-Path $checkDirectory $relativePath
+      $destinationParent = Split-Path -Parent $destinationPath
+      if (-not (Test-Path -LiteralPath $destinationParent)) { New-Item -ItemType Directory -Path $destinationParent -Force | Out-Null }
+      Copy-Item -LiteralPath $sourcePath -Destination $destinationPath
+    }
+    & git -C $checkDirectory init --quiet
+    if ($LASTEXITCODE -ne 0) { return ,@([ordered]@{ patch = 'patch-set'; details = @('Unable to initialize isolated reverse-check fixture.') }) }
+    & git -C $checkDirectory config core.autocrlf false
+    if ($LASTEXITCODE -ne 0) { return ,@([ordered]@{ patch = 'patch-set'; details = @('Unable to set reverse-check line-ending policy.') }) }
+    & git -C $checkDirectory add -- @requiredFiles
+    if ($LASTEXITCODE -ne 0) { return ,@([ordered]@{ patch = 'patch-set'; details = @('Unable to index isolated reverse-check targets.') }) }
+  }
+
+  try {
+    foreach ($name in $orderedNames) {
+      $patch = Join-Path $patchRoot $name
+      $gitArgs = @('-C', $checkDirectory, 'apply', '--check')
+      if ($Reverse) { $gitArgs += '--reverse' }
+      $gitArgs += $patch
+      $output = & git @gitArgs 2>&1
+      if ($LASTEXITCODE -ne 0) {
+        $conflicts += [ordered]@{ patch = $name; details = @($output | ForEach-Object { [string]$_ }) }
+        break
+      }
+      $applyArgs = @('-C', $checkDirectory, 'apply')
+      if ($Reverse) { $applyArgs += '--reverse' }
+      $applyArgs += $patch
+      $output = & git @applyArgs 2>&1
+      if ($LASTEXITCODE -ne 0) {
+        $conflicts += [ordered]@{ patch = $name; details = @($output | ForEach-Object { [string]$_ }) }
+        break
+      }
+    }
+
+    if ($conflicts.Count -eq 0 -and $ValidatePinnedTargets) {
+      foreach ($property in $lock.targetFiles.PSObject.Properties) {
+        $target = Join-Path $checkDirectory $property.Name
+        $expected = if ($Reverse) { [string]$property.Value.baseSha256 } else { [string]$property.Value.newSha256 }
+        $actual = if (Test-Path -LiteralPath $target -PathType Leaf) { (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToLowerInvariant() } else { $null }
+        if ($actual -ne $expected) {
+          $conflicts += [ordered]@{ patch = 'patch-set'; file = $property.Name; details = @("Target SHA-256 mismatch after ordered patch application; expected $expected, found $actual.") }
+          break
+        }
+      }
+    }
+    if ($conflicts.Count -eq 0) {
+      foreach ($relativePath in $generatedPatchFiles) {
+        $target = Join-Path $checkDirectory $relativePath
+        $exists = Test-Path -LiteralPath $target -PathType Leaf
+        if (($Reverse -and $exists) -or (-not $Reverse -and -not $exists)) {
+          $conflicts += [ordered]@{ patch = 'patch-set'; file = $relativePath; details = @('Generated patch target does not match the expected ordered patch-set state.') }
+          break
+        }
+      }
+    }
+    return ,$conflicts
+  } finally {
+    if ($temporaryReverseRoot -and (Test-Path -LiteralPath $temporaryReverseRoot)) {
+      $resolvedScratch = Resolve-CanonicalPath $temporaryReverseRoot
+      $safePrefix = $testRootCanonical.TrimEnd('\') + '\reverse-'
+      if ((Test-NoReparseAncestors $resolvedScratch) -and (Test-NoReparseAncestors $testRootCanonical) -and $resolvedScratch.StartsWith($safePrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        Remove-Item -LiteralPath $resolvedScratch -Recurse -Force
+      }
     }
   }
-  return ,$conflicts
 }
 
 $runtimeInput = [IO.Path]::GetFullPath($RuntimePath)
@@ -209,7 +292,7 @@ try {
   }
   & git -C $scratch add -- LICENSE @patchedFiles
   if ($LASTEXITCODE -ne 0) { throw 'Unable to index candidate patch targets for an exact apply check.' }
-  $conflicts = Test-PatchSet $scratch $false
+  $conflicts = Test-PatchSet $scratch $false $false
   if ($conflicts.Count -gt 0) {
     Write-Result @{ status = 'candidate_conflict'; candidateRef = $CandidateRef; candidateCommit = $candidate; conflicts = $conflicts; targetMutated = $false } 31
   }

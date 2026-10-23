@@ -1,5 +1,28 @@
-param([ValidateSet('desktop', 'web')][string]$Mode = 'desktop', [string]$DataRoot)
+﻿param(
+  [ValidateSet('desktop', 'web')][string]$Mode = 'desktop',
+  [string]$DataRoot,
+  [string]$ErpNextConfigFile,
+  [string]$Runtime
+)
 $ErrorActionPreference = 'Stop'
+$runtimeProvided = $PSBoundParameters.ContainsKey('Runtime')
+if ($runtimeProvided) {
+  if ([string]::IsNullOrWhiteSpace($Runtime)) {
+    throw 'Runtime 参数必须提供一个非空路径。'
+  }
+  if ($Runtime -match '["\r\n]' -or $Runtime -notmatch '^(?:[A-Za-z]:[\\/]|\\\\[^\\]+\\[^\\]+(?:\\|$))') {
+    throw 'Runtime 必须是无引号、无换行的绝对路径。'
+  }
+}
+$erpNextConfigProvided = $PSBoundParameters.ContainsKey('ErpNextConfigFile')
+if ($erpNextConfigProvided) {
+  if ([string]::IsNullOrWhiteSpace($ErpNextConfigFile)) {
+    throw 'ERPNext 配置参数必须提供一个非空文件路径。'
+  }
+  if ($ErpNextConfigFile -match '["\r\n]' -or -not [IO.Path]::IsPathRooted($ErpNextConfigFile)) {
+    throw 'ERPNext 配置文件必须使用绝对路径。'
+  }
+}
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $nodeCommand = Get-Command node.exe -ErrorAction SilentlyContinue
 $node = if ($nodeCommand) { $nodeCommand.Source } else { $null }
@@ -59,6 +82,12 @@ $processInfo.FileName = $node
 $processInfo.WorkingDirectory = $repoRoot
 $processInfo.UseShellExecute = $false
 $processInfo.Arguments = '"' + $entry + '" start --mode ' + $Mode + ' --host "' + $hostIp + '" --candidates "' + $payload + '"'
+if ($runtimeProvided) {
+  $processInfo.Arguments += ' --runtime "' + $Runtime + '"'
+}
+if ($erpNextConfigProvided) {
+  $processInfo.Arguments += ' --erpnext-config-file "' + $ErpNextConfigFile + '"'
+}
 if (Test-Path Env:TRADELOOM_DB_PASSWORD) {
   $processInfo.EnvironmentVariables['TRADELOOM_DB_PASSWORD'] = $env:TRADELOOM_DB_PASSWORD
 } else {

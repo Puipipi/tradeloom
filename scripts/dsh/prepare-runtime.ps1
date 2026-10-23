@@ -84,7 +84,7 @@ if (-not (Test-Path -LiteralPath $lockPath)) {
 }
 
 $lock = Get-Content -LiteralPath $lockPath -Raw | ConvertFrom-Json
-$patchNames = @('ui-layout-shell-top.patch', 'ui-sidebar-agents.patch', 'reasoning-hidden.patch', 'desktop-identity.patch', 'desktop-host-lan.patch', 'desktop-business-csrf.patch', 'desktop-managed-update.patch', 'desktop-websocket-authority.patch', 'native-provider-ui-fix.patch', 'desktop-startup-account-free.patch', 'desktop-branding.patch')
+$patchNames = @('ui-layout-shell-top.patch', 'ui-sidebar-agents.patch', 'reasoning-hidden.patch', 'desktop-identity.patch', 'desktop-host-lan.patch', 'desktop-business-csrf.patch', 'desktop-managed-update.patch', 'desktop-websocket-authority.patch', 'native-provider-ui-fix.patch', 'desktop-startup-account-free.patch', 'desktop-branding.patch', 'desktop-fatal-restart-in-place.patch', 'desktop-workspace-default-flat.patch')
 foreach ($name in $patchNames) {
   $file = Join-Path $patchRoot $name
   if (-not (Test-Path -LiteralPath $file)) { Write-Result @{ status = 'patch_missing'; patch = $name } 24 }

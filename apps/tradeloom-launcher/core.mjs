@@ -68,6 +68,62 @@ export function launcherPipeName(home) {
   return '\\\\.\\pipe\\tradeloom-launcher-' + createHash('sha256').update(path.resolve(home).toLowerCase()).digest('hex').slice(0, 24)
 }
 
+export function requestStop(home, { timeoutMs = 30_000 } = {}) {
+  return new Promise((resolve, reject) => {
+    const socket = net.createConnection(launcherPipeName(home))
+    socket.setEncoding('utf8')
+    let connected = false
+    let settled = false
+    let response = ''
+    const finish = (error, value) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      socket.removeListener('connect', onConnect)
+      socket.removeListener('data', onData)
+      socket.removeListener('end', onEnd)
+      if (error) {
+        socket.destroy()
+        reject(error)
+      } else {
+        socket.end()
+        resolve(value)
+      }
+    }
+    const onConnect = () => {
+      connected = true
+      socket.write('STOP\n', error => {
+        if (error) finish(new Error(`无法连接启动器：${error.message}`))
+      })
+    }
+    const onData = chunk => {
+      response += chunk
+      const newline = response.indexOf('\n')
+      if (newline < 0) return
+      const acknowledgement = response.slice(0, newline).trim()
+      if (acknowledgement === '织贸助手已停止。') finish(null, acknowledgement)
+      else finish(new Error(acknowledgement || '启动器返回了空停止响应。'))
+    }
+    const onEnd = () => finish(new Error('启动器关闭了停止请求，但未返回确认。'))
+    const onClose = () => {
+      if (!settled) finish(new Error('启动器关闭了停止请求，但未返回确认。'))
+      socket.removeListener('error', onError)
+    }
+    const onError = error => {
+      const message = !connected && (error.code === 'ENOENT' || error.code === 'ECONNREFUSED')
+        ? '未找到由本启动器管理的运行实例。'
+        : `无法连接启动器：${error.message}`
+      finish(new Error(message))
+    }
+    const timer = setTimeout(() => finish(new Error('等待启动器停止确认超时。')), timeoutMs)
+    socket.once('connect', onConnect)
+    socket.on('data', onData)
+    socket.once('end', onEnd)
+    socket.once('close', onClose)
+    socket.once('error', onError)
+  })
+}
+
 export function serveStopRequest(socket, stopAll, onStopped = () => {}) {
   let payload = ''
   let handled = false
@@ -133,6 +189,7 @@ export function buildChildEnvironment(source, paths, extra = {}) {
   const env = {}
   for (const name of Object.keys(source)) {
     if (/^DSH_/i.test(name) || secretPattern.test(name) || /^TRADELOOM_.*(?:API_KEY|TOKEN|SECRET|PASSWORD|BASE_URL|ENDPOINT)$/i.test(name)
+      || /^TRADELOOM_(?:DATA_ROOT|INTAKE_ROOT)$/i.test(name)
       || /^(?:ROUTER|CAVEMAN|LLM)_(?:.*(?:API_KEY|TOKEN|SECRET|PASSWORD|BASE_URL|ENDPOINT|PROVIDER|MODEL).*)$/i.test(name)) continue
     env[name] = source[name]
   }
@@ -147,6 +204,15 @@ export function buildChildEnvironment(source, paths, extra = {}) {
     XDG_DATA_HOME: canonical(paths.xdgData),
   })
   return env
+}
+
+export function buildDjangoChildEnvironment(source, paths, extra = {}) {
+  const dataRoot = canonical(paths.dataRoot)
+  return buildChildEnvironment(source, paths, {
+    ...extra,
+    TRADELOOM_DATA_ROOT: dataRoot,
+    TRADELOOM_INTAKE_ROOT: path.join(dataRoot, 'private', 'intake'),
+  })
 }
 
 export function buildDesktopChildEnvironment(source, paths, { runtimePath, host, port }) {

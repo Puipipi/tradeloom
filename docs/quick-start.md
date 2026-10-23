@@ -23,7 +23,11 @@ py -3.14 -m venv $pythonRoot
 
 通用准备命令和锁定 commit、marker、patch receipt 的验证方法见[运行时准备与升级说明](upgrade-harness.md)。准备脚本使用仓库父目录下的 `workspace/research/references/deepseek-harness` 和 `workspace/runtime/tradeloom-harness/releases/<version>`。这些外部目录须自行按说明创建；clone 不会带入它们。
 
-当前普通启动脚本的默认候选由 `apps/tradeloom-launcher/candidate-payload.mjs` 固定为 `0.2.1-rc.2-tradeloom-desktop-2`。它不会下载 runtime，也没有 `-Runtime` 参数。source-mode 还需要与该发行目录相符的 compiled desktop、`.tradeloom-runtime-owned` marker 和 `.tradeloom-desktop-build-receipt.json`；仅运行 `prepare-runtime.ps1` 不满足启动条件。本机“织贸助手（本地开发）”快捷方式使用项目外 candidate7、数据根和 runner，是机器专用入口，不随仓库提供。
+当前普通启动脚本的默认候选由 `apps/tradeloom-launcher/candidate-payload.mjs` 固定为 `0.2.1-rc.2-tradeloom-desktop-2`。它不会下载 runtime；需要指定已准备好的发行目录时，可向 `scripts/launch-tradeloom.ps1` 传入 `-Runtime <绝对路径>`。source-mode 还需要与该发行目录相符的 compiled desktop、`.tradeloom-runtime-owned` marker 和 `.tradeloom-desktop-build-receipt.json`；仅运行 `prepare-runtime.ps1` 不满足启动条件。本机“织贸助手（本地开发）”快捷方式可使用机器专属 runtime、DataRoot 与 runner，具体入口见[本地启动入口核验](verification/2026-10-23-local-start-entry.md)；这些本机路径不随仓库提供。
+
+source-mode 桌面还需要上游开发 project descriptor：`apps/desktop/.desktop-build/development/project/desktop-runtime.json`。它由 DSH 的 `prepareDevelopmentProject` 根据已构建的 Desktop、Host 与依赖目录生成，独立于 patched runtime 准备、官方 Desktop build 和 TradeLoom build receipt；launcher 会在启动 Django 或 Electron 前检查该普通文件及基本结构，缺失时明确拒绝启动。上游 `apps/desktop/scripts/dev.ts` 会调用 `prepareDevelopmentProject`，随后继续准备 primary runtime 并启动 Electron，因此它不是纯准备命令；不要为了生成 descriptor 而把 `dev.ts` 当成不会启动窗口的步骤。安装版走独立的 packaged bootstrap，不要求此开发 descriptor。
+
+source-mode 的 Electron 产品身份由锁定补丁 `integrations/dsh/patches/desktop-branding.patch` 写入 pinned `apps/desktop/package.json` 的 `dshDesktopAppId`；启动器会检查该清单身份。不要手改外部 runtime 的上游清单；更新身份时应修改受管品牌补丁并同步校验锁。
 
 ## 启动与停止
 
@@ -44,6 +48,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\stop-tradeloom.ps1 -DataRoot 
 
 普通窗口 X 只隐藏窗口；要结束应用，请使用应用菜单中的退出。不要用这些脚本关闭其他 DSH 实例。
 
+如果启动故障对话框中选择“备份设置、禁用第三方插件并退出”，应用会退出而不会自行重启。之后请从织贸助手快捷方式重新打开。
+
 ## 配置和当前能力边界
 
 - [`.env.example`](../.env.example) 是占位模板，不含真实密码或 API Key；真实设置只放本机环境/受保护数据根。无需 DeepSeek 官方登录；在织贸助手自己的 provider 设置中配置所选兼容 API。
@@ -51,4 +57,4 @@ powershell -ExecutionPolicy Bypass -File .\scripts\stop-tradeloom.ps1 -DataRoot 
 - ERPNext 默认未配置。管理员准备连接前，后端状态仍为未连接且不会访问 ERP 外部服务；普通桌面用户不需要安装 Linux、WSL、Docker 或 ERPNext。
 - 窄屏网页视口通过过业务验收，实体手机尚未验收。p8 安装版未包含最近 source-mode 更新，且其历史首启问题仍待单独处理。
 
-本机 GUI、candidate7 和独立数据根的证据见[验收矩阵](acceptance-matrix.md)及[工作报告](work-report.md)。这些本机记录不是 fresh clone、其他机器、安装版、实体手机或真实 ERP 服务的验收证据。
+本机 GUI、专属 runtime、数据根与 runner 的启动证据见[本地启动入口核验](verification/2026-10-23-local-start-entry.md)、[验收矩阵](acceptance-matrix.md)及[工作报告](work-report.md)。这些本机记录不是 fresh clone、其他机器、安装版、实体手机或真实 ERP 服务的验收证据。

@@ -8,7 +8,7 @@ export const HOME_MARKER = '.tradeloom-owned'
 export const HOME_MARKER_VALUE = 'tradeloom-dsh-apphome-v1\n'
 export { ROLE_IDS } from './roles.js'
 
-const initialState = () => ({ version: 1, roles: {}, budgets: {}, userProfile: { displayName: '演示资料（待配置）', notes: '' }, sceneWorkbench: null, dockLayouts: { version: 2, scenes: {} } })
+const initialState = () => ({ version: 1, roles: {}, budgets: {}, sessionCreateOperations: {}, pendingSessionCreateByRole: {}, userProfile: { displayName: '演示资料（待配置）', notes: '' }, sceneWorkbench: null, dockLayouts: { version: 2, scenes: {} } })
 const samePath = (left, right) => resolve(left).toLocaleLowerCase('en-US') === resolve(right).toLocaleLowerCase('en-US')
 const writeQueues = new Map()
 

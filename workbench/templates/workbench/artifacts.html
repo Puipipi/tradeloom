@@ -4,6 +4,204 @@
 {% block page_title %}交付物{% endblock %}
 {% block content %}
 <div class="page-stack">
+  <section class="panel intake-workbench" data-testid="intake-workbench"
+    data-sources-url="{% business_path '/api/intake/sources' %}"
+    data-source-preview-url="{% business_path '/api/intake/sources/__SOURCE__/previews' %}"
+    data-preview-url="{% business_path '/api/intake/previews/__SNAPSHOT__' %}"
+    data-mapping-url="{% business_path '/api/intake/previews/__SNAPSHOT__/mappings' %}"
+    data-candidate-create-url="{% business_path '/api/intake/mappings/__MAPPING__/candidates' %}"
+    data-candidates-url="{% business_path '/api/intake/candidates' %}"
+    data-candidate-url="{% business_path '/api/intake/candidates/__CANDIDATE__' %}"
+    data-candidate-links-url="{% business_path '/api/intake/candidates/__CANDIDATE__/links' %}"
+    data-narratives-url="{% business_path '/api/intake/narratives' %}"
+    data-narrative-lines-url="{% business_path '/api/intake/narratives/__NARRATIVE__/lines' %}"
+    data-narrative-annotations-url="{% business_path '/api/intake/narratives/__NARRATIVE__/annotations' %}"
+    data-requirement-draft-url="{% business_path '/api/intake/candidates/__CANDIDATE__/requirement-drafts' %}"
+    data-requirement-url="{% business_path '/api/production-requirements/__REQUIREMENT__' %}"
+    data-requirement-history-url="{% business_path '/api/production-requirements/__REQUIREMENT__/revisions' %}"
+    data-requirement-confirm-url="{% business_path '/api/production-requirements/__REQUIREMENT__/confirm' %}">
+    <div class="panel-heading">
+      <div>
+        <h2>来源资料整理</h2>
+        <p>保存 Excel 原件、查看来源单元格，并把人工选择的字段整理成待确认候选。</p>
+      </div>
+      <span class="tag demo-tag">原件私有 · 不自动合并</span>
+    </div>
+    <p class="intake-note">只支持 .xlsx。上传与预览不会写入产品版本或 ERP；字段含义和资料候选之间的关联由你明确判断。</p>
+    <div class="intake-task-tabs" role="tablist" aria-label="资料工作区">
+      <button type="button" role="tab" id="intake-task-tab-sources" data-intake-task-tab="sources" aria-controls="intake-task-panel-sources" aria-selected="true" tabindex="0">原件与预览</button>
+      <button type="button" role="tab" id="intake-task-tab-fields" data-intake-task-tab="fields" aria-controls="intake-task-panel-fields" aria-selected="false" tabindex="-1">字段整理</button>
+      <button type="button" role="tab" id="intake-task-tab-links" data-intake-task-tab="links" aria-controls="intake-task-panel-links" aria-selected="false" tabindex="-1">候选关联</button>
+      <button type="button" role="tab" id="intake-task-tab-narratives" data-intake-task-tab="narratives" aria-controls="intake-task-panel-narratives" aria-selected="false" tabindex="-1">访谈依据</button>
+      <button type="button" role="tab" id="intake-task-tab-requirements" data-intake-task-tab="requirements" aria-controls="intake-task-panel-requirements" aria-selected="false" tabindex="-1">生产要求</button>
+      <button type="button" role="tab" id="intake-task-tab-plans" data-intake-task-tab="plans" aria-controls="intake-task-panel-plans" aria-selected="false" tabindex="-1">物料与工序计划</button>
+    </div>
+    <section class="intake-task-panel" id="intake-task-panel-sources" data-intake-task-panel="sources" role="tabpanel" aria-labelledby="intake-task-tab-sources" tabindex="0">
+    <form class="intake-upload" data-testid="intake-upload">
+      <label class="field">
+        <span>选择工作簿</span>
+        <input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" data-intake-file required>
+      </label>
+      <button class="button primary" type="submit">保存来源原件</button>
+      <p class="intake-message" role="status" aria-live="polite" data-intake-upload-message></p>
+    </form>
+    <div class="intake-columns">
+      <section class="intake-subpanel" aria-labelledby="intake-sources-title">
+        <div class="intake-subheading">
+          <h3 id="intake-sources-title">来源工作簿</h3>
+          <button class="button secondary small" type="button" data-intake-refresh-sources>刷新</button>
+        </div>
+        <div class="intake-source-list" data-testid="intake-sources" aria-live="polite"></div>
+      </section>
+      <section class="intake-subpanel intake-main-preview" aria-labelledby="intake-preview-title">
+        <div class="intake-subheading">
+          <h3 id="intake-preview-title">单元格预览</h3>
+          <span class="intake-muted" data-intake-preview-status>选择一个来源查看。</span>
+        </div>
+        <div class="intake-preview-controls">
+          <label>工作表<select data-intake-sheet disabled></select></label>
+          <label>起始行<input type="number" min="1" value="1" data-intake-row-start disabled></label>
+          <label>起始列<input type="number" min="1" value="1" data-intake-col-start disabled></label>
+          <button class="button secondary small" type="button" data-intake-load-window disabled>查看区域</button>
+        </div>
+        <div class="intake-grid-wrap" data-testid="intake-preview-grid" tabindex="0" aria-label="工作簿单元格网格">
+          <p class="intake-muted">预览最多一次显示 500 个单元格。</p>
+        </div>
+        <div class="intake-image-list" data-intake-images></div>
+        <details class="intake-detail" data-intake-sheet-details hidden>
+          <summary>工作表信息与解析提示</summary>
+          <div data-intake-sheet-metadata></div>
+        </details>
+      </section>
+    </div>
+    </section>
+    <section class="intake-task-panel" id="intake-task-panel-fields" data-intake-task-panel="fields" role="tabpanel" aria-labelledby="intake-task-tab-fields" tabindex="0" hidden>
+    <div class="intake-columns">
+      <section class="intake-subpanel" aria-labelledby="intake-mapping-title">
+        <div class="intake-subheading"><h3 id="intake-mapping-title">字段映射</h3></div>
+        <p class="intake-muted">先选候选类别和字段，再点击上方单元格，将其作为该字段的来源。</p>
+        <div class="intake-mapping-controls">
+          <label>候选类别<select data-intake-candidate-type disabled></select></label>
+          <label>当前字段<select data-intake-active-field disabled></select></label>
+          <button class="button primary small" type="button" data-intake-save-mapping disabled>保存映射</button>
+          <button class="button secondary small" type="button" data-intake-create-candidate disabled>生成待确认候选</button>
+        </div>
+        <div class="intake-field-map" data-testid="intake-mapping"></div>
+        <p class="intake-message" role="status" aria-live="polite" data-intake-mapping-message></p>
+      </section>
+      <section class="intake-subpanel" aria-labelledby="intake-candidates-title">
+        <div class="intake-subheading">
+          <h3 id="intake-candidates-title">待确认候选</h3>
+          <button class="button secondary small" type="button" data-intake-refresh-candidates>刷新</button>
+        </div>
+        <div class="intake-candidate-list" data-testid="intake-candidates"></div>
+        <pre class="intake-candidate-detail" data-intake-candidate-detail hidden></pre>
+      </section>
+    </div>
+    </section>
+    <section class="intake-task-panel" id="intake-task-panel-links" data-intake-task-panel="links" role="tabpanel" aria-labelledby="intake-task-tab-links" tabindex="0" hidden>
+    <section class="intake-subpanel intake-links-workspace" data-testid="intake-links" aria-labelledby="intake-links-title">
+      <div class="intake-subheading">
+        <h3 id="intake-links-title">资料候选关联</h3>
+        <span class="intake-muted">人工关联判断 · 不自动合并</span>
+      </div>
+      <p class="intake-muted">关联记录说明你对同一来源或不同来源的两条候选之间关系的判断，不代表真实产品身份已经核实，也不会修改候选、订单或原件。历史按最近判断在前显示，可载入较早记录。</p>
+      <div class="intake-link-pairs">
+        <fieldset data-link-side="left">
+          <legend>来源候选</legend>
+          <label>来源资料<select data-link-source="left"><option value="">正在读取来源资料…</option></select></label>
+          <button class="button secondary small" type="button" data-link-more-sources="left" hidden>再载入一些来源资料</button>
+          <button class="button secondary small" type="button" data-link-retry-sources="left" hidden>重试读取来源资料</button>
+          <label>候选<select data-link-candidate="left" disabled><option value="">先选择来源资料</option></select></label>
+          <button class="button secondary small" type="button" data-link-more-candidates="left" hidden>再载入一些候选</button>
+          <button class="button secondary small" type="button" data-link-retry-candidates="left" hidden>重试读取候选</button>
+          <p class="intake-message" role="status" aria-live="polite" data-link-status="left"></p>
+          <div class="intake-link-history" data-link-history="left" aria-live="polite">选择候选查看其关联判断历史。</div>
+          <button class="button secondary small" type="button" data-link-more-history="left" hidden>载入更早的关联判断</button>
+        </fieldset>
+        <fieldset data-link-side="right">
+          <legend>目标候选</legend>
+          <label>来源资料<select data-link-source="right"><option value="">正在读取来源资料…</option></select></label>
+          <button class="button secondary small" type="button" data-link-more-sources="right" hidden>再载入一些来源资料</button>
+          <button class="button secondary small" type="button" data-link-retry-sources="right" hidden>重试读取来源资料</button>
+          <label>候选<select data-link-candidate="right" disabled><option value="">先选择来源资料</option></select></label>
+          <button class="button secondary small" type="button" data-link-more-candidates="right" hidden>再载入一些候选</button>
+          <button class="button secondary small" type="button" data-link-retry-candidates="right" hidden>重试读取候选</button>
+          <p class="intake-message" role="status" aria-live="polite" data-link-status="right"></p>
+          <div class="intake-link-history" data-link-history="right" aria-live="polite">选择候选查看其关联判断历史。</div>
+          <button class="button secondary small" type="button" data-link-more-history="right" hidden>载入更早的关联判断</button>
+        </fieldset>
+      </div>
+      <form data-link-form>
+        <label>关联判断<select name="decision" required><option value="suggested">建议关联</option><option value="confirmed">确认关联判断</option><option value="rejected">否决此关联</option></select></label>
+        <label class="intake-link-reason">判断理由<textarea name="reason" maxlength="1000" required rows="3" placeholder="写明你为何提出、确认或否决这项关联"></textarea></label>
+        <button class="button primary small" type="submit" data-link-submit disabled>保存关联判断</button>
+        <p class="intake-message" role="status" aria-live="polite" data-link-message></p>
+      </form>
+    </section>
+    </section>
+    <div class="intake-task-panels">
+      <section class="intake-task-panel" id="intake-task-panel-narratives" data-intake-task-panel="narratives" role="tabpanel" aria-labelledby="intake-task-tab-narratives" tabindex="0" hidden>
+      <section class="intake-subpanel" aria-labelledby="intake-narratives-title">
+        <div class="intake-subheading">
+          <h3 id="intake-narratives-title">文字资料与出处</h3>
+          <span class="intake-muted">私有保存 · 按行引用</span>
+        </div>
+        <form class="intake-narrative-upload" data-intake-narrative-upload>
+          <label class="field"><span>添加 UTF-8 文本资料</span><input type="file" accept=".txt,text/plain" data-intake-narrative-file required></label>
+          <button class="button secondary small" type="submit">保存资料</button>
+        </form>
+        <p class="intake-message" role="status" aria-live="polite" data-intake-narrative-message></p>
+        <div class="intake-source-list" data-testid="intake-narratives" aria-live="polite"></div>
+        <div class="intake-narrative-lines" data-testid="intake-narrative-lines" aria-live="polite">选择一份资料查看行内容。</div>
+        <section class="intake-narrative-annotation" data-testid="intake-narrative-annotation" aria-label="文字资料来源说明" hidden>
+          <div data-intake-annotation-summary class="intake-muted">尚未记录来源说明。</div>
+          <button class="button secondary small" type="button" data-intake-annotation-edit>添加来源说明</button>
+          <form data-intake-annotation-form hidden>
+            <label class="field"><span>说明类型</span><select name="source_kind" required>
+              <option value="transcript_excerpt">录音转写摘录</option><option value="secondary_summary_analysis">二手整理与分析</option><option value="user_supplement">用户补充</option><option value="unknown">未知</option>
+            </select></label>
+            <label class="field"><span>录音日期（可留空）</span><input type="date" name="recording_date"></label>
+            <label class="field"><span>核听状态</span><select name="audio_review_status">
+              <option value="unknown">未知</option><option value="not_checked">未核听</option><option value="operator_claimed_checked">录入者表示已核听</option>
+            </select></label>
+            <label class="field"><span>内容状态</span><input name="content_status" value="unconfirmed" readonly></label>
+            <button class="button primary small" type="submit" data-intake-annotation-save>保存来源说明</button>
+          </form>
+          <p class="intake-message" role="status" aria-live="polite" data-intake-annotation-message></p>
+          <button class="button secondary small" type="button" data-intake-annotation-retry hidden>重新读取说明</button>
+          <button class="button secondary small" type="button" data-intake-annotation-history>查看历史</button>
+          <div data-intake-annotation-history-list hidden></div>
+        </section>
+      </section>
+      </section>
+      <section class="intake-task-panel" id="intake-task-panel-requirements" data-intake-task-panel="requirements" role="tabpanel" aria-labelledby="intake-task-tab-requirements" tabindex="0" hidden>
+      <section class="intake-subpanel intake-requirement-panel" aria-labelledby="intake-requirements-title">
+        <div class="intake-subheading">
+          <h3 id="intake-requirements-title">生产需求草稿</h3>
+          <span class="intake-muted" data-intake-requirement-context>先选择一个生产指令候选。</span>
+        </div>
+        <p class="intake-message" role="status" aria-live="polite" data-intake-requirement-message></p>
+        <div data-testid="intake-requirement-workspace" aria-live="polite">
+          <p class="intake-muted">此处只保存来源明确的本地草稿。已确认不代表可以生产或已提交 ERP。</p>
+        </div>
+      </section>
+      <button class="button secondary small" type="button" data-intake-open-plan>查看物料与工序计划</button>
+      </section>
+    </div>
+    <section class="intake-task-panel" id="intake-task-panel-plans" data-intake-task-panel="plans" role="tabpanel" aria-labelledby="intake-task-tab-plans" tabindex="0" hidden>
+    <section class="intake-subpanel execution-plan-panel" data-testid="execution-plan-workbench"
+      data-plan-collection-url="{% business_path '/api/production-requirements/__REQUIREMENT__/execution-plan-revisions' %}">
+      <div class="intake-subheading">
+        <h3>物料与工序计划草稿</h3>
+        <span class="intake-muted">仅基于已确认需求版本</span>
+      </div>
+      <p class="intake-muted">物料与工序均为人工提议、未核实；实际到料/产量未记录。这里不判断齐套、排产或开始状态。</p>
+      <div data-testid="execution-plan-content" aria-live="polite"><p class="intake-muted">选择已确认的生产需求版本。</p></div>
+    </section>
+    </section>
+    {{ intake_field_schemas|json_script:"intake-field-schemas" }}
+  </section>
   <section class="panel">
     <div class="panel-heading">
       <div>
@@ -47,3 +245,4 @@
   </section>
 </div>
 {% endblock %}
+{% block scripts %}<script src="{{ '/static/workbench/execution-plans.js'|business_url }}" defer></script><script src="{{ '/static/workbench/intake.js'|business_url }}" defer></script><script src="{{ '/static/workbench/intake-links.js'|business_url }}" defer></script>{% endblock %}

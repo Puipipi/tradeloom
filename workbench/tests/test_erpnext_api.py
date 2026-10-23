@@ -24,11 +24,13 @@ class ErpNextApiTests(SimpleTestCase):
             "connected": False,
             "status": "not_configured",
             "error_code": "",
+            "site_url": "",
         })
 
-    def test_status_checks_configured_connection_and_never_returns_remote_identity(self):
+    def test_status_checks_configured_connection_and_returns_only_the_safe_site_link(self):
         fake_client = Mock()
         fake_client.check_connection.return_value = True
+        fake_client.site_url = "https://erp.example.test"
         with patch("workbench.erpnext.api._client_from_settings", return_value=fake_client):
             response = self.client.get("/api/erpnext/status")
 
@@ -38,12 +40,14 @@ class ErpNextApiTests(SimpleTestCase):
             "connected": True,
             "status": "connected",
             "error_code": "",
+            "site_url": "https://erp.example.test",
         })
         fake_client.check_connection.assert_called_once_with()
 
     def test_status_keeps_a_false_connection_check_unavailable(self):
         fake_client = Mock()
         fake_client.check_connection.return_value = False
+        fake_client.site_url = "http://127.0.0.1:18080"
         with patch("workbench.erpnext.api._client_from_settings", return_value=fake_client):
             response = self.client.get("/api/erpnext/status")
 
@@ -53,6 +57,7 @@ class ErpNextApiTests(SimpleTestCase):
             "connected": False,
             "status": "unavailable",
             "error_code": "unavailable",
+            "site_url": "http://127.0.0.1:18080",
         })
 
     def test_list_uses_fixed_query_dto_and_returns_external_reference(self):

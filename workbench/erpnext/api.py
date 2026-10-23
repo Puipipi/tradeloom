@@ -6,11 +6,18 @@ from typing import Any
 
 from django.conf import settings
 from django.http import HttpRequest, JsonResponse
-from django.views.decorators.http import require_GET
+from django.views.decorators.http import require_GET, require_http_methods, require_POST
+from workbench.models import ErpNextDraftOperation
 
 from .client import ErpNextClient, ErpNextConfig, ErpNextError
 from .dto import ErpNextPage, ErpNextRecord
 from .service import SUPPORTED_DOCTYPES
+from .drafts import (
+    DraftOperationError,
+    create_quotation_draft,
+    get_quotation_draft_operation,
+    update_quotation_draft,
+)
 
 
 _FILTER_FIELDS = {"doctype", "fields", "filters", "limit", "offset"}
@@ -19,6 +26,8 @@ _INTEGER = re.compile(r"(?:0|[1-9][0-9]*)\Z")
 _ERROR_STATUSES = {
     "not_found": 404,
     "invalid_arguments": 422,
+    "idempotency_conflict": 409,
+    "conflict": 409,
     "not_configured": 503,
     "invalid_configuration": 503,
     "unavailable": 503,
@@ -118,28 +127,28 @@ def status(_request: HttpRequest) -> JsonResponse:
     except ErpNextError as exc:
         return JsonResponse({
             "configured": False, "connected": False,
-            "status": "invalid_configuration", "error_code": exc.code,
+            "status": "invalid_configuration", "error_code": exc.code, "site_url": "",
         })
     if client is None:
         return JsonResponse({
             "configured": False, "connected": False,
-            "status": "not_configured", "error_code": "",
+            "status": "not_configured", "error_code": "", "site_url": "",
         })
     try:
         connected = client.check_connection()
     except ErpNextError as exc:
         return JsonResponse({
             "configured": True, "connected": False,
-            "status": "unavailable", "error_code": exc.code,
+            "status": "unavailable", "error_code": exc.code, "site_url": client.site_url,
         })
     if not connected:
         return JsonResponse({
             "configured": True, "connected": False,
-            "status": "unavailable", "error_code": "unavailable",
+            "status": "unavailable", "error_code": "unavailable", "site_url": client.site_url,
         })
     return JsonResponse({
         "configured": True, "connected": True,
-        "status": "connected", "error_code": "",
+        "status": "connected", "error_code": "", "site_url": client.site_url,
     })
 
 
@@ -192,3 +201,123 @@ def record(request: HttpRequest) -> JsonResponse:
         return _error(exc.code, str(exc))
     except ValueError:
         return _error("invalid_arguments", "ERPNext 查询参数无效", 422)
+
+
+def _draft_operation_payload(result) -> dict[str, Any]:
+    operation = result.operation
+    return {
+        "ok": operation.status != ErpNextDraftOperation.Status.CONFLICT,
+        "operation_id": operation.id,
+        "action": operation.action,
+        "doctype": "Quotation",
+        "status": operation.status,
+        "source": operation.source,
+        "workflow_id": operation.workflow_id,
+        "target_operation_id": operation.target_operation_id,
+        "remote_name": operation.remote_name or None,
+        "remote_modified": operation.remote_modified or None,
+        "payload_sha256": operation.payload_sha256,
+        "error_code": operation.error_code,
+        "receipt": operation.receipt,
+        "remote_current": result.remote_current,
+        "remote_error_code": result.remote_error,
+    }
+
+
+def _strict_json_object(request: HttpRequest) -> dict[str, Any]:
+    if request.content_type != "application/json":
+        raise ValueError("请求类型无效")
+    if len(request.body) > 65536:
+        raise ValueError("请求内容过大")
+
+    def unique_pairs(pairs):
+        value = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError("JSON 字段重复")
+            value[key] = item
+        return value
+
+    try:
+        parsed = json.loads(request.body.decode("utf-8"), object_pairs_hook=unique_pairs)
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+        raise ValueError("请求内容格式无效") from None
+    if not isinstance(parsed, dict):
+        raise ValueError("请求内容格式无效")
+    return parsed
+
+
+@require_POST
+def quotation_drafts(request: HttpRequest) -> JsonResponse:
+    try:
+        body = _strict_json_object(request)
+        if set(body) - {"idempotency_key", "payload", "workflow_id"}:
+            raise ValueError("请求字段无效")
+        if "idempotency_key" not in body or "payload" not in body:
+            raise ValueError("请求字段缺失")
+    except ValueError:
+        return _error("invalid_arguments", "报价草稿请求无效", 422)
+
+    try:
+        client = _client_from_settings()
+        if client is None:
+            raise ErpNextError("not_configured", "ERPNext 尚未配置")
+        result = create_quotation_draft(
+            client,
+            idempotency_key=body["idempotency_key"],
+            payload=body["payload"],
+            workflow_id=body.get("workflow_id"),
+        )
+        if result.operation.status == ErpNextDraftOperation.Status.SUCCEEDED:
+            status_code = 201 if result.created else 200
+        else:
+            status_code = 202
+        return JsonResponse(_draft_operation_payload(result), status=status_code)
+    except DraftOperationError as exc:
+        return _error(exc.code, str(exc), exc.status)
+    except ErpNextError as exc:
+        return _error(exc.code, str(exc))
+
+
+@require_http_methods(["GET", "PUT"])
+def quotation_draft_operation(request: HttpRequest, operation_id: str) -> JsonResponse:
+    if request.method == "PUT":
+        try:
+            body = _strict_json_object(request)
+            if set(body) - {"idempotency_key", "expected_modified", "payload", "workflow_id"}:
+                raise ValueError("请求字段无效")
+            if not {"idempotency_key", "expected_modified", "payload"} <= set(body):
+                raise ValueError("请求字段缺失")
+        except ValueError:
+            return _error("invalid_arguments", "报价草稿更新请求无效", 422)
+        try:
+            client = _client_from_settings()
+            if client is None:
+                raise ErpNextError("not_configured", "ERPNext 尚未配置")
+            result = update_quotation_draft(
+                client,
+                target_operation_id=operation_id,
+                idempotency_key=body["idempotency_key"],
+                expected_modified=body["expected_modified"],
+                payload=body["payload"],
+                workflow_id=body.get("workflow_id"),
+            )
+            status_code = {
+                ErpNextDraftOperation.Status.SUCCEEDED: 200,
+                ErpNextDraftOperation.Status.CONFLICT: 409,
+            }.get(result.operation.status, 202)
+            return JsonResponse(_draft_operation_payload(result), status=status_code)
+        except DraftOperationError as exc:
+            return _error(exc.code, str(exc), exc.status)
+        except ErpNextError as exc:
+            return _error(exc.code, str(exc))
+
+    try:
+        client = _client_from_settings()
+    except ErpNextError:
+        client = None
+    try:
+        result = get_quotation_draft_operation(client, operation_id)
+        return JsonResponse(_draft_operation_payload(result))
+    except DraftOperationError as exc:
+        return _error(exc.code, str(exc), exc.status)

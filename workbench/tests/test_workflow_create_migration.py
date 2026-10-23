@@ -10,6 +10,7 @@ class WorkflowCreateIdempotencyMigrationTests(TransactionTestCase):
 
     def test_legacy_workflow_and_relations_survive_expand_migration(self):
         executor = MigrationExecutor(connection)
+        restore_targets = executor.loader.graph.leaf_nodes("workbench")
         executor.migrate([self.migrate_from])
         old_apps = executor.loader.project_state([self.migrate_from]).apps
         Task = old_apps.get_model("workbench", "Task")
@@ -59,4 +60,4 @@ class WorkflowCreateIdempotencyMigrationTests(TransactionTestCase):
             self.assertIsNone(migrated.creation_request_fingerprint)
             self.assertIsNone(migrated.creation_receipt)
         finally:
-            MigrationExecutor(connection).migrate([self.migrate_to])
+            MigrationExecutor(connection).migrate(restore_targets)

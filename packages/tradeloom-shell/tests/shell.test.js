@@ -8,6 +8,7 @@ import { Readable } from 'node:stream'
 import { runInNewContext } from 'node:vm'
 import test from 'node:test'
 import { BUSINESS_ALIASES, BUSINESS_MENUS, ROLE_LABELS, ROLE_PRESETS } from '../roles.js'
+import * as hostExports from '../host.js'
 import { apply as applyHost, createDockLayoutsHandler, createProfileHandler, createSceneLayoutsHandler, createSessionHandler } from '../host.js'
 import { apply as applyBudgetGate, BUDGET_LIMITS, chargeToolAttempt } from '../policy.js'
 import { registerProfileTool } from '../profile-tool.js'
@@ -204,7 +205,11 @@ test('business iframe theme bridge sends only the current enum to owned same-ori
   }
   runInNewContext(entrySource, { window, URL, URLSearchParams })
   const React = { createElement: (type, props, ...children) => ({ type, props, children }) }
-  const clientRequire = name => { assert.equal(name, 'react'); return React }
+  const clientRequire = name => {
+    if (name === 'react') return React
+    if (name === 'react-dom') return { createPortal: child => child }
+    assert.fail(`unexpected entry dependency: ${name}`)
+  }
   clientRequire.async = async name => {
     assert.equal(name, './client.scenes.js')
     return { register() {}, SceneTabs() {}, ModelDirectoryRail() {} }
@@ -225,9 +230,17 @@ test('business iframe theme bridge sends only the current enum to owned same-ori
   messageListeners.get('message')({
     source: frame.contentWindow, origin: 'http://localhost:3088', data: { type: 'tradeloom:theme:request' },
   })
-  assert.equal(JSON.stringify(sent), JSON.stringify([{ data: { type: 'tradeloom:theme', colorScheme: 'dark' }, origin: 'http://localhost:3088' }]))
+  const darkMessage = sent[0]?.data
+  assert.equal(darkMessage.type, 'tradeloom:theme')
+  assert.equal(darkMessage.colorScheme, 'dark')
+  assert.deepEqual(Object.keys(darkMessage.palette).sort(), ['accent', 'border', 'canvas', 'header', 'muted', 'panel', 'teal', 'text'])
+  assert.equal(darkMessage.palette.canvas, '#0c1017')
+  assert.equal(darkMessage.palette.panel, '#131925')
+  assert.equal(darkMessage.palette.header, '#171f2c')
+  assert.equal(sent[0].origin, 'http://localhost:3088')
   documentListeners.get('load')({ target: frame })
-  assert.equal(JSON.stringify(sent.at(-1)), JSON.stringify({ data: { type: 'tradeloom:theme', colorScheme: 'dark' }, origin: 'http://localhost:3088' }))
+  assert.equal(sent.at(-1).data.colorScheme, 'dark')
+  assert.equal(sent.at(-1).origin, 'http://localhost:3088')
   messageListeners.get('message')({
     source: frame.contentWindow, origin: 'https://other.example', data: { type: 'tradeloom:theme:request' },
   })
@@ -236,7 +249,9 @@ test('business iframe theme bridge sends only the current enum to owned same-ori
   })
   assert.equal(sent.length, 2, 'foreign origins and unexpected request fields are ignored')
   themeListeners.get('theme/change')({ active: { colorScheme: 'light' } })
-  assert.equal(JSON.stringify(sent.at(-1)), JSON.stringify({ data: { type: 'tradeloom:theme', colorScheme: 'light' }, origin: 'http://localhost:3088' }))
+  assert.equal(sent.at(-1).data.colorScheme, 'light')
+  assert.equal(sent.at(-1).data.palette.canvas, '#f4f7fb')
+  assert.equal(sent.at(-1).origin, 'http://localhost:3088')
   assert.strictEqual(frames[0], frame)
   assert.strictEqual(frame.contentWindow, originalFrameWindow)
   assert.equal(frame.src, frameSrc, 'theme updates never navigate or remount the business document')
@@ -251,8 +266,9 @@ test('business-shell supplies TradeLoom identity to the existing sidebar and bla
   runInNewContext(clientSource, { window: { __ModuleLoader__: { load(value) { definition = value } } } })
   const React = { createElement: (type, props, ...children) => ({ type, props, children }) }
   const clientRequire = name => {
-    assert.equal(name, 'react')
-    return React
+    if (name === 'react') return React
+    if (name === 'react-dom') return { createPortal: child => child }
+    assert.fail(`unexpected entry dependency: ${name}`)
   }
   clientRequire.async = async name => {
     assert.equal(name, './client.scenes.js')
@@ -292,7 +308,7 @@ test('pinned Cordis Loader unwrap keeps all business plugin namespaces and injec
   const { default: Loader } = await import(new URL(`file:///${loaderPath}`))
   const loader = Object.create(Loader.prototype)
   const plugins = [
-    ['../host.js', '@tradeloom/dsh-business-shell', ['connection', 'webServer', 'workspaceRegistry', 'sessionController', 'tools', 'agents']],
+    ['../host.js', '@tradeloom/dsh-business-shell', ['connection', 'webServer', 'workspaceRegistry', 'sessionController', 'sessionQuery', 'tools', 'agents']],
     ['../proxy.js', '@tradeloom/dsh-business-shell/proxy', ['connection', 'webServer']],
     ['../policy.js', '@tradeloom/dsh-business-shell/policy', ['tools', 'agents']],
     ['../profile-tool.js', '@tradeloom/dsh-business-shell/profile', ['tools']],
@@ -362,6 +378,352 @@ test('authorized role route creates one mapped native session and reuses it afte
   await handler(request('POST', { role: 'center' }), second)
   assert.deepEqual(JSON.parse(second.body), session)
   assert.equal(calls.length, 1)
+})
+
+test('the protected host registers the explicit create-new-session route', async () => {
+  const routes = []
+  const ctx = {
+    tools: {}, agents: { get() { return undefined } },
+    connection: { requestRejection() {} },
+    webServer: { register(route) { routes.push(route); return () => {} } },
+    workspaceRegistry: {}, sessionController: {},
+    on() {}, effect(register) { this.cleanup = register() },
+  }
+  applyHost(ctx)
+  try {
+    assert.ok(routes.some(route => route.kind === 'exact' && route.path === '/tradeloom/session/new'),
+      'creating a configured new conversation must use a protected exact route')
+    assert.equal(typeof hostExports.createNewSessionHandler, 'function')
+  } finally { ctx.cleanup() }
+})
+
+async function newSessionFixture(t, options = {}) {
+  const { env } = await fixtureHome(t)
+  const store = await createStateStore({ env })
+  const workspaces = []
+  const archivedSessionIds = []
+  const observations = new Map()
+  const calls = []
+  const ctx = {
+    connection: { requestRejection: () => undefined },
+    workspaceRegistry: {
+      list: () => workspaces,
+      get(id) { return workspaces.find(item => item.id === id) },
+      archivedSessionIds,
+      async create(path, title) {
+        const workspace = { id: `workspace-${workspaces.length}`, path, title, sessionIds: [] }
+        workspaces.push(workspace)
+        return workspace
+      },
+    },
+    sessionQuery: {
+      async observeSession(sessionId) {
+        const saved = observations.get(sessionId)
+        if (!saved) throw Object.assign(new Error('not found'), { code: 'SESSION_QUERY_SESSION_NOT_FOUND' })
+        return { ...saved, [Symbol.dispose]() {} }
+      },
+    },
+    sessionController: {
+      async create(input) {
+        calls.push(input)
+        if (options.create) return await options.create(input, { workspaces, observations })
+        const workspace = workspaces.find(item => item.id === input.workspaceId)
+        if (!workspace.sessionIds.includes(input.sessionId)) workspace.sessionIds.push(input.sessionId)
+        observations.set(input.sessionId, {
+          header: { id: input.sessionId, cwd: workspace.path },
+          projections: { values: { agentPreset: input.agentPreset } }, events: [],
+        })
+        return { sessionId: input.sessionId, agentPreset: input.agentPreset }
+      },
+    },
+  }
+  const handler = hostExports.createNewSessionHandler(ctx, {
+    createStateStore: () => store,
+    resolveOwnedHome: () => resolveOwnedHome(env),
+    roleWorkspacePath: role => roleWorkspacePath(role, env),
+  })
+  return { env, store, workspaces, archivedSessionIds, observations, calls, handler }
+}
+
+test('new-session operation creates a separate native session and replays the durable result', async t => {
+  const fixture = await newSessionFixture(t)
+  await fixture.store.transact(state => { state.roles.center = { sessionId: 'old-center-session', workspaceId: 'old-workspace' } })
+  const input = { role: 'center', expectedSessionId: 'old-center-session', operationId: '7b0d46e9-90e0-4bf3-a04b-551a85cb8788' }
+  const created = response()
+  await fixture.handler(request('POST', input), created)
+  const result = JSON.parse(created.body)
+  assert.equal(created.statusCode, 201)
+  assert.equal(result.sessionId, `session-${input.operationId}`)
+  assert.equal(fixture.calls.length, 1)
+  assert.equal(fixture.calls[0].agentPreset, 'tradeloom-center')
+  const stateAfterCreate = await fixture.store.read()
+  assert.equal(stateAfterCreate.roles.center.sessionId, result.sessionId)
+  assert.equal(stateAfterCreate.sessionCreateOperations[input.operationId].status, 'completed')
+
+  const replay = response()
+  await fixture.handler(request('POST', input), replay)
+  assert.equal(replay.statusCode, 200)
+  assert.equal(JSON.parse(replay.body).sessionId, result.sessionId)
+  assert.equal(JSON.parse(replay.body).replayed, true)
+  assert.equal(fixture.calls.length, 1, 'a completed operation is replayed from persistent state')
+  assert.equal(stateAfterCreate.roles.center.sessionId, result.sessionId, 'the old session identity is not rewritten or deleted')
+})
+
+test('new-session operation rejects changed payloads, concurrent different operations, and non-reusable native IDs', async t => {
+  let releaseCreate
+  let createEntered
+  const gate = new Promise(resolve => { releaseCreate = resolve })
+  const entered = new Promise(resolve => { createEntered = resolve })
+  const fixture = await newSessionFixture(t, { create: async (input, state) => {
+    createEntered()
+    await gate
+    const workspace = state.workspaces.find(item => item.id === input.workspaceId)
+    workspace.sessionIds.push(input.sessionId)
+    state.observations.set(input.sessionId, {
+      header: { id: input.sessionId, cwd: workspace.path },
+      projections: { values: { agentPreset: input.agentPreset } }, events: [],
+    })
+    return { sessionId: input.sessionId, agentPreset: input.agentPreset }
+  } })
+  await fixture.store.transact(state => { state.roles.center = { sessionId: 'prior-session' } })
+  const first = { role: 'center', expectedSessionId: 'prior-session', operationId: 'fd02e8a4-62f8-42e1-856b-58b1c32d72ee' }
+  const firstResponse = response()
+  const firstPending = fixture.handler(request('POST', first), firstResponse)
+  await entered
+  const duplicateResponse = response()
+  const duplicatePending = fixture.handler(request('POST', first), duplicateResponse)
+  const competing = response()
+  await fixture.handler(request('POST', { ...first, operationId: 'ccad4805-8fd2-41e8-9b5f-514cb0a289ed' }), competing)
+  assert.equal(competing.statusCode, 409)
+  const changed = response()
+  await fixture.handler(request('POST', { ...first, expectedSessionId: 'different-session' }), changed)
+  assert.equal(changed.statusCode, 409)
+  releaseCreate()
+  await Promise.all([firstPending, duplicatePending])
+  assert.equal(firstResponse.statusCode, 201)
+  assert.equal(duplicateResponse.statusCode, 201, 'a concurrent retry of the same operation receives the same created session')
+  assert.equal(JSON.parse(duplicateResponse.body).sessionId, JSON.parse(firstResponse.body).sessionId)
+  assert.equal(fixture.calls.length, 1, 'the persisted role reservation admits only one different create at a time')
+
+  const mismatchedFixture = await newSessionFixture(t, { create: async input => ({ sessionId: 'session-native-minted-instead', agentPreset: input.agentPreset }) })
+  await mismatchedFixture.store.transact(state => { state.roles.center = { sessionId: 'prior-session' } })
+  const mismatch = response()
+  await mismatchedFixture.handler(request('POST', { ...first, operationId: '203d6a6e-0189-4495-b442-3ad6f07a26e4' }), mismatch)
+  assert.equal(mismatch.statusCode, 409)
+  assert.equal((await mismatchedFixture.store.read()).roles.center.sessionId, 'prior-session', 'a minted replacement is never bound')
+  assert.equal((await mismatchedFixture.store.read()).sessionCreateOperations['203d6a6e-0189-4495-b442-3ad6f07a26e4'].status, 'outcome_unknown')
+})
+
+test('a lost create response replays the committed operation, while an attempted unknown result is never retried blindly', async t => {
+  const fixture = await newSessionFixture(t)
+  const input = { role: 'product', expectedSessionId: null, operationId: '8a75b2f0-935c-4826-a675-c583c62bc173' }
+  const lostResponse = response()
+  lostResponse.end = () => { throw new Error('synthetic client disconnect') }
+  await assert.rejects(fixture.handler(request('POST', input), lostResponse), /synthetic client disconnect/)
+  const replay = response()
+  await fixture.handler(request('POST', input), replay)
+  assert.equal(replay.statusCode, 200)
+  assert.equal(JSON.parse(replay.body).replayed, true)
+  assert.equal(fixture.calls.length, 1, 'response loss after commit does not create another session')
+
+  let unknownCalls = 0
+  const unknown = await newSessionFixture(t, { create: async () => { unknownCalls++; throw new Error('synthetic unknown create outcome') } })
+  const uncertainInput = { role: 'delivery', expectedSessionId: null, operationId: '6292a5ef-902b-46fa-ae93-12f0846a5bca' }
+  const firstUnknown = response()
+  await unknown.handler(request('POST', uncertainInput), firstUnknown)
+  assert.equal(firstUnknown.statusCode, 503)
+  const retryUnknown = response()
+  await unknown.handler(request('POST', uncertainInput), retryUnknown)
+  assert.equal(retryUnknown.statusCode, 409)
+  assert.equal(unknownCalls, 1, 'a pending operation with no queryable native result is not re-created')
+  assert.equal((await unknown.store.read()).sessionCreateOperations[uncertainInput.operationId].status, 'attempted')
+})
+
+test('an attempted create is recovered only when the native session matches its durable intent', async t => {
+  const fixture = await newSessionFixture(t)
+  const operationId = '7da48a92-174d-4793-9f8e-70d94703cd0a'
+  const sessionId = `session-${operationId}`
+  const workspacePath = await roleWorkspacePath('center', fixture.env)
+  const workspace = { id: 'workspace-existing', path: workspacePath, title: 'TradeLoom center', sessionIds: [sessionId] }
+  fixture.workspaces.push(workspace)
+  fixture.observations.set(sessionId, {
+    header: { id: sessionId, cwd: workspacePath },
+    projections: { values: { agentPreset: 'tradeloom-center' } }, events: [],
+  })
+  await fixture.store.transact(state => {
+    state.roles.center = { sessionId: 'old-center' }
+    state.sessionCreateOperations[operationId] = {
+      operationId, fingerprint: JSON.stringify(['center', 'old-center']), role: 'center',
+      expectedSessionId: 'old-center', sessionId, workspacePath, workspaceId: workspace.id,
+      agentPreset: 'tradeloom-center', status: 'attempted',
+    }
+    state.pendingSessionCreateByRole.center = operationId
+  })
+  const recovered = response()
+  await fixture.handler(request('POST', { role: 'center', expectedSessionId: 'old-center', operationId }), recovered)
+  assert.equal(recovered.statusCode, 201)
+  assert.equal(JSON.parse(recovered.body).sessionId, sessionId)
+  assert.equal(fixture.calls.length, 0, 'a matching persisted native session is observed and bound without a second create call')
+  assert.equal((await fixture.store.read()).roles.center.sessionId, sessionId)
+
+  const mismatch = await newSessionFixture(t)
+  const mismatchWorkspacePath = await roleWorkspacePath('center', mismatch.env)
+  const mismatchWorkspace = { id: 'workspace-existing', path: mismatchWorkspacePath, title: 'TradeLoom center', sessionIds: [sessionId] }
+  mismatch.workspaces.push(mismatchWorkspace)
+  mismatch.observations.set(sessionId, {
+    header: { id: sessionId, cwd: 'wrong-workspace-path' },
+    projections: { values: { agentPreset: 'tradeloom-product' } }, events: [],
+  })
+  await mismatch.store.transact(state => {
+    state.roles.center = { sessionId: 'old-center' }
+    state.sessionCreateOperations[operationId] = {
+      operationId, fingerprint: JSON.stringify(['center', 'old-center']), role: 'center',
+      expectedSessionId: 'old-center', sessionId, workspacePath: mismatchWorkspacePath, workspaceId: mismatchWorkspace.id,
+      agentPreset: 'tradeloom-center', status: 'attempted',
+    }
+    state.pendingSessionCreateByRole.center = operationId
+  })
+  const refused = response()
+  await mismatch.handler(request('POST', { role: 'center', expectedSessionId: 'old-center', operationId }), refused)
+  assert.equal(refused.statusCode, 409)
+  assert.equal(mismatch.calls.length, 0)
+  assert.equal((await mismatch.store.read()).roles.center.sessionId, 'old-center')
+
+  const archived = await newSessionFixture(t)
+  const archivedWorkspacePath = await roleWorkspacePath('center', archived.env)
+  archived.workspaces.push({ id: 'workspace-existing', path: archivedWorkspacePath, title: 'TradeLoom center', sessionIds: [sessionId] })
+  archived.archivedSessionIds.push(sessionId)
+  archived.observations.set(sessionId, {
+    header: { id: sessionId, cwd: archivedWorkspacePath },
+    projections: { values: { agentPreset: 'tradeloom-center' } }, events: [],
+  })
+  await archived.store.transact(state => {
+    state.roles.center = { sessionId: 'old-center' }
+    state.sessionCreateOperations[operationId] = {
+      operationId, fingerprint: JSON.stringify(['center', 'old-center']), role: 'center',
+      expectedSessionId: 'old-center', sessionId, workspacePath: archivedWorkspacePath, workspaceId: 'workspace-existing',
+      agentPreset: 'tradeloom-center', status: 'attempted',
+    }
+    state.pendingSessionCreateByRole.center = operationId
+  })
+  const archivedResponse = response()
+  await archived.handler(request('POST', { role: 'center', expectedSessionId: 'old-center', operationId }), archivedResponse)
+  assert.equal(archivedResponse.statusCode, 409, 'an archived session is never treated as reusable blank state')
+  assert.equal(archived.calls.length, 0)
+  assert.equal((await archived.store.read()).roles.center.sessionId, 'old-center')
+
+  const initialized = await newSessionFixture(t)
+  const initializedWorkspacePath = await roleWorkspacePath('center', initialized.env)
+  initialized.workspaces.push({ id: 'workspace-existing', path: initializedWorkspacePath, title: 'TradeLoom center', sessionIds: [sessionId] })
+  initialized.observations.set(sessionId, {
+    header: { id: sessionId, cwd: initializedWorkspacePath },
+    projections: { values: { agentPreset: 'tradeloom-center', turnBoundary: { openTurnStartSeq: null, lastTurn: 0 } } },
+    events: [{ type: 'session/created' }, { type: 'agent-preset/selected' }],
+  })
+  await initialized.store.transact(state => {
+    state.roles.center = { sessionId: 'old-center' }
+    state.sessionCreateOperations[operationId] = {
+      operationId, fingerprint: JSON.stringify(['center', 'old-center']), role: 'center',
+      expectedSessionId: 'old-center', sessionId, workspacePath: initializedWorkspacePath, workspaceId: 'workspace-existing',
+      agentPreset: 'tradeloom-center', status: 'attempted',
+    }
+    state.pendingSessionCreateByRole.center = operationId
+  })
+  const initializedRecovery = response()
+  await initialized.handler(request('POST', { role: 'center', expectedSessionId: 'old-center', operationId }), initializedRecovery)
+  assert.equal(initializedRecovery.statusCode, 201,
+    'non-turn initialization events remain blank when the official turnBoundary says no turn has started')
+  assert.equal(initialized.calls.length, 0)
+  assert.equal((await initialized.store.read()).roles.center.sessionId, sessionId)
+
+  const started = await newSessionFixture(t)
+  const startedWorkspacePath = await roleWorkspacePath('center', started.env)
+  started.workspaces.push({ id: 'workspace-existing', path: startedWorkspacePath, title: 'TradeLoom center', sessionIds: [sessionId] })
+  started.observations.set(sessionId, {
+    header: { id: sessionId, cwd: startedWorkspacePath },
+    projections: { values: { agentPreset: 'tradeloom-center', turnBoundary: { openTurnStartSeq: 18, lastTurn: 1 } } },
+    events: [{ type: 'message/created' }],
+  })
+  await started.store.transact(state => {
+    state.roles.center = { sessionId: 'old-center' }
+    state.sessionCreateOperations[operationId] = {
+      operationId, fingerprint: JSON.stringify(['center', 'old-center']), role: 'center',
+      expectedSessionId: 'old-center', sessionId, workspacePath: startedWorkspacePath, workspaceId: 'workspace-existing',
+      agentPreset: 'tradeloom-center', status: 'attempted',
+    }
+    state.pendingSessionCreateByRole.center = operationId
+  })
+  const startedRecovery = response()
+  await started.handler(request('POST', { role: 'center', expectedSessionId: 'old-center', operationId }), startedRecovery)
+  assert.equal(startedRecovery.statusCode, 409, 'a started turn can never be rebound as the blank session')
+  assert.equal(started.calls.length, 0)
+  assert.equal((await started.store.read()).roles.center.sessionId, 'old-center')
+})
+
+test('new-session route rejects unauthorized and non-closed requests before touching state', async t => {
+  const fixture = await newSessionFixture(t)
+  let authorized = false
+  fixture.handler = hostExports.createNewSessionHandler({
+    connection: { requestRejection: () => authorized ? undefined : 403 },
+  }, {
+    createStateStore: () => { throw new Error('state must not be read before authorization and schema validation') },
+    resolveOwnedHome: () => 'synthetic-owned-home',
+  })
+  const denied = response()
+  await fixture.handler(request('POST', { role: 'center', expectedSessionId: null, operationId: 'c5f4d5aa-0011-4dd7-b5f9-4aa28c86b9ef' }), denied)
+  assert.equal(denied.statusCode, 403)
+  authorized = true
+  for (const invalid of [
+    { role: 'center', expectedSessionId: null, operationId: 'not-a-uuid' },
+    { role: 'center', expectedSessionId: null, operationId: 'c5f4d5aa-0011-4dd7-b5f9-4aa28c86b9ef', extra: true },
+  ]) {
+    const rejected = response()
+    await fixture.handler(request('POST', invalid), rejected)
+    assert.equal(rejected.statusCode, 400)
+  }
+  const brokenBody = {
+    method: 'POST', headers: {},
+    async *[Symbol.asyncIterator]() { throw new Error('synthetic request stream failure') },
+  }
+  const readFailed = response()
+  await fixture.handler(brokenBody, readFailed)
+  assert.equal(readFailed.statusCode, 400, 'request stream failure is projected safely instead of escaping the route')
+  assert.deepEqual(JSON.parse(readFailed.body), { error: 'request-body-unavailable' })
+})
+
+test('same operation UUID in separate owned homes does not share an in-flight result', async t => {
+  let started = 0
+  let release
+  let bothStarted
+  const gate = new Promise(resolve => { release = resolve })
+  const both = new Promise(resolve => { bothStarted = resolve })
+  const create = async (input, { workspaces, observations }) => {
+    started++
+    if (started === 2) bothStarted()
+    await gate
+    const workspace = workspaces.find(item => item.id === input.workspaceId)
+    workspace.sessionIds.push(input.sessionId)
+    observations.set(input.sessionId, {
+      header: { id: input.sessionId, cwd: workspace.path },
+      projections: { values: { agentPreset: input.agentPreset } }, events: [],
+    })
+    return { sessionId: input.sessionId, agentPreset: input.agentPreset }
+  }
+  const left = await newSessionFixture(t, { create })
+  const right = await newSessionFixture(t, { create })
+  const input = { role: 'center', expectedSessionId: null, operationId: 'f2b25df5-c1fb-411b-8840-0fe1ed470fbf' }
+  const leftResponse = response()
+  const rightResponse = response()
+  const leftPending = left.handler(request('POST', input), leftResponse)
+  const rightPending = right.handler(request('POST', input), rightResponse)
+  await both
+  release()
+  await Promise.all([leftPending, rightPending])
+  assert.equal(started, 2, 'each owned home has an independent operation namespace')
+  assert.equal(leftResponse.statusCode, 201)
+  assert.equal(rightResponse.statusCode, 201)
+  assert.equal(left.calls.length, 1)
+  assert.equal(right.calls.length, 1)
 })
 
 test('protected scene layout API persists allowlisted panel state without changing role or profile data', async t => {

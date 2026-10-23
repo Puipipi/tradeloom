@@ -4,12 +4,13 @@ import { spawn } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
-  assertPortsAvailable, buildChildEnvironment, buildDesktopChildEnvironment, chooseAddress, ensureOwnedDirectory,
-  ensureOwnedHome, getDefaultPaths, launcherPipeName, networkCandidates, reserveNamedPipe, serveStopRequest, startOwnedChild, startTransaction,
+  assertPortsAvailable, buildChildEnvironment, buildDesktopChildEnvironment, buildDjangoChildEnvironment, chooseAddress, ensureOwnedDirectory,
+  ensureOwnedHome, getDefaultPaths, launcherPipeName, networkCandidates, requestStop, reserveNamedPipe, serveStopRequest, startOwnedChild, startTransaction,
 } from './core.mjs'
 import { prepareProfile } from './prepare-profile.mjs'
-import { verifyDesktopBuildReceipt } from './desktop-receipt.mjs'
+import { assertDesktopDevelopmentProjectReady, assertTradeLoomDesktopAppIdentity, verifyDesktopBuildReceipt } from './desktop-receipt.mjs'
 import { choosePayloadAddress, DEFAULT_RUNTIME_CANDIDATE } from './candidate-payload.mjs'
+import { loadErpNextConfigFile } from './erpnext-config.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const workspaceRoot = path.dirname(repoRoot)
@@ -19,6 +20,8 @@ const runtimePath = path.join(releaseRoot, releaseName)
 const NODE = process.execPath
 const DATA_ROOT_MARKER = '.tradeloom-data-root-owned'
 const DATA_ROOT_MARKER_CONTENT = 'tradeloom-app-data-v1\n'
+const INTAKE_ROOT_MARKER = '.tradeloom-intake-owned'
+const INTAKE_ROOT_MARKER_CONTENT = 'tradeloom-private-intake-v1\n'
 let activePipeServer
 let finishRunning
 let ownedFailureLogDir
@@ -30,6 +33,14 @@ function parse(args) {
     else if (args[i] === '--mode') options.mode = args[++i]
     else if (args[i] === '--runtime') options.runtime = args[++i]
     else if (args[i] === '--data-root') options.dataRoot = args[++i]
+    else if (args[i] === '--erpnext-config-file') {
+      const value = args[i + 1]
+      if (options.erpNextConfigFile !== undefined || typeof value !== 'string' || !value.trim() || value.startsWith('--')) {
+        throw new Error('ERPNext 配置参数必须提供一个非空文件路径。')
+      }
+      options.erpNextConfigFile = value
+      i += 1
+    }
     else if (args[i] === '--candidates') options.candidates = JSON.parse(Buffer.from(args[++i], 'base64').toString('utf8'))
   }
   return options
@@ -69,22 +80,19 @@ async function writeFailure(logDir, error) {
   }
 }
 
-async function askStop(home) {
-  return new Promise((resolve, reject) => {
-    const pipe = net.createConnection(launcherPipeName(home))
-    pipe.once('error', error => reject(new Error(error.code === 'ENOENT' || error.code === 'ECONNREFUSED'
-      ? '未找到由本启动器管理的运行实例。' : `无法连接启动器：${error.message}`)))
-    pipe.once('connect', () => { pipe.end('STOP\n') })
-    pipe.once('data', data => { pipe.end(); resolve(data.toString('utf8').trim()) })
-  })
-}
-
 async function start(options) {
   if (!['web', 'desktop'].includes(options.mode)) throw new Error('启动模式只支持 desktop 或 web。')
   const paths = getDefaultPaths()
+  if (options.erpNextConfigFile !== undefined && !paths.explicitDataRoot) {
+    throw new Error('ERPNext 私密配置仅支持已明确指定的 owned DataRoot。')
+  }
   if (paths.explicitDataRoot) {
     await ensureOwnedDirectory(paths.dataRoot, DATA_ROOT_MARKER, DATA_ROOT_MARKER_CONTENT)
   }
+  await ensureOwnedDirectory(path.join(paths.dataRoot, 'private', 'intake'), INTAKE_ROOT_MARKER, INTAKE_ROOT_MARKER_CONTENT)
+  const erpNextEnvironment = options.erpNextConfigFile
+    ? await loadErpNextConfigFile(options.erpNextConfigFile, paths.dataRoot)
+    : {}
   const home = await ensureOwnedHome(paths.home)
   const server = await reserveNamedPipe(launcherPipeName(home))
   activePipeServer = server
@@ -106,6 +114,8 @@ async function start(options) {
   if (options.mode === 'desktop') {
     const lock = JSON.parse(await readFile(path.join(repoRoot, 'integrations', 'dsh', 'patches', 'patches.lock.json'), 'utf8'))
     await verifyDesktopBuildReceipt(appHome, lock)
+    await assertDesktopDevelopmentProjectReady(appHome)
+    await assertTradeLoomDesktopAppIdentity(appHome)
   }
   await access(paths.python).catch(() => { throw new Error('未找到织贸助手专用 Python 环境；请先完成受控运行时准备。') })
   if (options.mode === 'desktop') {
@@ -121,7 +131,7 @@ async function start(options) {
   delete dshEnv.TRADELOOM_DB_PASSWORD
   const dbPassword = process.env.TRADELOOM_DB_PASSWORD
   const djangoEnv = {
-    ...safeBase,
+    ...buildDjangoChildEnvironment(process.env, envPaths, { TRADELOOM_DSH_APP_HOME: home }),
     TRADELOOM_DSH_EMBED: '1',
     TRADELOOM_DSH_ALLOWED_HOSTS: host,
     TRADELOOM_DSH_CSRF_TRUSTED_ORIGINS: `http://${host}:3088`,
@@ -129,6 +139,7 @@ async function start(options) {
     TRADELOOM_DB_HOST: '127.0.0.1',
     TRADELOOM_DB_PORT: '55432',
     ...(dbPassword === undefined ? {} : { TRADELOOM_DB_PASSWORD: dbPassword }),
+    ...erpNextEnvironment,
   }
   const startDjango = async () => {
       const record = startOwnedChild(paths.python,
@@ -198,7 +209,7 @@ const options = parse(process.argv.slice(2))
 if (options.dataRoot) process.env.TRADELOOM_DATA_ROOT = options.dataRoot
 const paths = getDefaultPaths()
 if (options.action === 'stop') {
-  try { process.stdout.write(`${await askStop(paths.home)}\n`) }
+  try { process.stdout.write(`${await requestStop(paths.home)}\n`) }
   catch (error) { process.stderr.write(`${error.message}\n`); process.exitCode = 1 }
 } else {
   try {

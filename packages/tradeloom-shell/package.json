@@ -11,12 +11,15 @@
     "./business-tools": "./business-tools.js",
     "./step-policy": "./step-policy.js",
     "./state": "./state.js",
-    "./proxy": "./proxy.js"
+    "./proxy": "./proxy.js",
+    "./tool-policy": "./tool-policy.js"
   },
-  "files": ["host.js", "client.js", "client.scenes.js", "client.dockview.js", "capabilities.js", "scenes.json", "scene-layout.js", "dock-layout.js", "policy.js", "profile-tool.js", "business-tools.js", "step-policy.js", "state.js", "roles.js", "proxy.js", "cordis.patch.yml", "assets/tradeloom-mark.svg", "vendor/dockview-entry.ts", "vendor/dockview.css", "vendor/dockview-package-lock.json", "vendor/LICENSE.dockview-react", "scripts/build-dockview-chunk.mjs"],
+  "files": ["host.js", "agent-configuration.js", "tool-policy.js", "client.js", "client.scenes.js", "client.dockview.js", "capabilities.js", "scenes.json", "scene-layout.js", "dock-layout.js", "policy.js", "profile-tool.js", "business-tools.js", "step-policy.js", "state.js", "roles.js", "proxy.js", "cordis.patch.yml", "assets/tradeloom-mark.svg", "vendor/dockview-entry.ts", "vendor/dockview.css", "vendor/dockview-package-lock.json", "vendor/LICENSE.dockview-react", "scripts/build-dockview-chunk.mjs"],
   "dsh": {
     "bundle": { "patch": "./cordis.patch.yml" },
     "client": { "platform": "web", "immediately": true, "inject": ["@deepseek-ai/dsh-client-ui-conversation", "@deepseek-ai/dsh-client-ui-layout", "@deepseek-ai/dsh-client-ui-sidebar", "@deepseek-ai/dsh-client-ui-workspace", "@deepseek-ai/dsh-client-ui-model-selection"], "external": ["react", "react-dom", "react-dom/client", "react/jsx-runtime"] }
   },
-  "scripts": { "build:dockview": "node scripts/build-dockview-chunk.mjs", "test": "node --test tests/*.test.js" }
+  "scripts": { "build:dockview": "node scripts/build-dockview-chunk.mjs", "test": "node --test tests/*.test.js", "test:intake-ui": "node --test tests/intake-ui.test.js" },
+  "peerDependencies": { "@deepseek-ai/dsh-scope": "0.2.1-rc.2" },
+  "devDependencies": { "jsdom": "30.1.3" }
 }

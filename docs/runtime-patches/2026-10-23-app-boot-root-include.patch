@@ -1,0 +1,65 @@
+diff --git a/packages/boot/app-boot/src/index.ts b/packages/boot/app-boot/src/index.ts
+index fded02c9..d3fcad42 100644
+--- a/packages/boot/app-boot/src/index.ts
++++ b/packages/boot/app-boot/src/index.ts
+@@ -258,7 +258,22 @@ export function loadLayeredEnv(
+   ])
+ }
+ 
+-const bootstrapIncludes = new WeakMap<Context, Entry>()
++const BOOTSTRAP_INCLUDES_KEY = Symbol.for('@deepseek-ai/dsh-app-boot/bootstrap-includes/v1')
++const bootstrapIncludes = (() => {
++  const existing = Reflect.get(globalThis, BOOTSTRAP_INCLUDES_KEY) as unknown
++  if (existing !== undefined) {
++    if (!(existing instanceof WeakMap)) throw new Error('app-boot: incompatible root Include registry')
++    return existing as WeakMap<Context, Entry>
++  }
++  const registry = new WeakMap<Context, Entry>()
++  Object.defineProperty(globalThis, BOOTSTRAP_INCLUDES_KEY, {
++    configurable: false,
++    enumerable: false,
++    value: registry,
++    writable: false,
++  })
++  return registry
++})()
+ 
+ // The include's YAML dialect (`!!js` scalars become expression nodes the
+ // Loader interpolates against each entry's injection-ready context), imported
+diff --git a/packages/boot/app-boot/tests/app-boot.spec.ts b/packages/boot/app-boot/tests/app-boot.spec.ts
+index 5e83da0b..1948b023 100644
+--- a/packages/boot/app-boot/tests/app-boot.spec.ts
++++ b/packages/boot/app-boot/tests/app-boot.spec.ts
+@@ -7,7 +7,7 @@ import { afterAll, describe, expect, it, vi } from 'vitest'
+ import { Context } from '@deepseek-ai/cordis'
+ import type {} from '@deepseek-ai/dsh-system-prompt'
+ import {
+-  auditStartupEntries, boot, StartupError,
++  auditStartupEntries, boot, reconcileProfilePatches, StartupError,
+   FAIL_LOUD_RELEASE_TIMEOUT_MS,
+   installFailLoud, loadEnv, loadLayeredEnv, loadOverlayPatches, resolveConfigPath, type FailLoudEvent, type FailLoudProcess,
+ } from '../src/index.ts'
+@@ -918,6 +918,23 @@ describe('boot', () => {
+     }
+   })
+ 
++  it('shares a mounted root Include across app-boot URL variants without accepting an unrelated root', async () => {
++    const dir = tmp()
++    const config = join(dir, 'cordis.yml')
++    writeFileSync(config, '[]\n')
++    const ctx = await boot(NAME, config)
++    const duplicateAppBoot = await import('../src/index.ts?root-include-module-instance=2')
++    try {
++      await expect(duplicateAppBoot.reconcileProfilePatches(ctx, [], NAME)).resolves.toEqual([])
++      await expect(reconcileProfilePatches(ctx, [], NAME)).resolves.toEqual([])
++
++      await expect(duplicateAppBoot.reconcileProfilePatches(new Context(), [], NAME))
++        .rejects.toThrow(`${NAME}: profile reload requires the root Include entry`)
++    } finally {
++      await ctx.fiber.dispose()
++    }
++  })
++
+   it('boots a leaf config through the real Loader and settles the tree', async () => {
+     const dir = tmp()
+     writeFileSync(join(dir, 'noop.mjs'), 'export const name = "noop"\nexport function apply() {}\n')

@@ -17,6 +17,9 @@ const HOP_BY_HOP = new Set([
 const BODY_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
 // Matches Django's default DATA_UPLOAD_MAX_MEMORY_SIZE (config/settings.py does not override it).
 const MAX_JSON_BODY_BYTES = 2_621_440
+// Intake accepts one source file up to 20 MiB; reserve 64 KiB for multipart boundaries and headers.
+const MAX_INTAKE_MULTIPART_BODY_BYTES = 20 * 1024 * 1024 + 64 * 1024
+const MAX_NARRATIVE_MULTIPART_BODY_BYTES = 2 * 1024 * 1024 + 64 * 1024
 
 function isJsonContentType(value) {
   const mediaType = String(value ?? '').split(';', 1)[0].trim().toLowerCase()
@@ -95,7 +98,24 @@ export function createBusinessProxyHandler(ctx, alias, dependencies = {}) {
 
     const headers = forwardedHeaders(req)
     const hasContentLength = req.headers?.['content-length'] !== undefined
-    if (BODY_METHODS.has(String(req.method).toUpperCase()) && isJsonContentType(req.headers?.['content-type']) && !hasContentLength) {
+    const method = String(req.method).toUpperCase()
+    const pathname = String(req.url ?? '/').split('?', 1)[0]
+    const mediaType = String(req.headers?.['content-type'] ?? '').split(';', 1)[0].trim().toLowerCase()
+    let bufferLimit
+    let oversizedMessage
+    if (BODY_METHODS.has(method) && isJsonContentType(req.headers?.['content-type']) && !hasContentLength) {
+      bufferLimit = MAX_JSON_BODY_BYTES
+      oversizedMessage = 'TradeLoom JSON request body is too large'
+    } else if (route.alias === 'business-api' && method === 'POST' && pathname === '/business-api/intake/sources'
+      && mediaType === 'multipart/form-data' && !hasContentLength) {
+      bufferLimit = MAX_INTAKE_MULTIPART_BODY_BYTES
+      oversizedMessage = 'TradeLoom intake upload body is too large'
+    } else if (route.alias === 'business-api' && method === 'POST' && pathname === '/business-api/intake/narratives'
+      && mediaType === 'multipart/form-data' && !hasContentLength) {
+      bufferLimit = MAX_NARRATIVE_MULTIPART_BODY_BYTES
+      oversizedMessage = 'TradeLoom narrative upload body is too large'
+    }
+    if (bufferLimit !== undefined) {
       const chunks = []
       let totalBytes = 0
       let settled = false
@@ -112,8 +132,8 @@ export function createBusinessProxyHandler(ctx, alias, dependencies = {}) {
       req.on('data', chunk => {
         if (settled) return
         totalBytes += chunk.length
-        if (totalBytes > MAX_JSON_BODY_BYTES) {
-          rejectRequest(413, 'TradeLoom JSON request body is too large')
+        if (totalBytes > bufferLimit) {
+          rejectRequest(413, oversizedMessage)
           req.resume()
           return
         }

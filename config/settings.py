@@ -95,5 +95,27 @@ TRADELOOM_ARTIFACT_ROOT = Path(
     )
 )
 
+_data_root_value = os.environ.get("TRADELOOM_DATA_ROOT")
+TRADELOOM_DATA_ROOT = Path(_data_root_value).resolve() if _data_root_value else None
+_intake_root_value = os.environ.get("TRADELOOM_INTAKE_ROOT")
+TRADELOOM_INTAKE_ROOT = Path(_intake_root_value).resolve() if _intake_root_value else None
+if TRADELOOM_INTAKE_ROOT is not None:
+    if TRADELOOM_DATA_ROOT is None:
+        raise RuntimeError("私有资料目录缺少受控数据根配置。")
+    _expected_intake_root = (TRADELOOM_DATA_ROOT / "private" / "intake").resolve()
+    if TRADELOOM_INTAKE_ROOT != _expected_intake_root:
+        raise RuntimeError("私有资料目录不符合受控路径。")
+    _media_root = MEDIA_ROOT.resolve()
+    _static_root = STATIC_ROOT.resolve()
+    if (
+        TRADELOOM_INTAKE_ROOT == _media_root
+        or TRADELOOM_INTAKE_ROOT in _media_root.parents
+        or _media_root in TRADELOOM_INTAKE_ROOT.parents
+        or TRADELOOM_INTAKE_ROOT == _static_root
+        or TRADELOOM_INTAKE_ROOT in _static_root.parents
+        or _static_root in TRADELOOM_INTAKE_ROOT.parents
+    ):
+        raise RuntimeError("私有资料目录不能位于公开媒体或静态目录。")
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 APPEND_SLASH = False

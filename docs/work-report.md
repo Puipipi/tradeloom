@@ -388,3 +388,78 @@ Task 4 安装版接线补充（2026-10-19）：将已审 bootstrap artifact 集�
 - **平台状态：** [x] 本地 bundle 已同步；此状态只说明资产和配置副本哈希对齐，不说明新进程已加载或插件可用。
 - **风险与问题：** [!] 不迁移绑定个人 state/home 的 Memorax 数据；原生应用未启动，因此插件可见性与交互仍未验。完整 Bingus 方法审计中的其他缺口保持原状态。
 - **下一步：** [-] 用户安排允许重新打开应用后再核验插件菜单与能力面板；ERPNext 部署另行处理。本地 source-mode 仍是当前交付路径。
+
+## ERPNext 草稿计划与 PowerShell 参数定向复审（2026-10-21，八字段）
+
+- **当前阶段：** [!] 本轮只补齐 Quotation 草稿操作计划和既有 PowerShell 配置参数修复的审查记录；未实施草稿写入代码。
+- **已完成：** [x] 草稿计划已明确 create/update 为不同的幂等操作：服务器生成 operation ID，update 使用新 key 和 `target_operation` 关联；旧成功收据不可由后续 update 或新的远端读回改写。fingerprint 绑定 action、instance、target、expected `modified`、规范化 payload 与 workflow。
+- **未完成：** [-] ERPNext 草稿 API、持久操作模型/迁移、写入工具和表单均未实现；Quotation 修改的原子 `modified` 条件仍待固定版本直接证据。未创建或修改业务记录。
+- **测试结果：** [x] PowerShell 显式空/空白 `-ErpNextConfigFile` fail-closed 修复的 Query scoped 复审已通过：Important addressed，双轴复审无剩余 Critical/Important。修复后仅有静态 PowerShell parse 与 `git diff --check` 检查；未运行测试套件。精确审查 artifact 为 `<LOCAL_EVIDENCE_ROOT>/desktop-package-contract/erpnext-live-review-20261021/scoped-fix-review.txt`，SHA-256 `10532D541597E5477E41273344B8442161308240F3228BBB9479BBDF968F2CC6`。
+- **运行方式：** [x] 本轮没有启动软件、服务或 ERPNext；没有做数据库迁移、远端写请求、GUI 验收、提交或推送。
+- **平台状态：** [x] launcher 脚本 SHA-256 `DD3B9D065BA01689F3333DAEA0C6761AF6FD6DCB4365E923134BDA95B71AC06B`。ERPNext 查询面板源文件 `packages/tradeloom-shell/client.scenes.js` 当前 SHA-256 `270EE39AB3B899190650FC4C589BA3C9B360F5C2C977F2D09E41A28EC9386567`；本轮未修改此文件。
+- **风险与问题：** [!] CSRF 与本地 DSH request-rejection 是同源请求保护，不是多用户身份认证；浏览器请求不得用 `role` 或 `actor` 字段授权。Agent 写入只可按可信 DSH 执行 preset 检查。结果不确定时必须保留 operation 状态并禁止自动重发。
+- **下一步：** [-] 先由主控审阅 [草稿写入计划](superpowers/plans/2026-10-21-erpnext-draft-write.md)及原子更新条件证据；草稿实现须另行开始。本轮 Query scoped 复审不等于 launcher runtime 验证，也不证明 ERPNext 已配置或可写。
+
+## ERPNext Quotation 草稿后端首批（2026-10-21，八字段）
+
+- **当前阶段：** [!] 固定 Quotation create/update、操作预留与只读调和代码已实现；隔离测试和部署服务验证尚待完成，整体草稿与框架目标仍未完成。
+- **已完成：** [x] 新增 `ErpNextDraftOperation` 模型及手写迁移；Django 增加固定 POST 创建、GET 操作读取和 PUT 条件更新。操作由服务器生成 ID，按 ERP instance + 幂等键预留，fingerprint 固定 action/instance/target/expected modified/规范化 payload/workflow。相同请求不重发，不同请求冲突；请求身份与成功收据不可改写。创建仅固定 `Quotation`，强制 `quotation_to=Customer`，限制字段/数值/日期/明细数量；create/update 均回读确认 `docstatus=0` 后记录独立收据。更新将 `modified=expected_modified` 交给 Frappe 事务校验。失败或读回不确定保留状态与已知 ERP name；GET 把不可变操作收据与当前远端只读状态分开。既有七类只读 API 未扩展。
+- **未完成：** [!] 官方源码证明不等于部署镜像实际条件更新已验；本轮没有真实 ERP 请求、业务单据或数据库迁移。Agent 写工具与场景草稿界面仍未实现。提交、取消、删除、库存仍不开放。
+- **测试结果：** [x] 最终定向回归 42/42、exit 0、0 skip，Django system check 无问题；首次运行的 3 项失败来自假 client/测试断言与固定 client 契约不一致，已修正夹具后在新数据库重跑。测试包括草稿 API、ERPNext adapter 与只读 API；没有用测试替身声称真实 Frappe 已通过。
+- **运行方式：** [x] 命令为 `node <RUNTIME_ROOT>/local-dev/django-phase2-test-runner-20261021-01/run-django-tests.mjs test --test-db tradeloom_test_phase2_erpnext_20261021_04 workbench.tests.test_erpnext_draft_api workbench.tests.test_erpnext_adapter workbench.tests.test_erpnext_api`；外部隔离 runner 在 loopback PostgreSQL 55435 上创建并保留了唯一测试库，`keepdb` 保留测试数据。日志目录 `<RUNTIME_ROOT>/local-dev/django-phase2-test-runner-20261021-01/runs/2026-10-21T102028-006Z-46324/`，`result.json` SHA-256 `3C42BF3449762721DEA26690F9DF71842348B5A63D376039B2DDB34FD73EE3E4`。业务数据库 55432 未触碰。
+- **平台状态：** [x] 浏览器写 API 沿用同源 Django CSRF，不接受请求体中的 `role`/`actor` 授权；记录来源为 `local_workbench`，不声称已认证的自然人身份。没有同步运行 bundle 或 GUI 验收。
+- **风险与问题：** [!] 更新依赖 ERPNext 事务内 `modified` 比较；实现依据官方 Frappe v16.52.0 tagged source，部署镜像与并发冲突响应仍待集成验证。超时/不确定结果不得自动重发。隔离测试证明模型与 migration 在测试数据库可创建，不代表业务库已迁移。
+- **下一步：** [-] 主控审阅后再安排部署镜像条件更新集成验证、Agent 工具与界面阶段。本记录不代表 ERPNext 已部署、草稿业务可用或全目标完成。
+
+### 条件更新增量（2026-10-21）
+
+- 官方 Frappe v16.52.0 源码审阅支持在固定 `PUT /api/resource/Quotation/{name}` 请求内携带 `modified=expected_modified`：`frappe/api/v1.py:update_doc` 先锁定文档再应用 payload；`frappe/model/document.py:check_if_latest` 在保存时比较锁定行与传入原始版本。实现仅认定响应中的 `TimestampMismatchError` 为版本冲突，不把所有 HTTP 417 都误判为冲突。该证据来自官方 tagged source，不等于已对部署镜像完成集成验证。
+- 当前代码新增独立 update operation：每次更新使用新幂等键与服务器 operation ID，引用已成功的同实例目标操作；fingerprint 绑定 action、instance、target、expected modified、规范化内容与 workflow。成功目标的历史收据保持不变。操作结果不确定时不自动重发；冲突记录为终态，之后只允许读取/调和。
+- 已增加更新成功、不可变 create receipt、相同键重放、异 fingerprint 冲突、工作流/目标限制、版本冲突和不确定结果的定向测试源码。最终隔离 PostgreSQL 定向测试 42/42、exit 0；Django test runner 在专用新测试库应用了迁移。没有发起真实 ERP 请求或业务单据写入。
+- 未开放提交、取消、删除、库存写操作；Agent 写工具与桌面草稿 UI 仍未实现。不能据官方源码审阅声明 ERP 草稿写入已通过真实服务验收。
+
+### 崩溃安全与并发幂等增量（2026-10-21）
+
+- **当前阶段：** [!] 本轮修复仅覆盖 Quotation 草稿服务/API 的本地持久状态与幂等写入资格；ERPNext 部署镜像的真实 CAS 集成仍待验证。
+- **已完成：** [x] 新 create/update 操作在网络副作用前提交为 `outcome_unknown`。只有首次创建操作行的原始请求（`created=true`）可获得一次写入资格；同键并发请求只读取/调和，不发送第二次远端写。旧版 `reserved` 行在重放或读取时保守升级为 `outcome_unknown`，不推断远端失败。无 `remote_name` 的未知操作保留不确定状态。回读 `modified` 需通过格式与日历值校验，且与 `external_ref.modified` 一致后才可成功；保存原始字符串供后续 update 精确使用。
+- **未完成：** [!] 未对真实 ERPNext 发送写请求；与部署镜像的 Frappe 条件更新竞态尚未集成验证。ERP 草稿 Agent 工具和场景表单仍是后续工作。本轮没有启停产品或 GUI 验收。
+- **测试结果：** [x] 首次 RED 在隔离 PostgreSQL 55435 上 24 项中 5 项失败，暴露预留仍为 `reserved`、无效 `modified` 可成功等问题；失败日志位于 `<RUNTIME_ROOT>/local-dev/django-phase2-test-runner-20261021-01/runs/2026-10-21T103905-234Z-50004/`，`result.json` SHA-256 `E38F6005B002AD0483EE7164D61FD45F8C61EAB701033180EB85722D7FC5429A`。修复后草稿 API 模块 26/26、exit 0；最终与 ERPNext adapter/API 合并定向回归 49/49、0 skip、exit 0，Django system check 无问题。
+- **RED 证据范围：** 上述 5 项失败早于后续保存路径对终态更新增加锁内 fresh-state 检查；它们证明的是预留状态与 `modified` 校验问题，不是那项终态并发修复的配对 RED。该终态修复没有留存修复前失败日志，当前可引用的证据是修复后的隔离 PostgreSQL 定向/并发测试结果；不应将其表述为 RED→GREEN。
+- **运行方式：** [x] 最终命令：`node <RUNTIME_ROOT>/local-dev/django-phase2-test-runner-20261021-01/run-django-tests.mjs test --test-db tradeloom_test_draft_outcome_final_20261021_02 workbench.tests.test_erpnext_draft_api workbench.tests.test_erpnext_adapter workbench.tests.test_erpnext_api`。使用 runner 新建的专用隔离测试库并保留数据；最终日志在 `<RUNTIME_ROOT>/local-dev/django-phase2-test-runner-20261021-01/runs/2026-10-21T104440-853Z-41752/`，`result.json` SHA-256 `92D7888710A3FE4F9A54B4121421FE4F667A6646A49D4CFC79DCD3C85475DD47`。并发用例是 `TransactionTestCase`，由两个独立线程/数据库连接发起真实 Django API 请求；阻塞远端 fake 后证明同 payload 最多一次写、异 payload 返回 409；另一用例模拟预留后硬中断并证明重放不再创建。业务数据库 55432 与真实 ERPNext 均未触碰。
+- **平台状态：** [x] API 对 `outcome_unknown` 继续返回 202；兼容 envelope 的 `ok=true` 仅表示请求被接收，调用方必须只以 `status=succeeded` 作为成功。当前没有 ERP 草稿工具或表单消费者，因此后续 UI/工具应遵守该状态约定。
+- **风险与问题：** [!] 隔离数据库并发测试证明的是 Django 预留/幂等串行化，不证明部署 Frappe 镜像的条件更新或跨系统 exactly-once。状态未知时不得自动重试写入。
+- **下一步：** [-] 冻结本轮后端 diff 供独立审查；其后再开展 ERP 草稿工具/UI 和经授权的部署镜像 CAS 验证。本记录不表示 ERPNext 已部署或写入流程已对真实服务验收。
+
+## 共享场景卡片间距与本轮回归（2026-10-21）
+
+（同步前基线；GUI 状态已由下方“最终窗口复核增量”更新。）
+
+- **当前阶段：** [!] shell Dockview 面板和 Django 业务嵌入页已统一使用共享间距变量；本轮没有运行 GUI，因此新间距仍未做原生窗口验收。
+- **已完成：** [x] shell 场景外边距、Dockview 标签栏与面板操作区采用统一 inset；iframe 页面内部单独使用页面/卡片 inset；窄屏沿各自 token 收缩。原生聊天保留其自身布局和内部留白，Dockview sash/面板宽度计算未改。深浅主题继续使用既有 Site tokens。
+- **未完成：** [!] 当前 source 已由主控官方同步并在后台启动；本批卡片间距尚未做 GUI 复验，因此不声明间距效果通过。没有改变 ERP 服务配置或业务数据。整体产品目标仍未完成。
+- **测试结果：** [x] Django `workbench.tests` 389/389、exit 0；Node shell 121/121、exit 0、0 skip；launcher 61 项中 57 pass、0 fail、4 skip；candidate7 pinned renderer 7/7、exit 0。Django 使用独立 PostgreSQL 55435，未触碰业务库。Launcher 的四项 skip 均是旧 Stage 6 payload 专项：精确11文件旧bundle的升级/未知编辑拒绝、链接manifest拒绝、旧bundle交换中断恢复、缺失bundle且无可信备份时拒绝；`TRADELOOM_STAGE6_BUSINESS_SHELL` 未设置，candidate7 是当前bundle而不是该历史冻结payload，不能替代它们。
+- **运行方式：** [x] Django 命令为 `node <RUNTIME_ROOT>/local-dev/django-phase2-test-runner-20261021-01/run-django-tests.mjs test --test-db tradeloom_test_spacing_20261021_01 workbench.tests`，run ID `2026-10-21T120157-034Z-48700`，结果 `result.json` SHA-256 `76EFA445B0EE4CF2C39C901083B7836E629D9E653F1CD3A848DCB47931E86584`。Node 日志目录 `<LOCAL_EVIDENCE_ROOT>/ui-spacing-20261021/` 中，shell `shell-node.log` SHA-256 `B68E763B01CFCF48E20AAA15220BB73BE7D99917DA9B0EFFC065F5A90F3B42FD`，launcher `launcher-node.log` SHA-256 `80E219FB945DA6F2406367FB7B10D19E9292F2F60AE59F0F3F3DBF2600896D7E`。renderer 使用 candidate7 的 `pnpm exec vitest run --config <repo>/testing/desktop-package-contract/main-slot-renderer/vitest.config.mjs --reporter=verbose`。测试没有包含真实 ERP 写入或模型请求。
+- **平台状态：** [!] 本批冻结源 `client.scenes.js` SHA-256 `326FD6F2E87CCF97B6A2CA36ACFB33E45276FC7F93F633AAF32C150CE5BAC12B`；`styles.css` SHA-256 `8A44CACF1C1AA81C6B65316AB3122A51AF14009F18255B1E115D31896E4181A8`。focused diff 位于 `<LOCAL_EVIDENCE_ROOT>/desktop-package-contract/scene-spacing-20261021.patch`，SHA-256 `19D7989F7541628EE0FBE9E1D2A30482010603A2F998836795EF928B3A777E53`。本轮 GUI 操作收到 Escape 中止，未以旧版窗口或历史截图推断新间距效果。
+- **风险与问题：** [!] 方法审计既有43个leaf状态没有因本轮综合测试自动更新。当前确切未验证项包括：新 spacing 的 GUI 效果，以及本地 Django 到 ERPNext 的真实读取、Quotation 条件更新与草稿回读。远端 ERP 服务健康且八个 token GET 均返回 HTTP 200；本地私密配置已导入，但当前运行的 Django 尚未启用该配置，所以这些检查不是 TradeLoom 集成验收。正式提交、取消、删除和库存写操作按既定边界未开放；图像/网页桥是预留接缝，不是本批必做 provider。此前已实机查看能力面板，以及20项插件资产（19项安装、另含 Codex experimental；14项为更新）和22项 Skill/52个文件；本轮没有重验这些功能。
+- **下一步：** [-] 由主控在用户方便时对冻结source运行副本做卡片边距实机检查；另按授权安排 ERP 服务只读与草稿 CAS 集成验证。四个 launcher Stage 6 skip 只有找到对应的原始冻结payload后才能补验，不能用 candidate7 冒充旧版本。
+
+### 最终窗口复核增量（2026-10-21）
+
+本节更新上节“间距待 GUI 复验”的时点状态；保留此前的中断记录作为历史，不据此推断其他未验功能已完成。
+
+- **GUI 结果：** [x] 七个场景的卡片留白、日夜主题、侧栏及 MCP/Skill 能力面板滚动是在前一同步 bundle `a2e86a34bcdba5216c372172054885a64b14c0aea66d2be40426347a03e9fdb5` 上逐页检查。最终 bundle `babaee741aa6be4a7d3b3e35453c4b771d44d7aa110b32c16a2e944848ec8491` 只重开桌面检查工作总览、ERP 新中性文案与已连接的 DEMO Item 列表，并检查 621×627 窄屏菜单、主题和单面板切换。分阶段证据 JSON 位于项目外 `workspace/testing/ui-spacing-20261021/ui-verification-final.json`，SHA-256 `6dfff530f317224cbcdcc6d36b2f555f76e2e60a2cfe2cbe819c091b19f5b4e0`，记录五张外部截图的 hash；截图不纳入 Git。
+- **窄屏结果：** [x] 621×627 窄窗口下顶栏可见；助手选择器可展开且 hit-test 命中；meow-smooth FAB 与选择器保留间距；单面板切换成功，页面无横向溢出。已观察 system/light 与 dark 切换。该 GUI 结果不表示实体手机已验收。
+- **未证明项：** [!] 本轮原生自动化对 Dockview 标签拖动只选中了参考标签，不能证明标签移动/停靠成功；此前有效拖放证据仍仅限其记录时的旧 bundle。没有发出新的 LLM/付费请求。Quotation 写入仍为先前的 HTTP 202 `outcome_unknown/forbidden`，无远端名；没有重发、更新或 CAS。远端只读快照显示11类交易计数为0，但不证明未知请求绝无副作用。
+- **范围：** 整体目标未完成。最终 GUI 只更新本节列出的界面观察，不改变 Bingus 43 项 leaf 状态，也不把 ERP 真实读成功外推为写入闭环。
+
+## 同步前记录：窄屏可见性与 ERPNext 403 核对（2026-10-21，GUI 状态已由上方最终窗口复核更新）
+
+- **当前阶段：** [!] 修复了自有 shell 顶栏在窄侧栏收起状态下继承插件 `visibility:hidden` 的问题，并将三处页面间距改为既有共享 token；真实窗口需等本次同步后复验，不能由 Node 结果代替。
+- **已完成：** [x] `.tl-shell-top` 明确恢复 `visibility:visible`，没有修改第三方插件；针对插件固定左上 FAB 在 `html[data-meow-smooth-furled]` 状态再为首行 `.tl-top-model-row` 预留 `66px`（既有10px内距加56px FAB）。`.review-image-candidate`、`.state-grid`、`.runs-layout` 使用既有间距变量。样式契约同时断言可见性与该 furled-only inset。
+- **测试结果：** [x] candidate7 React/ReactDOM server/Cordis 下 `node --test tests/scenes.test.js` 为 23/23 pass、0 skip、0 fail，exit 0。此项证明样式规则合同，不证明 FAB 不再遮挡实际控件。随后隔离 PostgreSQL 55435 的 `workbench.tests.test_erpnext_draft_api` 为 32/32、exit 0；run `2026-10-21T133741-872Z-46892`，`result.json` SHA-256 `7B48ACE1C2A70829C95B37509F1ED4A8C7C52D8C4801FACB68C9F6A092F4B666`，stdout SHA-256 `1A8763774B6CEFE180859B128B07EFAEB85798556340127BF3A78D83D216ED98`。其中新增 403 回归单测另有 1/1、exit 0 的隔离运行记录，见项目外 `LOCAL_EVIDENCE/erpnext-live-20261021/http403-test-run.md`；当前模块重跑仍包含该用例。
+- **外部 ERP 证据：** [!] 项目外安全 checkpoint `LOCAL_EVIDENCE/erpnext-live-20261021/checkpoint.json` SHA-256 `C372C3E08E9F5602D068F7D9F3E53984F2E014E0BB5AE66DD858AC216A074FB4` 记录七类白名单 DocType 列表均 HTTP 200，状态接口与一条记录详情读取也成功。唯一一次 Quotation 创建请求返回 HTTP 202；随后只读操作查询显示 `outcome_unknown`/安全错误 `forbidden` 且没有远端单据名。没有重发、更新、CAS 竞态或自动重试。HTTP 403 不证明远端没有副作用。独立远端只读证据 `LOCAL_EVIDENCE/erpnext-engine-20261021/deployment/quotation-readonly-hook-evidence-20261021.json` SHA-256 `AA1A2FDE7C3377E5EC5C14FB33E73D3FB1A6239000841C4DC9E4A6C177BE16EA`（UTC `2026-10-21T13:41:51.639290+00:00`）显示只读事务前后 11 类交易计数均为 0；这是当前远端快照，不证明该 Quotation 请求没有副作用，也未确定 403 的完整原因。
+- **未完成：** [!] 真实 Quotation 创建未确认成功；更新和部署 Frappe 的 `modified` CAS 未执行。提交、取消、删除和库存写入仍关闭。主控在修复前于 621×627 收起侧栏窗口实测：顶栏已重新可见、导航可用，但 `meow-smooth` FAB 覆盖助手首行入口，`elementFromPoint` 命中该 FAB。现源码已按已核定方案预留 FAB 空间并通过定向合同测试；修复后的窗口结果仍待主控复验，此前遮挡现象保留为修前实测记录。
+- **范围边界：** [x] 早前 Django 全套 389/389、exit 0 仍是该次全套结果；本轮 32 项是草稿 API 模块定向回归，不把二者相加或称为 400 项全套。全局插件/Skill 已有此前资产与 GUI 证据；图像/网页桥仍为预留接缝，不因此增加接入任务。
+- **运行方式：** [x] 本轮 shell 命令以环境变量指向 candidate7 的 React、ReactDOM server 与 Cordis：`TRADELOOM_REACT_LIBRARY`、`TRADELOOM_REACT_SERVER_LIBRARY`、`TRADELOOM_CORDIS_LIBRARY`；候选运行库绝对路径留在本机记录中。Django 使用隔离 runner 新库 `tradeloom_test_forbidden403_20261021_01`，未访问业务 PostgreSQL。
+- **平台状态：** [!] 主控已完成同步/重启和该小窗口实测；此证据只确认顶栏恢复可见并定位 FAB 遮挡，尚非完整窄屏验收。整体框架与 ERP 写入目标仍未完成。
+- **下一步：** [-] 针对当前 `outcome_unknown` 只允许同一操作的只读调和，不生成新幂等键、不重发创建；在创建结果确认成功后，于已授权演示范围验证部署镜像 CAS。

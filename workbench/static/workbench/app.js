@@ -5,9 +5,13 @@
       const value = event.data;
       if (event.source !== window.parent || event.origin !== window.location.origin
         || !value || value.type !== "tradeloom:theme"
-        || Object.keys(value).sort().join(",") !== "colorScheme,type"
+        || Object.keys(value).sort().join(",") !== "colorScheme,palette,type"
         || !["light", "dark"].includes(value.colorScheme)) return;
+      const paletteKeys = ["accent", "border", "canvas", "header", "muted", "panel", "teal", "text"];
+      if (!value.palette || Object.keys(value.palette).sort().join(",") !== paletteKeys.join(",")
+        || paletteKeys.some(key => typeof value.palette[key] !== "string" || !/^#[0-9a-f]{6}$/i.test(value.palette[key]))) return;
       document.documentElement.dataset.colorScheme = value.colorScheme;
+      for (const key of paletteKeys) document.documentElement.style.setProperty(`--wb-theme-${key}`, value.palette[key]);
     };
     window.addEventListener("message", onThemeMessage);
     window.parent.postMessage({ type: "tradeloom:theme:request" }, window.location.origin);

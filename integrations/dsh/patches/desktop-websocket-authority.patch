@@ -2,14 +2,11 @@ diff --git a/apps/desktop/src/main.ts b/apps/desktop/src/main.ts
 index 68282b24..984ac743 100644
 --- a/apps/desktop/src/main.ts
 +++ b/apps/desktop/src/main.ts
-@@ -37,6 +37,7 @@ import { desktopUpdateChannel } from './update-channel.ts'
- import { DesktopUpdateCoordinator } from './update-coordinator.ts'
+@@ -38,3 +38,4 @@
  import { DesktopCommandManager } from './command-management.ts'
  import { serveWebDocument, authenticateWebHost, forwardWebRequest } from './web-document.ts'
 +import { desktopWebSocketRequestHeaders } from './websocket-authority.ts'
  import { DesktopFatalRecovery } from './fatal-recovery.ts'
- import { pruneCrashReports, RendererConsoleTail, writeCrashReport, type CrashReportSource } from './crash-report.ts'
- import { openWelcomeWindow } from './welcome-window.ts'
 @@ -718,17 +719,15 @@ async function main(): Promise<void> {
      return browserGuests.release(event.sender, lease)
    })

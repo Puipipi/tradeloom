@@ -2,6 +2,7 @@ window.__ModuleLoader__.load({
   id: '@tradeloom/dsh-business-shell',
   factory(require) {
     const React = require('react')
+    const ReactDOM = require('react-dom')
     const h = React.createElement
     const menus = [
       ['business-home', '总览', '/home'],
@@ -23,6 +24,12 @@ window.__ModuleLoader__.load({
     let sceneWorkbenchSelected = false
     let trustedBusinessOrigin = ''
     let activeColorScheme = 'light'
+    const workbenchPalette = Object.freeze({
+      canvas: { light: '#f4f7fb', dark: '#0c1017' }, panel: { light: '#ffffff', dark: '#131925' },
+      header: { light: '#e9eef6', dark: '#171f2c' }, border: { light: '#cbd5e2', dark: '#293345' },
+      text: { light: '#202b3a', dark: '#dfe7f3' }, muted: { light: '#68778c', dark: '#8b97ab' },
+      accent: { light: '#356fc4', dark: '#4d83dd' }, teal: { light: '#177d78', dark: '#37b5a9' },
+    })
     let removeThemeBridge
     let agentCenterHref = '/business/agent-center'
     let removeProposalHandoff
@@ -35,7 +42,8 @@ window.__ModuleLoader__.load({
     function sendBusinessTheme(frame) {
       if (!frame?.contentWindow || !['light', 'dark'].includes(activeColorScheme)) return
       try {
-        frame.contentWindow.postMessage({ type: 'tradeloom:theme', colorScheme: activeColorScheme }, window.location.origin)
+        const palette = Object.fromEntries(Object.entries(workbenchPalette).map(([key, modes]) => [key, modes[activeColorScheme]]))
+        frame.contentWindow.postMessage({ type: 'tradeloom:theme', colorScheme: activeColorScheme, palette }, window.location.origin)
       } catch { /* A frame may be navigating; its next load sends the current theme. */ }
     }
 
@@ -136,6 +144,7 @@ window.__ModuleLoader__.load({
 
     function SceneTopNavigation(props) {
       const [state, setState] = React.useState(sceneLoadState)
+      const activePanelId = props.usePanelInfo?.(info => info.activePanelId)
       React.useEffect(() => {
         const listener = () => setState(sceneLoadState)
         sceneLoadListeners.add(listener)
@@ -143,8 +152,10 @@ window.__ModuleLoader__.load({
       }, [])
       return h('div', { className: `tl-shell-top is-${state.colorScheme ?? activeColorScheme}` },
         h('div', { className: 'tl-top-model-row' },
+          h('div', { className: 'tl-shell-brand' }, h(TradeLoomMark, { className: 'tl-shell-brand-mark' }), h(TradeLoomWordmark)),
           h(AgentDirectory, { compact: true }),
-          state.ModelDirectoryRail ? h(state.ModelDirectoryRail) : null),
+          state.ModelDirectoryRail ? h(state.ModelDirectoryRail) : null,
+          h(ShellToolsMenu)),
         h(BusinessMenu, { ...props, SceneTabs: state.SceneTabs }),
         state.loading ? h('p', { role: 'status', style: { margin: '0 12px 6px' } }, '正在加载工作场景…') : null,
         state.error ? h('div', { role: 'alert', style: { display: 'flex', alignItems: 'center', gap: 8, padding: '4px 12px' } },
@@ -160,7 +171,7 @@ window.__ModuleLoader__.load({
       sceneLoadRequest = Promise.resolve()
         .then(() => require.async('./client.scenes.js'))
         .then(sceneWorkbench => {
-          sceneWorkbench.register(ctx, setTrustedBusinessOrigin, roleMetadata => publishSceneLoadState({ roleMetadata }))
+          sceneWorkbench.register(ctx, setTrustedBusinessOrigin, roleMetadata => publishSceneLoadState({ roleMetadata }), workbenchPalette)
           sceneApi = sceneWorkbench
           if (!sceneWorkbenchSelected) {
             ctx.layout?.selectPanel('scene-workbench')
@@ -177,13 +188,50 @@ window.__ModuleLoader__.load({
       return sceneLoadRequest
     }
 
-    function BusinessMenu(props) {
-      const activePanelId = props.usePanelInfo(info => info.activePanelId)
+    function ShellToolsMenu() {
+      const [open, setOpen] = React.useState(false)
       const [mobileOpen, setMobileOpen] = React.useState(false)
       const [mobileUrl, setMobileUrl] = React.useState('')
       const [mobileBusy, setMobileBusy] = React.useState(false)
       const [mobileError, setMobileError] = React.useState('')
       const mobileRequest = React.useRef(0)
+      const rootRef = React.useRef(null)
+      const triggerRef = React.useRef(null)
+      const current = sceneApi?.getSnapshot?.()
+      const bindingKey = `${current?.activeSceneId ?? ''}`
+      const activeBinding = React.useRef(bindingKey)
+      React.useEffect(() => {
+        if (!sceneApi?.subscribe) return undefined
+        activeBinding.current = bindingKey
+        const onSnapshot = () => {
+          const latest = sceneApi.getSnapshot?.()
+          const latestKey = `${latest?.activeSceneId ?? ''}`
+          if (latestKey !== activeBinding.current) {
+            activeBinding.current = latestKey
+            setOpen(false)
+          }
+        }
+        return sceneApi.subscribe(onSnapshot)
+      }, [sceneApi])
+      React.useEffect(() => {
+        if (!open) return undefined
+        const dismiss = event => {
+          if (event.type === 'keydown') {
+            if (event.key !== 'Escape') return
+            event.preventDefault?.()
+            setOpen(false)
+            triggerRef.current?.focus?.()
+            return
+          }
+          if (!rootRef.current?.contains?.(event.target)) setOpen(false)
+        }
+        document.addEventListener('keydown', dismiss)
+        document.addEventListener('click', dismiss)
+        return () => {
+          document.removeEventListener('keydown', dismiss)
+          document.removeEventListener('click', dismiss)
+        }
+      }, [open])
 
       async function showMobileLink() {
         if (mobileBusy) return
@@ -215,49 +263,129 @@ window.__ModuleLoader__.load({
         }
       }
 
+      function action(label, onClick, disabled = false) {
+        return h('button', { key: label, type: 'button', disabled, onClick: () => {
+          onClick()
+          setOpen(false)
+        } }, label)
+      }
+
+      return h('div', { className: 'tl-shell-tools', ref: rootRef },
+        h('button', { ref: triggerRef, type: 'button', className: 'tl-shell-tools-trigger', 'aria-label': '打开工具菜单', title: '工具', 'aria-controls': 'tl-shell-tools-menu', 'aria-expanded': open, onClick: () => setOpen(value => !value) }, '⋯'),
+        open ? h('div', { id: 'tl-shell-tools-menu', className: 'tl-shell-tools-menu', role: 'group', 'aria-label': '工作台工具' },
+          action(sceneApi?.getSnapshot?.()?.configError ? '重试读取场景' : '刷新场景配置', () => { void sceneApi?.retryLoadConfig?.() }),
+          action('返回工作台', () => layout?.selectPanel('scene-workbench')),
+          action('插件管理', () => layout?.selectPanel('plugins')),
+          action('自动化', () => layout?.selectPanel('schedules')),
+          action('切换会话侧栏', () => layout?.toggleSidebar?.()),
+          action('连接手机', () => { void showMobileLink() })) : null,
+        mobileOpen ? h('section', {
+          role: 'dialog', 'aria-label': '连接手机', 'aria-modal': 'false',
+          className: 'tl-mobile-link-panel',
+        },
+        h('button', { type: 'button', onClick: closeMobileLink, 'aria-label': '关闭手机连接面板' }, '关闭'),
+        h('strong', null, '连接手机'),
+        h('ol', null,
+          h('li', null, '电脑保持开启。'),
+          h('li', null, '手机连接同一 Wi-Fi。'),
+          h('li', null, '复制授权链接，在手机浏览器打开。')),
+        mobileBusy ? h('p', { role: 'status' }, '正在生成链接…') : null,
+        mobileUrl ? h('div', null,
+          h('input', { type: 'text', readOnly: true, value: mobileUrl, 'aria-label': '手机授权链接', onFocus: event => event.currentTarget.select() }),
+          h('button', { type: 'button', onClick: () => { void copyMobileLink() } }, '复制链接')) : null,
+        mobileError ? h('p', { role: 'status' }, mobileError) : null) : null)
+    }
+
+    function BusinessMenu(props) {
+      const activePanelId = props.usePanelInfo(info => info.activePanelId)
+
       function navigateScene(sceneId) {
         if (!sceneApi?.navigateScene(sceneId)) layout?.selectPanel('scene-workbench')
       }
+      function openCurrentConversation() {
+        const current = sceneApi?.getSnapshot?.()
+        const role = current?.config && current.activeSceneId ? sceneApi.roleForScene(current.config, current.activeSceneId) : undefined
+        const sessionId = role ? current?.sessionBindings?.[role] : undefined
+        if (sessionId) uiWorkspace?.openSession(sessionId)
+      }
+
+      const sceneState = sceneApi?.getSnapshot?.()
+      const currentRole = sceneState?.config && sceneState.activeSceneId
+        ? sceneApi.roleForScene(sceneState.config, sceneState.activeSceneId) : undefined
+      const currentSessionId = currentRole ? sceneState?.sessionBindings?.[currentRole] : undefined
+      const conversationUnavailable = currentSessionId ? '' : '当前助手尚未连接，无法打开对话'
 
       return h('nav', {
         className: 'tl-navigation',
         'aria-label': '工作场景与业务导航',
       }, h('style', { 'data-tradeloom-nav-style': 'true' }, `
         .tl-shell-top {
-          --tl-shell-surface: #fff; --tl-shell-soft: #f5f5f7; --tl-shell-ink: #1d1d1f;
-          --tl-shell-muted: #6e6e73; --tl-shell-line: #d2d2d7; --tl-shell-accent: #0e73d8;
-          --tl-shell-accent-strong: #0d6ece; --tl-shell-accent-soft: #e8f1fd;
+          /* Collapsed-sidebar styling can hide this shell slot through inherited visibility. */
+          visibility: visible;
+          --tl-shell-surface: var(--dsw-alias-bg-layer-1, #ffffff); --tl-shell-soft: var(--dsw-alias-bg-layer-2, #e9eef6); --tl-shell-ink: var(--dsw-alias-label-primary, #202b3a);
+          --tl-shell-muted: var(--dsw-alias-label-secondary, #68778c); --tl-shell-line: var(--dsw-alias-border-l1, #cbd5e2); --tl-shell-accent: var(--dsw-alias-brand-primary, #356fc4);
+          --tl-shell-accent-strong: #285ca4; --tl-shell-accent-soft: var(--dsw-alias-bg-layer-2, #e5eefb);
           --tl-shell-danger: #ba2121; --tl-shell-danger-bg: #fdecea; --tl-shell-danger-line: #f5c6c6;
         }
         .tl-shell-top.is-dark {
-          --tl-shell-surface: #1c1c1e; --tl-shell-soft: #2c2c2e; --tl-shell-ink: #f5f5f7;
-          --tl-shell-muted: #a1a1a6; --tl-shell-line: #3a3a3c; --tl-shell-accent: #1985f0;
-          --tl-shell-accent-strong: #499ef3; --tl-shell-accent-soft: #1e3a5f;
+          --tl-shell-surface: var(--dsw-alias-bg-layer-1, #131925); --tl-shell-soft: var(--dsw-alias-bg-layer-2, #171f2c); --tl-shell-ink: var(--dsw-alias-label-primary, #dfe7f3);
+          --tl-shell-muted: var(--dsw-alias-label-secondary, #8b97ab); --tl-shell-line: var(--dsw-alias-border-l1, #293345); --tl-shell-accent: var(--dsw-alias-brand-primary, #4d83dd);
+          --tl-shell-accent-strong: #6d9cec; --tl-shell-accent-soft: var(--dsw-alias-bg-layer-2, #202e47);
           --tl-shell-danger: #ff8f8f; --tl-shell-danger-bg: #3a2323; --tl-shell-danger-line: #7a3b3b;
         }
         .tl-navigation {
-          display: flex; align-items: center; flex-wrap: nowrap; gap: 5px;
-          min-width: 0; max-height: 42px; overflow-x: auto; overflow-y: hidden;
-          white-space: nowrap; padding: 4px 10px;
+          box-sizing: border-box; display: flex; align-items: center; flex-wrap: nowrap; gap: 5px;
+          min-width: 0; min-height: 38px; max-height: 38px; overflow-x: auto; overflow-y: hidden;
+          white-space: nowrap; padding: 3px 10px;
           border-bottom: 1px solid var(--tl-shell-line); background: var(--tl-shell-surface); color: var(--tl-shell-ink);
           font-family: "Segoe UI", "Microsoft YaHei", sans-serif; font-size: 13px;
         }
         .tl-top-model-row {
-          display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0;
-          padding: 3px 10px; box-sizing: border-box;
+          display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; position: relative;
+          padding: 1px 10px; box-sizing: border-box;
         }
+        .tl-shell-brand { display:flex; align-items:center; gap:7px; flex:0 0 auto; color:var(--tl-shell-ink); }
+        .tl-shell-brand-mark { width:26px; height:26px; }
+        .tl-shell-brand > div { line-height:1.05 !important; }
+        .tl-shell-brand strong { font-size:13px !important; }
+        .tl-shell-brand span { display:none; }
+        .tl-top-model-row > :first-child { flex: 0 1 auto; min-width: 0; }
+        .tl-shell-tools { margin-inline-start: auto; position: relative; flex: 0 0 auto; }
+        .tl-shell-tools-trigger {
+          display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 32px;
+          border: 1px solid var(--tl-shell-line); border-radius: 6px; background: var(--tl-shell-surface);
+          color: var(--tl-shell-ink); font: 20px/1 "Segoe UI", sans-serif; cursor: pointer;
+        }
+        .tl-shell-tools-trigger:hover, .tl-shell-tools-menu button:hover { background: var(--tl-shell-soft); }
+        .tl-shell-tools-trigger:focus-visible, .tl-shell-tools-menu button:focus-visible { outline: 2px solid var(--tl-shell-accent); outline-offset: 2px; }
+        .tl-shell-tools-menu {
+          position: absolute; z-index: 1000; inset-block-start: calc(100% + 4px); inset-inline-end: 0;
+          display: grid; gap: 2px; min-width: 190px; padding: 6px; border: 1px solid var(--tl-shell-line);
+          border-radius: 8px; background: var(--tl-shell-surface); color: var(--tl-shell-ink);
+          box-shadow: 0 8px 24px rgb(0 0 0 / 16%);
+        }
+        .tl-shell-tools-menu button {
+          min-height: 34px; padding: 6px 9px; border: 0; border-radius: 5px; background: transparent;
+          color: inherit; font: inherit; text-align: start; cursor: pointer;
+        }
+        html[data-meow-smooth-furled] .tl-top-model-row { padding-inline-start: 66px; }
         .tl-navigation .tl-scene-tab { font: inherit; color: inherit; background: transparent; }
-        .tl-navigation > button:not(.tl-scene-tab) {
+        .tl-navigation .tl-conversation-entry {
           display: inline-flex; align-items: center; justify-content: center;
           min-height: 30px; padding: 4px 9px;
           border: 1px solid var(--tl-shell-line); border-radius: 5px;
           background: var(--tl-shell-surface); color: var(--tl-shell-ink);
           font: inherit; cursor: pointer;
         }
-        .tl-navigation > button:not(.tl-scene-tab):hover { background: var(--tl-shell-soft); }
-        .tl-navigation > button:not(.tl-scene-tab):focus-visible { outline: 2px solid var(--tl-shell-accent); outline-offset: 2px; }
-      `), props.SceneTabs
-        ? h(props.SceneTabs, { onSceneSelect: navigateScene })
+        .tl-navigation .tl-conversation-entry:hover { background: var(--tl-shell-soft); }
+        .tl-navigation .tl-conversation-entry[aria-current="page"] { background: var(--tl-shell-accent-soft); border-color: var(--tl-shell-accent); }
+        .tl-navigation .tl-conversation-entry:disabled { opacity: .65; cursor: default; }
+        .tl-navigation .tl-conversation-entry:focus-visible { outline: 2px solid var(--tl-shell-accent); outline-offset: 2px; }
+      `), h('button', { type: 'button', className: 'tl-conversation-entry', onClick: openCurrentConversation,
+        disabled: !currentSessionId, title: currentSessionId ? '打开当前助手的原生对话' : conversationUnavailable,
+        'aria-label': currentSessionId ? '打开当前对话' : conversationUnavailable,
+        'aria-current': currentSessionId && activePanelId == null ? 'page' : undefined }, currentSessionId ? '对话' : '对话未连接'), props.SceneTabs
+        ? h(props.SceneTabs, { onSceneSelect: navigateScene, workbenchActive: activePanelId === 'scene-workbench' })
         : menus.map(([panelKey, label, path]) => h('button', {
         key: panelKey, type: 'button', 'data-business-path': path, onClick: () => {
           if (panelKey === 'business-agent-center') setAgentCenterHref('/business/agent-center')
@@ -266,25 +394,32 @@ window.__ModuleLoader__.load({
         'aria-current': activePanelId === panelKey ? 'page' : undefined,
         style: { flex: '0 0 auto' },
       }, label)),
-      h('button', {
-        key: 'mobile-link', type: 'button', onClick: () => { void showMobileLink() },
-        style: { flex: '0 0 auto' },
-      }, '连接手机'),
-      mobileOpen ? h('section', {
-        key: 'mobile-link-panel', role: 'dialog', 'aria-label': '连接手机', 'aria-modal': 'false',
-        style: { position: 'fixed', zIndex: 1000, top: 56, right: 12, width: 'min(420px, calc(100vw - 24px))', padding: 16, border: '1px solid var(--tl-shell-line)', borderRadius: 12, background: 'var(--tl-shell-surface)', color: 'var(--tl-shell-ink)', boxShadow: '0 8px 24px rgba(0,0,0,.16)', whiteSpace: 'normal' },
-      },
-      h('button', { type: 'button', onClick: closeMobileLink, 'aria-label': '关闭手机连接面板', style: { float: 'right' } }, '关闭'),
-      h('strong', null, '连接手机'),
-      h('ol', { style: { paddingLeft: 20 } },
-        h('li', null, '电脑保持开启。'),
-        h('li', null, '手机连接同一 Wi-Fi。'),
-        h('li', null, '复制授权链接，在手机浏览器打开。')),
-      mobileBusy ? h('p', { role: 'status' }, '正在生成链接…') : null,
-      mobileUrl ? h('div', null,
-        h('input', { type: 'text', readOnly: true, value: mobileUrl, 'aria-label': '手机授权链接', onFocus: event => event.currentTarget.select(), style: { width: '100%', boxSizing: 'border-box', margin: '8px 0' } }),
-        h('button', { type: 'button', onClick: () => { void copyMobileLink() } }, '复制链接')) : null,
-      mobileError ? h('p', { role: 'status', style: { color: 'var(--tl-shell-danger)', fontSize: 12 } }, mobileError) : null) : null)
+      null)
+    }
+
+    function capabilityPanelPlacement(anchorRect, viewport) {
+      const gutter = 8
+      const gap = 8
+      const viewportWidth = viewport.width
+      const viewportHeight = viewport.height
+      const viewportLeft = viewport.left
+      const viewportTop = viewport.top
+      const width = Math.max(0, Math.min(720, viewportWidth - gutter * 2))
+      const minLeft = viewportLeft + gutter
+      const maxLeft = Math.max(minLeft, viewportLeft + viewportWidth - gutter - width)
+      const anchor = anchorRect ?? { left: minLeft, top: viewportTop + gutter, bottom: viewportTop + gutter }
+      const below = Math.max(0, viewportTop + viewportHeight - anchor.bottom - gutter * 2)
+      const above = Math.max(0, anchor.top - viewportTop - gutter * 2)
+      const placeBelow = below >= 260 || below >= above
+      const availableHeight = placeBelow ? below : above
+      const maxHeight = Math.min(680, availableHeight, Math.max(0, viewportHeight - gutter * 2))
+      const minTop = viewportTop + gutter
+      const maxTop = Math.max(minTop, viewportTop + viewportHeight - gutter - maxHeight)
+      const top = placeBelow
+        ? Math.min(maxTop, Math.max(minTop, anchor.bottom + gap))
+        : Math.min(maxTop, Math.max(minTop, anchor.top - gap - maxHeight))
+      const left = Math.min(maxLeft, Math.max(minLeft, Number(anchor.left) || minLeft))
+      return { left, top, width, maxHeight }
     }
 
     function AgentDirectory(props) {
@@ -292,9 +427,26 @@ window.__ModuleLoader__.load({
       const [error, setError] = React.useState('')
       const [menuOpen, setMenuOpen] = React.useState(false)
       const [capabilityOpen, setCapabilityOpen] = React.useState(false)
+      const capabilitySelectorRef = React.useRef(null)
+      const capabilityCloseRef = React.useRef(null)
+      const capabilityWasOpen = React.useRef(false)
+      const [capabilityPanelBounds, setCapabilityPanelBounds] = React.useState(null)
       const [capabilityRole, setCapabilityRole] = React.useState('')
+      const capabilityRoleRef = React.useRef(capabilityRole)
+      capabilityRoleRef.current = capabilityRole
       const [capabilityInfo, setCapabilityInfo] = React.useState({ status: 'idle', data: null, error: '' })
       const capabilityRequest = React.useRef(0)
+      const [capabilityTab, setCapabilityTab] = React.useState('current')
+      const [configurationByRole, setConfigurationByRole] = React.useState({})
+      const configurationByRoleRef = React.useRef(configurationByRole)
+      configurationByRoleRef.current = configurationByRole
+      const [skillDirectoryTextByRole, setSkillDirectoryTextByRole] = React.useState({})
+      const configurationRequest = React.useRef({})
+      const [configurationBusyRole, setConfigurationBusyRole] = React.useState('')
+      const configurationSaveFlight = React.useRef(false)
+      const [newSessionBusy, setNewSessionBusy] = React.useState(false)
+      const newSessionFlight = React.useRef(false)
+      const newSessionOperations = React.useRef({})
       const roleMetadata = sceneLoadState.roleMetadata ?? { status: 'idle', error: '', roles: null }
       const roles = roleMetadata.status === 'ready' && Array.isArray(roleMetadata.roles) ? roleMetadata.roles : []
       async function retryRoles() {
@@ -327,8 +479,167 @@ window.__ModuleLoader__.load({
         } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)) }
         finally { setBusy('') }
       }
+      function editableConfiguration(result) {
+        return {
+          mcpServers: (Array.isArray(result.mcpServers) ? result.mcpServers : []).map(server => ({
+            ...server,
+            ...(server.transport === 'stdio'
+              ? { env: Object.fromEntries(Object.entries(server.env ?? {}).map(([name, ref]) => [name, { envName: ref.envName, scheme: ref.scheme }])) }
+              : { headers: Object.fromEntries(Object.entries(server.headers ?? {}).map(([name, ref]) => [name, { envName: ref.envName, scheme: ref.scheme }])) }),
+          })),
+          skill: { includeDefaultRoots: result.skill?.includeDefaultRoots !== false, customSkillDirs: [...(result.skill?.customSkillDirs ?? [])] },
+          deniedTools: [...(result.deniedTools ?? [])],
+        }
+      }
+      async function loadSavedConfiguration(role) {
+        const requestId = (configurationRequest.current[role] ?? 0) + 1
+        configurationRequest.current[role] = requestId
+        setConfigurationByRole(previous => ({ ...previous, [role]: {
+          ...(previous[role] ?? {}), status: 'loading', error: '',
+        } }))
+        try {
+          const response = await fetch(`/tradeloom/agent-configuration?role=${encodeURIComponent(role)}`, {
+            method: 'GET', credentials: 'same-origin', headers: { accept: 'application/json' },
+          })
+          const result = await response.json()
+          if (!response.ok || result?.role !== role || typeof result.revision !== 'string'
+            || !Array.isArray(result.mcpServers) || !Array.isArray(result.deniedTools) || !result.skill) throw new Error('读不到已保存配置')
+          if (configurationRequest.current[role] !== requestId) return
+          const fetchedDraft = editableConfiguration(result)
+          const currentEntry = configurationByRoleRef.current[role]
+          setSkillDirectoryTextByRole(previous => currentEntry?.dirty && Object.hasOwn(previous, role)
+            ? previous
+            : { ...previous, [role]: fetchedDraft.skill.customSkillDirs.join('\n') })
+          setConfigurationByRole(previous => {
+            const existing = previous[role]
+            return { ...previous, [role]: {
+              status: 'ready', saved: { preset: result.preset, revision: result.revision, editable: result.editable === true, mcpServers: result.mcpServers, skill: result.skill, deniedTools: result.deniedTools },
+              draft: existing?.dirty ? existing.draft : fetchedDraft,
+              dirty: existing?.dirty === true,
+              message: existing?.dirty ? existing.message : '',
+            } }
+          })
+        } catch (cause) {
+          if (configurationRequest.current[role] === requestId) setConfigurationByRole(previous => ({ ...previous, [role]: {
+            ...(previous[role] ?? {}), status: 'error', error: cause instanceof Error ? cause.message : '配置读取失败',
+          } }))
+        }
+      }
+      function updateConfiguration(role, transform) {
+        setConfigurationByRole(previous => {
+          const existing = previous[role]
+          if (!existing?.draft || existing.saving) return previous
+          const draft = transform(existing.draft)
+          return { ...previous, [role]: { ...existing, draft, dirty: true, message: '' } }
+        })
+      }
+      async function saveConfiguration(role) {
+        const entry = configurationByRoleRef.current[role]
+        if (!entry?.saved?.editable || !entry.draft || entry.saving || configurationBusyRole || configurationSaveFlight.current) return
+        const submitted = JSON.parse(JSON.stringify(entry.draft))
+        submitted.skill.customSkillDirs = submitted.skill.customSkillDirs.map(value => value.trim()).filter(Boolean)
+        configurationSaveFlight.current = true
+        setConfigurationBusyRole(role)
+        setConfigurationByRole(previous => ({ ...previous, [role]: { ...previous[role], saving: true, message: '' } }))
+        try {
+          const response = await fetch(`/tradeloom/agent-configuration?role=${encodeURIComponent(role)}`, {
+            method: 'PUT', credentials: 'same-origin', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ expectedRevision: entry.saved.revision, ...submitted }),
+          })
+          const result = await response.json()
+          if (!response.ok || result?.role !== role || result?.preset !== entry.saved.preset
+            || typeof result?.revision !== 'string' || result.appliedForNewAgents !== true || result.currentSessionUnchanged !== true) {
+            const message = response.status === 409 ? '配置版本已变化；草稿保留，请读取最新版本后再保存。' : '配置保存未确认；草稿已保留。'
+            setConfigurationByRole(previous => ({ ...previous, [role]: { ...previous[role], saving: false, message } }))
+            return
+          }
+          setSkillDirectoryTextByRole(previous => ({ ...previous, [role]: submitted.skill.customSkillDirs.join('\n') }))
+          setConfigurationByRole(previous => ({ ...previous, [role]: {
+            ...previous[role], saving: false, dirty: false, draft: submitted,
+            saved: { ...previous[role].saved, revision: result.revision ?? previous[role].saved.revision, editable: true },
+            message: '已保存为新会话默认配置；当前会话能力保持不变。保存时可能已连接或启动 MCP 服务。',
+          } }))
+        } catch {
+          setConfigurationByRole(previous => ({ ...previous, [role]: { ...previous[role], saving: false, message: '连接中断；草稿保留，可用相同配置重试。' } }))
+        } finally { configurationSaveFlight.current = false; setConfigurationBusyRole('') }
+      }
+      async function createConfiguredSession(role) {
+        if (newSessionFlight.current || !sceneApi) return
+        const configState = configurationByRoleRef.current[role]
+        if (!configState?.saved?.editable || configState.dirty || configState.saving) {
+          setConfigurationByRole(previous => ({ ...previous, [role]: { ...previous[role], message: '请先保存配置，再创建新对话。' } }))
+          return
+        }
+        const currentSessionId = sceneApi.getSnapshot()?.sessionBindings?.[role] ?? null
+        let operation = newSessionOperations.current[role]
+        const operationStorageKey = `tradeloom:session-create:${role}`
+        if (!operation) {
+          try {
+            const stored = JSON.parse(window.localStorage?.getItem(operationStorageKey) ?? 'null')
+            if (stored?.role === role && (stored.expectedSessionId === null || typeof stored.expectedSessionId === 'string')
+              && typeof stored.operationId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(stored.operationId)) operation = stored
+          } catch { /* Storage can be disabled; the in-memory operation remains available for this view. */ }
+        }
+        if (!operation) {
+          const operationId = window.crypto?.randomUUID?.()
+          if (!operationId) {
+            setConfigurationByRole(previous => ({ ...previous, [role]: { ...previous[role], message: '当前浏览器无法生成安全操作标识，请重新打开面板后重试。' } }))
+            return
+          }
+          operation = { role, expectedSessionId: currentSessionId, operationId }
+          newSessionOperations.current[role] = operation
+          try { window.localStorage?.setItem(operationStorageKey, JSON.stringify(operation)) } catch { /* Keep the operation in memory if storage is unavailable. */ }
+        }
+        newSessionOperations.current[role] = operation
+        newSessionFlight.current = true
+        setNewSessionBusy(true)
+        try {
+          const response = await fetch('/tradeloom/session/new', {
+            method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ role, expectedSessionId: operation.expectedSessionId, operationId: operation.operationId }),
+          })
+          const result = await response.json()
+          if (!response.ok || result?.role !== role || typeof result.sessionId !== 'string') {
+            if (response.status === 409 && result?.error === 'stale-session-binding') {
+              delete newSessionOperations.current[role]
+              try { window.localStorage?.removeItem(operationStorageKey) } catch { /* The server has confirmed this intent was not accepted. */ }
+              setConfigurationByRole(previous => ({ ...previous, [role]: { ...previous[role], message: '助手绑定已变化，请读取最新状态后再创建对话。' } }))
+              return
+            }
+            const message = result?.error === 'session-create-outcome-unknown'
+              ? '创建结果尚未确认；旧会话保持不变，系统已保留该操作。请勿另建操作，稍后可用同一操作核对。'
+              : response.status === 409
+                ? '助手绑定已变化或创建状态待核对；旧会话保持不变，请读取最新状态。'
+                : '新对话创建结果尚未确认；旧会话保持不变，操作草稿已保留。'
+            setConfigurationByRole(previous => ({ ...previous, [role]: { ...previous[role], message } }))
+            return
+          }
+          let selectedNewSession = false
+          if (capabilityRoleRef.current === role) {
+            if (!await sceneApi.selectRole(role, result.sessionId)) throw new Error('已创建新会话，但工作台暂时无法切换到它。')
+            setCapabilityTab('current')
+            await loadCapabilities(role)
+            selectedNewSession = true
+          } else if (!sceneApi.bindRoleSession?.(role, result.sessionId)) {
+            throw new Error('新会话已创建，但角色绑定暂时无法更新。')
+          }
+          delete newSessionOperations.current[role]
+          try { window.localStorage?.removeItem(operationStorageKey) } catch { /* Completed operation remains replayable on the server. */ }
+          setConfigurationByRole(previous => ({ ...previous, [role]: {
+            ...previous[role], message: selectedNewSession
+              ? '已切换到新对话；旧会话仍保留在历史记录中。'
+              : '新对话已创建并绑定；你正在查看其他助手，原会话仍保留在历史记录中。',
+          } }))
+        } catch (cause) {
+          setConfigurationByRole(previous => ({ ...previous, [role]: { ...previous[role], message: '连接中断，创建结果尚未确认；旧会话保持不变，系统已保留该操作。请勿另建操作。' } }))
+        } finally {
+          newSessionFlight.current = false
+          setNewSessionBusy(false)
+        }
+      }
       async function loadCapabilities(role) {
         if (!roles.some(item => item.id === role)) return
+        void loadSavedConfiguration(role)
         const requestId = ++capabilityRequest.current
         setCapabilityRole(role)
         setCapabilityInfo({ status: 'loading', data: null, error: '' })
@@ -349,12 +660,56 @@ window.__ModuleLoader__.load({
         const role = current?.roleByScene?.[current.activeSceneId] ?? activeScene?.roleId ?? roles[0]?.id
         setMenuOpen(false)
         setCapabilityOpen(true)
+        setCapabilityTab('current')
         void loadCapabilities(role)
       }
+      function updateCapabilityPanelBounds() {
+        const visualViewport = window.visualViewport
+        const viewportWidth = Number(visualViewport?.width) > 0 ? Number(visualViewport.width) : Math.max(0, window.innerWidth || document.documentElement?.clientWidth || 0)
+        const viewportHeight = Number(visualViewport?.height) > 0 ? Number(visualViewport.height) : Math.max(0, window.innerHeight || document.documentElement?.clientHeight || 0)
+        const viewport = {
+          width: viewportWidth,
+          height: viewportHeight,
+          left: Number(visualViewport?.offsetLeft) || 0,
+          top: Number(visualViewport?.offsetTop) || 0,
+        }
+        const anchorRect = capabilitySelectorRef.current?.getBoundingClientRect?.()
+        const bounds = capabilityPanelPlacement(anchorRect, viewport)
+        setCapabilityPanelBounds(bounds)
+      }
+      React.useLayoutEffect(() => {
+        if (!capabilityOpen) return undefined
+        updateCapabilityPanelBounds()
+        if (!capabilityWasOpen.current) capabilityCloseRef.current?.focus?.()
+        capabilityWasOpen.current = true
+        const viewport = window.visualViewport
+        const refreshPlacement = () => updateCapabilityPanelBounds()
+        window.addEventListener?.('resize', refreshPlacement)
+        window.addEventListener?.('scroll', refreshPlacement, true)
+        viewport?.addEventListener?.('resize', refreshPlacement)
+        viewport?.addEventListener?.('scroll', refreshPlacement)
+        return () => {
+          window.removeEventListener?.('resize', refreshPlacement)
+          window.removeEventListener?.('scroll', refreshPlacement, true)
+          viewport?.removeEventListener?.('resize', refreshPlacement)
+          viewport?.removeEventListener?.('scroll', refreshPlacement)
+        }
+      }, [capabilityOpen])
+      React.useEffect(() => {
+        if (!capabilityOpen) return undefined
+        const handlePanelKeyDown = event => {
+          if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing) return
+          closeCapabilities()
+        }
+        window.addEventListener?.('keydown', handlePanelKeyDown)
+        return () => window.removeEventListener?.('keydown', handlePanelKeyDown)
+      }, [capabilityOpen])
       function closeCapabilities() {
         capabilityRequest.current++
         setCapabilityOpen(false)
         setCapabilityInfo({ status: 'idle', data: null, error: '' })
+        capabilityWasOpen.current = false
+        capabilitySelectorRef.current?.focus?.()
       }
       const capabilityData = capabilityInfo.data
       const mcpLabels = {
@@ -365,53 +720,201 @@ window.__ModuleLoader__.load({
       }
       const skillItems = capabilityData?.skills?.items
       const toolItems = capabilityData?.tools?.items
+      const selectedConfiguration = configurationByRole[capabilityRole]
+      function updateServer(role, index, transform) {
+        updateConfiguration(role, draft => ({ ...draft, mcpServers: draft.mcpServers.map((server, item) => item === index ? transform(server) : server) }))
+      }
+      function renderSecretReferences(role, server, index, field, savedServer) {
+        const refs = server[field] ?? {}
+        const savedRefs = savedServer?.[field] ?? {}
+        const rows = Object.entries(refs).map(([name, ref]) => h('div', { key: `${field}-${name}`, className: 'tl-config-secret-ref' },
+          h('label', null, field === 'headers' ? '请求头名称' : '环境变量键', h('input', {
+            defaultValue: name, disabled: selectedConfiguration?.saving, 'aria-label': `${field === 'headers' ? '请求头' : '环境变量键'} ${index + 1}`,
+            onBlur: event => {
+              const nextName = event.currentTarget.value.trim()
+              if (!nextName || nextName === name) return
+              updateServer(role, index, current => {
+                if (Object.hasOwn(current[field] ?? {}, nextName)) return current
+                const nextRefs = Object.fromEntries(Object.entries(current[field] ?? {}).filter(([key]) => key !== name))
+                nextRefs[nextName] = current[field][name]
+                return { ...current, [field]: nextRefs }
+              })
+            },
+          })),
+          h('label', null, '环境变量名', h('input', {
+            value: ref.envName ?? '', disabled: selectedConfiguration?.saving, 'aria-label': `环境变量名 ${index + 1}`,
+            onChange: event => updateServer(role, index, current => ({ ...current, [field]: { ...current[field], [name]: { envName: event.target.value, scheme: ref.scheme ?? (field === 'headers' ? 'bearer' : 'raw') } } })),
+          })),
+          h('label', null, '引用方式', h('select', {
+            value: ref.scheme ?? (field === 'headers' ? 'bearer' : 'raw'), disabled: selectedConfiguration?.saving, 'aria-label': `引用方式 ${index + 1}`,
+            onChange: event => updateServer(role, index, current => ({ ...current, [field]: { ...current[field], [name]: { envName: ref.envName, scheme: event.target.value } } })),
+          }, h('option', { value: 'raw' }, '原值'), h('option', { value: 'bearer' }, 'Bearer 前缀'))),
+          h('span', { className: 'tl-config-presence' }, savedRefs[name]?.present === true ? '环境变量已设置' : '环境变量状态未知或未设置'),
+          h('button', { type: 'button', disabled: selectedConfiguration?.saving, onClick: () => updateServer(role, index, current => {
+            const nextRefs = { ...current[field] }; delete nextRefs[name]; return { ...current, [field]: nextRefs }
+          }) }, '移除引用')))
+        return h('div', { className: 'tl-config-secret-list' },
+          rows,
+          h('button', { type: 'button', disabled: selectedConfiguration?.saving, onClick: () => updateServer(role, index, current => {
+            const nextRefs = { ...(current[field] ?? {}) }
+            const base = field === 'headers' ? 'Authorization' : 'MCP_TOKEN'
+            let name = base; let suffix = 2
+            while (Object.hasOwn(nextRefs, name)) name = `${base}_${suffix++}`
+            nextRefs[name] = { envName: 'TRADELOOM_MCP_TOKEN', scheme: field === 'headers' ? 'bearer' : 'raw' }
+            return { ...current, [field]: nextRefs }
+          }) }, field === 'headers' ? '添加请求头引用' : '添加环境变量引用'))
+      }
+      function renderConfigurationEditor() {
+        const entry = selectedConfiguration
+        if (!entry || entry.status === 'loading') return h('p', { role: 'status' }, '正在读取已保存配置…')
+        if (entry.status === 'error') return h('div', { role: 'alert' }, h('p', null, '已保存配置暂时无法读取，未显示或修改本机会话状态。'),
+          h('button', { type: 'button', onClick: () => { void loadSavedConfiguration(capabilityRole) } }, '重试读取'))
+        if (!entry.saved?.editable || !entry.draft) return h('div', { role: 'status' },
+          h('p', null, '当前配置含有不受此编辑器管理的项目，现以只读方式显示。'),
+          h('button', { type: 'button', onClick: () => { void loadSavedConfiguration(capabilityRole) } }, '重新读取'))
+        const draft = entry.draft
+        const savedServers = entry.saved.mcpServers ?? []
+        const serverEditors = draft.mcpServers.map((server, index) => {
+          const savedServer = savedServers.find(item => item.id === server.id)
+          const changeField = (field, value) => updateServer(capabilityRole, index, current => ({ ...current, [field]: value }))
+          const inputs = [
+            h('label', { key: 'server-name' }, 'MCP 服务名称', h('input', { value: server.serverName ?? '', disabled: entry.saving,
+              onChange: event => changeField('serverName', event.target.value) })),
+            h('label', { key: 'transport' }, '连接方式', h('select', { value: server.transport, disabled: entry.saving,
+              onChange: event => updateServer(capabilityRole, index, current => event.target.value === 'stdio'
+                ? { id: current.id, transport: 'stdio', serverName: current.serverName, command: '', args: [], cwd: '', env: {}, toolCallTimeoutMs: 30000, failOnStartupError: false }
+                : { id: current.id, transport: 'streamable-http', serverName: current.serverName, url: '', headers: {}, toolCallTimeoutMs: 30000, failOnStartupError: false }) },
+            h('option', { value: 'stdio' }, '本机命令（stdio）'), h('option', { value: 'streamable-http' }, 'HTTP（streamable）'))),
+          ]
+          if (server.transport === 'stdio') {
+            inputs.push(h('label', { key: 'command' }, '命令', h('input', { value: server.command ?? '', disabled: entry.saving,
+              onChange: event => changeField('command', event.target.value) })))
+            inputs.push(h('label', { key: 'args' }, '参数（每行一项）', h('textarea', { value: (server.args ?? []).join('\n'), disabled: entry.saving,
+              onChange: event => changeField('args', event.target.value.split('\n')) })))
+            inputs.push(h('label', { key: 'cwd' }, '工作目录', h('input', { value: server.cwd ?? '', disabled: entry.saving,
+              onChange: event => changeField('cwd', event.target.value) })))
+            inputs.push(h('div', { key: 'env' }, h('strong', null, '环境变量引用'), renderSecretReferences(capabilityRole, server, index, 'env', savedServer)))
+          } else {
+            inputs.push(h('label', { key: 'url' }, '服务 URL', h('input', { value: server.url ?? '', disabled: entry.saving,
+              onChange: event => changeField('url', event.target.value) })))
+            inputs.push(h('div', { key: 'headers' }, h('strong', null, '请求头引用'), renderSecretReferences(capabilityRole, server, index, 'headers', savedServer)))
+          }
+          inputs.push(h('label', { key: 'timeout' }, '工具超时（毫秒）', h('input', { type: 'number', min: 1, max: 600000, value: server.toolCallTimeoutMs ?? 30000,
+            disabled: entry.saving, onChange: event => changeField('toolCallTimeoutMs', Number(event.target.value)) })))
+          inputs.push(h('label', { key: 'failure' }, h('input', { type: 'checkbox', checked: server.failOnStartupError === true, disabled: entry.saving,
+            onChange: event => changeField('failOnStartupError', event.target.checked) }), '连接失败时停止启动'))
+          return h('details', { key: server.id, className: 'tl-config-server' },
+            h('summary', null, `${server.serverName || '未命名 MCP'} · ${server.transport === 'stdio' ? 'stdio' : 'HTTP'}`),
+            h('div', { className: 'tl-config-fields' }, ...inputs,
+              h('button', { type: 'button', disabled: entry.saving, onClick: () => updateConfiguration(capabilityRole, current => ({ ...current, mcpServers: current.mcpServers.filter((_, item) => item !== index) })) }, '移除服务')))
+        })
+        const visibleTools = (toolItems ?? []).map(item => item.name).filter(name => typeof name === 'string')
+        const knownDenied = [...new Set([...visibleTools, ...draft.deniedTools])]
+        return h('div', { key: capabilityRole, className: 'tl-agent-config-editor' },
+          h('p', null, '这里编辑的是已保存默认配置；当前运行中的会话继续使用其原有能力。保存可能立即校验并连接 MCP 服务。'),
+          entry.message ? h('p', { role: 'status' }, entry.message) : null,
+          h('h4', null, 'MCP 服务'),
+          serverEditors.length ? serverEditors : h('p', null, '尚未配置本项目管理的 MCP 服务。'),
+          h('button', { type: 'button', disabled: entry.saving, onClick: () => updateConfiguration(capabilityRole, current => {
+            let index = current.mcpServers.length + 1
+            let id = `tradeloom-mcp-server-${index}`
+            while (current.mcpServers.some(server => server.id === id)) id = `tradeloom-mcp-server-${++index}`
+            return { ...current, mcpServers: [...current.mcpServers, { id, transport: 'streamable-http', serverName: `server-${index}`, url: '', headers: {}, toolCallTimeoutMs: 30000, failOnStartupError: false }] }
+          }) }, '添加 MCP 服务'),
+          h('h4', null, 'Skill 目录'),
+          h('label', null, h('input', { type: 'checkbox', checked: draft.skill.includeDefaultRoots, disabled: entry.saving,
+            onChange: event => updateConfiguration(capabilityRole, current => ({ ...current, skill: { ...current.skill, includeDefaultRoots: event.target.checked } })) }), '包含 DSH 默认 Skill 目录'),
+          h('label', null, '本项目相对目录（每行一个）', h('textarea', {
+            value: skillDirectoryTextByRole[capabilityRole] ?? draft.skill.customSkillDirs.join('\n'), disabled: entry.saving,
+            onChange: event => {
+              const value = event.target.value
+              setSkillDirectoryTextByRole(previous => ({ ...previous, [capabilityRole]: value }))
+              updateConfiguration(capabilityRole, current => ({ ...current, skill: { ...current.skill, customSkillDirs: value.split(/\r?\n/) } }))
+            } })),
+          h('h4', null, '工具限制'),
+          knownDenied.length ? h('div', { className: 'tl-config-tool-list' }, knownDenied.map(name => h('label', { key: name },
+            h('input', { type: 'checkbox', checked: draft.deniedTools.includes(name), disabled: entry.saving,
+              onChange: event => updateConfiguration(capabilityRole, current => ({ ...current,
+                deniedTools: event.target.checked ? [...new Set([...current.deniedTools, name])] : current.deniedTools.filter(item => item !== name) })) }),
+            name, visibleTools.includes(name) ? '' : ' · 已保存限制（当前不可见）')))
+            : h('p', null, '当前能力列表没有可配置的工具限制。'),
+          h('div', { className: 'tl-config-actions' },
+            h('button', { type: 'button', disabled: entry.saving || !entry.dirty || !entry.saved.editable,
+              onClick: () => { void saveConfiguration(capabilityRole) } }, entry.saving ? '保存中…' : '保存默认配置'),
+            h('button', { type: 'button', disabled: entry.saving || configurationBusyRole !== '',
+              onClick: () => { void loadSavedConfiguration(capabilityRole) } }, '读取最新配置'),
+            h('button', { type: 'button', disabled: newSessionBusy || entry.dirty || entry.saving || !sceneApi,
+              onClick: () => { void createConfiguredSession(capabilityRole) } }, newSessionBusy ? '创建中…' : '用已保存配置新建对话'))
+        )
+      }
       function renderCapabilityPanel() {
         if (!capabilityOpen) return null
         const content = [
-          h('h3', { key: 'title' }, '当前助手可见能力'),
           h('label', { key: 'role-label' }, '查看助手 ', h('select', {
             value: capabilityRole,
             onChange: event => { void loadCapabilities(event.target.value) },
             'aria-label': '选择要查看能力的助手',
           }, roles.map(({ id, label }) => h('option', { key: id, value: id }, label)))),
+          h('div', { key: 'tabs', className: 'tl-capability-tabs', role: 'group', 'aria-label': '助手面板内容' },
+            h('button', { type: 'button', 'aria-pressed': capabilityTab === 'current', onClick: () => setCapabilityTab('current') }, '当前能力'),
+            h('button', { type: 'button', 'aria-pressed': capabilityTab === 'configuration', onClick: () => setCapabilityTab('configuration') }, '已保存配置')),
         ]
-        if (capabilityInfo.status === 'loading') content.push(h('p', { key: 'loading', role: 'status' }, '正在读取当前助手能力…'))
-        if (capabilityInfo.status === 'error') content.push(h('div', { key: 'error', role: 'alert' },
-          h('p', null, capabilityInfo.error),
-          h('button', { type: 'button', onClick: () => { void loadCapabilities(capabilityRole) } }, '重试')))
-        if (capabilityData?.status === 'not_bound') {
-          content.push(h('p', { key: 'not-bound', role: 'status' }, '该助手当前没有已绑定的原生会话，工具与 Skill 能力未知。'))
-          content.push(h('h4', { key: 'mcp-title' }, 'MCP'))
-          content.push(h('p', { key: 'mcp-status' }, mcpLabels[capabilityData.mcp?.status] ?? mcpLabels.unavailable))
-        }
-        if (capabilityData?.status === 'ready') {
-          content.push(h('h4', { key: 'mcp-title' }, 'MCP'))
-          content.push(h('p', { key: 'mcp-status' }, mcpLabels[capabilityData.mcp?.status] ?? mcpLabels.unavailable))
-          if (capabilityData.mcp?.visibleTools?.length) content.push(h('ul', { key: 'mcp-tools', 'aria-label': '当前可见 MCP 工具' },
-            capabilityData.mcp.visibleTools.map(name => h('li', { key: name }, name))))
-          content.push(h('h4', { key: 'tools-title' }, '工具'))
-          content.push(capabilityData.tools?.status === 'available'
-            ? (toolItems?.length
-              ? h('ul', { key: 'tools', 'aria-label': '当前助手可见工具' }, toolItems.map(item => h('li', { key: item.name }, item.name)))
-              : h('p', { key: 'tools-empty' }, '当前助手没有已列出的工具。'))
-            : h('p', { key: 'tools-unavailable' }, '工具目录暂不可用。'))
-          if (capabilityData.tools?.truncated) content.push(h('p', { key: 'tools-truncated' }, `工具列表已截断，当前共 ${capabilityData.tools.total} 项。`))
-          content.push(h('h4', { key: 'skills-title' }, 'Skill'))
-          content.push(capabilityData.skills?.status === 'available'
-            ? (skillItems?.length
-              ? h('ul', { key: 'skills', 'aria-label': '当前助手范围内的 Skill' }, skillItems.map(item => h('li', { key: item.name },
-                h('strong', null, item.name), item.description ? ` — ${item.description}` : '',
-                h('small', { style: { display: 'block', color: 'var(--tl-shell-muted)' } }, `${item.source} · 模型调用${item.invocation?.modelInvocable ? '可用' : '不可用'} · 用户调用${item.invocation?.userInvocable ? '可用' : '不可用'}`))))
-              : h('p', { key: 'skills-empty' }, '当前助手范围内没有已列出的 Skill。'))
-            : h('p', { key: 'skills-unavailable' }, 'Skill 目录暂不可用。'))
-          if (capabilityData.skills?.truncated || capabilityData.skills?.complete === false) {
-            content.push(h('p', { key: 'skills-incomplete' }, `Skill 列表不完整${Number.isInteger(capabilityData.skills.total) ? `，当前共 ${capabilityData.skills.total} 项` : ''}。`))
+        if (capabilityTab === 'configuration') {
+          content.push(renderConfigurationEditor())
+        } else {
+          if (capabilityInfo.status === 'loading') content.push(h('p', { key: 'loading', role: 'status' }, '正在读取当前助手能力…'))
+          if (capabilityInfo.status === 'error') content.push(h('div', { key: 'error', role: 'alert' },
+            h('p', null, capabilityInfo.error),
+            h('button', { type: 'button', onClick: () => { void loadCapabilities(capabilityRole) } }, '重试')))
+          if (capabilityData?.status === 'not_bound') {
+            content.push(h('p', { key: 'not-bound', role: 'status' }, '该助手当前没有已绑定的原生会话，工具与 Skill 能力未知。'))
+            content.push(h('h4', { key: 'mcp-title' }, 'MCP'))
+            content.push(h('p', { key: 'mcp-status' }, mcpLabels[capabilityData.mcp?.status] ?? mcpLabels.unavailable))
           }
+          if (capabilityData?.status === 'ready') {
+            content.push(h('h4', { key: 'mcp-title' }, 'MCP'))
+            content.push(h('p', { key: 'mcp-status' }, mcpLabels[capabilityData.mcp?.status] ?? mcpLabels.unavailable))
+            if (capabilityData.mcp?.visibleTools?.length) content.push(h('ul', { key: 'mcp-tools', 'aria-label': '当前可见 MCP 工具' },
+              capabilityData.mcp.visibleTools.map(name => h('li', { key: name }, name))))
+            content.push(h('h4', { key: 'tools-title' }, '工具'))
+            content.push(capabilityData.tools?.status === 'available'
+              ? (toolItems?.length
+                ? h('ul', { key: 'tools', 'aria-label': '当前助手可见工具' }, toolItems.map(item => h('li', { key: item.name }, item.name)))
+                : h('p', { key: 'tools-empty' }, '当前助手没有已列出的工具。'))
+              : h('p', { key: 'tools-unavailable' }, '工具目录暂不可用。'))
+            if (capabilityData.tools?.truncated) content.push(h('p', { key: 'tools-truncated' }, `工具列表已截断，当前共 ${capabilityData.tools.total} 项。`))
+            content.push(h('h4', { key: 'skills-title' }, 'Skill'))
+            content.push(capabilityData.skills?.status === 'available'
+              ? (skillItems?.length
+                ? h('ul', { key: 'skills', 'aria-label': '当前助手范围内的 Skill' }, skillItems.map(item => h('li', { key: item.name },
+                  h('strong', null, item.name), item.description ? ` — ${item.description}` : '',
+                  h('small', { style: { display: 'block', color: 'var(--tl-shell-muted)' } }, `${item.source} · 模型调用${item.invocation?.modelInvocable ? '可用' : '不可用'} · 用户调用${item.invocation?.userInvocable ? '可用' : '不可用'}`))))
+                : h('p', { key: 'skills-empty' }, '当前助手范围内没有已列出的 Skill。'))
+              : h('p', { key: 'skills-unavailable' }, 'Skill 目录暂不可用。'))
+            if (capabilityData.skills?.truncated || capabilityData.skills?.complete === false) {
+              content.push(h('p', { key: 'skills-incomplete' }, `Skill 列表不完整${Number.isInteger(capabilityData.skills.total) ? `，当前共 ${capabilityData.skills.total} 项` : ''}。`))
+            }
+          }
+          content.push(h('div', { key: 'actions', className: 'tl-capability-actions' },
+            capabilityInfo.status === 'ready' ? h('button', { type: 'button', onClick: () => { void loadCapabilities(capabilityRole) } }, '重新读取') : null))
         }
-        content.push(h('div', { key: 'actions', className: 'tl-capability-actions' },
-          capabilityInfo.status === 'ready' ? h('button', { type: 'button', onClick: () => { void loadCapabilities(capabilityRole) } }, '重新读取') : null,
-          h('button', { type: 'button', onClick: closeCapabilities }, '关闭')))
-        return h('section', { className: 'tl-agent-capabilities', role: 'dialog', 'aria-label': 'MCP 与 Skill 能力', 'aria-modal': 'false' }, ...content)
+        const visualViewport = window.visualViewport
+        const bounds = capabilityPanelBounds ?? capabilityPanelPlacement(null, {
+          width: Number(visualViewport?.width) > 0 ? Number(visualViewport.width) : window.innerWidth || 0,
+          height: Number(visualViewport?.height) > 0 ? Number(visualViewport.height) : window.innerHeight || 0,
+          left: Number(visualViewport?.offsetLeft) || 0,
+          top: Number(visualViewport?.offsetTop) || 0,
+        })
+        const panel = h('section', {
+          className: `tl-agent-capabilities tl-shell-top is-${activeColorScheme}`, role: 'dialog', 'aria-modal': 'false',
+          'aria-labelledby': 'tl-agent-capabilities-title',
+          style: { position: 'fixed', left: `${bounds.left}px`, top: `${bounds.top}px`, width: `${bounds.width}px`, maxHeight: `${bounds.maxHeight}px` },
+        },
+        h('header', { className: 'tl-agent-capabilities-header' },
+          h('h3', { id: 'tl-agent-capabilities-title' }, '助手能力与配置'),
+          h('button', { ref: capabilityCloseRef, type: 'button', 'aria-label': '关闭助手能力与配置', onClick: closeCapabilities }, '关闭')),
+        h('div', { className: 'tl-agent-capabilities-body', style: { minHeight: 0, overflowY: 'auto', flex: '1 1 auto' } }, ...content))
+        return ReactDOM.createPortal(panel, window.document.body)
       }
       return h('section', { className: 'tl-agent-directory', 'aria-label': '助手选择' },
         h('style', { 'data-tradeloom-agent-style': 'true' }, `
@@ -438,7 +941,7 @@ window.__ModuleLoader__.load({
             background: var(--tl-shell-surface); color: inherit;
             box-shadow: 0 8px 22px rgba(0,0,0,.16);
           }
-          .tl-agent-directory button {
+          .tl-agent-directory button, .tl-agent-capabilities button {
             font: inherit;
             color: inherit;
             min-height: 32px;
@@ -452,28 +955,41 @@ window.__ModuleLoader__.load({
             text-overflow: ellipsis;
             white-space: nowrap;
           }
-          .tl-agent-directory button:hover:not(:disabled) {
+          .tl-agent-directory button:hover:not(:disabled), .tl-agent-capabilities button:hover:not(:disabled) {
             background: var(--tl-shell-soft);
           }
-          .tl-agent-directory button:focus-visible {
+          .tl-agent-directory button:focus-visible, .tl-agent-capabilities button:focus-visible {
             outline: 2px solid var(--tl-shell-accent);
             outline-offset: 2px;
           }
-          .tl-agent-directory button:disabled { cursor: wait; opacity: .7; }
+          .tl-agent-directory button:disabled, .tl-agent-capabilities button:disabled { cursor: wait; opacity: .7; }
           .tl-agent-menu button { width: 100%; }
-          .tl-agent-capabilities { position: absolute; top: calc(100% + 5px); left: 0; z-index: 70; width: min(380px, calc(100vw - 24px)); max-height: min(70vh, 560px); overflow: auto; box-sizing: border-box; padding: 12px; border: 1px solid var(--tl-shell-line); border-radius: 8px; background: var(--tl-shell-surface); color: var(--tl-shell-ink); box-shadow: 0 8px 22px rgba(0,0,0,.16); white-space: normal; }
-          .tl-agent-capabilities h3 { margin: 0 0 8px; font-size: 14px; }
+          .tl-agent-capabilities { z-index: 70; display: flex; flex-direction: column; overflow: hidden; box-sizing: border-box; padding: 0; border: 1px solid var(--tl-shell-line); border-radius: 8px; background: var(--tl-shell-surface); color: var(--tl-shell-ink); box-shadow: 0 8px 22px rgba(0,0,0,.16); white-space: normal; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; font-size: 13px; }
+          .tl-agent-capabilities-header { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--tl-shell-line); background: var(--tl-shell-surface); }
+          .tl-agent-capabilities-header h3 { min-width: 0; margin: 0; font-size: 14px; }
+          .tl-agent-capabilities-body { padding: 10px 14px 14px; }
           .tl-agent-capabilities p { margin: 6px 0; color: var(--tl-shell-muted); font-size: 12px; line-height: 1.45; }
           .tl-agent-capabilities select { max-width: 100%; min-height: 30px; font: inherit; color: inherit; background: var(--tl-shell-surface); border: 1px solid var(--tl-shell-line); border-radius: 5px; }
           .tl-agent-capabilities ul { padding-left: 18px; margin: 6px 0 10px; }
           .tl-agent-capabilities li { margin: 4px 0; overflow-wrap: anywhere; font-size: 12px; }
           .tl-agent-capabilities .tl-capability-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 8px; }
+          .tl-agent-capabilities .tl-capability-tabs, .tl-agent-capabilities .tl-config-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+          .tl-agent-capabilities .tl-config-server { margin: 7px 0; padding: 7px 9px; border: 1px solid var(--tl-shell-line); border-radius: 6px; }
+          .tl-agent-capabilities .tl-config-server summary { cursor: pointer; font-weight: 600; }
+          .tl-agent-capabilities .tl-config-fields { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; margin-top: 8px; }
+          .tl-agent-capabilities label { display: grid; gap: 4px; margin: 6px 0; overflow-wrap: anywhere; }
+          .tl-agent-capabilities input:not([type=checkbox]), .tl-agent-capabilities textarea { box-sizing: border-box; width: 100%; min-width: 0; min-height: 32px; padding: 6px 8px; border: 1px solid var(--tl-shell-line); border-radius: 5px; color: var(--tl-shell-ink); background: var(--tl-shell-surface); font: inherit; }
+          .tl-agent-capabilities textarea { min-height: 58px; resize: vertical; }
+          .tl-agent-capabilities .tl-config-secret-ref { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; padding: 7px 0; border-top: 1px solid var(--tl-shell-line); }
+          .tl-agent-capabilities .tl-config-presence { align-self: end; color: var(--tl-shell-muted); font-size: 12px; }
+          .tl-agent-capabilities .tl-config-tool-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 2px 8px; }
+          @media (max-width: 520px) { .tl-agent-capabilities .tl-config-secret-ref { grid-template-columns: minmax(0, 1fr); } }
         `),
         h('details', {
           className: 'tl-agent-selector', open: menuOpen,
           onToggle: event => setMenuOpen(Boolean(event.currentTarget.open)),
         },
-        h('summary', { 'aria-label': '选择助手', onClick: event => {
+        h('summary', { ref: capabilitySelectorRef, 'aria-label': '选择助手', onClick: event => {
           event.preventDefault()
           setMenuOpen(open => !open)
         } }, '选择助手'),

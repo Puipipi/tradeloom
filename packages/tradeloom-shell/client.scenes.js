@@ -7,8 +7,8 @@ window.__ModuleLoader__.load({
     const listeners = new Set()
     const retainedByRole = new Map()
     const dockviewApis = new Map()
+    const pendingScenePanelFocus = new Map()
     const dockviewRenderers = new Map()
-    const maximizeListeners = new Map()
     const narrowListeners = new Map()
     const asyncRequire = typeof require.async === 'function' ? require.async.bind(require) : null
     let dockviewRequest
@@ -18,7 +18,7 @@ window.__ModuleLoader__.load({
     let snapshot = {
       config: null, configError: '', activeSceneId: 'center', roleByScene: {}, businessPath: '/home',
       layouts: {}, dockLayouts: null, dockDefaults: {}, visitedScenes: ['center'], dockSaveErrors: {},
-      businessPathsByScene: {}, proposalHrefsByScene: {}, sessionBindings: {}, sessionErrors: {},
+      businessPathsByScene: {}, proposalHrefsByScene: {}, sessionBindings: {}, sessionErrors: {}, panelRefreshKeys: {},
     }
     let layoutApi
     let sessionsApi
@@ -139,8 +139,14 @@ window.__ModuleLoader__.load({
       return Boolean(panel)
     }
 
-    function notifyMaximizeListeners(sceneId) {
-      for (const listener of maximizeListeners.get(sceneId) ?? []) listener()
+    function refreshScenePanel(sceneId, panelId) {
+      const sceneKeys = snapshot.panelRefreshKeys?.[sceneId] ?? {}
+      const panelRefreshKeys = {
+        ...snapshot.panelRefreshKeys,
+        [sceneId]: { ...sceneKeys, [panelId]: (sceneKeys[panelId] ?? 0) + 1 },
+      }
+      publish({ panelRefreshKeys })
+      return panelRefreshKeys[sceneId][panelId]
     }
 
     function reopenScenePanel(sceneId, panelId) {
@@ -162,6 +168,15 @@ window.__ModuleLoader__.load({
       return true
     }
 
+    function requestScenePanelFocus(sceneId, panelId) {
+      if (focusScenePanel(sceneId, panelId) || reopenScenePanel(sceneId, panelId)) {
+        pendingScenePanelFocus.delete(sceneId)
+        return true
+      }
+      pendingScenePanelFocus.set(sceneId, panelId)
+      return false
+    }
+
     function sceneNavigationItems(config) {
       return (Array.isArray(config?.scenes) ? config.scenes : []).map(scene => ({
         id: scene.id,
@@ -169,6 +184,20 @@ window.__ModuleLoader__.load({
         icon: typeof scene.icon === 'string' && scene.icon ? scene.icon : scene.label.slice(0, 1),
         route: scene.defaultBusinessRoute ?? null,
       }))
+    }
+
+    function sceneIcon(sceneId) {
+      const common = { viewBox: '0 0 20 20', fill: 'none', stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': 'true' }
+      const shape = {
+        center: [h('rect', { x: 2.5, y: 2.5, width: 6, height: 6, rx: 1 }), h('rect', { x: 11.5, y: 2.5, width: 6, height: 6, rx: 1 }), h('rect', { x: 2.5, y: 11.5, width: 6, height: 6, rx: 1 }), h('rect', { x: 11.5, y: 11.5, width: 6, height: 6, rx: 1 })],
+        products: [h('path', { d: 'm10 2.5 7 4v7l-7 4-7-4v-7l7-4Z' }), h('path', { d: 'm3 6.5 7 4 7-4M10 10.5v7' })],
+        'agent-center': [h('rect', { x: 4, y: 3.5, width: 12, height: 14, rx: 1.5 }), h('path', { d: 'M7 3.5v-1h6v1M7 8h6M7 11h6M7 14h4' })],
+        deliverables: [h('path', { d: 'M3 4.5h14v3H3zM4 7.5v9h12v-9M8 11h4m-2-2v5m-2-2 2 2 2-2' })],
+        runs: [h('circle', { cx: 10, cy: 10, r: 7.5 }), h('path', { d: 'M10 5.5v5l3.5 2' })],
+        'user-profile': [h('circle', { cx: 10, cy: 6.5, r: 3 }), h('path', { d: 'M3.5 17c.7-3.1 3.1-4.8 6.5-4.8s5.8 1.7 6.5 4.8' })],
+        erpnext: [h('rect', { x: 3, y: 2.5, width: 14, height: 15, rx: 1.5 }), h('path', { d: 'M6 6h8M6 9h8M6 12h3M11.5 12H14M6 15h3M11.5 15H14' })],
+      }[sceneId]
+      return h('svg', common, ...(shape ?? [h('circle', { cx: 10, cy: 10, r: 6 })]))
     }
 
     function updatePanelLayout(layout, panelId, action) {
@@ -200,6 +229,11 @@ window.__ModuleLoader__.load({
           provider: group.id, providerName: group.name, id: model.id, name: model.name,
         })),
       }))
+    }
+
+    function providerBadgeLabel(providerName) {
+      const name = typeof providerName === 'string' ? providerName.trim() : ''
+      return name.match(/[A-Za-z0-9]/)?.[0]?.toUpperCase() ?? Array.from(name)[0] ?? '模'
     }
 
     function currentModelLabel(current, groups) {
@@ -235,18 +269,37 @@ window.__ModuleLoader__.load({
       const makeLeaf = (id, panels, size) => ({
         type: 'leaf', data: { views: panels.map(panel => panel.id), activeView: panels[0]?.id, id }, size,
       })
-      const groups = chat.length > 0 && business.length > 0
-        ? [makeLeaf('1', business, 60), makeLeaf('2', chat, 40)]
-        : [makeLeaf('1', scene.panels, 100)]
+      let root
+      let orientation = 'HORIZONTAL'
+      let activeGroup = '1'
+      if (chat.length > 0 && business.length > 0 && scene.layoutProfile?.kind === 'collaboration_grid'
+        && ['business-main', 'auxiliary', 'reference', 'native-chat'].every(id => scene.panels.some(panel => panel.id === id))) {
+        const byId = new Map(scene.panels.map(panel => [panel.id, panel]))
+        const leaf = (groupId, panelId, size) => makeLeaf(groupId, [byId.get(panelId)], size)
+        const row = (id, size, leftId, leftSize, rightId, rightSize) => ({
+          type: 'branch', size,
+          data: [leaf(`${id}a`, leftId, leftSize), leaf(`${id}b`, rightId, rightSize)],
+        })
+        root = { type: 'branch', size: 100, data: [
+          row('top', 58, 'business-main', 75, 'auxiliary', 25),
+          row('bottom', 42, 'reference', 25, 'native-chat', 75),
+        ] }
+        orientation = 'VERTICAL'
+        activeGroup = 'topa'
+      } else if (chat.length > 0 && business.length > 0) {
+        const split = scene.layoutProfile?.kind === 'assistant_lead' ? [32, 68] : [72, 28]
+        root = { type: 'branch', data: [makeLeaf('1', business, split[0]), makeLeaf('2', chat, split[1])], size: 100 }
+        if (scene.layoutProfile?.kind === 'assistant_lead') activeGroup = '2'
+      } else root = { type: 'branch', data: [makeLeaf('1', scene.panels, 100)], size: 100 }
       return {
         version: 2, closedPanelIds: [], legacyV1Snapshot: null,
         migration: { status: 'default', reason: 'client-reset-default' },
         dockview: {
-          grid: { root: { type: 'branch', data: groups, size: 100 }, width: 100, height: 100, orientation: 'HORIZONTAL' },
+          grid: { root, width: 100, height: 100, orientation },
           panels: Object.fromEntries(scene.panels.map(panel => [panel.id, {
             id: panel.id, contentComponent: panel.type, title: panel.title, renderer: 'always', params: { panelId: panel.id },
           }])),
-          activeGroup: '1',
+          activeGroup,
         },
       }
     }
@@ -374,6 +427,15 @@ window.__ModuleLoader__.load({
       return (knownSessionId ? Promise.resolve(knownSessionId) : ensureRoleSession(roleId)).then(sessionId => Boolean(sessionId))
     }
 
+    function bindRoleSession(roleId, sessionId) {
+      const bindings = bindSession(snapshot.sessionBindings, roleId, sessionId)
+      if (bindings === snapshot.sessionBindings) return false
+      const next = { ...snapshot, sessionBindings: bindings }
+      publish(next)
+      void persistState(next)
+      return true
+    }
+
     function navigateBusiness(path, proposalHref) {
       const target = snapshot.config?.businessRoutes?.[path]
       if (!target) return false
@@ -385,7 +447,7 @@ window.__ModuleLoader__.load({
       }
       publish(next)
       layoutApi?.selectPanel('scene-workbench')
-      if (!focusScenePanel(target.sceneId, target.panelId)) reopenScenePanel(target.sceneId, target.panelId)
+      requestScenePanelFocus(target.sceneId, target.panelId)
       void persistState(next)
       return true
     }
@@ -398,7 +460,7 @@ window.__ModuleLoader__.load({
       publish(next)
       layoutApi?.selectPanel('scene-workbench')
       const panelId = scene.panels.find(panel => panel.type === 'erpnext-status')?.id ?? scene.panels[0]?.id
-      if (panelId && !focusScenePanel(sceneId, panelId)) reopenScenePanel(sceneId, panelId)
+      if (panelId) requestScenePanelFocus(sceneId, panelId)
       void persistState(next)
       return true
     }
@@ -413,19 +475,58 @@ window.__ModuleLoader__.load({
       return current
     }
 
-    function SceneTabs({ onSceneSelect } = {}) {
+    function SceneTabs({ onSceneSelect, workbenchActive } = {}) {
       const state = useSnapshot()
+      const activeSceneId = state.activeSceneId
+      const [, setActionRevision] = React.useState(0)
+      const [layoutMenuOpen, setLayoutMenuOpen] = React.useState(false)
+      const layoutContext = dockRenderContexts.get(activeSceneId) ?? {}
       React.useEffect(() => { void loadConfig().catch(() => {}) }, [])
+      React.useEffect(() => subscribeDockActions(activeSceneId, () => setActionRevision(value => value + 1)), [activeSceneId])
+      const layoutMenuId = 'tl-scene-layout-menu'
+      function positionLayoutMenu(event) {
+        if (typeof document === 'undefined' || typeof window === 'undefined') return
+        const popover = document.getElementById(layoutMenuId)
+        if (!popover) return
+        const rect = event.currentTarget.getBoundingClientRect()
+        const width = Math.min(240, window.innerWidth - 16)
+        popover.style.position = 'fixed'
+        popover.style.inset = 'auto'
+        popover.style.margin = '0'
+        popover.style.left = `${Math.max(8, Math.min(window.innerWidth - width - 8, rect.left))}px`
+        popover.style.top = `${Math.max(8, Math.min(window.innerHeight - 180, rect.bottom + 4))}px`
+      }
+      function runLayoutAction(action) {
+        return () => {
+          if (typeof document === 'undefined') { action?.(); return }
+          const popover = document.getElementById(layoutMenuId)
+          if (popover?.matches?.(':popover-open')) popover.hidePopover?.()
+          setLayoutMenuOpen(false)
+          action?.()
+        }
+      }
       return h(React.Fragment, null,
         sceneNavigationItems(state.config).map(scene => h('button', {
           key: scene.id, type: 'button', className: 'tl-scene-tab',
           'aria-label': scene.label, title: scene.label,
-          'aria-current': state.activeSceneId === scene.id ? 'page' : undefined,
+          'aria-current': workbenchActive && state.activeSceneId === scene.id ? 'page' : undefined,
           onClick: () => typeof onSceneSelect === 'function' ? onSceneSelect(scene.id) : navigateScene(scene.id),
-        }, h('span', { className: 'tl-scene-tab-icon', 'aria-hidden': 'true' }, scene.icon),
+        }, h('span', { className: 'tl-scene-tab-icon' }, sceneIcon(scene.id)),
         h('span', { className: 'tl-scene-tab-label' }, scene.label))),
-        state.configError ? h('span', { role: 'status' }, state.configError) : null,
-        h('button', { type: 'button', onClick: () => { void loadConfig(true).catch(() => {}) } }, state.configError ? '重试读取场景' : '刷新场景配置'))
+        workbenchActive ? h(React.Fragment, null,
+          h('button', { type: 'button', className: 'tl-scene-layout-trigger', 'aria-label': '工作区布局', title: '工作区布局',
+            disabled: typeof layoutContext.resetLayout !== 'function', 'aria-haspopup': 'true', 'aria-expanded': layoutMenuOpen,
+            popovertarget: layoutMenuId, popovertargetaction: 'toggle',
+            onClick: positionLayoutMenu }, '布局'),
+          h('div', { id: layoutMenuId, className: 'tl-layout-menu-popover', popover: 'auto', role: 'group', 'aria-label': '工作区布局',
+            onToggle: event => setLayoutMenuOpen(event.newState === 'open') },
+            h('span', { className: 'tl-layout-menu-title' }, '工作区布局'),
+            h('button', { type: 'button', onClick: runLayoutAction(layoutContext.resetLayout) }, '应用推荐布局'),
+            ...(layoutContext.closedPanels ?? []).map(closed => h('button', { key: closed.id, type: 'button',
+              onClick: runLayoutAction(() => layoutContext.selectPanel?.(closed.id)) }, `恢复${closed.title}`)),
+            layoutContext.saveError ? h('button', { type: 'button', onClick: runLayoutAction(layoutContext.retrySave) }, '重试保存布局') : null,
+            layoutContext.error ? h('button', { type: 'button', onClick: runLayoutAction(layoutContext.resetLayout) }, '重试推荐布局') : null)) : null,
+        state.configError ? h('span', { role: 'status' }, state.configError) : null)
     }
 
     function modelDirectoryDiagnostic(stage, error, missingService = '') {
@@ -535,8 +636,7 @@ window.__ModuleLoader__.load({
       async function selectThemePreference(preference) {
         setThemeError('')
         try {
-          const result = themeApi?.setTheme?.(preference)
-          if (result && typeof result.then === 'function') await result
+          themeApi?.setTheme?.(preference)
         } catch {
           setThemeError('主题设置失败，请重试。')
         }
@@ -550,6 +650,10 @@ window.__ModuleLoader__.load({
         ? activeColorScheme === 'dark' ? '浅色' : '深色'
         : '跟随系统'
       const appearanceLabel = `当前外观：${currentAppearance}，切换到${nextAppearance}`
+      const currentModel = sessionId
+        ? directoryState?.current ? currentModelLabel(directoryState.current, directoryState.groups)
+          : activeDirectoryInfo?.status === 'pending' ? '正在连接模型目录…' : '选择模型'
+        : '连接助手后选择模型'
       function cycleThemePreference() {
         const nextPreference = followsSystem
           ? activeColorScheme === 'dark' ? 'light' : 'dark'
@@ -559,40 +663,35 @@ window.__ModuleLoader__.load({
       return h(React.Fragment, null,
         h('style', { 'data-tradeloom-navigation-style': 'true' }, `
           .tl-model-rail {
-            --tl-shell-surface: #fff; --tl-shell-soft: #f5f5f7; --tl-shell-ink: #1d1d1f;
-            --tl-shell-muted: #6e6e73; --tl-shell-line: #d2d2d7; --tl-shell-accent: #0e73d8;
-            --tl-shell-accent-soft: #e8f1fd; --tl-shell-button: #0e73d8; --tl-shell-button-hover: #0d6ece;
+            --tl-shell-surface: var(--dsw-alias-bg-layer-1, #fff); --tl-shell-soft: var(--dsw-alias-bg-layer-2, #e9eef6); --tl-shell-ink: var(--dsw-alias-label-primary, #202b3a);
+            --tl-shell-muted: var(--dsw-alias-label-secondary, #68778c); --tl-shell-line: var(--dsw-alias-border-l1, #cbd5e2); --tl-shell-accent: var(--dsw-alias-brand-primary, #356fc4);
+            --tl-shell-accent-soft: var(--dsw-alias-bg-layer-2, #e5eefb); --tl-shell-button: var(--dsw-alias-brand-primary, #356fc4); --tl-shell-button-hover: #285ca4;
             --tl-shell-button-ink: #fff; --tl-shell-danger: #ba2121; --tl-shell-danger-bg: #fdecea; --tl-shell-danger-line: #f5c6c6;
-            display: flex; flex: 1 1 auto; align-items: center; gap: 8px; min-width: 0; min-height: 52px;
+            display: flex; flex: 1 1 0; align-items: center; gap: 6px; min-width: 0; min-height: 34px;
             padding: 2px 4px; overflow: visible; position: relative; z-index: 30;
             color: var(--tl-shell-ink); font-family: "Segoe UI", "Microsoft YaHei", sans-serif; font-size: 13px;
           }
-          .tl-model-rail.is-dark {
-            --tl-shell-surface: #1c1c1e; --tl-shell-soft: #2c2c2e; --tl-shell-ink: #f5f5f7;
-            --tl-shell-muted: #a1a1a6; --tl-shell-line: #3a3a3c; --tl-shell-accent: #1985f0;
-            --tl-shell-accent-soft: #1e3a5f; --tl-shell-button: #2f6ba8; --tl-shell-button-hover: #3a7cc0;
-            --tl-shell-danger: #ff8f8f; --tl-shell-danger-bg: #3a2323; --tl-shell-danger-line: #7a3b3b;
-          }
-          .tl-model-current { min-width: 0; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--tl-shell-muted); font-size: 12px; }
-          .tl-model-groups { display: flex; align-items: center; gap: 5px; min-width: 0; }
-          .tl-model-group { position: relative; flex: 0 0 auto; }
+          .tl-model-current { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+          .tl-model-groups { display: flex; flex: 0 0 auto; align-items: center; gap: 4px; min-width: 0; overflow: visible; }
+          .tl-model-group { position: relative; flex: 0 0 auto; min-width: 32px; max-width: 32px; }
           .tl-model-group > summary {
-            display: flex; align-items: center; justify-content: center; width: 30px; height: 30px;
-            border: 1px solid var(--tl-shell-line); border-radius: 6px; background: var(--tl-shell-surface);
-            color: var(--tl-shell-ink); cursor: pointer; list-style: none; font-size: 12px; font-weight: 650;
+            display:grid; place-items:center; box-sizing:border-box; width:32px; min-width:32px; height:32px; padding:0;
+            border:1px solid var(--tl-shell-line); border-radius:8px; background:var(--tl-shell-surface);
+            color:var(--tl-shell-ink); cursor:pointer; list-style:none; white-space:nowrap; text-align:center; line-height:1; font-size:13px; font-weight:700;
           }
           .tl-model-group > summary::-webkit-details-marker { display: none; }
           .tl-model-group > summary:focus-visible, .tl-model-options button:focus-visible,
-          .tl-theme-cycle:focus-visible, .tl-scene-tab:focus-visible { outline: 2px solid var(--tl-shell-accent); outline-offset: 2px; }
+          .tl-theme-cycle:focus-visible, .tl-scene-tab:focus-visible, .tl-scene-layout-trigger:focus-visible { outline: 2px solid var(--tl-shell-accent); outline-offset: 2px; }
           .tl-model-options {
             position: absolute; top: calc(100% + 5px); left: 0; z-index: 50; display: grid; gap: 3px;
             min-width: 180px; max-height: min(60vh,360px); overflow: auto; padding: 6px;
             border: 1px solid var(--tl-shell-line); border-radius: 7px; background: var(--tl-shell-surface);
             color: var(--tl-shell-ink); box-shadow: 0 8px 24px rgba(0,0,0,.18);
           }
+          .tl-model-options > strong { display:block; padding:6px 9px; border-bottom:1px solid var(--tl-shell-line); font-size:12px; }
           .tl-model-options button { width: 100%; border: 0; border-radius: 5px; padding: 7px 9px; text-align: left; background: transparent; color: inherit; cursor: pointer; }
           .tl-model-options button:hover, .tl-model-options button[aria-current="true"] { background: var(--tl-shell-accent-soft); }
-          .tl-theme-toggle { flex: 0 0 auto; margin-left: auto; }
+          .tl-theme-toggle { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; margin-left: auto; }
           .tl-theme-cycle {
             position: relative; display: grid; place-items: center; width: 30px; height: 30px; padding: 3px;
             border: 1px solid var(--tl-shell-line); border-radius: 6px; background: var(--tl-shell-surface);
@@ -608,20 +707,27 @@ window.__ModuleLoader__.load({
           .tl-theme-error { margin: 0 10px 3px; color: var(--tl-shell-danger); font-size: 12px; }
           .tl-navigation .tl-scene-tab { display: inline-flex; align-items: center; justify-content: flex-start; gap: 0; min-width: 34px; height: 32px; padding: 0 8px; overflow: hidden; border: 1px solid transparent; border-radius: 6px; white-space: nowrap; transition: min-width 120ms ease, background-color 120ms ease, border-color 120ms ease; }
           .tl-navigation .tl-scene-tab-icon { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 18px; font-size: 13px; }
+          .tl-navigation .tl-scene-tab-icon svg { display: block; width: 16px; height: 16px; }
           .tl-navigation .tl-scene-tab-label { max-width: 0; overflow: hidden; opacity: 0; transition: max-width 120ms ease, opacity 120ms ease; }
           .tl-navigation .tl-scene-tab:hover, .tl-navigation .tl-scene-tab:focus-visible, .tl-navigation .tl-scene-tab[aria-current="page"] { gap: 6px; background: var(--tl-shell-accent-soft); border-color: var(--tl-shell-line); }
           .tl-navigation .tl-scene-tab:hover .tl-scene-tab-label, .tl-navigation .tl-scene-tab:focus-visible .tl-scene-tab-label, .tl-navigation .tl-scene-tab[aria-current="page"] .tl-scene-tab-label { max-width: 140px; opacity: 1; }
+          .tl-navigation .tl-scene-layout-trigger { flex:0 0 auto; min-width:34px; min-height:30px; padding:4px 9px; border:1px solid var(--tl-shell-line); border-radius:6px; background:var(--tl-shell-surface); color:var(--tl-shell-ink); font:inherit; cursor:pointer; }
+          .tl-navigation .tl-scene-layout-trigger:hover:not(:disabled) { background:var(--tl-shell-soft); }
+          .tl-navigation .tl-scene-layout-trigger:disabled { opacity:.55; cursor:default; }
+          .tl-layout-menu-popover { position:fixed; inset:auto; margin:0; z-index:10000; display:grid; gap:3px; min-width:190px; max-width:min(240px,calc(100vw - 16px)); max-height:min(60vh,360px); overflow:auto; padding:6px; border:1px solid var(--tl-shell-line); border-radius:8px; background:var(--tl-shell-surface); color:var(--tl-shell-ink); box-shadow:0 8px 24px rgb(0 0 0 / 18%); }
+          .tl-layout-menu-popover:not(:popover-open) { display:none; }
+          .tl-layout-menu-popover button { min-height:34px; padding:6px 9px; border:0; border-radius:5px; background:transparent; color:inherit; font:inherit; text-align:start; cursor:pointer; }
+          .tl-layout-menu-popover button:hover { background:var(--tl-shell-soft); }
+          .tl-layout-menu-popover button:focus-visible { outline:2px solid var(--tl-shell-accent); outline-offset:1px; }
           @media (prefers-reduced-motion: reduce) { .tl-navigation .tl-scene-tab, .tl-navigation .tl-scene-tab-label, .tl-theme-cycle { transition: none; } }
         `),
         h('nav', { className: `tl-model-rail ${activeColorScheme === 'dark' ? 'is-dark' : 'is-light'}`, 'aria-label': '模型目录' },
-          h('span', { className: 'tl-model-current', role: 'status' }, sessionId
-            ? directoryState?.current ? currentModelLabel(directoryState.current, directoryState.groups)
-              : activeDirectoryInfo?.status === 'pending' ? '正在连接模型目录…' : '选择模型'
-            : '连接助手后选择模型'),
+          h('span', { className: 'tl-model-current', role: 'status', 'aria-live': 'polite', title: currentModel }, currentModel),
           h('div', { className: 'tl-model-groups' }, entries.map(group => h('details', { key: group.provider, className: 'tl-model-group' },
-            h('summary', { 'aria-label': group.providerName, title: group.providerName }, group.providerName.slice(0, 1)),
-            h('div', { className: 'tl-model-options' }, group.models.map(model => h('button', {
+            h('summary', { 'aria-label': `${group.providerName}模型列表`, title: group.providerName }, providerBadgeLabel(group.providerName)),
+            h('div', { className: 'tl-model-options' }, h('strong', null, group.providerName), ...group.models.map(model => h('button', {
               key: `${model.provider}/${model.id}`, type: 'button',
+              'aria-label': `选择${model.providerName}的${model.name}`, title: `${model.providerName} · ${model.name}`,
               'aria-current': directoryState?.current?.provider === model.provider && directoryState?.current?.model === model.id ? 'true' : undefined,
               onClick: async () => {
                 if (!sessionId) return
@@ -641,7 +747,8 @@ window.__ModuleLoader__.load({
                 : h('svg', { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', 'aria-hidden': 'true' },
                   h('circle', { cx: 12, cy: 12, r: 4 }),
                   h('path', { d: 'M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42' })),
-              followsSystem ? h('span', { className: 'tl-theme-auto-badge', 'aria-hidden': 'true' }, 'A') : null)),
+              followsSystem ? h('span', { className: 'tl-theme-auto-badge', 'aria-hidden': 'true' }, 'A') : null),
+          ),
           directoryError ? h(ModelDirectoryFailure, { diagnostic: activeDirectoryInfo }) : null),
         themeError ? h('p', { className: 'tl-theme-error', role: 'alert' }, themeError) : null)
     }
@@ -668,9 +775,143 @@ window.__ModuleLoader__.load({
         style: { display: 'block', width: '100%', height: '100%', minHeight: 180, border: 0 } })
     }
 
+    const ERP_DOCTYPES = Object.freeze(['Item', 'Customer', 'Supplier', 'Warehouse', 'Bin', 'Sales Order', 'Purchase Order'])
+    const ERP_DOCTYPE_LABELS = Object.freeze({
+      Item: '商品', Customer: '客户', Supplier: '供应商', Warehouse: '仓库', Bin: '库存数量',
+      'Sales Order': '销售订单', 'Purchase Order': '采购订单',
+    })
+    const ERP_LIST_FIELDS = Object.freeze({
+      Item: ['item_code', 'item_name', 'item_group', 'stock_uom', 'disabled'],
+      Customer: ['customer_name', 'customer_type', 'customer_group', 'territory', 'disabled'],
+      Supplier: ['supplier_name', 'supplier_type', 'supplier_group', 'country', 'disabled'],
+      Warehouse: ['warehouse_name', 'company', 'parent_warehouse', 'disabled'],
+      Bin: ['item_code', 'warehouse', 'actual_qty', 'reserved_qty', 'projected_qty', 'stock_uom'],
+      'Sales Order': ['name', 'customer_name', 'company', 'transaction_date', 'status', 'grand_total', 'currency'],
+      'Purchase Order': ['name', 'supplier_name', 'company', 'transaction_date', 'status', 'grand_total', 'currency'],
+    })
+    const ERP_FIELD_LABELS = Object.freeze({
+      name: '编号', modified: '最后修改', item_code: '商品编码', item_name: '商品名称', item_group: '商品组',
+      stock_uom: '库存单位', disabled: '已停用', description: '说明', brand: '品牌', image: '图片路径',
+      is_stock_item: '库存商品', has_variants: '含变体', customer_name: '客户名称', alias: '别名',
+      customer_type: '客户类型', customer_group: '客户组', territory: '区域', tax_id: '税号',
+      default_currency: '默认币种', website: '网站', email_id: '电子邮箱', mobile_no: '手机',
+      supplier_name: '供应商名称', supplier_type: '供应商类型', supplier_group: '供应商组', country: '国家/地区',
+      warehouse_name: '仓库名称', is_group: '分组仓库', company: '公司', parent_warehouse: '上级仓库',
+      warehouse_type: '仓库类型', phone_no: '电话', city: '城市', state: '省/州', warehouse: '仓库',
+      actual_qty: '实际数量', reserved_qty: '已预留数量', ordered_qty: '已订购数量', indented_qty: '申请数量',
+      planned_qty: '计划数量', projected_qty: '预计数量', customer: '客户编号', supplier: '供应商编号',
+      transaction_date: '交易日期', delivery_date: '交货日期', schedule_date: '计划日期', status: '状态',
+      delivery_status: '交付状态', billing_status: '开票状态', total_qty: '总数量', grand_total: '总金额',
+      currency: '币种', docstatus: '单据状态', items: '商品明细', barcodes: '条码', qty: '数量', uom: '单位',
+      rate: '单价', amount: '金额', barcode: '条码', barcode_type: '条码类型',
+    })
+
+    function safeErpNextSiteUrl(value) {
+      if (typeof value !== 'string' || !value || value.length > 2048) return ''
+      try {
+        const parsed = new URL(value)
+        const hostname = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '')
+        const loopback = hostname === 'localhost' || hostname === '::1' || /^127(?:\.\d{1,3}){3}$/.test(hostname)
+        if (!['https:', 'http:'].includes(parsed.protocol) || (parsed.protocol === 'http:' && !loopback)
+          || parsed.username || parsed.password || parsed.search || parsed.hash) return ''
+        return parsed.href.replace(/\/$/, '')
+      } catch { return '' }
+    }
+
+    function erpDisplayValue(value) {
+      if (value === null || value === undefined || value === '') return '—'
+      if (value === true) return '是'
+      if (value === false) return '否'
+      if (typeof value === 'string' || typeof value === 'number') return String(value)
+      return '—'
+    }
+
+    function ERPNextRecords({ refreshKey = 0 }) {
+      const [state, setState] = React.useState({
+        doctype: 'Item', offset: 0, loading: true, listError: '', records: [], nextOffset: null,
+        listRetry: 0, selectedName: '', detail: null, detailLoading: false, detailError: '', detailRetry: 0,
+      })
+      React.useEffect(() => {
+        let live = true
+        setState(current => ({ ...current, loading: true, listError: '', records: [], nextOffset: null, selectedName: '', detail: null, detailError: '' }))
+        const query = new URLSearchParams({ doctype: state.doctype, limit: '20', offset: String(state.offset) })
+        void fetch(`/business-api/erpnext/records?${query}`, { method: 'GET', credentials: 'same-origin', headers: { accept: 'application/json' } })
+          .then(async response => {
+            const value = await response.json()
+            if (!response.ok || !value || value.doctype !== state.doctype || !Array.isArray(value.records)
+              || value.records.length > 20 || !(value.next_offset === null || (Number.isInteger(value.next_offset) && value.next_offset >= 0))
+              || value.records.some(record => !record || record.doctype !== state.doctype || !record.data
+                || typeof record.data.name !== 'string' || !record.external_ref || record.external_ref.system !== 'erpnext'
+                || record.external_ref.doctype !== state.doctype || record.external_ref.name !== record.data.name)) throw new Error()
+            return value
+          })
+          .then(value => { if (live) setState(current => ({ ...current, loading: false, records: value.records, nextOffset: value.next_offset })) })
+          .catch(() => { if (live) setState(current => ({ ...current, loading: false, listError: '暂时无法读取 ERPNext 列表，请重试。' })) })
+        return () => { live = false }
+      }, [state.doctype, state.offset, state.listRetry, refreshKey])
+      React.useEffect(() => {
+        let live = true
+        if (!state.selectedName) return () => { live = false }
+        setState(current => ({ ...current, detailLoading: true, detailError: '', detail: null }))
+        const query = new URLSearchParams({ doctype: state.doctype, name: state.selectedName })
+        void fetch(`/business-api/erpnext/record?${query}`, { method: 'GET', credentials: 'same-origin', headers: { accept: 'application/json' } })
+          .then(async response => {
+            const value = await response.json()
+            if (!response.ok || !value || value.doctype !== state.doctype || !value.data
+              || value.data.name !== state.selectedName || !value.external_ref || value.external_ref.system !== 'erpnext'
+              || value.external_ref.doctype !== state.doctype || value.external_ref.name !== state.selectedName) throw new Error()
+            return value
+          })
+          .then(value => { if (live) setState(current => ({ ...current, detailLoading: false, detail: value })) })
+          .catch(() => { if (live) setState(current => ({ ...current, detailLoading: false, detailError: '暂时无法读取记录详情，请重试。' })) })
+        return () => { live = false }
+      }, [state.doctype, state.selectedName, state.detailRetry, refreshKey])
+
+      const columns = ERP_LIST_FIELDS[state.doctype]
+      const detailData = state.detail?.data
+      const childFields = new Set(['items', 'barcodes'])
+      return h('div', { className: 'tl-erpnext-browser' },
+        h('div', { className: 'tl-erpnext-controls' },
+          h('label', null, '数据类型', h('select', {
+            value: state.doctype,
+            onChange: event => setState(current => ({ ...current, doctype: event.target.value, offset: 0, selectedName: '', detail: null })),
+            'aria-label': '选择 ERPNext 数据类型',
+          }, ERP_DOCTYPES.map(doctype => h('option', { key: doctype, value: doctype }, ERP_DOCTYPE_LABELS[doctype])))),
+          h('button', { type: 'button', onClick: () => setState(current => ({ ...current, listRetry: current.listRetry + 1 })) }, '刷新列表')),
+        state.loading ? h('p', { role: 'status' }, `正在读取${ERP_DOCTYPE_LABELS[state.doctype]}…`)
+          : state.listError ? h('p', { role: 'alert' }, state.listError,
+            h('button', { type: 'button', onClick: () => setState(current => ({ ...current, listRetry: current.listRetry + 1 })) }, '重试'))
+            : state.records.length === 0 ? h('p', { role: 'status' }, '当前没有可显示的记录。')
+              : h('div', { className: 'tl-erpnext-table-wrap' }, h('table', null,
+                h('thead', null, h('tr', null,
+                  ...columns.map(field => h('th', { key: field, scope: 'col' }, ERP_FIELD_LABELS[field] ?? field)),
+                  h('th', { scope: 'col' }, '操作'))),
+                h('tbody', null, state.records.map(record => h('tr', { key: record.data.name },
+                  ...columns.map(field => h('td', { key: field }, erpDisplayValue(record.data[field]))),
+                  h('td', null, h('button', { type: 'button', onClick: () => setState(current => ({ ...current, selectedName: record.data.name, detail: null, detailError: '' })) }, '详情'))))))),
+        !state.loading && !state.listError && state.records.length > 0 ? h('div', { className: 'tl-erpnext-pagination' },
+          state.offset > 0 ? h('button', { type: 'button', onClick: () => setState(current => ({ ...current, offset: Math.max(0, current.offset - 20), selectedName: '', detail: null })) }, '上一页') : null,
+          h('span', null, `从第 ${state.offset + 1} 项开始`),
+          state.nextOffset !== null ? h('button', { type: 'button', onClick: () => setState(current => ({ ...current, offset: current.nextOffset, selectedName: '', detail: null })) }, '下一页') : null) : null,
+        state.selectedName ? h('section', { className: 'tl-erpnext-detail', 'aria-live': 'polite' },
+          h('div', { className: 'tl-erpnext-detail-heading' }, h('h4', null, '记录详情'),
+            h('button', { type: 'button', onClick: () => setState(current => ({ ...current, selectedName: '', detail: null, detailError: '' })) }, '关闭详情')),
+          state.detailLoading ? h('p', { role: 'status' }, '正在读取详情…')
+            : state.detailError ? h('p', { role: 'alert' }, state.detailError,
+              h('button', { type: 'button', onClick: () => setState(current => ({ ...current, detailRetry: current.detailRetry + 1 })) }, '重试'))
+              : detailData ? h(React.Fragment, null,
+                h('dl', null, ...Object.entries(detailData).filter(([key, value]) => !childFields.has(key) && (value === null || ['string', 'number', 'boolean'].includes(typeof value)))
+                  .map(([key, value]) => h(React.Fragment, { key }, h('dt', null, ERP_FIELD_LABELS[key] ?? key), h('dd', null, erpDisplayValue(value))))),
+                ...[...childFields].filter(key => Array.isArray(detailData[key]) && detailData[key].length > 0)
+                  .map(key => h('div', { key, className: 'tl-erpnext-child-table' },
+                    h('h5', null, ERP_FIELD_LABELS[key]),
+                    h('pre', null, JSON.stringify(detailData[key], null, 2)))),
+                h('p', { className: 'tl-erpnext-source' }, `来源：ERPNext · ${state.detail.external_ref.instance_id} · ${state.detail.external_ref.doctype}/${state.detail.external_ref.name} · 修改时间 ${erpDisplayValue(state.detail.external_ref.modified)}`)) : null) : null)
+    }
+
     function Placeholder({ panel }) { return h('div', { className: 'tl-placeholder' }, h('p', null, panel.text)) }
     function ERPNextStatus({ refreshKey = 0 } = {}) {
-      const [state, setState] = React.useState({ loading: true, configured: false, connected: false, status: '', error: '' })
+      const [state, setState] = React.useState({ loading: true, configured: false, connected: false, status: '', error: '', siteUrl: '', retry: 0 })
       React.useEffect(() => {
         let live = true
         setState(current => ({ ...current, loading: true, error: '' }))
@@ -679,20 +920,245 @@ window.__ModuleLoader__.load({
             const value = await response.json()
             if (!response.ok || !value || typeof value.configured !== 'boolean' || typeof value.connected !== 'boolean'
               || !['not_configured', 'invalid_configuration', 'connected', 'unavailable'].includes(value.status)) throw new Error()
-            if (live) setState({ loading: false, configured: value.configured, connected: value.connected, status: value.status, error: '' })
+            if (live) setState(current => ({ ...current, loading: false, configured: value.configured, connected: value.connected, status: value.status, error: '', siteUrl: safeErpNextSiteUrl(value.site_url) }))
           })
-          .catch(() => { if (live) setState({ loading: false, configured: false, connected: false, status: '', error: '暂时无法读取连接状态，请稍后重试。' }) })
+          .catch(() => { if (live) setState(current => ({ ...current, loading: false, configured: false, connected: false, status: '', error: '暂时无法读取连接状态，请稍后重试。', siteUrl: '' })) })
         return () => { live = false }
-      }, [refreshKey])
+      }, [refreshKey, state.retry])
       const title = state.loading ? '正在检查 ERPNext 连接…'
         : state.error ? 'ERPNext 状态暂不可用'
           : state.status === 'not_configured' ? 'ERPNext 尚未配置'
             : state.connected ? 'ERPNext 已连接' : 'ERPNext 暂时无法连接'
       const detail = state.error || (state.status === 'not_configured'
         ? '请由管理员配置 ERPNext 连接后再使用只读数据。'
-        : state.connected ? '连接检查已通过，可继续接入允许的只读数据。'
+        : state.connected ? '连接检查已通过。以下为 ERPNext 只读记录。'
           : state.loading ? '正在读取本地连接状态。' : '请检查服务状态或连接配置。')
-      return h('section', { className: 'tl-erpnext-status', 'aria-live': 'polite' }, h('h3', null, title), h('p', null, detail))
+      return h('section', { className: 'tl-erpnext-status', 'aria-live': 'polite' },
+        h('div', { className: 'tl-erpnext-status-heading' }, h('h3', null, title),
+          h('button', { type: 'button', onClick: () => setState(current => ({ ...current, retry: current.retry + 1 })), disabled: state.loading }, '检查连接')),
+        h('p', null, detail),
+        state.siteUrl ? h('a', { href: state.siteUrl, target: '_blank', rel: 'noopener noreferrer' }, '打开 ERPNext') : null,
+        state.error ? h('button', { type: 'button', onClick: () => setState(current => ({ ...current, retry: current.retry + 1 })) }, '重试') : null,
+        state.connected ? h(ERPNextRecords, { key: refreshKey, refreshKey }) : null,
+        h(ERPNextQuotationDraft, { enabled: state.connected }))
+    }
+
+    const EMPTY_QUOTATION_ITEM = Object.freeze({ item_code: '', qty: '', rate: '', uom: '' })
+    const QUOTATION_TEXT_LIMITS = Object.freeze({
+      company: 140, party_name: 140, transaction_date: 10, valid_till: 10, currency: 3,
+      item_code: 140, qty: 32, rate: 32, uom: 140,
+    })
+    const DRAFT_OPERATION_ID = /^[0-9a-f]{32}$/
+    const DRAFT_MODIFIED = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?$/
+
+    function safeQuotationReadback(value) {
+      const ref = value?.external_ref
+      const data = value?.data
+      if (value?.doctype !== 'Quotation' || !data || typeof data !== 'object' || Array.isArray(data)
+        || typeof data.name !== 'string' || !data.name || data.docstatus !== 0
+        || typeof data.modified !== 'string' || !DRAFT_MODIFIED.test(data.modified)
+        || !ref || ref.system !== 'erpnext' || ref.doctype !== 'Quotation' || ref.name !== data.name
+        || typeof ref.instance_id !== 'string' || !ref.instance_id || ref.modified !== data.modified) return null
+      return {
+        doctype: 'Quotation', data: { name: data.name, modified: data.modified, docstatus: 0 },
+        external_ref: { system: 'erpnext', instance_id: ref.instance_id, doctype: 'Quotation', name: ref.name, modified: ref.modified },
+      }
+    }
+
+    function quotationOperation(value) {
+      if (!value || typeof value !== 'object' || !DRAFT_OPERATION_ID.test(value.operation_id ?? '')
+        || value.doctype !== 'Quotation' || !['create', 'update'].includes(value.action)
+        || !['reserved', 'outcome_unknown', 'succeeded', 'conflict'].includes(value.status)) return null
+      const receipt = value.receipt ? safeQuotationReadback(value.receipt) : null
+      const remoteCurrent = value.remote_current ? safeQuotationReadback(value.remote_current) : null
+      if ((value.receipt && !receipt) || (value.remote_current && !remoteCurrent)) return null
+      const operation = {
+        operation_id: value.operation_id,
+        action: value.action,
+        status: value.status,
+        remote_name: typeof value.remote_name === 'string' ? value.remote_name : '',
+        remote_modified: typeof value.remote_modified === 'string' ? value.remote_modified : '',
+        receipt,
+        remote_current: remoteCurrent,
+      }
+      if (operation.status === 'succeeded' && operation.receipt) return operation
+      if (operation.status !== 'succeeded') return operation
+      return null
+    }
+
+    function quotationPayload(fields) {
+      const payload = {
+        company: fields.company.trim(),
+        party_name: fields.party_name.trim(),
+        transaction_date: fields.transaction_date,
+        currency: fields.currency.trim().toUpperCase(),
+        items: fields.items.map(item => ({
+          item_code: item.item_code.trim(), qty: item.qty.trim(), rate: item.rate.trim(), uom: item.uom.trim(),
+        })),
+      }
+      if (fields.valid_till) payload.valid_till = fields.valid_till
+      if (!payload.company || payload.company.length > QUOTATION_TEXT_LIMITS.company
+        || !payload.party_name || payload.party_name.length > QUOTATION_TEXT_LIMITS.party_name
+        || payload.transaction_date.length > QUOTATION_TEXT_LIMITS.transaction_date
+        || !/^\d{4}-\d{2}-\d{2}$/.test(payload.transaction_date)
+        || (fields.valid_till && !/^\d{4}-\d{2}-\d{2}$/.test(fields.valid_till))
+        || (payload.valid_till && payload.valid_till.length > QUOTATION_TEXT_LIMITS.valid_till)
+        || payload.currency.length > QUOTATION_TEXT_LIMITS.currency || !/^[A-Z]{3}$/.test(payload.currency)
+        || payload.items.length < 1 || payload.items.length > 100
+        || payload.items.some(item => !item.item_code || item.item_code.length > QUOTATION_TEXT_LIMITS.item_code
+          || !item.uom || item.uom.length > QUOTATION_TEXT_LIMITS.uom
+          || item.qty.length > QUOTATION_TEXT_LIMITS.qty || item.rate.length > QUOTATION_TEXT_LIMITS.rate
+          || !/^\d+(?:\.\d+)?$/.test(item.qty)
+          || !/^\d+(?:\.\d+)?$/.test(item.rate) || Number(item.qty) <= 0)) return null
+      return payload
+    }
+
+    function ERPNextQuotationDraft({ enabled = false } = {}) {
+      const [state, setState] = React.useState(() => ({
+        fields: { company: '', party_name: '', transaction_date: '', valid_till: '', currency: '', items: [{ ...EMPTY_QUOTATION_ITEM }] },
+        operation: null, baseOperation: null, pendingRequest: null, current: null, needsReadback: false, loading: false, error: '', notice: '',
+      }))
+
+      function updateFields(change) {
+        setState(current => ({ ...current, fields: { ...current.fields, ...change }, error: '', notice: '' }))
+      }
+
+      async function csrfHeaders() {
+        await fetch('/business-api/', { method: 'GET', credentials: 'same-origin', headers: { accept: 'text/html' } })
+        const cookie = typeof document === 'object' ? document.cookie : ''
+        const match = /(?:^|;\s*)csrftoken=([^;]+)/.exec(cookie)
+        if (!match) throw new Error('csrf_unavailable')
+        return { accept: 'application/json', 'content-type': 'application/json', 'X-CSRFToken': decodeURIComponent(match[1]) }
+      }
+
+      async function sendWrite(request) {
+        setState(current => ({ ...current, loading: true, error: '', notice: '', pendingRequest: request }))
+        try {
+          const headers = await csrfHeaders()
+          const response = await fetch(request.path, {
+            method: request.method, credentials: 'same-origin', headers, body: request.body,
+          })
+          let value
+          try { value = await response.json() } catch { throw new Error('invalid_response') }
+          const operation = quotationOperation(value)
+          if (!operation || (response.status === 409 && operation.status !== 'conflict')
+            || (response.status !== 409 && !response.ok && response.status !== 202)
+            || (response.status === 202 && operation.status !== 'outcome_unknown' && operation.status !== 'reserved')) {
+            const uncertain = response.status >= 500 || !operation && (response.ok || response.status === 202)
+            setState(current => ({ ...current, loading: false, pendingRequest: uncertain ? request : null,
+              error: uncertain ? '暂未收到可核对的操作回执。请使用原请求键恢复，不要另建请求。' : '报价操作未完成，请检查输入后明确发起新操作。' }))
+            return
+          }
+          const currentRecord = operation.status === 'succeeded' ? operation.remote_current ?? operation.receipt
+            : operation.status === 'conflict' ? operation.remote_current : null
+          setState(current => ({ ...current, loading: false, operation,
+            baseOperation: operation.status === 'succeeded' ? operation : current.baseOperation,
+            current: currentRecord ?? current.current,
+            pendingRequest: null, needsReadback: operation.status === 'conflict',
+            notice: operation.status === 'succeeded' ? '已确认保存草稿。'
+              : operation.status === 'conflict' ? '版本冲突；请先读取当前版本，再决定是否创建新的修改操作。'
+                : '结果待核对；请读取操作状态，不要重复创建或使用新请求键。',
+            error: '' }))
+        } catch {
+          setState(current => ({ ...current, loading: false, pendingRequest: request,
+            error: '暂未收到操作回执。请使用原请求键恢复，不要另建请求。' }))
+        }
+      }
+
+      async function readOperation(operationId, isRecovery = false) {
+        setState(current => ({ ...current, loading: true, error: '', notice: '' }))
+        try {
+          const response = await fetch(`/business-api/erpnext/quotation-drafts/${encodeURIComponent(operationId)}`,
+            { method: 'GET', credentials: 'same-origin', headers: { accept: 'application/json' } })
+          const value = await response.json()
+          const operation = quotationOperation(value)
+          if (!response.ok || !operation) throw new Error('invalid_response')
+          const latestRemote = operation.remote_current ?? (operation.status === 'succeeded' ? operation.receipt : null)
+          setState(current => ({ ...current, loading: false, operation,
+            baseOperation: operation.status === 'succeeded' ? operation : current.baseOperation,
+            current: latestRemote ?? current.current,
+            pendingRequest: null,
+            needsReadback: operation.status === 'conflict' && !latestRemote,
+            notice: operation.status === 'succeeded' ? '已确认保存草稿。'
+              : operation.status === 'conflict' ? '已读取冲突时的当前版本；如需修改，请明确创建一条新操作。'
+                : '结果待核对；此操作仅查询状态，没有重新写入。', error: '' }))
+        } catch {
+          setState(current => ({ ...current, loading: false, error: '暂时无法读取操作状态，请稍后重试。' }))
+        }
+      }
+
+      function createDraft() {
+        const payload = quotationPayload(state.fields)
+        if (!enabled) { setState(current => ({ ...current, error: 'ERPNext 当前不可写入；已有操作仍可只读核对。' })); return }
+        if (!payload) { setState(current => ({ ...current, error: '请填写有效的公司、客户、日期、币种和报价行。' })); return }
+        const idempotencyKey = globalThis.crypto?.randomUUID?.()
+        if (!idempotencyKey) { setState(current => ({ ...current, error: '当前环境无法生成安全请求键。' })); return }
+        if (state.operation && ['outcome_unknown', 'reserved', 'conflict'].includes(state.operation.status)) {
+          setState(current => ({ ...current, error: '请先读取当前操作状态，再开始新的操作。' })); return
+        }
+        const body = JSON.stringify({ idempotency_key: idempotencyKey, payload })
+        return sendWrite({ method: 'POST', path: '/business-api/erpnext/quotation-drafts', body })
+      }
+
+      function updateDraft() {
+        const payload = quotationPayload(state.fields)
+        const target = state.baseOperation
+        const ref = state.current?.external_ref
+        const idempotencyKey = globalThis.crypto?.randomUUID?.()
+        if (!enabled || !payload || !target || target.status !== 'succeeded'
+          || state.pendingRequest
+          || ['outcome_unknown', 'reserved'].includes(state.operation?.status)
+          || (state.operation?.status === 'conflict' && state.needsReadback)
+          || !ref || ref.system !== 'erpnext'
+          || ref.doctype !== 'Quotation' || ref.name !== target.remote_name || !DRAFT_MODIFIED.test(ref.modified ?? '')
+          || state.needsReadback || !idempotencyKey) {
+          setState(current => ({ ...current, error: '请先读取一条已成功草稿的当前版本，并确认报价内容有效。' })); return
+        }
+        const body = JSON.stringify({ idempotency_key: idempotencyKey, expected_modified: ref.modified, payload })
+        return sendWrite({ method: 'PUT', path: `/business-api/erpnext/quotation-drafts/${encodeURIComponent(target.operation_id)}`, body })
+      }
+
+      function addItem() {
+        if (state.fields.items.length >= 100) return
+        updateFields({ items: [...state.fields.items, { ...EMPTY_QUOTATION_ITEM }] })
+      }
+
+      const textField = (label, key, type = 'text', required = true) => h('label', { className: 'tl-erpnext-draft-field', key },
+        h('span', null, label), h('input', { type, required, value: state.fields[key], 'aria-label': label,
+          maxLength: QUOTATION_TEXT_LIMITS[key],
+          onChange: event => updateFields({ [key]: event.target.value }) }))
+      return h('section', { className: 'tl-erpnext-draft', 'aria-labelledby': 'tl-erpnext-draft-title' },
+        h('div', { className: 'tl-erpnext-detail-heading' }, h('h4', { id: 'tl-erpnext-draft-title' }, '报价草稿'),
+          h('span', { className: 'tl-erpnext-source' }, '仅保存 ERPNext Quotation 草稿；不会提交或开具单据。')),
+        h('div', { className: 'tl-erpnext-draft-fields' },
+          textField('公司', 'company'), textField('客户', 'party_name'), textField('交易日期', 'transaction_date', 'date'),
+          textField('有效日期', 'valid_till', 'date', false), textField('币种', 'currency')),
+        h('div', { className: 'tl-erpnext-draft-items' },
+          h('div', { className: 'tl-erpnext-detail-heading' }, h('h5', null, '报价行'),
+            h('button', { type: 'button', onClick: addItem, disabled: state.fields.items.length >= 100 }, '添加商品行')),
+          ...state.fields.items.map((item, index) => h('div', { className: 'tl-erpnext-draft-item', key: index },
+            ...[
+              ['商品编码', 'item_code', 'text'], ['数量', 'qty', 'text'], ['单价', 'rate', 'text'], ['单位', 'uom', 'text'],
+            ].map(([label, key, type]) => h('label', { className: 'tl-erpnext-draft-field', key },
+              h('span', null, `${label} ${index + 1}`), h('input', { type, inputMode: key === 'qty' || key === 'rate' ? 'decimal' : undefined,
+                value: item[key], maxLength: QUOTATION_TEXT_LIMITS[key], 'aria-label': `${label} ${index + 1}`,
+                onChange: event => updateFields({ items: state.fields.items.map((row, rowIndex) => rowIndex === index
+                  ? { ...row, [key]: event.target.value } : row) }) }))),
+            state.fields.items.length > 1 ? h('button', { type: 'button', onClick: () => updateFields({ items: state.fields.items.filter((_, rowIndex) => rowIndex !== index) }) }, '移除商品行') : null))),
+        h('div', { className: 'tl-erpnext-draft-actions' },
+          h('button', { type: 'button', onClick: createDraft, disabled: !enabled || state.loading || Boolean(state.pendingRequest)
+            || ['outcome_unknown', 'reserved'].includes(state.operation?.status)
+            || (state.operation?.status === 'conflict' && state.needsReadback) }, '创建报价草稿'),
+          state.baseOperation?.status === 'succeeded' ? h('button', { type: 'button', onClick: updateDraft, disabled: !enabled || state.loading || state.pendingRequest || state.needsReadback
+            || ['outcome_unknown', 'reserved'].includes(state.operation?.status) }, '保存为新修改操作') : null,
+          state.pendingRequest ? h('button', { type: 'button', onClick: () => sendWrite(state.pendingRequest), disabled: state.loading }, '用原请求键恢复回执') : null,
+          state.operation && ['outcome_unknown', 'reserved', 'conflict'].includes(state.operation.status)
+            ? h('button', { type: 'button', onClick: () => readOperation(state.operation.operation_id), disabled: state.loading }, '读取操作状态') : null,
+          state.operation?.status === 'conflict' ? h('button', { type: 'button', onClick: () => readOperation(state.operation.operation_id), disabled: state.loading }, '刷新冲突版本') : null),
+        state.loading ? h('p', { role: 'status' }, '正在处理…') : null,
+        state.error ? h('p', { role: 'alert' }, state.error) : null,
+        state.notice ? h('p', { role: state.operation?.status === 'succeeded' ? 'status' : 'alert' }, state.notice) : null,
+        state.current ? h('p', { className: 'tl-erpnext-source' }, `ERPNext 报价：${state.current.data?.name ?? state.operation?.remote_name ?? '—'} · 修改时间 ${state.current.external_ref?.modified ?? '—'}`) : null)
     }
 
     function FixedChatView(props) { return h(React.Fragment, null, props.renderSlot('conversation.session', { view: 'chat' })) }
@@ -719,6 +1185,47 @@ window.__ModuleLoader__.load({
     }
 
     const dockRenderContexts = new Map()
+    const dockGroupRenderers = new Map()
+    const dockActionListeners = new Map()
+
+    function subscribeDockActions(sceneId, listener) {
+      let listenersForScene = dockActionListeners.get(sceneId)
+      if (!listenersForScene) dockActionListeners.set(sceneId, listenersForScene = new Set())
+      listenersForScene.add(listener)
+      return () => {
+        listenersForScene.delete(listener)
+        if (!listenersForScene.size) dockActionListeners.delete(sceneId)
+      }
+    }
+
+    function notifyDockActions(sceneId) {
+      for (const listener of dockActionListeners.get(sceneId) ?? []) listener()
+    }
+
+    function DockGroupActions({ sceneId, ...groupProps }) {
+      const [, setRevision] = React.useState(0)
+      React.useEffect(() => subscribeDockActions(sceneId, () => setRevision(value => value + 1)), [sceneId])
+      const context = dockRenderContexts.get(sceneId) ?? {}
+      const panelId = groupProps.activePanel?.id
+      const panel = context.panels?.find(item => item.id === panelId)
+      if (!panel) return null
+      const label = panel.type === 'native-chat' ? context.assistantLabel : panel.title
+      const runWithoutActivatingGroup = action => event => {
+        event?.stopPropagation?.()
+        action?.()
+      }
+      const stopGroupActivation = event => event?.stopPropagation?.()
+      return h('div', { className: 'tl-dock-group-actions', role: 'toolbar', 'aria-label': `${label}面板操作` },
+        h('button', { type: 'button', title: `刷新${label}`, 'aria-label': `刷新${label}`,
+          onPointerDown: stopGroupActivation, onMouseDown: stopGroupActivation,
+          onClick: runWithoutActivatingGroup(() => context.refresh?.(panel.id)) }, '刷新'),
+        !context.narrow ? h('button', {
+          type: 'button', title: context.isPanelMaximized?.(panel.id) ? `还原${label}` : `展开${label}`,
+          'aria-label': context.isPanelMaximized?.(panel.id) ? `还原${label}` : `展开${label}`,
+          onPointerDown: stopGroupActivation, onMouseDown: stopGroupActivation,
+          onClick: runWithoutActivatingGroup(() => context.toggleMaximize?.(panel.id)),
+        }, context.isPanelMaximized?.(panel.id) ? '还原' : '展开') : null)
+    }
 
     function notifyNarrowListeners(sceneId, narrow) {
       for (const listener of narrowListeners.get(sceneId) ?? []) listener(narrow)
@@ -763,21 +1270,9 @@ window.__ModuleLoader__.load({
       const panelId = props.params?.panelId ?? props.api?.id ?? props.id
       const panel = scene?.panels.find(item => item.id === panelId)
       const context = dockRenderContexts.get(sceneId) ?? {}
-      const [refreshKey, setRefreshKey] = React.useState(0)
-      const [maximized, setMaximized] = React.useState(() => Boolean(props.api?.isMaximized?.()))
       const [narrow, setNarrow] = React.useState(() => Boolean(context.narrow))
+      const refreshKey = state.panelRefreshKeys?.[sceneId]?.[panelId] ?? 0
       const roleId = roleForScene(state.config, sceneId)
-      React.useEffect(() => {
-        const update = () => setMaximized(Boolean(props.api?.isMaximized?.()))
-        let listeners = maximizeListeners.get(sceneId)
-        if (!listeners) maximizeListeners.set(sceneId, listeners = new Set())
-        listeners.add(update)
-        update()
-        return () => {
-          listeners.delete(update)
-          if (listeners.size === 0) maximizeListeners.delete(sceneId)
-        }
-      }, [sceneId, props.api])
       React.useEffect(() => {
         const update = value => setNarrow(Boolean(value))
         let listeners = narrowListeners.get(sceneId)
@@ -790,7 +1285,6 @@ window.__ModuleLoader__.load({
         }
       }, [sceneId])
       if (!panel) return null
-      const actionTitle = panel.type === 'native-chat' ? assistantLabel(roleId) : panel.title
       let content = null
       if (panel.type === 'business-iframe') {
         const path = panel.id === 'business-main' ? state.businessPathsByScene?.[sceneId] ?? panel.path : panel.path
@@ -802,13 +1296,6 @@ window.__ModuleLoader__.load({
         sceneId, refreshKey, SessionProvider: context.SessionProvider, renderSlot: context.renderSlot,
       })
       return h('div', { className: 'tl-dock-panel', 'data-panel-id': panel.id, 'data-panel-type': panel.type },
-        h('div', { className: 'tl-dock-panel-actions', role: 'toolbar', 'aria-label': `${panel.title}面板操作` },
-          h('button', { type: 'button', onClick: () => setRefreshKey(value => value + 1), 'aria-label': panel.type === 'native-chat' ? '重新载入对话视图' : `刷新${panel.title}` }, panel.type === 'native-chat' ? '重新载入对话视图' : '刷新'),
-          !narrow ? h('button', { type: 'button', onClick: () => {
-            if (props.api?.isMaximized?.()) props.api?.exitMaximized?.()
-            else props.api?.maximize?.()
-          }, 'aria-label': maximized ? `还原${actionTitle}` : `展开${actionTitle}` }, maximized ? '还原' : '展开') : null,
-          h('button', { type: 'button', onClick: () => props.api?.close?.(), 'aria-label': `关闭${actionTitle}` }, '关闭')),
         h('div', { className: `tl-dock-panel-body${panel.type === 'native-chat' ? ' is-native-chat' : ''}` }, content))
     }
 
@@ -820,6 +1307,11 @@ window.__ModuleLoader__.load({
       return dockviewRenderers.get(sceneId)
     }
 
+    function stableDockGroupActions(sceneId) {
+      if (!dockGroupRenderers.has(sceneId)) dockGroupRenderers.set(sceneId, props => h(DockGroupActions, { ...props, sceneId }))
+      return dockGroupRenderers.get(sceneId)
+    }
+
     function SceneDock({ scene, active, SessionProvider, renderSlot, dockviewModule }) {
       const state = useSnapshot()
       const hostRef = React.useRef(null)
@@ -827,15 +1319,44 @@ window.__ModuleLoader__.load({
       const restoredRef = React.useRef(false)
       const narrowRef = React.useRef(false)
       const layoutEventRef = React.useRef(null)
+      const activePanelEventRef = React.useRef(null)
       const maximizeEventRef = React.useRef(null)
       const [width, setWidth] = React.useState(0)
+      const [height, setHeight] = React.useState(0)
       const [activePanelId, setActivePanelId] = React.useState('')
+      const [maximized, setMaximized] = React.useState(false)
+      const [closedPanelIds, setClosedPanelIds] = React.useState([])
       const [error, setError] = React.useState('')
       const roleId = roleForScene(state.config, scene.id)
       const record = state.dockLayouts?.scenes?.[scene.id]
       const api = apiRef.current
-      const narrow = width > 0 && width < 900
-      dockRenderContexts.set(scene.id, { SessionProvider, renderSlot, narrow })
+      const minimumCanvasWidth = scene.layoutProfile?.minimumWidth ?? 1143
+      const minimumCanvasHeight = scene.layoutProfile?.minimumHeight ?? 250
+      const narrow = width > 0 && height > 0 && (width < minimumCanvasWidth || height < minimumCanvasHeight)
+      dockRenderContexts.set(scene.id, {
+        SessionProvider, renderSlot, narrow, panels: scene.panels, assistantLabel: assistantLabel(roleId),
+        closedPanels: scene.panels.filter(panel => closedPanelIds.includes(panel.id)),
+        saveError: state.dockSaveErrors?.[scene.id], error,
+        refresh: panelId => refreshScenePanel(scene.id, panelId),
+        resetLayout: () => resetLayout(), selectPanel: panelId => selectPanel(panelId),
+        retrySave: () => { void persistCurrentLayout() },
+        isPanelMaximized: panelId => {
+          const currentApi = apiRef.current
+          const panel = currentApi?.getPanel(panelId)
+          return Boolean(panel && panel.api.isMaximized())
+        },
+        toggleMaximize: panelId => {
+          const currentApi = apiRef.current
+          const panel = currentApi?.getPanel(panelId)
+          if (!panel) return
+          if (panel.api.isMaximized()) { panel.api.exitMaximized(); return }
+          if (currentApi.hasMaximizedGroup()) currentApi.exitMaximizedGroup()
+          panel.api.maximize()
+        },
+      })
+
+      const closedPanelSignature = closedPanelIds.join('|')
+      React.useEffect(() => { notifyDockActions(scene.id) }, [scene.id, narrow, maximized, closedPanelSignature, state.dockSaveErrors?.[scene.id], error, roleId])
 
       React.useEffect(() => {
         const chatPanel = apiRef.current?.getPanel(scene.panels.find(panel => panel.type === 'native-chat')?.id)
@@ -847,7 +1368,10 @@ window.__ModuleLoader__.load({
         if (!element || typeof ResizeObserver !== 'function') return undefined
         const observer = new ResizeObserver(entries => {
           const entry = entries.find(item => item.target === element)
-          if (entry) setWidth(entry.contentRect?.width ?? element.clientWidth ?? 0)
+          if (entry) {
+            setWidth(entry.contentRect?.width ?? element.clientWidth ?? 0)
+            setHeight(entry.contentRect?.height ?? element.clientHeight ?? 0)
+          }
         })
         observer.observe(element)
         return () => observer.disconnect()
@@ -878,6 +1402,7 @@ window.__ModuleLoader__.load({
 
       React.useEffect(() => () => {
         layoutEventRef.current?.dispose?.()
+        activePanelEventRef.current?.dispose?.()
         maximizeEventRef.current?.dispose?.()
         dockviewApis.delete(scene.id)
       }, [scene.id])
@@ -889,27 +1414,53 @@ window.__ModuleLoader__.load({
         return queueDockLayoutSave(scene.id, dockview)
       }
 
+      function syncClosedPanels(currentApi) {
+        const next = scene.panels.filter(panel => !currentApi?.getPanel(panel.id)).map(panel => panel.id)
+        setClosedPanelIds(previous => previous.length === next.length && previous.every((id, index) => id === next[index]) ? previous : next)
+      }
+
       function onReady({ api: readyApi }) {
         apiRef.current = readyApi
         dockviewApis.set(scene.id, readyApi)
         try {
           readyApi.fromJSON(record.dockview)
           restoredRef.current = true
+          const requestedPanelId = pendingScenePanelFocus.get(scene.id)
+          if (requestedPanelId) {
+            pendingScenePanelFocus.delete(scene.id)
+            if (!focusScenePanel(scene.id, requestedPanelId)) reopenScenePanel(scene.id, requestedPanelId)
+          }
+          syncClosedPanels(readyApi)
           const activePanel = readyApi.activePanel ?? readyApi.getPanel(scene.panels[0]?.id)
           setActivePanelId(activePanel?.id ?? scene.panels[0]?.id ?? '')
           readyApi.getPanel(scene.panels.find(panel => panel.type === 'native-chat')?.id)?.api.setTitle(assistantLabel(roleId))
           layoutEventRef.current = readyApi.onDidLayoutChange(() => {
             const selected = readyApi.activePanel?.id
             if (selected) setActivePanelId(selected)
+            syncClosedPanels(readyApi)
+            notifyDockActions(scene.id)
             if (restoredRef.current && !narrowRef.current) void persistCurrentLayout()
           })
-          maximizeEventRef.current = readyApi.onDidMaximizedGroupChange(() => notifyMaximizeListeners(scene.id))
+          activePanelEventRef.current = readyApi.onDidActivePanelChange(event => {
+            const selected = event?.panel?.id ?? readyApi.activePanel?.id
+            if (selected) setActivePanelId(selected)
+            notifyDockActions(scene.id)
+          })
+          setMaximized(Boolean(readyApi.hasMaximizedGroup?.()))
+          maximizeEventRef.current = readyApi.onDidMaximizedGroupChange(() => {
+            setMaximized(Boolean(readyApi.hasMaximizedGroup?.()))
+            notifyDockActions(scene.id)
+          })
           if (hostRef.current) {
             const rect = hostRef.current.getBoundingClientRect()
-            if (rect.width > 0 && rect.height > 0) readyApi.layout(rect.width, rect.height, true)
+            if (rect.width > 0 && rect.height > 0) {
+              readyApi.layout(rect.width, rect.height, true)
+              setWidth(rect.width)
+              setHeight(rect.height)
+            }
           }
         } catch {
-          setError('工作区布局无法读取，请重置布局后重试。')
+          setError('工作区布局无法读取，请应用推荐布局后重试。')
         }
       }
 
@@ -930,32 +1481,11 @@ window.__ModuleLoader__.load({
         if (!currentApi || !defaultRecord) return
         if (currentApi.hasMaximizedGroup()) currentApi.exitMaximizedGroup()
         narrowRef.current = narrow
-        for (const panel of scene.panels) {
-          if (!currentApi.getPanel(panel.id)) reopenScenePanel(scene.id, panel.id)
-        }
-        const chatConfig = scene.panels.find(panel => panel.type === 'native-chat')
-        const businessConfig = scene.panels.filter(panel => panel.type !== 'native-chat')
-        const selected = currentApi.getPanel(businessConfig[0]?.id ?? chatConfig?.id) ?? currentApi.panels?.[0]
-        if (selected && businessConfig.length > 0) {
-          for (const panelConfig of businessConfig.slice(1)) {
-            const panel = currentApi.getPanel(panelConfig.id)
-            if (panel && panel.api.group !== selected.api.group) panel.api.moveTo({ group: selected.api.group, position: 'center' })
-          }
-        }
-        if (selected && chatConfig && businessConfig.length > 0) {
-          const chatPanel = currentApi.getPanel(chatConfig.id)
-          if (chatPanel) chatPanel.api.moveTo({ group: selected.api.group, position: 'right' })
-          const host = hostRef.current?.getBoundingClientRect()
-          if (host && host.width > 0 && host.height > 0) {
-            selected.api.group.api.setSize({ width: Math.round(host.width * 0.6), height: host.height })
-            currentApi.getPanel(chatConfig.id)?.api.group.api.setSize({ width: Math.round(host.width * 0.4), height: host.height })
-          }
-        } else if (selected) {
-          for (const panelConfig of scene.panels.slice(1)) {
-            const panel = currentApi.getPanel(panelConfig.id)
-            if (panel && panel.api.group !== selected.api.group) panel.api.moveTo({ group: selected.api.group, position: 'center' })
-          }
-        }
+        try { currentApi.fromJSON(defaultRecord.dockview) }
+        catch { setError('推荐布局无法应用，请重试。'); return }
+        syncClosedPanels(currentApi)
+        setError('')
+        const selected = currentApi.activePanel ?? currentApi.getPanel(scene.panels[0]?.id)
         if (selected) {
           selected.api.setActive()
           setActivePanelId(selected.id)
@@ -966,28 +1496,25 @@ window.__ModuleLoader__.load({
 
       const panels = scene.panels
       const closedPanels = panels.filter(panel => !api?.getPanel(panel.id))
+      const toolbarError = state.dockSaveErrors?.[scene.id] || error
       const Components = stableDockComponents(scene.id)
       const DockviewReact = dockviewModule.DockviewReact
       return h('section', { className: `tl-dock-scene${active ? ' is-active' : ''}${narrow ? ' is-narrow' : ''}`, 'aria-label': `${scene.label}工作区`, style: { display: active ? 'flex' : 'none' } },
-        h('header', { className: 'tl-dock-toolbar' },
+        narrow || toolbarError ? h('header', { className: 'tl-dock-toolbar' },
           narrow ? h('label', { className: 'tl-dock-panel-picker' }, '当前面板', h('select', {
             'aria-label': '选择当前面板', value: activePanelId,
             onChange: event => selectPanel(event.currentTarget.value),
           }, panels.map(panel => h('option', { key: panel.id, value: panel.id }, `${panel.title}${closedPanels.some(item => item.id === panel.id) ? '（已关闭）' : ''}`)))) : null,
-          h('button', { type: 'button', onClick: resetLayout }, '重置布局'),
-          h('div', { className: 'tl-dock-closed-panels', 'aria-label': '已关闭面板' }, closedPanels.map(panel => h('button', {
-            key: panel.id, type: 'button', onClick: () => selectPanel(panel.id),
-          }, `恢复${panel.title}`))),
-          state.dockSaveErrors?.[scene.id] ? h('span', { role: 'alert' }, state.dockSaveErrors[scene.id], h('button', { type: 'button', onClick: () => { void persistCurrentLayout() } }, '重试保存')) : null,
-          error ? h('span', { role: 'alert' }, error, h('button', { type: 'button', onClick: resetLayout }, '重置布局')) : null),
+          toolbarError ? h('span', { role: 'alert', className: 'tl-dock-layout-error' }, toolbarError) : null) : null,
         h('div', { className: 'tl-dockview-host', ref: hostRef }, h(DockviewReact, {
           components: Components,
+          rightHeaderActionsComponent: stableDockGroupActions(scene.id),
           onReady,
           disableDnd: narrow,
           dndStrategy: 'pointer',
           disableFloatingGroups: true,
           getTabContextMenuItems: () => [],
-          className: 'tl-dockview-theme',
+          className: 'tl-dockview-theme dockview-spaced',
           proportionalLayout: true,
           theme: dockviewTheme(activeColorScheme),
         })),
@@ -996,8 +1523,15 @@ window.__ModuleLoader__.load({
 
     function SceneWorkbench({ SessionProvider, renderSlot }) {
       const state = useSnapshot()
+      const [mainPanelId, setMainPanelId] = React.useState(() => layoutApi?.panelInfo?.getSnapshot?.()?.activePanelId ?? null)
       const [dockviewModule, setDockviewModule] = React.useState(null)
       const [dockviewError, setDockviewError] = React.useState('')
+      React.useEffect(() => {
+        const panelInfo = layoutApi?.panelInfo
+        if (!panelInfo?.subscribe) return undefined
+        setMainPanelId(panelInfo.getSnapshot?.()?.activePanelId ?? null)
+        return panelInfo.subscribe(() => setMainPanelId(panelInfo.getSnapshot?.()?.activePanelId ?? null))
+      }, [])
       React.useEffect(() => {
         void loadConfig().catch(() => {})
         let live = true
@@ -1012,7 +1546,6 @@ window.__ModuleLoader__.load({
         h('p', { role: dockviewError ? 'alert' : 'status' }, dockviewError || '正在准备工作区组件…'),
         dockviewError ? h('button', { type: 'button', onClick: () => { setDockviewError(''); void requestDockview().then(setDockviewModule).catch(() => setDockviewError('工作区组件暂时无法加载，请重试。')) } }, '重试加载') : null)
       const scene = state.config.scenes.find(item => item.id === state.activeSceneId)
-      const roleId = roleForScene(state.config, scene.id)
       const visited = new Set([...(state.visitedScenes ?? []), scene.id])
       const sceneLabel = scene.label
       return h('main', { className: `tl-workbench ${activeColorScheme === 'dark' ? 'is-dark' : 'is-light'}`, 'aria-label': sceneLabel },
@@ -1020,19 +1553,25 @@ window.__ModuleLoader__.load({
         h('style', null, `
           .tl-workbench {
             box-sizing: border-box;
-            padding: 16px;
-            --tl-canvas: #FFFFFF;
-            --tl-surface: #FFFFFF;
-            --tl-surface-soft: #F5F5F7;
-            --tl-surface-hover: #E8E8ED;
-            --tl-ink: #1D1D1F;
-            --tl-muted: #6E6E73;
-            --tl-border: #D2D2D7;
-            --tl-accent: #0E73D8;
-            --tl-accent-strong: #0D6ECE;
-            --tl-accent-soft: #E8F1FD;
-            --tl-button-bg: #0E73D8;
-            --tl-button-hover: #0D6ECE;
+            padding: 10px;
+            --tl-space-1: 4px;
+            --tl-space-2: 8px;
+            --tl-space-3: 12px;
+            --tl-space-4: 16px;
+            --tl-panel-inset: var(--tl-space-3);
+            --tl-toolbar-inset: var(--tl-space-3);
+            --tl-canvas: var(--dsw-alias-bg-base, #f4f7fb);
+            --tl-surface: var(--dsw-alias-bg-layer-1, #ffffff);
+            --tl-surface-soft: var(--dsw-alias-bg-layer-2, #e9eef6);
+            --tl-surface-hover: var(--dsw-alias-bg-layer-2, #e9eef6);
+            --tl-ink: var(--dsw-alias-label-primary, #202b3a);
+            --tl-muted: var(--dsw-alias-label-secondary, #68778c);
+            --tl-border: var(--dsw-alias-border-l1, #cbd5e2);
+            --tl-accent: var(--dsw-alias-brand-primary, #356fc4);
+            --tl-accent-strong: #285ca4;
+            --tl-accent-soft: var(--dsw-alias-bg-layer-2, #e5eefb);
+            --tl-button-bg: var(--dsw-alias-brand-primary, #356fc4);
+            --tl-button-hover: #285ca4;
             --tl-button-ink: #FFFFFF;
             --tl-danger: #BA2121;
             --tl-danger-bg: #FDECEA;
@@ -1048,55 +1587,22 @@ window.__ModuleLoader__.load({
             font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
             font-size: 13px;
           }
-          .tl-workbench.is-dark {
-            --tl-canvas: #1C1C1E;
-            --tl-surface: #1C1C1E;
-            --tl-surface-soft: #2C2C2E;
-            --tl-surface-hover: #3A3A3C;
-            --tl-ink: #F5F5F7;
-            --tl-muted: #A1A1A6;
-            --tl-border: #3A3A3C;
-            --tl-accent: #1985F0;
-            --tl-accent-strong: #499EF3;
-            --tl-accent-soft: #1E3A5F;
-            --tl-button-bg: #2F6BA8;
-            --tl-button-hover: #3A7CC0;
-            --tl-button-ink: #FFFFFF;
-            --tl-danger: #FF8F8F;
-            --tl-danger-bg: #3A2323;
-            --tl-danger-border: #7A3B3B;
-          }
-          .tl-workbench-heading {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            min-height: 30px;
-            margin: 0 0 4px;
-            padding: 0 6px;
-            color: var(--tl-ink);
-            font-family: inherit;
-          }
-          .tl-workbench-heading h2 { margin: 0; font-size: 15px; font-weight: 600; }
-          .tl-workbench-heading [role="status"] { color: var(--tl-muted); font-size: 12px; }
           .tl-scene-docks { position: relative; display: flex; flex: 1 1 auto; min-width: 0; min-height: 0; width: 100%; overflow: hidden; }
           .tl-dock-scene { position: absolute; inset: 0; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
           .tl-dock-toolbar {
-            display: flex; align-items: center; gap: 5px; min-height: 30px; flex: 0 0 auto;
+            display: flex; align-items: center; gap: 5px; min-height: 28px; flex: 0 0 auto;
             overflow-x: auto; white-space: nowrap; padding: 2px 4px;
             color: var(--tl-ink); font-family: inherit;
           }
-          .tl-dock-toolbar button, .tl-dock-toolbar select,
-          .tl-dock-panel-actions button, .tl-dock-closed-panels button,
-          .tl-dock-panel-picker select {
-            min-height: 26px; padding: 3px 8px; border: 1px solid var(--tl-border);
-            border-radius: 5px; background: var(--tl-surface); color: var(--tl-ink);
-            font: inherit; font-size: 12px;
+          .tl-dock-toolbar button, .tl-dock-toolbar select, .tl-dock-panel-picker select {
+            box-sizing: border-box; min-height: 32px; padding: 5px 10px; border: 1px solid var(--tl-border);
+            border-radius: 7px; background: var(--tl-surface); color: var(--tl-ink);
+            font: inherit; font-size: 13px; line-height: 1.25;
           }
-          .tl-dock-toolbar button, .tl-dock-panel-actions button, .tl-dock-closed-panels button { cursor: pointer; }
-          .tl-dock-toolbar button:hover, .tl-dock-panel-actions button:hover, .tl-dock-closed-panels button:hover,
+          .tl-dock-toolbar button { cursor: pointer; }
+          .tl-dock-toolbar button:hover,
           .tl-dock-toolbar select:hover, .tl-dock-panel-picker select:hover { background: var(--tl-surface-soft); }
-          .tl-dock-toolbar button:focus-visible, .tl-dock-panel-actions button:focus-visible,
-          .tl-dock-closed-panels button:focus-visible, .tl-dock-toolbar select:focus-visible,
+          .tl-dock-toolbar button:focus-visible, .tl-dock-toolbar select:focus-visible,
           .tl-dock-panel-picker select:focus-visible {
             outline: 2px solid var(--tl-accent); outline-offset: 1px;
           }
@@ -1105,9 +1611,11 @@ window.__ModuleLoader__.load({
             height: 100%; width: 100%; color: var(--tl-ink); font-family: inherit;
             --dv-group-view-background-color: var(--tl-surface);
             --dv-tabs-and-actions-container-background-color: var(--tl-surface-soft);
-            --dv-tabs-and-actions-container-height: 30px;
-            --dv-tabs-and-actions-container-font-size: 12px;
-            --dv-tab-font-size: 12px;
+            --dv-spacing-padding: 10px;
+            --dv-floating-group-border: 1px solid var(--tl-border);
+            --dv-tabs-and-actions-container-height: 36px;
+            --dv-tabs-and-actions-container-font-size: 13px;
+            --dv-tab-font-size: 13px;
             --dv-activegroup-visiblepanel-tab-background-color: var(--tl-surface);
             --dv-activegroup-hiddenpanel-tab-background-color: var(--tl-surface-soft);
             --dv-inactivegroup-visiblepanel-tab-background-color: var(--tl-surface);
@@ -1121,14 +1629,16 @@ window.__ModuleLoader__.load({
             --dv-sash-color: var(--tl-border);
             --dv-active-sash-color: var(--tl-accent);
             --dv-icon-hover-background-color: var(--tl-surface-soft);
-            --dv-tab-border-radius: 5px;
-            --dv-border-radius: 5px;
+            --dv-tab-border-radius: 7px;
+            --dv-border-radius: 9px;
           }
           .tl-dockview-host .tl-dockview-theme .dv-dockview,
           .tl-dockview-host .tl-dockview-theme .dv-groupview,
           .tl-dockview-host .tl-dockview-theme .dv-content-container { height: 100%; width: 100%; color: var(--tl-ink); }
           .tl-dockview-host .tl-dockview-theme .dv-groupview { background: var(--tl-surface); }
-          .tl-dockview-host .tl-dockview-theme .dv-tabs-and-actions-container { font-family: inherit; }
+          .tl-dockview-host .tl-dockview-theme .dv-tabs-and-actions-container {
+            box-sizing: border-box; padding-inline: var(--tl-space-2); font-family: inherit;
+          }
           .tl-dockview-host .tl-dockview-theme .dv-tab { border-radius: 5px; }
           .tl-dockview-host .tl-dockview-theme .dv-right-actions-container button,
           .tl-dockview-host .tl-dockview-theme .dv-left-actions-container button {
@@ -1139,28 +1649,71 @@ window.__ModuleLoader__.load({
             background: var(--tl-surface-soft); color: var(--tl-ink);
           }
           .tl-dock-scene.is-narrow .dv-tabs-and-actions-container { pointer-events: none; }
+          .tl-dock-scene.is-narrow .tl-dock-group-actions { pointer-events: auto; }
           .tl-dock-panel {
             display: flex; flex-direction: column; width: 100%; height: 100%; min-width: 0;
             min-height: 0; overflow: hidden; background: var(--tl-surface); color: var(--tl-ink); font-family: inherit;
           }
-          .tl-dock-panel-actions {
-            display: flex; align-items: center; justify-content: flex-end; gap: 4px; min-height: 26px;
-            padding: 2px 5px; border-bottom: 1px solid var(--tl-border); flex: 0 0 auto; background: var(--tl-surface);
+          .tl-dock-group-actions { display:inline-flex; align-items:center; gap:4px; padding-inline:4px; font-size:13px; }
+          .tl-dock-group-actions button { min-height:28px; padding:4px 8px; border:1px solid var(--tl-border); border-radius:6px; background:var(--tl-surface); color:var(--tl-ink); font:inherit; cursor:pointer; }
+          .tl-dock-group-actions button:hover { background:var(--tl-surface-hover); border-color:var(--tl-accent); }
+          .tl-dock-group-actions button:focus-visible { outline:2px solid var(--tl-accent); outline-offset:1px; }
+          .tl-dock-layout-error { color:var(--tl-muted); font-size:12px; }
+          .tl-dock-panel-body {
+            box-sizing: border-box; flex: 1 1 auto; min-width: 0; min-height: 0; overflow: auto;
+            padding: var(--tl-panel-inset); background: var(--tl-surface);
           }
-          .tl-dock-panel-body { flex: 1 1 auto; min-width: 0; min-height: 0; overflow: auto; background: var(--tl-surface); }
           .tl-dock-panel-body:has(>iframe) { overflow: hidden; }
+          .tl-dock-panel-body:has(>iframe) { padding: 0; }
           .tl-dock-panel-body.is-native-chat { display: flex; flex-direction: column; overflow: hidden; padding: 2px; }
-          .tl-dock-closed-panels { display: flex; align-items: center; gap: 4px; }
-          .tl-dock-panel-picker { display: inline-flex; align-items: center; gap: 4px; }
-          .tl-dock-panel-picker label { color: var(--tl-muted); font-size: 12px; }
+          .tl-dock-panel-body.is-native-chat [data-content-phase="active"] [data-conversation-scroll] > [data-slot="conversation.session"]:not(:has([data-slot="conversation.view"])) + [data-composer-seat] { margin-block-start:auto; }
+          .tl-erpnext-status { display: flex; flex-direction: column; gap: 8px; min-width: 0; color: var(--tl-ink); }
+          .tl-erpnext-status-heading, .tl-erpnext-controls, .tl-erpnext-pagination, .tl-erpnext-detail-heading {
+            display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+          }
+          .tl-erpnext-status-heading h3, .tl-erpnext-detail-heading h4 { flex: 1 1 auto; margin: 0; font-size: 14px; }
+          .tl-erpnext-status p, .tl-erpnext-source { margin: 0; color: var(--tl-muted); font-size: 12px; }
+          .tl-erpnext-status a { align-self: flex-start; color: var(--tl-accent); }
+          .tl-erpnext-browser { display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: 0; }
+          .tl-erpnext-controls label { display: inline-flex; align-items: center; gap: 6px; color: var(--tl-muted); }
+          .tl-erpnext-controls button, .tl-erpnext-controls select, .tl-erpnext-browser button,
+          .tl-erpnext-status-heading button, .tl-erpnext-status > button, .tl-erpnext-detail-heading button {
+            min-height: 28px; padding: 4px 9px; border: 1px solid var(--tl-border); border-radius: 5px;
+            background: var(--tl-surface); color: var(--tl-ink); font: inherit; font-size: 12px; cursor: pointer;
+          }
+          .tl-erpnext-browser button:hover, .tl-erpnext-status button:hover { background: var(--tl-surface-hover); }
+          .tl-erpnext-browser button:focus-visible, .tl-erpnext-status button:focus-visible,
+          .tl-erpnext-controls select:focus-visible { outline: 2px solid var(--tl-accent); outline-offset: 1px; }
+          .tl-erpnext-table-wrap { max-width: 100%; overflow: auto; border: 1px solid var(--tl-border); border-radius: 5px; }
+          .tl-erpnext-table-wrap table { border-collapse: collapse; width: 100%; min-width: 640px; background: var(--tl-surface); }
+          .tl-erpnext-table-wrap th, .tl-erpnext-table-wrap td { padding: 6px 8px; border-bottom: 1px solid var(--tl-border); text-align: left; white-space: nowrap; }
+          .tl-erpnext-table-wrap th { position: sticky; top: 0; background: var(--tl-surface-soft); color: var(--tl-muted); font-weight: 600; }
+          .tl-erpnext-pagination { justify-content: flex-end; color: var(--tl-muted); font-size: 12px; }
+          .tl-erpnext-detail { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding-top: 8px; border-top: 1px solid var(--tl-border); }
+          .tl-erpnext-detail dl { display: grid; grid-template-columns: minmax(100px, 0.35fr) minmax(0, 1fr); gap: 4px 10px; margin: 0; }
+          .tl-erpnext-detail dt { color: var(--tl-muted); }
+          .tl-erpnext-detail dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+          .tl-erpnext-child-table h5 { margin: 4px 0; font-size: 12px; }
+          .tl-erpnext-child-table pre { max-width: 100%; overflow: auto; padding: 8px; border: 1px solid var(--tl-border); border-radius: 5px; background: var(--tl-surface-soft); color: var(--tl-ink); }
+          .tl-erpnext-draft { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding-top: 8px; border-top: 1px solid var(--tl-border); }
+          .tl-erpnext-draft-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+          .tl-erpnext-draft-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; color: var(--tl-muted); font-size: 12px; }
+          .tl-erpnext-draft-field input { box-sizing: border-box; width: 100%; min-height: 30px; padding: 5px 7px; border: 1px solid var(--tl-border); border-radius: 5px; background: var(--tl-surface); color: var(--tl-ink); font: inherit; font-size: 13px; }
+          .tl-erpnext-draft-field input:focus-visible { outline: 2px solid var(--tl-accent); outline-offset: 1px; }
+          .tl-erpnext-draft-items { display: flex; flex-direction: column; gap: 6px; }
+          .tl-erpnext-draft-item { display: grid; grid-template-columns: repeat(4, minmax(90px, 1fr)) auto; align-items: end; gap: 6px; }
+          .tl-erpnext-draft-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+          .tl-erpnext-draft-actions button { min-height: 28px; padding: 4px 9px; border: 1px solid var(--tl-border); border-radius: 5px; background: var(--tl-surface); color: var(--tl-ink); font: inherit; font-size: 12px; cursor: pointer; }
+          .tl-erpnext-draft-actions button:hover { background: var(--tl-surface-hover); }
+          .tl-erpnext-draft-actions button:focus-visible { outline: 2px solid var(--tl-accent); outline-offset: 1px; }
+          @media (max-width: 760px) { .tl-erpnext-draft-item { grid-template-columns: repeat(2, minmax(100px, 1fr)); } }
+          .tl-dock-panel-picker { display: inline-flex; align-items: center; gap: 6px; color: var(--tl-muted); font-size: 13px; }
           @media (max-width: 760px) {
             .tl-workbench { padding: 12px; }
-            .tl-dock-toolbar { min-height: 34px; }
-            .tl-dock-panel-actions { min-height: 30px; }
+            .tl-workbench { --tl-panel-inset: 10px; --tl-toolbar-inset: 10px; }
+            .tl-dock-toolbar { min-height: 30px; }
           }
         `),
-        h('header', { className: 'tl-workbench-heading' },
-          h('h2', null, scene.label), h('span', { role: 'status' }, roleId ? `当前助手：${assistantLabel(roleId)}` : '尚未选择助手')),
         h('div', { className: 'tl-scene-docks' }, state.config.scenes.filter(item => visited.has(item.id)).map(item => h(SceneDock, {
           key: item.id, scene: item, active: item.id === scene.id, SessionProvider, renderSlot, dockviewModule,
         }))))
@@ -1181,18 +1734,26 @@ window.__ModuleLoader__.load({
     }
 
     return {
-      SceneTabs, ModelDirectoryRail, ModelDirectoryFailure, SceneWorkbench, SceneChatPanel, ERPNextStatus, retainRoleSession, releaseRoleSessions, modelDirectoryEntries, currentModelLabel, modelDirectoryDiagnostic,
+      SceneTabs, ModelDirectoryRail, ModelDirectoryFailure, SceneWorkbench, SceneChatPanel, ERPNextStatus, ERPNextQuotationDraft, retainRoleSession, releaseRoleSessions, modelDirectoryEntries, providerBadgeLabel, currentModelLabel, modelDirectoryDiagnostic,
       PANEL_REGISTRY: Object.freeze({ 'business-iframe': BusinessFrame, placeholder: Placeholder, 'native-chat': SceneChatPanel, 'erpnext-status': ERPNextStatus }),
       bindSession, rememberLayout, roleForScene, selectScene, updatePanelLayout,
-      selectRole, navigateBusiness, navigateScene, sceneNavigationItems, assistantLabel,
+      selectRole, bindRoleSession, navigateBusiness, navigateScene, sceneNavigationItems, assistantLabel,
+      subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener) },
       retryLoadConfig: () => loadConfig(true),
       getDockviewApi: sceneId => dockviewApis.get(sceneId),
       getSnapshot: () => snapshot,
-      register(ctx, onBusinessOrigin, onRoleMetadataState) {
+      register(ctx, onBusinessOrigin, onRoleMetadataState, palette = {}) {
         layoutApi = ctx.layout
         sessionsApi = ctx.sessions
         modelDirectoriesApi = ctx.modelDirectories
         themeApi = ctx.theme
+        const themeTokens = Object.fromEntries([
+          ['--dsw-alias-bg-base', 'canvas'], ['--dsw-alias-bg-layer-1', 'panel'],
+          ['--dsw-alias-bg-layer-2', 'header'], ['--dsw-alias-border-l1', 'border'],
+          ['--dsw-alias-label-primary', 'text'], ['--dsw-alias-label-secondary', 'muted'],
+          ['--dsw-alias-brand-primary', 'accent'],
+        ].map(([token, key]) => [token, { light: palette[key]?.light ?? '', dark: palette[key]?.dark ?? '' }]))
+        const releaseThemeTokens = ctx.theme?.overrideTokens?.('@tradeloom/dsh-business-shell', themeTokens)
         activeColorScheme = ctx.theme?.getTheme?.()?.active?.colorScheme === 'dark' ? 'dark' : 'light'
         const updateColorScheme = theme => {
           const colorScheme = theme?.active?.colorScheme ?? ctx.theme?.getTheme?.()?.active?.colorScheme
@@ -1209,11 +1770,14 @@ window.__ModuleLoader__.load({
         })
         else roleDefinitionsCallback?.({ status: 'loading', error: '', roles: null })
         ctx.effect?.(() => () => {
+          releaseThemeTokens?.()
           businessOriginCallback = undefined
           roleDefinitionsCallback = undefined
           releaseRoleSessions()
           dockviewApis.clear()
+          pendingScenePanelFocus.clear()
           dockviewRenderers.clear()
+          dockGroupRenderers.clear()
           dockRenderContexts.clear()
           narrowListeners.clear()
         }, 'tradeloom scene workbench role sessions')

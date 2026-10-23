@@ -4,6 +4,9 @@ from django.urls import path
 
 from . import api, views, workflow_views
 from .erpnext import api as erpnext_api
+from .intake import api as intake_api
+from .requirements import api as requirement_api
+from .execution_plans import api as execution_plan_api
 
 
 urlpatterns = [
@@ -21,6 +24,28 @@ urlpatterns = [
     path("api/erpnext/status", erpnext_api.status),
     path("api/erpnext/records", erpnext_api.records),
     path("api/erpnext/record", erpnext_api.record),
+    path("api/erpnext/quotation-drafts", erpnext_api.quotation_drafts),
+    path("api/erpnext/quotation-drafts/<str:operation_id>", erpnext_api.quotation_draft_operation),
+    path("api/intake/sources", intake_api.source_collection),
+    path("api/intake/narratives", intake_api.narrative_collection),
+    path("api/intake/narratives/<str:narrative_id>/lines", intake_api.narrative_lines),
+    path("api/intake/narratives/<str:narrative_id>/annotations", intake_api.narrative_annotations),
+    path("api/intake/sources/<str:source_id>/previews", intake_api.create_preview),
+    path("api/intake/sources/<str:source_id>/download", intake_api.download_source),
+    path("api/intake/images/<str:image_id>/preview", intake_api.image_preview),
+    path("api/intake/previews/<str:snapshot_id>", intake_api.preview),
+    path("api/intake/previews/<str:snapshot_id>/mappings", intake_api.create_mapping),
+    path("api/intake/mappings/<str:mapping_id>/candidates", intake_api.create_candidate),
+    path("api/intake/candidates", intake_api.candidates),
+    path("api/intake/candidates/<str:candidate_id>", intake_api.candidate),
+    path("api/intake/candidates/<str:candidate_id>/links", intake_api.create_candidate_link),
+    path("api/intake/candidates/<str:candidate_id>/evidence", intake_api.evidence_collection),
+    path("api/intake/candidates/<str:candidate_id>/requirement-drafts", requirement_api.create_requirement_draft),
+    path("api/production-requirements/<str:requirement_id>", requirement_api.production_requirement_detail),
+    path("api/production-requirements/<str:requirement_id>/revisions", requirement_api.create_requirement_revision),
+    path("api/production-requirements/<str:requirement_id>/confirm", requirement_api.confirm_requirement),
+    path("api/production-requirements/<str:requirement_id>/execution-plan-revisions", execution_plan_api.plan_revision_collection),
+    path("api/execution-plans/<str:plan_revision_id>", execution_plan_api.execution_plan_detail),
     path("api/agents", api.list_agents),
     path("api/tasks", api.tasks_collection),
     path("api/workflow-tasks", api.create_workflow_task),

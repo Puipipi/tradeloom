@@ -1,14 +1,17 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import net from 'node:net'
+import { spawn } from 'node:child_process'
 import os from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import {
   assertPortsAvailable, buildChildEnvironment, buildDesktopChildEnvironment, chooseAddress, ensureOwnedDirectory, ensureOwnedHome,
-  isPrivateIPv4, networkCandidates, startOwnedChild, startTransaction,
+  isPrivateIPv4, launcherPipeName, networkCandidates, startOwnedChild, startTransaction,
   reserveNamedPipe, serveStopRequest,
 } from '../core.mjs'
+import * as coreModule from '../core.mjs'
 
 const adapters = [
   { name: 'Wi-Fi', interfaceDescription: 'Wireless adapter', kind: 'wifi', status: 'Up', hardwareInterface: true, addresses: [{ addressFamily: 'IPv4', address: '192.168.1.23' }] },
@@ -51,7 +54,7 @@ test('named-pipe ownership rejects a concurrent launcher and releases for the ne
 })
 
 test('child environment skips secret getters and points all fallback stores to owned paths', () => {
-  const inherited = { PATH: 'safe', DSH_HOME: 'foreign', OPENAI_BASE_URL: 'never-read', TRADELOOM_DB_PASSWORD: 'db-secret', ROUTER_PROVIDER: 'foreign' }
+  const inherited = { PATH: 'safe', DSH_HOME: 'foreign', OPENAI_BASE_URL: 'never-read', TRADELOOM_DB_PASSWORD: 'db-secret', TRADELOOM_DATA_ROOT: 'private-root', TRADELOOM_INTAKE_ROOT: 'private-intake', ROUTER_PROVIDER: 'foreign' }
   Object.defineProperty(inherited, 'DEEPSEEK_API_KEY', { enumerable: true, get() { throw new Error('secret value was read') } })
   const env = buildChildEnvironment(inherited, {
     home: 'C:\\owned\\harness-home', agentsHome: 'C:\\owned\\agents',
@@ -65,9 +68,35 @@ test('child environment skips secret getters and points all fallback stores to o
   assert.equal(env.APPDATA, path.resolve('C:\\owned\\appdata'))
   assert.equal(env.LOCALAPPDATA, path.resolve('C:\\owned\\local'))
   assert.equal(env.XDG_CACHE_HOME, path.resolve('C:\\owned\\cache'))
-  for (const key of ['DSH_HOME', 'OPENAI_BASE_URL', 'TRADELOOM_DB_PASSWORD', 'ROUTER_PROVIDER', 'DEEPSEEK_API_KEY']) {
+  for (const key of ['DSH_HOME', 'OPENAI_BASE_URL', 'TRADELOOM_DB_PASSWORD', 'TRADELOOM_DATA_ROOT', 'TRADELOOM_INTAKE_ROOT', 'ROUTER_PROVIDER', 'DEEPSEEK_API_KEY']) {
     if (key !== 'DSH_HOME') assert.equal(Object.hasOwn(env, key), false)
   }
+})
+
+test('Django child intake root is derived from DataRoot instead of inherited environment', () => {
+  const buildDjangoChildEnvironment = coreModule.buildDjangoChildEnvironment
+  assert.equal(typeof buildDjangoChildEnvironment, 'function', 'Django startup must expose the owned intake environment contract')
+  if (typeof buildDjangoChildEnvironment !== 'function') return
+
+  const dataRoot = 'C:\\owned\\tradeloom-data'
+  const paths = {
+    dataRoot,
+    home: path.join(dataRoot, 'harness-home'),
+    agentsHome: path.join(dataRoot, 'agents-home'),
+    appData: path.join(dataRoot, 'appdata'),
+    localAppData: path.join(dataRoot, 'local-appdata'),
+    xdgCache: path.join(dataRoot, 'xdg', 'cache'),
+    xdgConfig: path.join(dataRoot, 'xdg', 'config'),
+    xdgData: path.join(dataRoot, 'xdg', 'data'),
+  }
+  const env = buildDjangoChildEnvironment({
+    PATH: 'safe',
+    TRADELOOM_DATA_ROOT: 'C:\\attacker\\root',
+    TRADELOOM_INTAKE_ROOT: 'C:\\attacker\\intake',
+  }, paths)
+
+  assert.equal(env.TRADELOOM_DATA_ROOT, path.resolve(dataRoot))
+  assert.equal(env.TRADELOOM_INTAKE_ROOT, path.resolve(dataRoot, 'private', 'intake'))
 })
 
 test('desktop child gets its primary runtime path from the selected managed runtime', () => {
@@ -196,4 +225,143 @@ test('STOP socket acknowledges only after the owned child exits', async t => {
   })
   assert.equal(response, '织贸助手已停止。\n')
   assert.ok((await child.exited).signal || (await child.exited).code !== null)
+})
+
+async function removeSyntheticRoot(target, prefix) {
+  const root = path.resolve(os.tmpdir())
+  const resolved = path.resolve(target)
+  const relative = path.relative(root, resolved)
+  if (!path.basename(resolved).startsWith(prefix) || !relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    throw new Error('拒绝清理系统临时目录以外的合成测试目录。')
+  }
+  await rm(resolved, { recursive: true, force: true })
+}
+
+async function runStopCli(dataRoot) {
+  const cli = fileURLToPath(new URL('../cli.mjs', import.meta.url))
+  const child = spawn(process.execPath, [cli, 'stop', '--mode', 'desktop', '--data-root', dataRoot], {
+    env: { ...process.env, LOCALAPPDATA: process.env.LOCALAPPDATA ?? os.tmpdir() },
+    windowsHide: true,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  let stdout = ''
+  let stderr = ''
+  child.stdout.setEncoding('utf8').on('data', chunk => { stdout += chunk })
+  child.stderr.setEncoding('utf8').on('data', chunk => { stderr += chunk })
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      child.kill()
+      resolve({ code: null, stdout, stderr })
+    }, 3000)
+    child.once('error', error => { clearTimeout(timer); reject(error) })
+    child.once('close', code => { clearTimeout(timer); resolve({ code, stdout, stderr }) })
+  })
+}
+
+test('CLI stop waits for a delayed acknowledgement on an isolated named pipe', async t => {
+  const dataRoot = await mkdtemp(path.join(os.tmpdir(), 'tradeloom-stop-handshake-'))
+  const server = await reserveNamedPipe(launcherPipeName(path.join(dataRoot, 'harness-home')))
+  const sockets = new Set()
+  server.on('connection', socket => { sockets.add(socket); socket.once('close', () => sockets.delete(socket)) })
+  t.after(async () => {
+    for (const socket of sockets) socket.destroy()
+    await new Promise(resolve => server.close(resolve))
+    await removeSyntheticRoot(dataRoot, 'tradeloom-stop-handshake-')
+  })
+  server.on('connection', socket => {
+    socket.on('error', () => {})
+    serveStopRequest(socket, async () => new Promise(resolve => setTimeout(resolve, 180)))
+  })
+
+  const result = await runStopCli(dataRoot)
+  assert.equal(result.code, 0)
+  assert.equal(result.stdout, '织贸助手已停止。\n')
+  assert.equal(result.stderr, '')
+})
+
+test('CLI stop exits unsuccessfully when the launcher refuses the request', async t => {
+  const prefix = 'tradeloom-stop-refusal-'
+  const dataRoot = await mkdtemp(path.join(os.tmpdir(), prefix))
+  const server = await reserveNamedPipe(launcherPipeName(path.join(dataRoot, 'harness-home')))
+  const sockets = new Set()
+  server.on('connection', socket => {
+    sockets.add(socket)
+    socket.once('close', () => sockets.delete(socket))
+    socket.on('error', () => {})
+    socket.on('data', () => socket.end('拒绝\n'))
+  })
+  t.after(async () => {
+    for (const socket of sockets) socket.destroy()
+    await new Promise(resolve => server.close(resolve))
+    await removeSyntheticRoot(dataRoot, prefix)
+  })
+  const result = await runStopCli(dataRoot)
+  assert.equal(result.code, 1)
+  assert.equal(result.stdout, '')
+  assert.match(result.stderr, /拒绝/)
+})
+
+async function createSyntheticStopPipe(t, handler) {
+  const dataRoot = await mkdtemp(path.join(os.tmpdir(), 'tradeloom-stop-request-'))
+  const home = path.join(dataRoot, 'harness-home')
+  const server = await reserveNamedPipe(launcherPipeName(home))
+  const sockets = new Set()
+  server.on('connection', socket => {
+    sockets.add(socket)
+    socket.once('close', () => sockets.delete(socket))
+    socket.on('error', () => {})
+    handler(socket)
+  })
+  t.after(async () => {
+    for (const socket of sockets) socket.destroy()
+    await new Promise(resolve => server.close(resolve))
+    await removeSyntheticRoot(dataRoot, 'tradeloom-stop-request-')
+  })
+  return home
+}
+
+test('requestStop waits for delayed stop completion before accepting the ACK', async t => {
+  const home = await createSyntheticStopPipe(t, socket => {
+    serveStopRequest(socket, async () => new Promise(resolve => setTimeout(resolve, 120)))
+  })
+  assert.equal(await coreModule.requestStop(home), '织贸助手已停止。')
+})
+
+test('requestStop decodes a Chinese acknowledgement split across UTF-8 socket chunks', async t => {
+  const acknowledgement = Buffer.from('织贸助手已停止。\n', 'utf8')
+  const home = await createSyntheticStopPipe(t, socket => {
+    socket.once('data', () => {
+      socket.write(acknowledgement.subarray(0, 1))
+      setTimeout(() => socket.end(acknowledgement.subarray(1)), 25)
+    })
+  })
+  assert.equal(await coreModule.requestStop(home), '织贸助手已停止。')
+})
+
+test('requestStop rejects a connection that closes without an ACK', async t => {
+  const home = await createSyntheticStopPipe(t, socket => socket.end())
+  await assert.rejects(coreModule.requestStop(home, { timeoutMs: 500 }), /未返回确认/)
+})
+
+test('requestStop rejects an abrupt socket close without an ACK', async t => {
+  const home = await createSyntheticStopPipe(t, socket => socket.destroy())
+  await assert.rejects(coreModule.requestStop(home, { timeoutMs: 500 }), /未返回确认/)
+})
+
+test('requestStop times out when the launcher does not answer', async t => {
+  const home = await createSyntheticStopPipe(t, socket => socket.on('data', () => {}))
+  await assert.rejects(coreModule.requestStop(home, { timeoutMs: 40 }), /超时/)
+})
+
+test('requestStop rejects refusal and explicit stop failure responses', async t => {
+  const refusedHome = await createSyntheticStopPipe(t, socket => socket.end('拒绝\n'))
+  await assert.rejects(coreModule.requestStop(refusedHome), /拒绝/)
+  const failedHome = await createSyntheticStopPipe(t, socket => socket.end('停止失败：合成故障\n'))
+  await assert.rejects(coreModule.requestStop(failedHome), /停止失败：合成故障/)
+})
+
+test('requestStop preserves the existing missing-instance connection error', async t => {
+  const dataRoot = await mkdtemp(path.join(os.tmpdir(), 'tradeloom-stop-no-server-'))
+  t.after(() => removeSyntheticRoot(dataRoot, 'tradeloom-stop-no-server-'))
+  await assert.rejects(coreModule.requestStop(path.join(dataRoot, 'harness-home')), /未找到由本启动器管理的运行实例/)
 })

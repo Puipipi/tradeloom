@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { cp, mkdir, readFile, writeFile, lstat, realpath, rename, rm } from 'node:fs/promises'
+import { cp, mkdir, readFile, writeFile, lstat, realpath, rename, rm, stat } from 'node:fs/promises'
 import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -33,15 +33,32 @@ export async function assertNoReparseAncestors(target, stopAt) {
   }
 }
 
+export async function sameDirectoryIdentity(left, right, statFn = stat) {
+  if (path.resolve(left).toLowerCase() === path.resolve(right).toLowerCase()) return true
+  let leftInfo
+  let rightInfo
+  try {
+    ;[leftInfo, rightInfo] = await Promise.all([
+      statFn(left, { bigint: true }), statFn(right, { bigint: true }),
+    ])
+  } catch (error) {
+    if (['ENOENT', 'ENOTDIR', 'EACCES', 'EPERM'].includes(error.code)) return false
+    throw error
+  }
+  return leftInfo.isDirectory() && rightInfo.isDirectory()
+    && leftInfo.dev !== 0n && leftInfo.ino !== 0n
+    && leftInfo.dev === rightInfo.dev && leftInfo.ino === rightInfo.ino
+}
+
 export async function validateOwnedRuntime(runtimePath, releaseRoot = trustedReleaseRoot) {
   if (!path.isAbsolute(runtimePath) || !path.isAbsolute(releaseRoot)) throw new Error('runtime/release 路径必须是绝对路径。')
   const root = path.resolve(releaseRoot)
   const runtime = path.resolve(runtimePath)
-  if (path.dirname(runtime).toLowerCase() !== root.toLowerCase() || path.basename(runtime) === '') {
+  if (!(await sameDirectoryIdentity(path.dirname(runtime), root)) || path.basename(runtime) === '') {
     throw new Error('runtime 必须是固定 TradeLoom releases 根下的单版本目录。')
   }
   await assertNoReparseAncestors(root, path.parse(root).root)
-  await assertNoReparseAncestors(runtime, root)
+  await assertNoReparseAncestors(runtime, path.parse(runtime).root)
   const runtimeInfo = await lstat(runtime)
   if (!runtimeInfo.isDirectory() || runtimeInfo.isSymbolicLink()) throw new Error('runtime 必须是普通目录。')
   const marker = path.join(runtime, runtimeMarkerName)
@@ -51,7 +68,11 @@ export async function validateOwnedRuntime(runtimePath, releaseRoot = trustedRel
   })
   if (!markerInfo.isFile() || markerInfo.isSymbolicLink()) throw new Error('runtime 缺少普通 TradeLoom ownership marker。')
   if (await readFile(marker, 'utf8') !== runtimeMarkerContents) throw new Error('runtime ownership marker 或 pinned commit 不匹配。')
-  if ((await realpath(runtime)).toLowerCase() !== runtime.toLowerCase()) throw new Error('runtime realpath 不匹配。')
+  const resolvedRuntime = await realpath(runtime)
+  if (!(await sameDirectoryIdentity(resolvedRuntime, runtime))
+    || !(await sameDirectoryIdentity(path.dirname(resolvedRuntime), root))) {
+    throw new Error('runtime realpath 不匹配。')
+  }
   return runtime
 }
 

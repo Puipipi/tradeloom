@@ -101,7 +101,9 @@ test('packaged stage copies verified business, Python dependency, and PostgreSQL
   await mkdir(evidence, { recursive: true })
   const dependencyManifestPath = path.join(b2, 'backend-runtime-manifest.json')
   const dependencyFilesManifestPath = path.join(evidence, 'python-files.json')
-  await writeFile(dependencyManifestPath, JSON.stringify({ schemaVersion: 1, runtime: { platform: 'win32', arch: 'x64', pythonVersion: '3.12.14' }, backendDependencies: { sitePackagesRelativePath: 'python-packages', sourceRequirementsSha256: 'd0cba8bcabf74b894b572239061b106cc26ee53cf14396b8808eef6bce4b50c1', distributions: [{ name: 'Django', version: '5.2.18' }], licenseFiles: [] } }))
+  const sourceRequirements = await readFile(new URL('../../../requirements-workbench.txt', import.meta.url))
+  const sourceRequirementsSha256 = createHash('sha256').update(sourceRequirements).digest('hex')
+  await writeFile(dependencyManifestPath, JSON.stringify({ schemaVersion: 1, runtime: { platform: 'win32', arch: 'x64', pythonVersion: '3.12.14' }, backendDependencies: { sitePackagesRelativePath: 'python-packages', sourceRequirementsSha256, distributions: [{ name: 'Django', version: '5.2.18' }], licenseFiles: [] } }))
   await writeFile(dependencyFilesManifestPath, JSON.stringify(dependencyFiles))
 
   await mkdir(path.join(pg, 'pgsql', 'bin'), { recursive: true })

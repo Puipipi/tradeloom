@@ -59,9 +59,9 @@ class ExampleRole:
 
 Shell 顶部“查看 MCP 与 Skill 能力”调用固定的 `GET /tradeloom/agent-capabilities?role=...`。服务端只读取应用已有的该 role 会话绑定，并核对原生 live Agent 和 preset；它不会恢复会话，也不接受客户端传入 session ID。未绑定或依赖服务不可用时显示“未知/暂不可用”，不把空列表解释成无限权限。
 
-能力窗口显示该 live Agent 当前可见的工具名称，以及以该 Agent scope/cwd 查询的 Skill 名称、简述、来源类别和调用策略。Skill summary 的路径、正文、资源目录及其他运行时元数据不会投影到页面。列表可能受长度上限截断，响应会明确标记。MCP 预设模块被声明只说明当前 preset 的组成；`mcp__...` 工具名只说明它当前对该 Agent 可见，两者都不证明服务器已连接、健康或调用成功。页面不会列出所有全局插件，也不会提供 ACL 或 per-Agent Skill 编辑器。
+能力窗口显示该 live Agent 当前可见的工具名称，以及以该 Agent scope/cwd 查询的 Skill 名称、简述、来源类别和调用策略。Skill summary 的路径、正文、资源目录及其他运行时元数据不会投影到页面。列表可能受长度上限截断，响应会明确标记。MCP 预设模块被声明只说明当前 preset 的组成；`mcp__...` 工具名只说明它当前对该 Agent 可见，两者都不证明服务器已连接、健康或调用成功。能力窗口也提供“已保存配置”页签，可按助手角色编辑受支持的默认项；保存后的配置用于新会话，当前运行会话保持原能力。窗口不列出所有全局插件，也不是完整 ACL 或独立 Skill 编辑器。
 
-安装 MCP/Skill 插件是宿主级操作；它本身不会自动把能力授权给每个 Agent。当前实现只展示 DSH 提供的 scoped snapshot/工具 schema 与 preset 声明，实际可用能力仍由原生 preset、Agent scope 和宿主配置决定。添加角色仍应更新 `packages/tradeloom-shell/roles.js` 与对应原生 preset；不要为显示能力复制 session ID、preset 内部配置或第二套授权表。
+安装 MCP/Skill 插件是宿主级操作；它本身不会自动把能力授权给每个 Agent。“当前能力”页展示 DSH 提供的 scoped snapshot/工具 schema 与 preset 声明；“已保存配置”页签另行读取和编辑所选助手角色的受支持默认配置。实际可用能力仍由原生 preset、Agent scope 和宿主配置决定。添加角色仍应更新 `packages/tradeloom-shell/roles.js` 与对应原生 preset；不要为显示能力复制 session ID、preset 内部配置或第二套授权表。
 
 `workbench/agents/registry.py` 中有两套分开的注册入口：旧 capability 用 `AgentRegistry.register(capability, executor)`，请求为 `AgentRequest` 并返回 `AgentResult`；工作流角色用 `WorkflowRoleRegistry.register(role)`，由 `build_workflow_role_registry()` 集中构建，运行时按 `SubTask.agent_role` 查找。新角色如果获准进入工作流，应在注册表增加实例，并编写独立契约测试。
 
@@ -209,18 +209,73 @@ registry = AdapterRegistry(web_model_bridge=ExampleWebModelBridgeAdapter())
 
 ## 模块接入边界
 
-- **桌面 Agent 身份：** `packages/tradeloom-shell/roles.js` 维护 shell role ID、label、`assistantLabel` 与 DSH preset 的对应关系。新增 shell Agent 时在此注册公开元数据与其现有原生 preset；不能把 provider/model 绑定成 Agent 身份。模型目录仍由 DSH 当前 session 提供。
-- **场景和业务面板：** `packages/tradeloom-shell/scenes.json` 登记 scene、默认业务 route 与 panel 类型；已有 scene 的简化示例：
+- **桌面 Agent 身份：** `packages/tradeloom-shell/roles.js` 是顶部助手选择器使用的 shell role 真相源。新增一个可独立打开的 shell Agent，至少要在该文件加入 `id`、已注册的 DSH `preset`、公开 `label` 和聊天标题 `assistantLabel`；`ROLE_IDS`、`ROLE_PRESETS`、`ROLE_LABELS` 与 `/tradeloom/scenes` 的安全元数据会从定义派生，Host 随后按 role 创建各自的 workspace/session。只在 DSH 中声明 preset 不会让它出现在菜单。不要把 provider/model 绑定成 Agent 身份；模型目录仍由 DSH 当前 session 提供。
 
-  ```json
-  {"id":"products","label":"商品","roleId":"product","defaultBusinessRoute":"/products","panels":[{"id":"business-main","type":"business-iframe","title":"商品","path":"/products"},{"id":"native-chat","type":"native-chat","title":"商品助手"}]}
+  本仓库的原生 preset 定义位于 `packages/tradeloom-shell/cordis.patch.yml` 的 `insert` 项中。下面保留现有 overlay 的真实字段形状；添加时使用新而唯一的 entry id 和 preset id，并按该 preset 实际需要配置 plugin。不要照抄中心的委派配置，也不要在 persona 中写入未确认的企业规则：
+
+  ```yaml
+  - insert:
+      - id: tradeloom-example-preset
+        name: '@deepseek-ai/dsh-agent-preset'
+        config:
+          id: tradeloom-example
+          name: 示例助手
+          description: 通用助手 preset。
+          order: 7
+          plugins:
+            - id: business-turn-limit
+              name: '@tradeloom/dsh-business-shell/step-policy'
+            - id: persona
+              name: '@deepseek-ai/dsh-persona'
+              config:
+                prefix: 只依据用户提供或当前 Agent 明确可用的能力工作；不编造事实。
   ```
 
-  `type` 必须由 shell 已有 panel registry 支持，业务 path 必须在受限路由集合内。新增场景不意味着能提供未实现的业务能力。
+  对应的 shell 声明如下；`preset` 必须与原生 preset 的 `config.id` 完全相同：
+
+  ```js
+  Object.freeze({ id: 'example', preset: 'tradeloom-example', label: '示例助手', assistantLabel: '示例助手' }),
+  ```
+
+  加角色不会自动授予 TradeLoom 工具。`packages/tradeloom-shell/business-tools.js` 先按工具的 `TOOL_ACCESS` 集合筛选注册项，再在执行时按 live preset 检查；新 preset 默认不会继承现有工具。如果确实需要某个既有工具，只把新 preset 加入该工具对应的集合，并为允许和拒绝路径更新测试。例如下方改动会明确把现有商品只读工具授权给新 preset，未作此决定时不要添加这一行：
+
+  ```js
+  tradeloom_read_products: new Set([ROLE_PRESETS.center, ROLE_PRESETS.product, ROLE_PRESETS.example]),
+  ```
+
+  顶部助手菜单的注册测试在 `packages/tradeloom-shell/tests/shell.test.js`，它逐项断言角色定义与派生映射；添加角色时同步更新契约期望。`business-tools.test.js` 覆盖工具集合及未授权拒绝。当前没有独立的 Agent 示例 dry-run 验证器。shell role 与 Python `WorkflowRoleRegistry` 是不同 ID 域；只添加顶部聊天角色不会把它加入工作流计划。需要让中心通过原生 subagent 委派时，还必须显式更新中心 preset 的 `allowedAgentPresets`；非中心 preset 不会因此获得委派权。
+
+- **场景和业务面板：** `packages/tradeloom-shell/scenes.json` 登记 scene、各自独立保存的布局、默认业务 route 与 panel 类型。每个 scene 的 `roleId` 指定默认助手；用户切换助手只更新当前 scene 的角色映射。下面是当前配置中完整有效的“工作总览”场景对象，保留了 `icon` 与 4×4 初始几何：
+
+  ```json
+  {
+    "id": "center",
+    "label": "工作总览",
+    "icon": "⌂",
+    "roleId": "center",
+    "defaultBusinessRoute": "/home",
+    "panels": [
+      { "id": "business-main", "type": "business-iframe", "title": "总览", "path": "/home", "col": 1, "row": 1, "w": 3, "h": 2 },
+      { "id": "auxiliary", "type": "business-iframe", "title": "商品", "path": "/products", "col": 4, "row": 1, "w": 1, "h": 2 },
+      { "id": "reference", "type": "business-iframe", "title": "资料", "path": "/artifacts", "col": 1, "row": 3, "w": 1, "h": 2 },
+      { "id": "native-chat", "type": "native-chat", "title": "中心助手", "col": 2, "row": 3, "w": 3, "h": 2 }
+    ]
+  }
+  ```
+
+  这是场景条目，不是完整 `scenes.json`；新增业务 scene 时还要在根对象的 `businessRoutes` 中为受支持路由登记唯一目标。`type` 必须由 shell 已有 panel registry 支持，业务 path 必须在受限路由集合内；几何字段使用源文件的 `col`、`row`、`w`、`h`。持久布局按 scene id 隔离。新增场景不意味着能提供未实现的业务能力。
 - **工具权限：** `packages/tradeloom-shell/business-tools.js` 用对象 schema 声明固定工具输入，`TOOL_ACCESS` 按现有 preset 显式授权。新工具必须同时有参数校验、固定 Django route、后端输入/来源校验和未授权角色回归；未知 preset 默认拒绝。工具名或公开角色列表不能单独作为授权依据。
 - **工作流角色：** `workbench/agents/registry.py` 中的 `WorkflowRoleRegistry`、`agent_role` 与 DSH shell role 是不同 ID 域。只有 WorkflowTask 编排/执行角色使用 Python registry；不能因桌面菜单新增一个 Agent 就自动进入 workflow 计划。
 - **业务数据：** Django/PostgreSQL 保存本地 workflow、审核、产品资料修订、交付版本及 ERPNext 外部引用。ERPNext 保存 ERP 主数据和单据；适配器在 `workbench/erpnext/`，走服务端注入配置和白名单只读 API。未部署时 status 为未配置，不伪造记录或调用成功。
 - **协议与示例：** 跨模块公开状态使用版本化 DTO/schema；不要把原生聊天历史、凭据、原始异常或 EventLog 私有 payload 复制进协作接口。`contracts/collaboration-envelope-v1.schema.json` 是当前只读协作 envelope 示例；图像生成和网页模型桥须实现独立 adapter Protocol，聊天多模态不是这些 adapter 的替代品。样例数据必须留在 `data/samples/` 并明确标注为演示数据。
 
 新增模块应先定位当前 source of truth、契约测试和受限注入/权限边界，再添加一个能独立验证的最小能力。不要为示例或文档引入新的角色分工、未经访谈的业务规则、第二套 provider/session 状态或通用 SDK。
+
+### 叙述来源与候选证据（Slice1 后端契约）
+
+`NarrativeSourceVersion` 用不透明 ID 和 SHA-256 标识不可变内容版本；相同 SHA 上传复用已有记录，`display_name` 仅供界面辨认，不依据文件名推断历史版本或关联。叙述原件保存在 DataRoot 私有目录。`EvidenceRecord` 只接受 `product_identity`、`commercial_source`、`production_instruction`、`labor_analysis` 四类候选 schema 中的字段；记录状态固定为 `unverified`。操作者叙述只保存 `summary_only` 摘要和来源行范围，不声称为已核实事实；团队假设必须引用同一候选的输入证据，系统推导必须给出 `rule_id`、`rule_version` 与输入证据 ID。当前没有自动业务规则执行器，因此这些记录仍是 `unverified`。证据以追加 revision 保存，`(candidate, field, kind, revision)` 唯一；来源单元格必须与该字段已保存的映射来源精确一致，输入证据须属于同一候选且字段有效。
+
+只读集合接口为 `GET /api/intake/narratives?offset=&limit=` 和 `GET /api/intake/candidates/{candidate_id}/evidence?offset=&limit=`；仅接受单个 `offset`、`limit` 参数，`limit` 为 1–100、`offset` 为 0–100000，并返回 `next_offset`。候选详情保持既有 DTO，不内嵌无界证据列表。写入沿用同源/CSRF 与幂等键约束；来源及证据回执不包含文件路径或原始单元格内容。新增叙述上传的来源行和回执在同一数据库事务内完成；原有 XLSX `upload_source` 仍先写来源、再完成回执，二者并非同一事务，失败恢复仍是已知遗留限制。
+
+以上是后端契约，不代表当前桌面已有访谈上传界面。迁移 `0007_narrative_evidence_sources` 尚未应用到主数据库；当前运行产品不能据此宣称可在界面上传或浏览这些记录。
 

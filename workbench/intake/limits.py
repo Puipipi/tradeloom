@@ -1,0 +1,9 @@
+"""Shared parser and archive limits with no Django model/settings imports."""
+
+MAX_SOURCE_BYTES = 20 * 1024 * 1024
+MAX_UNCOMPRESSED_BYTES = 128 * 1024 * 1024
+MAX_ZIP_PARTS = 2_000
+MAX_SHEETS = 20
+MAX_CELLS = 250_000
+MAX_IMAGE_REFERENCES = 100
+MAX_MERGED_AREA = 250_000

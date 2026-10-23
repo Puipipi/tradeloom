@@ -69,7 +69,8 @@ test('pinned Dockview api.toJSON trees validate, including one group and no open
 
   const result = defaultDockLayout(center)
   assert.equal(validateDockviewLayout(center, result.dockview, result.closedPanelIds), true)
-  assert.deepEqual(result.dockview.grid.root.data.map(group => group.size), [60, 40])
+  assert.deepEqual(result.dockview.grid.root.data.map(group => group.size), [32, 68], 'center keeps business context on the left and gives native chat the full-height lead')
+  assert.equal(result.dockview.activeGroup, '2', 'assistant-led center opens on the native conversation')
   assert.deepEqual(result.dockview.grid.root.data[0].data.views, ['business-main', 'auxiliary', 'reference'])
   assert.deepEqual(result.dockview.grid.root.data[1].data.views, ['native-chat'])
   assert.ok(Object.values(result.dockview.panels).every(panel => panel.renderer === 'always'))
@@ -80,6 +81,34 @@ test('pinned Dockview api.toJSON trees validate, including one group and no open
   const oneGroupDefault = defaultDockLayout(withoutChat)
   assert.equal(oneGroupDefault.dockview.grid.root.data.length, 1)
   assert.deepEqual(oneGroupDefault.dockview.grid.root.data[0].data.views, ['business-main', 'auxiliary', 'reference'])
+})
+
+test('each configured scene gets its mapped recommendation while four-panel scenes preserve the screenshot grid', () => {
+  let collaborationCustom
+  for (const scene of config.scenes) {
+    const recommendation = defaultDockLayout(scene)
+    assert.equal(validateDockviewLayout(scene, recommendation.dockview, recommendation.closedPanelIds), true, scene.id)
+    if (scene.layoutProfile.kind === 'collaboration_grid') {
+      assert.equal(recommendation.dockview.grid.orientation, 'VERTICAL', scene.id)
+      const [top, bottom] = recommendation.dockview.grid.root.data
+      assert.equal(top.type, 'branch')
+      assert.equal(bottom.type, 'branch')
+      assert.deepEqual([top.size, bottom.size], [58, 42])
+      assert.deepEqual(top.data.map(group => [group.size, group.data.views[0]]), [[75, 'business-main'], [25, 'auxiliary']])
+      assert.deepEqual(bottom.data.map(group => [group.size, group.data.views[0]]), [[25, 'reference'], [75, 'native-chat']])
+      if (scene.id === 'products') {
+        collaborationCustom = structuredClone(recommendation)
+        collaborationCustom.dockview.grid.root.data[0].data[0].size = 70
+        collaborationCustom.dockview.grid.root.data[0].data[1].size = 30
+        assert.equal(validateDockviewLayout(scene, collaborationCustom.dockview, collaborationCustom.closedPanelIds), true)
+      }
+    } else if (scene.layoutProfile.kind === 'business_lead') {
+      assert.deepEqual(recommendation.dockview.grid.root.data.map(group => group.size), [72, 28], scene.id)
+    }
+  }
+  const normalizedCustom = normalizeDockLayouts(config, { version: 2, scenes: { products: collaborationCustom } })
+  assert.deepEqual(normalizedCustom.scenes.products, collaborationCustom,
+    'a saved custom four-panel layout remains unchanged when recommendation profiles are introduced')
 })
 
 test('unchanged v1 geometry upgrades to the wider dock default and keeps its first snapshot', () => {

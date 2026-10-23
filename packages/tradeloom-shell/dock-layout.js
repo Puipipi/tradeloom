@@ -32,7 +32,7 @@ function panelRecords(panels) {
   }]))
 }
 
-function buildLayout(businessPanels, chatPanels, split = [60, 40]) {
+function buildLayout(businessPanels, chatPanels, split = [72, 28], activeGroup = '1') {
   const groups = chatPanels.length === 0
     ? [makeLeaf('1', businessPanels, 100)]
     : [makeLeaf('1', businessPanels, split[0]), makeLeaf('2', chatPanels, split[1])]
@@ -45,9 +45,37 @@ function buildLayout(businessPanels, chatPanels, split = [60, 40]) {
         orientation: 'HORIZONTAL',
       },
       panels: panelRecords([...businessPanels, ...chatPanels]),
-      activeGroup: '1',
+      activeGroup,
     },
   }
+}
+
+function buildRecommendation(scene, businessPanels, chatPanels) {
+  const kind = scene.layoutProfile?.kind
+  if (kind === 'assistant_lead') return buildLayout(businessPanels, chatPanels, [32, 68], '2')
+  if (kind === 'collaboration_grid') {
+    const panels = new Map(scene.panels.map(panel => [panel.id, panel]))
+    if (['business-main', 'auxiliary', 'reference', 'native-chat'].every(id => panels.has(id))) {
+      const leaf = (groupId, panelId, size) => makeLeaf(groupId, [panels.get(panelId)], size)
+      const row = (id, size, left, right) => ({
+        type: 'branch', size, data: [leaf(`${id}a`, left[0], left[1]), leaf(`${id}b`, right[0], right[1])],
+      })
+      return {
+        dockview: {
+          grid: {
+            root: { type: 'branch', size: 100, data: [
+              row('top', 58, ['business-main', 75], ['auxiliary', 25]),
+              row('bottom', 42, ['reference', 25], ['native-chat', 75]),
+            ] },
+            width: 100, height: 100, orientation: 'VERTICAL',
+          },
+          panels: panelRecords(scene.panels),
+          activeGroup: 'topa',
+        },
+      }
+    }
+  }
+  return buildLayout(businessPanels, chatPanels, [72, 28])
 }
 
 export function defaultDockLayout(scene) {
@@ -55,7 +83,7 @@ export function defaultDockLayout(scene) {
   const businessPanels = scene.panels.filter(panel => panel.type !== 'native-chat')
   if (chatPanels.length > 1 || scene.panels.length === 0) fail('scene must have panels and no more than one native chat panel')
   const groups = chatPanels.length > 0 && businessPanels.length > 0
-    ? buildLayout(businessPanels, chatPanels, [60, 40])
+    ? buildRecommendation(scene, businessPanels, chatPanels)
     : buildLayout(scene.panels, [])
   return {
     ...groups,

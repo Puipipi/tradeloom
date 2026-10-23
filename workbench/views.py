@@ -22,6 +22,7 @@ from .models import (
     Task,
     WorkflowTask,
 )
+from .intake.schemas import FIELD_SCHEMAS
 from .products.query import (
     PRODUCT_LIBRARY_STATUSES,
     InvalidProductFilter,
@@ -438,6 +439,7 @@ def artifacts(request):
             artifacts=artifact_rows,
             artifact_count=len(artifact_rows),
             version_count=ArtifactVersion.objects.count(),
+            intake_field_schemas=FIELD_SCHEMAS,
         ),
     )
 

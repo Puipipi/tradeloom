@@ -1,0 +1,349 @@
+diff --git a/apps/desktop/src/fatal-recovery.ts b/apps/desktop/src/fatal-recovery.ts
+index 5a739b1..b1c559f 100644
+--- a/apps/desktop/src/fatal-recovery.ts
++++ b/apps/desktop/src/fatal-recovery.ts
+@@ -9,6 +9,7 @@ interface RecoveryOperations {
+   messages(): DesktopMessages
+   show(options: MessageBoxOptions): Promise<MessageBoxReturnValue>
+   stop(): Promise<void>
++  restartInPlace(): Promise<void>
+   disablePlugins(): Promise<void>
+   exit(): void
+   restart(): void
+@@ -16,6 +17,21 @@ interface RecoveryOperations {
+   writeReport(error: unknown, source: CrashReportSource): Promise<string | undefined>
+ }
+ 
++/** Restart the backend without letting Electron's quit hooks own the child lifetime. */
++export async function restartBackendInPlaceWithShutdownGuard(
++  setShuttingDown: (value: boolean) => void,
++  stopBackend: () => Promise<void>,
++  startBackend: () => Promise<void>,
++): Promise<void> {
++  setShuttingDown(true)
++  try {
++    await stopBackend()
++  } finally {
++    setShuttingDown(false)
++  }
++  await startBackend()
++}
++
+ /** Upper bound on waiting for the crash report before the dialog opens. */
+ export const CRASH_REPORT_WAIT_MS = 1_000
+ 
+@@ -91,8 +107,17 @@ export class DesktopFatalRecovery {
+         return
+       }
+       try {
++        if (response === 1) {
++          await this.operations.restartInPlace()
++          this.reported = false
++          return
++        }
+         await this.operations.stop()
+-        if (response === 2) await this.operations.disablePlugins()
++        if (response === 2) {
++          await this.operations.disablePlugins()
++          this.operations.exit()
++          return
++        }
+         this.operations.restart()
+         return
+       } catch (failure) {
+diff --git a/apps/desktop/src/locale.ts b/apps/desktop/src/locale.ts
+index 5e2c8be..99172ee 100644
+--- a/apps/desktop/src/locale.ts
++++ b/apps/desktop/src/locale.ts
+@@ -65,7 +65,7 @@ export const en = {
+   exitApplication: 'Exit',
+   restartApplication: 'Restart',
+   recoveryOperationFailed: 'The recovery operation failed',
+-  disableThirdPartyPlugins: 'Disable third-party plugins, back up profile patch, and restart',
++  disableThirdPartyPlugins: 'Back up settings, disable third-party plugins, and exit',
+   welcomeTitle: 'TradeLoom',
+   welcomeBrand: 'TradeLoom',
+   welcomeTaglineBefore: 'Welcome to ',
+@@ -236,7 +236,7 @@ export const zh = {
+   exitApplication: '退出',
+   restartApplication: '重启',
+   recoveryOperationFailed: '恢复操作失败',
+-  disableThirdPartyPlugins: '禁用第三方插件、备份 profile patch 并重启',
++  disableThirdPartyPlugins: '备份设置、禁用第三方插件并退出',
+   welcomeTitle: '织贸助手',
+   welcomeBrand: '织贸助手',
+   welcomeTaglineBefore: '欢迎使用 ',
+diff --git a/apps/desktop/src/main.ts b/apps/desktop/src/main.ts
+index 466f31e..b547576 100644
+--- a/apps/desktop/src/main.ts
++++ b/apps/desktop/src/main.ts
+@@ -38,7 +38,7 @@ import { DesktopUpdateCoordinator } from './update-coordinator.ts'
+ import { DesktopCommandManager } from './command-management.ts'
+ import { serveWebDocument, authenticateWebHost, forwardWebRequest } from './web-document.ts'
+ import { desktopWebSocketRequestHeaders } from './websocket-authority.ts'
+-import { DesktopFatalRecovery } from './fatal-recovery.ts'
++import { DesktopFatalRecovery, restartBackendInPlaceWithShutdownGuard } from './fatal-recovery.ts'
+ import { pruneCrashReports, RendererConsoleTail, writeCrashReport, type CrashReportSource } from './crash-report.ts'
+ import { openWelcomeWindow } from './welcome-window.ts'
+ import { WELCOME_IPC, needsWelcome, type WelcomeNotice } from './welcome-api.ts'
+@@ -65,6 +65,9 @@ import { DesktopBackgroundNotice } from './background-notice.ts'
+ 
+ let focusPrimaryWindow = (): void => {}
+ let stopForRecovery = async (): Promise<void> => {}
++let restartBackendInPlaceForRecovery = async (): Promise<void> => {
++  throw new Error('desktop backend recovery is not initialized')
++}
+ let shuttingDown = false
+ /**
+  * Set by quit entries that must not ask: crash recovery exit and restart, and the
+@@ -103,6 +106,7 @@ const recovery = new DesktopFatalRecovery({
+   messages: () => currentDesktopLocale().messages,
+   show: options => dialog.showMessageBox(options),
+   stop: () => { shuttingDown = true; return stopForRecovery() },
++  restartInPlace: () => restartBackendInPlaceForRecovery(),
+   disablePlugins: async () => {
+     const manager = new DesktopProjectManager(resolveDesktopPaths(), runtimeResources())
+     const backupPath = await manager.disableAllPlugins()
+@@ -593,6 +597,14 @@ async function main(): Promise<void> {
+     return startup
+   }
+ 
++  restartBackendInPlaceForRecovery = async () => {
++    await restartBackendInPlaceWithShutdownGuard(
++      (value) => { shuttingDown = value },
++      () => backend.stop(),
++      () => reconcileBackend(),
++    )
++  }
++
+   const manifest: unknown = JSON.parse(await readFile(join(app.getAppPath(), 'package.json'), 'utf8'))
+   const productWorkspace = typeof manifest === 'object' && manifest !== null
+     && 'dshDesktopAppId' in manifest && manifest.dshDesktopAppId === 'cn.tradeloom.workbench'
+diff --git a/apps/desktop/tests/fatal-recovery.spec.ts b/apps/desktop/tests/fatal-recovery.spec.ts
+index 7ab4efd68a132d50e8a78cd0adbe4ec8487602b1..6bc7d65b1bd514e14613dd0491d7e39561ab79c2 100644
+--- a/apps/desktop/tests/fatal-recovery.spec.ts
++++ b/apps/desktop/tests/fatal-recovery.spec.ts
+@@ -1,6 +1,6 @@
+ import { afterEach, expect, it, vi } from 'vitest'
+ import type { MessageBoxOptions } from 'electron'
+-import { CRASH_REPORT_WAIT_MS, DesktopFatalRecovery } from '../src/fatal-recovery.ts'
++import { CRASH_REPORT_WAIT_MS, DesktopFatalRecovery, restartBackendInPlaceWithShutdownGuard } from '../src/fatal-recovery.ts'
+ import type { CrashReportSource } from '../src/crash-report.ts'
+ import { resolveDesktopLocale } from '../src/locale.ts'
+ 
+@@ -14,6 +14,7 @@ function fixture(
+     messages: () => resolveDesktopLocale(locale).messages,
+     show: vi.fn((_options: MessageBoxOptions) => choice.promise),
+     stop: vi.fn(() => stopped.promise),
++    restartInPlace: vi.fn(async () => {}),
+     disablePlugins: vi.fn(async () => {}),
+     exit: vi.fn(),
+     restart: vi.fn(),
+@@ -32,7 +33,7 @@ const REPORT_PATH = 'C:\\Users\\someone\\AppData\\Roaming\\DeepSeek Harness\\log
+ afterEach(() => { vi.restoreAllMocks() })
+ 
+ it.each(['en', 'zh-CN'])('offers only exit and restart for a listener conflict in %s', async (locale) => {
+-  const { operations, choice, stopped, recovery } = fixture(locale)
++  const { operations, choice, recovery } = fixture(locale)
+   const pending = recovery.report(new AggregateError([
+     new Error('webserver (@deepseek-ai/dsh-host-webserver): Error: listen EADDRINUSE: address already in use 127.0.0.1:19387'),
+   ], 'required startup failure'), 'host')
+@@ -42,9 +43,10 @@ it.each(['en', 'zh-CN'])('offers only exit and restart for a listener conflict i
+   await expect([options.title, options.message, options.detail, ...options.buttons!].join('\n') + '\n')
+     .toMatchFileSnapshot(`expected/fatal-address-in-use-${locale}.txt`)
+   choice.resolve({ response: 1, checkboxChecked: false })
+-  stopped.resolve(undefined)
+   await pending
+-  expect(operations.restart).toHaveBeenCalledOnce()
++  expect(operations.restartInPlace).toHaveBeenCalledOnce()
++  expect(operations.restart).not.toHaveBeenCalled()
++  expect(operations.stop).not.toHaveBeenCalled()
+   expect(operations.disablePlugins).not.toHaveBeenCalled()
+ })
+ 
+@@ -74,21 +76,21 @@ it.each(['en', 'zh-CN'])('records the %s native recovery dialog', async (locale)
+   await pending
+ })
+ 
+-it('locks the first report before the dialog settles and never resets after an action', async () => {
+-  const { operations, choice, stopped, recovery } = fixture()
++it('locks the first fatal while recovery is pending and accepts a later fatal after success', async () => {
++  const { operations, choice, recovery } = fixture()
+   const pending = recovery.report(new Error('first failure'), 'main')
+   await shown(operations)
+   await recovery.report(new Error('second failure'), 'main')
+   expect(operations.show).toHaveBeenCalledOnce()
+   expect(operations.show.mock.calls[0]![0].detail).toContain('first failure')
+   choice.resolve({ response: 1, checkboxChecked: false })
+-  stopped.resolve(undefined)
+   await pending
+   await recovery.report(new Error('third failure'), 'main')
+-  expect(operations.show).toHaveBeenCalledOnce()
++  expect(operations.show).toHaveBeenCalledTimes(2)
++  expect(operations.show.mock.calls[1]![0].detail).toContain('third failure')
+ })
+ 
+-it.each([0, 1, 2])('waits for shutdown before executing choice %s', async (response) => {
++it.each([0, 2])('waits for shutdown before executing choice %s', async (response) => {
+   const { operations, choice, stopped, recovery } = fixture()
+   const stopping = Promise.withResolvers<undefined>()
+   operations.stop.mockImplementation(() => { stopping.resolve(undefined); return stopped.promise })
+@@ -98,13 +100,96 @@ it.each([0, 1, 2])('waits for shutdown before executing choice %s', async (respo
+   expect(operations.exit).not.toHaveBeenCalled()
+   expect(operations.restart).not.toHaveBeenCalled()
+   expect(operations.disablePlugins).not.toHaveBeenCalled()
++  expect(operations.restartInPlace).not.toHaveBeenCalled()
+   stopped.resolve(undefined)
+   await pending
+-  expect(operations.exit).toHaveBeenCalledTimes(response === 0 ? 1 : 0)
+-  expect(operations.restart).toHaveBeenCalledTimes(response === 0 ? 0 : 1)
++  expect(operations.exit).toHaveBeenCalledOnce()
++  expect(operations.restart).not.toHaveBeenCalled()
++  expect(operations.restartInPlace).not.toHaveBeenCalled()
+   expect(operations.disablePlugins).toHaveBeenCalledTimes(response === 2 ? 1 : 0)
+ })
+ 
++it('exits only after disabling plugins and backing up the profile', async () => {
++  const { operations, choice, stopped, recovery } = fixture()
++  const disabling = Promise.withResolvers<void>()
++  operations.disablePlugins.mockImplementation(() => disabling.promise)
++  const pending = recovery.report(new Error('fatal'), 'main')
++  choice.resolve({ response: 2, checkboxChecked: false })
++  await Promise.resolve()
++  expect(operations.exit).not.toHaveBeenCalled()
++  expect(operations.restart).not.toHaveBeenCalled()
++  stopped.resolve(undefined)
++  await Promise.resolve()
++  expect(operations.exit).not.toHaveBeenCalled()
++  disabling.resolve()
++  await pending
++  expect(operations.exit).toHaveBeenCalledOnce()
++  expect(operations.restart).not.toHaveBeenCalled()
++})
++
++
++
++it('restarts in place without closing through the exit path or relaunching Electron', async () => {
++  const { operations, choice, recovery } = fixture()
++  const pending = recovery.report(new Error('fatal'), 'main')
++  choice.resolve({ response: 1, checkboxChecked: false })
++  await pending
++  expect(operations.stop).not.toHaveBeenCalled()
++  expect(operations.restartInPlace).toHaveBeenCalledOnce()
++  expect(operations.restart).not.toHaveBeenCalled()
++  expect(operations.disablePlugins).not.toHaveBeenCalled()
++  expect(operations.exit).not.toHaveBeenCalled()
++})
++
++it('clears the active fatal after successful recovery so a later fatal is reported', async () => {
++  const { operations, recovery } = fixture()
++  operations.show.mockResolvedValueOnce({ response: 1, checkboxChecked: false })
++    .mockResolvedValueOnce({ response: 0, checkboxChecked: false })
++  operations.stop.mockResolvedValue(undefined)
++  await recovery.report(new Error('first fatal'), 'main')
++  expect(recovery.active).toBe(false)
++  expect(operations.show).toHaveBeenCalledOnce()
++  await recovery.report(new Error('second fatal'), 'main')
++  expect(operations.show).toHaveBeenCalledTimes(2)
++  expect(operations.show.mock.calls[1]![0].detail).toContain('second fatal')
++  expect(operations.exit).toHaveBeenCalledOnce()
++})
++
++it('keeps a failed in-place restart active and redisplays until retry succeeds', async () => {
++  vi.spyOn(console, 'error').mockImplementation(() => {})
++  const { operations, recovery } = fixture()
++  operations.show.mockResolvedValueOnce({ response: 1, checkboxChecked: false })
++    .mockResolvedValueOnce({ response: 1, checkboxChecked: false })
++  operations.restartInPlace.mockRejectedValueOnce(new Error('backend recovery is not initialized'))
++    .mockResolvedValueOnce(undefined)
++  await recovery.report(new Error('fatal'), 'main')
++  expect(operations.restartInPlace).toHaveBeenCalledTimes(2)
++  expect(operations.show).toHaveBeenCalledTimes(2)
++  expect(operations.show.mock.calls[1]![0].message).toBe(operations.messages().recoveryOperationFailed)
++  expect(recovery.active).toBe(false)
++})
++
++it('resets the shutdown guard if backend stop fails before startup is attempted', async () => {
++  const events: string[] = []
++  const failure = new Error('stop failed')
++  await expect(restartBackendInPlaceWithShutdownGuard(
++    (value) => { events.push(`shutdown:${value}`) },
++    async () => { events.push('stop'); throw failure },
++    async () => { events.push('start') },
++  )).rejects.toBe(failure)
++  expect(events).toEqual(['shutdown:true', 'stop', 'shutdown:false'])
++})
++
++it('starts the replacement backend only after stop and guard reset', async () => {
++  const events: string[] = []
++  await restartBackendInPlaceWithShutdownGuard(
++    (value) => { events.push(`shutdown:${value}`) },
++    async () => { events.push('stop') },
++    async () => { events.push('start') },
++  )
++  expect(events).toEqual(['shutdown:true', 'stop', 'shutdown:false', 'start'])
++})
++
+ it('reports a user-requested disable failure and allows exit without restarting', async () => {
+   vi.spyOn(console, 'error').mockImplementation(() => {})
+   const { operations, stopped, recovery } = fixture()
+diff --git a/apps/desktop/tests/main-startup.spec.ts b/apps/desktop/tests/main-startup.spec.ts
+index ac5e957..9c781d1 100644
+--- a/apps/desktop/tests/main-startup.spec.ts
++++ b/apps/desktop/tests/main-startup.spec.ts
+@@ -2178,7 +2178,7 @@ describe('desktop main startup', () => {
+     harness.prepared.reject(new Error('runtime resources missing'))
+     await harness.dialogShown.promise
+     expect((harness.dialog.showMessageBox.mock.calls[0]![0] as MessageBoxOptions).detail).toContain('runtime resources missing')
+-    expect((harness.dialog.showMessageBox.mock.calls[0]![0] as MessageBoxOptions).buttons).toEqual(['Exit', 'Restart', 'Disable third-party plugins, back up profile patch, and restart'])
++    expect((harness.dialog.showMessageBox.mock.calls[0]![0] as MessageBoxOptions).buttons).toEqual(['Exit', 'Restart', 'Back up settings, disable third-party plugins, and exit'])
+     expect(harness.windows[0]!.urls).toEqual(['dsh-app://app/'])
+   })
+ 
+@@ -2272,7 +2272,7 @@ describe('desktop main startup', () => {
+     await harness.quitCompleted.promise
+   })
+ 
+-  it.each([0, 1, 2])('waits for Host exit before recovery action %s', async (response) => {
++  it.each([0, 2])('waits for Host exit before recovery action %s', async (response) => {
+     harness.dialog.showMessageBox.mockResolvedValue({ response, checkboxChecked: false })
+     await import('../src/main.ts')
+     await harness.preparing.promise
+@@ -2287,7 +2287,8 @@ describe('desktop main startup', () => {
+     expect(harness.disableAllPlugins).not.toHaveBeenCalled()
+     host.exited.resolve()
+     await harness.quitCompleted.promise
+-    expect(harness.app.relaunch).toHaveBeenCalledTimes(response === 0 ? 0 : 1)
++    expect(harness.app.relaunch).not.toHaveBeenCalled()
++    expect(harness.app.quit).toHaveBeenCalled()
+     expect(harness.disableAllPlugins).toHaveBeenCalledTimes(response === 2 ? 1 : 0)
+     if (response === 2) {
+       expect(console.info).toHaveBeenCalledWith('Desktop profile recovery completed:', {
+@@ -2437,6 +2438,27 @@ describe('desktop main startup', () => {
+     expect(window.urls).toEqual(['dsh-app://app/'])
+     expect(harness.windows).toHaveLength(1)
+   })
++
++  it('restarts a fatal backend in place without relaunching Electron', async () => {
++    harness.dialog.showMessageBox.mockResolvedValue({ response: 1, checkboxChecked: false })
++    const host = await readyForUpdate()
++    const replacementStarted = harness.nextHostStart()
++    host.onFailure!(new Error('backend exited'))
++    await host.stopping.promise
++    expect(harness.app.relaunch).not.toHaveBeenCalled()
++    host.exited.resolve()
++    await replacementStarted
++    expect(harness.app.relaunch).not.toHaveBeenCalled()
++    expect(harness.app.quit).not.toHaveBeenCalled()
++    expect(harness.hosts).toHaveLength(2)
++    const replacement = harness.hosts[1]!
++    expect(replacement.start).toHaveBeenCalledOnce()
++    replacement.ready.resolve()
++    await Promise.resolve(invoke(DESKTOP_IPC.boot))
++    expect(harness.hosts[1]).toBe(replacement)
++    expect(harness.app.relaunch).not.toHaveBeenCalled()
++    expect(harness.app.quit).not.toHaveBeenCalled()
++  })
+ })
+ 
+ it.each(['failed', 'expired'] as const)('focuses DSH once when browser authorization becomes %s', async (phase) => {

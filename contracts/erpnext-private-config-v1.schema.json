@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tradeloom.invalid/contracts/erpnext-private-config-v1.schema.json",
+  "title": "TradeLoom private ERPNext launcher configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "baseUrl", "instanceId", "apiKey", "apiSecret"],
+  "properties": {
+    "version": { "const": 1 },
+    "baseUrl": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048,
+      "description": "HTTPS URL, or HTTP only for loopback hosts; userinfo, query, and fragment are forbidden."
+    },
+    "instanceId": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "apiKey": { "type": "string", "minLength": 1 },
+    "apiSecret": { "type": "string", "minLength": 1 }
+  }
+}

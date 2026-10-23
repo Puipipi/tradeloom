@@ -294,6 +294,21 @@ class PageTests(TestCase):
 
         self.assertContains(response, "尚未生成交付物")
 
+    def test_artifacts_page_exposes_private_intake_workbench(self):
+        response = self.client.get("/artifacts")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'data-testid="intake-workbench"')
+        self.assertContains(response, 'data-testid="intake-upload"')
+        self.assertContains(response, 'data-testid="intake-sources"')
+        self.assertContains(response, 'data-testid="intake-preview-grid"')
+        self.assertContains(response, 'data-testid="intake-mapping"')
+        self.assertContains(response, 'data-testid="intake-candidates"')
+        self.assertContains(response, 'data-testid="intake-narratives"')
+        self.assertContains(response, 'data-testid="intake-requirement-workspace"')
+        self.assertContains(response, "/api/production-requirements/__REQUIREMENT__/revisions")
+        self.assertContains(response, "intake.js")
+
     def test_runs_page_shows_real_runs_events_and_platform_status(self):
         batch = self.make_batch(title="运行批次")
         workflow = self.make_workflow(batch)

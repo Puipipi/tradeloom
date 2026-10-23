@@ -14,7 +14,7 @@
 
 本矩阵中的本机证据路径已规范为占位符；原始外部证据不随源码克隆提供。
 
-> **当前范围（2026-10-21）：** 本地 source-mode Electron 原生 GUI 已验收五个业务路由、配置场景、Dockview 双栏工作区、原生聊天面板、模型/助手入口与 Site 日夜主题；用户草稿、会话和面板状态有既有持久化证据。最新主题验收及当前25项源文件冻结见[本批方法审计基线](verification/2026-10-21-bingus-methodology-audit.md)与其引用的记录。真实 DeepSeek Flash 仅在演示数据下完成自然语言提案/澄清及 product/delivery 只读工具调用；业务执行仍标记 `local_mock/simulated_rules`，不代表模型自主完成整条 workflow、企业真实资料或真人审批。Dockview分栏调整已有实机证据，但本轮没有证明鼠标拖动标签停靠的完整交互。390×844 与 320×720 是虚拟视口，不是实体手机；p8安装版未包含当前 source-mode 更新；企业规则访谈、实体手机仍未完成；AgentArts/P6已豁免。
+> **当前范围（2026-10-21）：** 本地 source-mode Electron 原生 GUI 已验收五个业务路由、配置场景、Dockview 双栏工作区、原生聊天面板、模型/助手入口与 Site 日夜主题；用户草稿、会话和面板状态有既有持久化证据。最新主题验收及当前25项源文件冻结见[本批方法审计基线](verification/2026-10-21-bingus-methodology-audit.md)与其引用的记录。真实 DeepSeek Flash 仅在演示数据下完成自然语言提案/澄清及 product/delivery 只读工具调用；业务执行仍标记 `local_mock/simulated_rules`，不代表模型自主完成整条 workflow、企业真实资料或真人审批。此前 source-pointer bundle 已实机验收Dockview分栏、标签合并与拆分；当前 source 已官方同步并后台启动，但本轮共享卡片间距CSS尚无 GUI 复验。远端 ERP 服务健康且八个 token GET 返回 HTTP 200；本地配置已导入但运行 Django 尚未启用，故 TradeLoom 到 ERPNext 的读/写集成仍未验收。390×844 与 320×720 是虚拟视口，不是实体手机；p8安装版未包含当前 source-mode 更新；企业规则访谈、实体手机仍未完成；AgentArts/P6已豁免。
 
 本矩阵中的本机证据路径已规范为占位符；原始外部证据不随源码克隆提供。
 
@@ -243,7 +243,7 @@
 |---|---|---|
 | 安装版打开并可操作 | [!] p8 已安装且 14,150 个资源逐文件核对一致；其首启曾报 `Web RPC failed`。本地 source-mode Electron 随后实际完成本地框架与业务 GUI 验收，但没有把本轮源码改动 stage/package/install 到 p8。 | 用户要求本地优先；先处理本地剩余 UI 缺陷。之后若用户安排发布，再单独验更新安装版启动，不能由本地运行外推。 |
 | 顶部五业务入口、助手选择与原生历史 | [x] 五业务路由已逐项打开；助手入口已移到顶部折叠菜单，左侧原生 workspaces/history 保留。既有六个 preset/workspace 独立会话映射与重启保留证据仍有效。 | p8 安装版尚未包含当前 source-mode 更新；本条不把助手选择器表述为左侧常驻六角色栏。 |
-| 场景与 Dockview 面板操作 | [-] 当前实现采用 Dockview、保存各场景布局并保留原生聊天/业务面板 DOM；source freeze 与定向 renderer/shell 门禁见[方法审计记录](verification/2026-10-21-bingus-methodology-audit.md)。实机已验分栏调整和会话草稿保留。 | HTML/JSDOM门禁不证明实际标签拖拽停靠；原生面板鼠标移动/分组仍需真实交互证据。 |
+| 场景与 Dockview 面板操作 | [x] 此前同步的 source-pointer bundle 已实机验证调整分栏、把面板标签合并为同组、再拆为分栏；会话草稿保留。截图证据见 `<LOCAL_EVIDENCE_ROOT>/source-pointer-native-20261021/merged-tabs.png`、`split-tabs.png` 与 `restored-layout.png`。七场景逐页留白与主题检查绑定前一同步 bundle `a2e86a34bcdba5216c372172054885a64b14c0aea66d2be40426347a03e9fdb5`；最终 spacing bundle `babaee741aa6be4a7d3b3e35453c4b771d44d7aa110b32c16a2e944848ec8491` 仅复验工作总览、ERP 新文案/DEMO Item 和窄屏菜单/主题/单面板。分阶段 GUI 证据见项目外 `workspace/testing/ui-spacing-20261021/ui-verification-final.json`（SHA-256 `6dfff530f317224cbcdcc6d36b2f555f76e2e60a2cfe2cbe819c091b19f5b4e0`）。本轮 Dockview 标签拖动只选中参考标签，未证明移动/停靠；旧 bundle 拖放结果仅适用于其记录时的版本。 |
 | 角色会话绑定与复用 | [x] 六个助手通过顶部选择器切换现有 preset/role session；原生聊天作为工作区面板显示，中心草稿跨切场景保留，重新载入只重挂载视图而不新建会话。 | 真实模型只读工具和提案证据按上方范围限定；不声称所有 provider 或完整自动 workflow 已验。 |
 | 受保护场景与资料接口 | [x] 源码和本轮运行时合同测试覆盖 `/tradeloom/scenes` 认证读取及用户资料路由的拒绝/编辑边界：`host.js`、`tests/scenes.test.js:326`、`tests/shell.test.js:270-300`。 | GUI 首启后可再核对产品页面访问；自动接口通过不替代 UI 验收。 |
 | 原生用户资料工具调用 | [x] 本地 source-mode 原生 GUI 的 user-profile preset 实际调用 `tradeloom_user_profile_read {}`；真实工具结果进入下一次模型请求，随后显示固定模拟回复。同轮本机 SSE fixture 验证对象 schema、tool-call、同 ID `role=tool` 回传，3 POST 均 HTTP 200。证据：[资料工具验收记录](../../workspace/runtime/tradeloom-harness/evidence/local-tool-call-gui-20261020/acceptance.json)；截图见 work-report 记录。 | 证明 user-profile 工具和本机 mock 往返，不代表真实供应商推理。 |
@@ -272,6 +272,18 @@
 
 本批 before 原始字节、before SHA-256、after 同步快照、canonical manifest 与检查输出均存于项目外 `<LOCAL_EVIDENCE_ROOT>\phase7-acceptance-matrix\`。目录路径不会提交到 Git。
 
+## 后续后台证据增量（2026-10-21）
+
+（同步前基线；GUI 状态已由下方“最终 GUI 复验”更新。）
+
+以下证据补充当前范围，不重算原阶段状态，也不表示整体目标完成：
+
+- candidate7 pinned React、ReactDOM server 与 Cordis 环境运行 `node --test tests/scenes.test.js`，23/23 pass、0 skip、exit 0；包含 collapsed-sidebar 对顶栏 `visibility:visible` 及 furled-only 66px 首行 inset 的样式契约。主控修前实测 621×627 时 FAB 遮挡助手入口；当前 CSS 已增加预留，但修复后的窗口效果仍待复验。
+- 隔离 PostgreSQL 草稿 API 模块 32/32、exit 0；Django 完整套件的 389/389、exit 0 是此前独立全套结果，不能合并表述为新的全套。新增 HTTP 403 回归单测另有 1/1 exit 0 记录，详情见外部 `<LOCAL_EVIDENCE_ROOT>/erpnext-live-20261021/http403-test-run.md`。
+- 项目外安全 checkpoint 记录七个只读 DocType 列表各 HTTP 200。唯一实际 Quotation create 请求返回 HTTP 202，操作仍为 `outcome_unknown`/`forbidden`，没有远端 name；本轮未重发或更新，未做 CAS。HTTP 403 不能作为“肯定未写入”的证据。独立远端只读证据 `<LOCAL_EVIDENCE_ROOT>/erpnext-engine-20261021/deployment/quotation-readonly-hook-evidence-20261021.json`（SHA-256 `AA1A2FDE7C3377E5EC5C14FB33E73D3FB1A6239000841C4DC9E4A6C177BE16EA`，UTC `2026-10-21T13:41:51.639290+00:00`）显示只读检查前后11类交易计数均为0；它不确定403原因，也不改变该 operation 的未知状态。
+- 助手选择器已有 GUI 验收，且此前主控查看了七个业务场景、日夜主题和 MCP/Skill 能力列表；这不是本次窄屏可见性变更的窗口验收。插件资产的 GUI 查看与 22 个共享 Skill/52 个文件的资产哈希核对是两类不同证据，不能推断 52 个文件都逐一经 GUI 检查。
+- 主控在修复前的 621×627 收起侧栏窗口实测 `.tl-shell-top` 可见、导航响应正常，但 meow-smooth FAB 覆盖助手首行入口，命中测试确认目标落在 FAB 上。当前源已加入 furled-only 左侧预留并通过 Node 样式合同；修复后的窗口效果尚未复验。真实 Quotation 成功创建与部署 CAS 更新也仍未验收。正式提交/取消/删除/库存仍未开放；图像/网页桥是预留能力，不作为本轮失败或新增必做项。
+
 本矩阵中的本机证据路径已规范为占位符；原始外部证据不随源码克隆提供。
 
 
@@ -283,3 +295,113 @@
 本矩阵中的本机证据路径已规范为占位符；原始外部证据不随源码克隆提供。
 
 
+
+## 最终 GUI 复验（2026-10-21）
+
+本节更新上述窄屏遮挡、间距待复验状态；修前观察保留为历史记录，不表示整体目标已完成。
+
+- 七场景逐页检查卡片留白、日夜主题、侧栏及 MCP/Skill 面板滚动是在前一同步版本 `a2e86a34bcdba5216c372172054885a64b14c0aea66d2be40426347a03e9fdb5` 完成。最终 bundle `babaee741aa6be4a7d3b3e35453c4b771d44d7aa110b32c16a2e944848ec8491` 仅重开桌面检查工作总览、ERP 新中性文案/已连接 DEMO Item 列表，以及 621×627 窄屏菜单、主题与单面板切换。证据 `workspace/testing/ui-spacing-20261021/ui-verification-final.json` SHA-256 `6dfff530f317224cbcdcc6d36b2f555f76e2e60a2cfe2cbe819c091b19f5b4e0`，包含五个外部截图 hash；截图不随源码发布。
+- 621×627 窄屏实测顶栏可见，助手选择器可展开且 hit-test 正确，FAB 不再遮挡入口；单面板切换可用且无横向溢出。实测 system/light 与 dark 外观切换。未测试实体手机。
+- 本轮 Dockview 原生标签拖动只选中参考标签，移动/停靠结果未证明（inconclusive）。此前旧 bundle 的拖放记录不外推到最终 bundle。
+- ERP 只读集成在实机界面成功显示连接状态和 DEMO Item。此前 Quotation 创建返回 HTTP 202 后仍为 `outcome_unknown/forbidden` 且没有远端名；没有重发、update 或 CAS。11 类交易只读计数为0的独立快照不证明未知请求没有副作用。未发新 LLM/付费请求；整体目标未完成。
+
+## 后续 source-mode UI 复验（2026-10-23）
+
+本节只更新受本次实机证据覆盖的窗口行为，不将局部验收外推为整体目标完成。
+
+- owned desktop-8 使用最终纯 UI bundle `7fd1e912cd3781152faa843c85291743d139ebd44603c5550a88fd98f97353dc`。窗口实测 1282×823 与最大化 1707×1019；中心场景的左侧业务组与右侧助手区布局正常。资料场景在窄 pane 中通过“选择当前面板”切换资料与交付物，业务内容恢复到可用宽度，上传与预览可见。
+- 主题修复在 DSH Host 接受 `ui-theme.preference=dark` 后返回 revision 1。关闭并重新启动后默认深色保持；正式主题按钮从深色切回 system/light 后稳定未回退。深色外壳切换到资料与交付物场景后，业务 iframe 同步深色。该证据支持这条主题设置与场景联动，不代表所有页面颜色已逐项验收。
+- Provider 下拉菜单在 1282px 和最大化窗口均能显示且不被 rail 裁切。键盘从主题控件 Tab 到 tools 控件时可见蓝色 focus ring，按 Return 可打开菜单，弹层留在右侧可视范围。Root 已确认 provider 长名称从左起显示并以 ellipsis 收尾，不再裁掉首字母。
+- Root 补充最大化窗口实测：DeepSeek 下拉可见但未选择或调用模型；Escape 可关闭 tools 菜单；主题按钮 system/light→dark、业务 panel 展开→还原均通过，重启后深色偏好仍保留。分隔条从 x=739 拖到 x=922；随后先进入 1282px 窄态再最大化至 1707px，分隔条恢复在 922px，Root 确认 resize 持久化与窄态不覆盖。
+- 标签拖放仍未通过验收：最大化窗口第三次尝试将“资料”标签拖到右侧内容区域后仍只激活标签、未移动；该窗口没有“选择当前面板”控件，故这次观察不是窄 pane 选择器路径。是否由自动化拖动事件、Dockview 拖放阶段或目标区域处理导致，当前证据不足，标为未判定；不能用分隔条拖动成功替代标签拖放证据。
+- 最终 shell Node suite：212 pass、15 skip、0 fail、exit 0；使用已存在的 desktop-8 jsdom runtime，不安装依赖。15 项 skip 的测试声明涵盖未配置的可选 pinned React/ReactDOM 与 JSDOM、candidate7 React 渲染、编译 DSH runtime/tools、DSH WebServer、Cordis/Loader、app-boot/include library paths；另有按操作系统 symlink 能力条件跳过的测试。此处记录声明类别，不推算各类别实际占用数量。
+- 标签拖放原因仍未定位；临时事件诊断待审查/实机采集。实体手机尚未验收；整体项目目标仍未完成。
+
+### 2026-10-23 侧栏保留 bundle `9fbed7ccad3fa134a2cd85ca52282770205e65b7650793599fbd2fe1e1465dd2`
+
+- Root 通过 Sky 在 1282×823 与 1707×1019 两种窗口宽度实机检查；无 startup error。原生 caption 侧栏可以关闭并重新打开，原生历史、新会话、插件/自动化、上下文 GitHub 与设置入口仍可用；从“对话”入口进入真实 native chat 后返回工作场景，侧栏状态不变。工作台与独立对话保持一致的原生侧栏行为。
+- Root 确认主题与工具控件固定在顶栏右侧；全局布局 popover 未被裁切；手动应用推荐布局后，中心场景呈现左侧业务、右侧助手的推荐比例。用户先前 custom Dockview 布局已在项目外私有备份：`workspace/testing/ui-20261023/private/dock-layouts-pre-activation-20261023.json`。该现场没有全关闭所有面板、标签 DnD、实体手机验收。
+- Root 发现展开中心助手后 Dockview 已最大化，但后续读取按钮仍标“展开中心助手”。检查项目内实际发布的 Dockview bundle 证实 `DockviewApi` 没有 `isMaximizedGroup` 公共方法；`IDockviewPanelApi` 的 `isMaximized()` 是无参数 API，并对应 `maximize()`/`exitMaximized()`。当前 source 已改用 panel API，并有不提供虚构 `isMaximizedGroup` 的行为回归；此修复尚未同步或实机验收。
+- Provider A 与 B 曾都显示“本”。当前 source 改用 provider 可见名称里的首个 ASCII 字母/数字（例如 A、B、D），无 ASCII 时回退首个 Unicode 字符，并新增入口标签回归；尚未同步/实机验收。
+- 本 bundle 的窗口标题显示“DSH 本地构建”，同时 UI 品牌为织贸助手。只读定位到 `ui-layout/src/client/AppFrame.tsx` 的 `DSH_CLIENT_TITLE` 编译值及 `tsdown.client.ts` 的 build define；本轮单包窄构建未设置该变量，故回退到 locale 标题。当时尚未完成带标题变量的窄构建；后续候选产物和 SHA-256 见下方“窄构建与嵌入空会话契约核对”，并未同步或实机验收。
+
+## 2026-10-23 用户新增视频 UI 参考归档与当前实机状态
+
+- 用户提供的 ZIP 与 Markdown 已原样归档到项目外 `workspace/research/video-ui-reference-20261023/originals/`；完整 SHA-256、长度、ZIP 条目与提取文件清单见同目录 `manifest.json`。ZIP 中共 340 项、50,576,102 解压字节，读取/提取失败 0；包含 135 张 `01_实机截图` PNG、31 张 `02_UI示意_非实机`、135 张 JPG 缩略图和 7 项 HTML/Markdown/JSON 索引材料。归档没有视频或 PDF。参考文件和索引不进入 Git。
+- 随附 Markdown 是二次分析，不作为已人工完整核验七段视频的证明，也不构成新功能/架构授权。报告主张可借鉴场景化工作区、可调整面板、文件与结果联动、可见执行状态；报告明确将实机截图与 UI 示意分开，并说明尺寸/颜色属于建议而非源码提取。保留“不要把每个 Agent 聊天铺满、不要把发光连线/工具可见误当成真实状态或授权”等限制。
+- Root 对 bundle `9fbed7ccad3fa134a2cd85ca52282770205e65b7650793599fbd2fe1e1465dd2` 的已有实机结果仍有效：1282×823/1707×1019；原生侧栏可关闭和恢复，历史、新会话、插件/自动化、上下文 GitHub、设置及 native chat 入口可用；工作台/独立对话切换不篡改侧栏；主题/工具靠右；推荐布局可手动应用。custom Dockview 布局先前已私有备份。
+- 同一旧 bundle 上“展开中心助手”确实完成最大化，但随后按钮标签没有更新，二次点击还原路径因此不正确；这是旧 bundle 的已观察失败，不被 source 测试覆盖。当前未同步 source 已改用官方 `panel.api.isMaximized()/maximize()/exitMaximized()`，并覆盖展开→还原→再次展开；shell suite 最新结果为 213 pass、15 skip、0 fail、exit 0。该修复尚未同步或实机复验。Provider 徽标 source 也已改为可区分的真实名称首字符，尚未实机复验。
+- 截图归档路径示例：`workspace/research/video-ui-reference-20261023/extracted/DSH_Workbench_UI_Reference/01_实机截图/V01/S001_V01_01m50s250_顶栏与场景页签.png`、`.../V02/S029_V02_00m33s750_文档_目录_双会话四分区.png`、`.../V04/S062_V04_00m25s750_画布放大占用主要区域.png`、`.../V05/S095_V05_01m26s750_工作区与多个助手列表.png`、`.../V07/S133_V07_02m05s750_内嵌页面加载与助手空态.png`。恢复的 14 张本地参考帧仍在项目外 `workspace/research/ui-reference-20261022/images/`。
+- 统一参考资料库入口：[README](../../workspace/research/video-ui-reference-20261023/README.md)与[合并索引](../../workspace/research/video-ui-reference-20261023/reference-index.md)。本轮将旧 14 帧、旧 manifest 和三份分析说明逐文件复制/哈希验证进同一资料库；旧目录仍保留可用。新 135 张目录截图是主参考，旧 14 帧为补充，随附报告仍只是二次分析。用户明确要求保留原生侧栏/功能，优先于报告建议。
+## 2026-10-23 窄构建与嵌入空会话契约核对
+
+- **当前实机基线：** owned desktop launcher manifest `workspace/runtime/tradeloom-harness/local-dev/workbench-20261020-02/harness-home/tradeloom-launcher-desktop.json` 仍指向 runtime `0.2.1-rc.2-tradeloom-desktop-8`、profile `desktop`、TradeLoom bundle `9fbed7ccad3fa134a2cd85ca52282770205e65b7650793599fbd2fe1e1465dd2`。Root 对该 bundle 已实测原生侧栏可关闭/恢复，工作台/对话切换保留状态，native chat 和原有历史等入口仍可用；用户要求保留原版功能，未作侧栏 suppression。
+- **最大化按钮根因与源码状态：** 旧 bundle 的可观察回归是“展开”使组最大化，但按钮状态保持“展开”，还原路径不正确。Dockview 实际 public `IDockviewPanelApi` 通过无参 `panel.api.isMaximized()` 读取该组状态，并提供 `maximize()`/`exitMaximized()`；不能依赖不存在的 `DockviewApi.isMaximizedGroup(panel)`。TradeLoom source 已按真实 panel API 处理，并用真实形态 fixture 覆盖 expand→restore→expand。该 source 仍未同步/实机验收。
+- **品牌窗口标题构建：** 当前 runtime `ui-layout/src/client/AppFrame.tsx` 将 `process.env.DSH_CLIENT_TITLE` 编译进 `AppFrame`，缺省才使用 locale 的“DSH 本地构建”。本次仅在 owned runtime8 的 `@deepseek-ai/dsh-client-ui-layout` 窄构建子进程设置 `DSH_CLIENT_TITLE=织贸助手`，执行 `pnpm --filter @deepseek-ai/dsh-client-ui-layout bundle`；没有修改 Host 源码、全局/用户环境或 branding patch。候选 `packages/client/ui-layout/lib/client.js` SHA-256 `567B3E3119FD4D132485AA27D92570B956C3F40481B0D3C3D467F53DD3301697`，构建内容含预期标题；该产物尚未 sync/restart 或窗口验收。app-boot 永久 root Include 修复构建前后 SHA-256 均为 `05FCB004972D3CC9CFE9BE3C4F22E0B166641D0CF0CB60E090BC0BB66182C964`。
+- **商品场景空会话 composer：** 查明原 source CSS 选择器要求 `[data-composer-seat]:only-child`，但官方 `SlotOutlet` 始终输出 `data-slot="conversation.session"` 且 `display:contents` 的稳定锚点；session id 存在时它与 composer seat 是不同 DOM 子节点。空白 `DefaultConversationViews` 虽返回 null，外层锚点仍在，因此旧 `:only-child` 规则确实不会匹配。shell source 现只在嵌入 native-chat active 状态下针对“session slot 没有 `[data-slot="conversation.view"]`”的结构，让 composer seat 接收剩余间距；独立原生聊天样式不变。定向 DOM/CSS 行为回归以官方稳定锚点结构验证空会话匹配、存在 view 时不匹配。完整 shell suite 229 项：214 pass、15 skip、0 fail、exit 0。该测试不测像素，空会话实际位置仍待 Root 遮挡解除后的窗口复验。
+- 本轮只生成 ui-layout 构建候选并改 shell source/测试与记录；未同步、重启或声称新 title/max/composer source 已激活。实体手机、标签 DnD 与空会话实际位置仍未验。
+
+## 2026-10-23 完整截图观察与集成候选
+
+- 统一参考库新增逐帧观察：[V01–V03（59 帧）](../../workspace/research/video-ui-reference-20261023/observations/2026-10-23-v01-v03.md)、[V04–V07（76 帧）](../../workspace/research/video-ui-reference-20261023/observations/2026-10-23-v04-v07.md)。共 135 张实际逐张检查的截图；S134 属 V02，V07 有 12 帧。截图多有裁切，材料不代表完整观看七段视频或由静帧证明交互因果。31 张示意图仍为建议层，135 张 JPG 为缩略图，旧 14 帧仍是补充；完整索引和哈希见外置参考库 README/manifest。
+- 按本轮观察采纳：使用现有原生 DSH 侧栏/历史/新会话/插件/自动化/工作区能力，保持独立对话入口、顶层助手/场景导航和 Dockview 的可调面板层级。未采纳删除/常驻隐藏侧栏；也未从第三方截图授权新增 SSH、视频画布、股票或虚构后台/健康状态。未证明的动效、被裁切区域和标签拖放仍待真实窗口检查。
+- **当前源候选：** shell suite 为 229 项：214 pass、15 skip、0 fail、exit 0；Node 语法检查通过。15 skip 为测试已声明的可选 runtime/React/JSDOM/Cordis/Loader/OS symlink 条件，测试总数中按实际 skip 计数为 15。运行时 `ui-layout/lib/client.js` 的窄构建候选 SHA-256 `567B3E3119FD4D132485AA27D92570B956C3F40481B0D3C3D467F53DD3301697`；永久 app-boot 修复 `05FCB004972D3CC9CFE9BE3C4F22E0B166641D0CF0CB60E090BC0BB66182C964` 未变。max/restore、provider 徽标和嵌入空态布局改动已在 source/test，待本轮 sync/start 后由 Root 对实际窗口复验。
+
+## 2026-10-23 本地 source-mode 集成候选 `a1393039…c97977a`
+
+- 已经由官方 `sync-dev-bundle --mode desktop` 将最终 source bundle 同步至 manifest 指定的 desktop-8 / DataRoot `workbench-20261020-02`，官方命令 exit 0，bundle hash `a1393039d07b19870f51188536c53f003f01d86402d4279975019abc0c97977a`。manifest 的 runtime、profile `desktop`、bundle hash 与目标一致；核心五个 source/package 文件哈希逐项与 profile 相同。Host `ui-layout/lib/client.js` 为窄构建哈希 `567B3E3119FD4D132485AA27D92570B956C3F40481B0D3C3D467F53DD3301697`，app-boot 永久修复仍为 `05FCB004972D3CC9CFE9BE3C4F22E0B166641D0CF0CB60E090BC0BB66182C964`。
+- 指定本地快捷方式隐藏启动后，runner 记录 `cli-started`，CLI PID 36892；Electron 主窗口 PID 55356、HWND `0x8C1308`、标题“织贸助手”。这是启动/窗口存在证据，不代表本轮 UI 已通过；待 Root 按实际窗口名单无阻挡检查 max/restore、空会话 composer 和其它场景。启动前后没有重置或覆盖 Dockview 用户布局。
+- shell Node suite 实际结果：229 项，214 pass、15 skip、0 fail，exit 0；15 项按测试声明的可选依赖/平台条件跳过。实际窗口仍待 Root 验收；跨组标签 DnD、实体手机及整体目标未完成。
+
+## 来源到执行计划的现有闭环核查（2026-10-23，只读）
+
+本节依据当前源码、测试定义和已有文档核对，没有运行界面或测试，没有访问业务数据库、ERP、真实文件、模型 API，也没有修改业务代码/数据。以下区分源码能力、自动化测试覆盖和真实资料验证；“测试定义存在”不等于本次执行或真实业务资料通过。
+
+| 阶段 | 源码具备 | 自动化测试覆盖 | 真实资料实测 / 缺口 |
+|---|---|---|---|
+| 1. 原件留存与来源定位 | `.xlsx` 上传受大小/类型限制、以 SHA 建立追加来源版本；源文件私有保存，Workbook snapshot 保存 sheet/cell、公式/cache 状态、坐标和图片引用。见 `workbench/intake/api.py:573-640`、`workbench/intake/storage.py:113`、`workbench/intake/snapshots.py:17`、`workbench/models.py:109-163`。 | 合成 workbook 的上传→预览→mapping→candidate、幂等/冲突、源哈希与单元格 provenance 在 `workbench/tests/test_intake_api.py:215-281`；原始公式/cache 在 `workbench/tests/test_intake_parser.py:180` 起有 fixture 覆盖。 | 本次没有处理用户的四份历史 Excel。已有模型保留 SHA、sheet/coordinate 等来源身份，但不能据此把四份历史 Excel 自动认作同一产品或版本；实际内容、公式口径、同品规则仍需逐份人工确认。 |
+| 2. 字段映射与候选关联 | mapping 绑定 snapshot/source SHA、revision 与闭合字段 schema；候选字段带 source locator/provenance。候选之间只追加 `suggested/confirmed/rejected` link 记录，不合并或改写候选。见 `workbench/intake/mapping.py:64-108`、`workbench/intake/api.py:807-875,893-945`、`workbench/models.py:222-277`。 | 映射/候选幂等与 source-bound 在 `test_intake_api.py:215-281`；候选 link 决策历史、重放及保持候选/产品/产品版本计数不变在 `workbench/tests/test_intake_links.py:318-362`。这些都是合成记录测试。 | 当前源码未发现从 `IntakeCandidate` 将记录提升为 `Product` 或 `ProductRevision` 的 API/服务；link 的 `confirmed` 只代表候选间人工关系决策，不是产品主档确认。不能将候选链接等同产品去重/入库。 |
+| 3. 生产要求草稿与版本确认 | 草稿引用单一 candidate；不可解析、多个值或无单一 locator 的字段保持 unresolved。source evidence 校验 locator 属于该字段 provenance；revision 追加保存值和证据。确认需要显式版本与包装单位对，单位/数量的 source arithmetic 仅做现有包装检查。见 `workbench/requirements/service.py:36-128`、`workbench/requirements/api.py:206-257,282-388,390-441`、`workbench/requirements/calculations.py:16-49`、`workbench/models.py:282-320,404-478`。原件和注释按追加版本保留；录音日期允许 `null`，核听字段叫 `operator_claimed_checked`。见 `workbench/models.py:366-400`、`workbench/intake/narrative_annotations.py:18-58`。 | source value 与字段/坐标错配、多个数值不自动选取/聚合、历史参考保持 arithmetic 未确认、operator evidence 确认不创建 Product/ERP 均有测试：`workbench/tests/test_production_requirement.py:101-143,233-267,322-341,494-533`。二次资料/日期空值/声明状态历史测试在 `workbench/tests/test_intake_narrative_annotations.py:51-78,81-130`。 | 本次未用真实访谈摘录或原始录音。二次摘录只提供行范围和来源类型，不是录音转写校验；`operator_claimed_checked` 是人工声明，不是系统核听。未知录音日期应继续为 `null`。用户已明确：工时为人工估算，金额相对准确仍需公式、币种和确认；实际工人日报方式待确认。现有 `labor_analysis` schema 暴露估算字段，但 `labor_basis` 明标 `unconfirmed`（`workbench/intake/schemas.py:30-33`、`workbench/intake/mapping.py:100-108`）；当前 requirement calculation 只实现包装数量算术，不应声称已有工时/金额计算。 |
+| 4. 执行计划草稿 | 仅接受该 draft 下的**已确认 requirement revision**；计划持有精确 revision ID，并校验 `requirement_refs` 的 evidence 属于该 revision/field。计划状态固定为 `draft`，详情把要求版本、来源候选及证据一起读回，实际执行状态为 `missing`。见 `workbench/execution_plans/api.py:88-143`、`workbench/execution_plans/service.py:9-28,35-82`、`workbench/models.py:325-346`。 | `test_execution_plan.py:170-209` 覆盖确认版本计划创建和历史版本不重绑；`211-245` 用合成 workbook 经公开 API 完成 import→candidate→requirement evidence/确认→plan/readback；`246` 起拒绝未确认 revision 和无效 evidence。该 E2E 是 synthetic fixture，不是四份真实 Excel。 | “需求版本确认→执行计划草稿关联”在当前合成公开 API 流程中已闭合。没有证据表明计划会自动转成 Product/ProductRevision、采购/生产订单或 ERP 写入；不把草稿生成称为实际执行。 |
+
+### 当前可执行缺口与边界
+
+1. 本节最初的静态审计未读取四份历史 workbook；后续已在明确授权下使用真实原件、项目外隔离目录完成只读解析与来源定位核对，不提升主档、不写主库。详细证据见下方 2026-10-23 Excel 只读审计段；不自动硬链接产品。
+2. Candidate → Product/ProductRevision 提升尚无已核实接口；需先定人工确认、产品身份及版本创建规则，再另立实现/测试范围。现有 `ProductRevision` 版本流并不能代替此合同。
+3. 劳动日报字段、工时估算口径、金额公式/币种和人工确认尚未定；先确认日常实际日报来源及这些计算口径，再补解析/公式和版本证据测试，不猜业务规则。
+
+真实资料状态：该节记录的静态闭环核查当时未读取真实 Excel、访谈、录音、员工日报或产品主档；下方新增段落单独记录后来获授权的四份 Excel 只读解析，不改变当时对访谈、录音、员工日报和主档的未核验状态。此前 synthetic API 测试不能写成真实资料闭环。整体闭环仅到已确认生产要求对应的执行计划草稿。另，当前 source-mode 窗口状态：bundle `a1393039…` 已打开，Root 看见标题、provider 徽标和空会话 composer；max/restore 点击被物理 Escape 中断，结果未知，不标通过。
+
+## 四份来源工作簿的只读解析与来源定位（2026-10-23）
+
+- [x] 四份获准原件只读解析前后指纹一致；原件、逐表统计、单元格定位和完整解析明细仅保存在项目外的私有审计目录，不进入 Git。没有重算、改写、导出或导入主库。
+- [x] 合成回归覆盖单元格图片占位、普通公式错误、公式缓存、浮动图片与真实文本，以及无 richData 部件的普通工作簿。图片单元格保留来源/图片关系并按未解决候选处理；普通文本、数字、公式缓存和真实错误保持各自类型；无图片关系的普通工作簿不产生无关 richData 告警。损坏图片引用仍保留可定位告警。
+- [!] 来源没有自动硬关联。人工工时仍是估算，金额核对仍需确认公式与币种；工人实际日报方式未确认。不得把这些资料提升为已确认产品要求或执行计划。
+- [!] 该轮只读来源审计与合成解析测试不是真实资料入库/API/ORM 集成验收；私有证据不会随 clone 发布。
+
+## Intake 解析修复与 DnD 源码审计（2026-10-23）
+
+- 对同坐标且 `kind=rich_data` 的 cell-image 引用，mapping 现在复用已被客户端接收的 `type_mismatch` 状态并置空候选值；raw XML、原始错误占位、单元格来源和独立图片关系均保留。formula/cache 错误状态优先，不会被图片占位覆盖；仅 `drawing` 浮动图片不参与单元格映射判定。没有新增 wire state、schema 或 migration。合成回归覆盖 cell-image 的文本/数字/日期映射、真实公式错误、普通文本/十进制零、公式缓存缺失和浮动图锚点内容。
+- 无 richData 部件/引用的 workbook 不再报 `richdata_relationship_part_missing`；含 richData 元数据/部件但缺关系部件时仍输出该 warning，并在相应图片引用保留坐标、空 target 和 warning。报价单复核中 C4:C7 的候选状态从 `present` 变为 `type_mismatch`，V6:V89 仍是 84 个 `formula_error`；purchase、labor、production 的无关 warning 已消失。四份原件读前/读后 SHA-256 仍一致。运行时曾显示 openpyxl 对条件格式扩展的非致命读取警告；未保存或转换任何工作簿。
+- TDD 红灯：新增 3 条行为回归在修复前有 2 fail、1 fixture setup error；修正合成 XML fixture 后重跑，剩余 2 条以预期原因失败（普通 workbook warning、图片单元格 mapping），exit 1。绿灯命令：`<LOCAL_USER_ROOT>\AppData\Local\TradeLoom\python-env\Scripts\python.exe workspace\testing\private\intake-audit-20261023\run_intake_unit_tests.py`，26 个 `IntakeParserTests` 与 `IntakeMappingSchemaTests` 均通过，exit 0；直接运行 SimpleTestCase，未建立或连接数据库。四原件脱敏复核 runner 同目录，exit 0，输入哈希和 CRC 均通过；这是只读结构复核，不是导入验收。
+- 本轮只读 DnD 源审计：`client.scenes.js:1323-1325` 按实际 host 尺寸和 scene minimum width/height 推导 narrow；`:1494-1500` 仅 narrow 时设 `disableDnd`；`:1636-1637` 窄态禁用 Dockview tabs/header pointer events，同时恢复 group actions。Dockview pointer 策略需移动至少 5px 才进入拖动阶段。宽态未发现项目级拦截原因，不能据此判定拖放已修复或自动化驱动是根因。发布 bundle 的后台 jsdom 尝试在 pointerdown 初始化前因缺 `Document` 全局失败，且还需 ResizeObserver 与 hit-test 几何 shim；该失败不构成应用缺陷证据。本轮未改 UI，标签 DnD 留待用户允许的真实窗口验收。
+
+## 隔离 PostgreSQL ORM/API 验证边界（2026-10-23）
+
+只读检查确认已有专用 PostgreSQL 测试 runner：`workspace/runtime/tradeloom-harness/local-dev/django-phase2-test-runner-20261021-01/run-django-tests.mjs`，其文档约定使用本机专用测试端口 `127.0.0.1:55435` 和唯一 `tradeloom_test_*` 数据库。本轮对该端口执行 `pg_isready` 返回 exit 2（无可连接服务）；因此没有运行 ORM/API 测试、迁移或创建测试库，也没有改环境、切换 SQLite 或访问业务库。此前合成公开 API/ORM 测试的历史通过记录仍有效，但不等同于本轮 PostgreSQL 集成验证。
+
+## 助手能力配置面板可视区域收尾（2026-10-23，源码候选）
+
+`packages/tradeloom-shell/client.js` 将能力/配置面板保留为非模态 portal，按锚点和可视视口尺寸定位，最大宽 720px、边距 8px；窗口和 `visualViewport` 变化时重算，并使用既有 `.tl-shell-top` 语义主题变量作用域与 Agent 面板共享按钮样式。固定标题/关闭控件和滚动内容区保留，Esc 关闭并恢复选择器焦点，原角色隔离草稿与配置字段未改。源候选未同步/激活，暂无真实桌面视觉验收。
+
+使用 runtime8 的真实 React 18.3.1、ReactDOM 和 jsdom 执行：`agent-configuration-dom.test.js` 1/1；相关 `scenes.test.js`、`shell.test.js`、`execution-plans-dom.test.js` 合计 66 pass、4 skip；完整 `npm test --prefix packages/tradeloom-shell` 为 216 pass、13 skip、0 fail，exit 0。13 项具体跳过条件：7 项需要 pinned compiled DSH runtime；1 项需要 DSH WebServer contract；2 项需要 compiled DSH tools library；2 项需要 Cordis context/Loader；1 项需要 pinned source 与 app-boot/include libraries。DOM/JSDOM 测试已在本轮启用。几何断言覆盖 400/520/1280px 与 300/823px、非零 anchor offset、250×200 visual viewport offset，以及触发器滚出可视区域时面板仍不越过视口底边。受控选择/输入和按键使用 pinned ReactTestUtils.Simulate，避免将 jsdom legacy input polyfill 当真实键盘证据；关闭行为用真实焦点元素上的 Escape 事件验证。几何和样式断言不代表像素级桌面/手机验收。此前观察到的 max/restore 未知状态继续保持未知；本轮未测试该功能。
+
+## 窄画布场景切换回归（2026-10-23，本地候选已同步启动）
+
+用 runtime8 的真实 React 18.3.1、ReactDOM 和 JSDOM 模拟 980×650 工作区（低于该场景 1143px 最小宽度），保留已保存的 ERPNext 辅助面板为 active，再真实点击“ERPNext”导航。修复前测试可见地切换 active scene 和 `aria-current`，但 active panel DOM 仍是 `auxiliary`，不是业务主面板；RED exit 1。根因是未挂载场景没有 `dockviewApis`，导航的即时 focus/reopen 失败，而该场景随后只从保存布局恢复 active panel。修复后导航请求会按 scene 暂存 panel id，并在该 scene 的 Dockview `onReady` 恢复保存布局后应用这次导航目标；已挂载场景、闭合面板恢复和用户保存布局仍走原路径，不重置布局。真实 React DOM 回归断言窄态 `disableDnd=true`、当前场景可见及 ERPNext `erpnext-status` 面板实际渲染。定向测试 exit 0；完整 shell suite 为 230 项，217 pass、13 skip、0 fail，exit 0。官方 `sync-dev-bundle --mode desktop` 同步及本地开发快捷方式启动后，manifest 指向 runtime8 / `desktop` profile，bundle SHA-256 `424b114a5ad4daa655be745f11cd28c892953972e53c36e8daaaa28a8634a5e2`；source/profile 的 `client.js`、`client.scenes.js`、`scenes.json` 和 `package.json` 哈希匹配。owned Electron PID 24444、HWND `0x18114C`、窗口标题“织贸助手”。这只是进程/窗口存在证据，窄态导航修复仍待 Root 实机验收；运行时 app-boot `05FCB004…82C964` 与 ui-layout `567B3E…01697` 哈希未变。同步前布局备份为 `workspace/testing/ui-20261023/private/dock-layout-preservation-20261023-222238-777.json`，文件 SHA-256 `E1D2B464…19CAE95C`；备份前后选定 Dockview 布局指纹同为 `D571215B0EB62F996DB761FA486060F2D220A01D079D01B3108E793F54EA3D3C`，state 文件 SHA-256 未变。外观与参考图的整体差异尚未处理。
+
+### 协作源码检查点（2026-10-23）
+
+- [x] 本机已激活 source bundle `424b114a5ad4daa655be745f11cd28c892953972e53c36e8daaaa28a8634a5e2`，包含窄态场景导航修复；该记录确认同步/启动，不替代当前 UI 验收。
+- [!] 工作台 UI 仍在迭代；本地实际手机验收、当前 PostgreSQL 集成验收和 Dockview 跨组拖放均未通过本次证据确认。不要把 Node/DOM 合同测试外推为这些实机结果。
+- [!] 当前验证边界和后续证据按本矩阵分项维护；本检查点不代表整体目标完成。

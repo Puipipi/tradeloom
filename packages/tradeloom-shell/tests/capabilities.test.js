@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { Readable } from 'node:stream'
 import test from 'node:test'
 import { createAgentCapabilitiesHandler } from '../capabilities.js'
+import { registerBusinessTools } from '../business-tools.js'
 
 function req(url = '/tradeloom/agent-capabilities?role=product', method = 'GET') {
   const request = Readable.from([])
@@ -191,6 +192,52 @@ test('live preset mismatch fails closed and unbound MCP declaration stays distin
   assert.deepEqual(unboundBody.mcp, { status: 'declared_only', visibleTools: null })
   assert.equal(unboundBody.tools, null)
   assert.equal(unboundBody.skills, null)
+})
+
+test('the existing per-agent capability view discovers intake tools from the registered product preset', async () => {
+  const live = { id: 'session-product', session: { id: 'session-product', header: { cwd: '/safe' } }, ctx: {} }
+  const definitions = new Map()
+  const webServer = { protocol: 'http:', host: '192.168.1.23', port: 3088, getOrigin: () => 'http://192.168.1.23:3088' }
+  registerBusinessTools({
+    webServer,
+    tools: { register(definition) { definitions.set(definition.name, definition); return () => definitions.delete(definition.name) } },
+  }, { preset: 'tradeloom-product' })
+  const setup = context({
+    state: { roles: { product: { sessionId: live.id, agentPreset: 'tradeloom-product' } } },
+    agent: live,
+    presets: { composedPreset: () => 'tradeloom-product', async compositionInventory() { return [] } },
+  })
+  setup.ctx.tools.schemas = scope => {
+    setup.calls.schemas.push(scope)
+    return [...definitions.values()]
+  }
+  const response = res()
+  await createAgentCapabilitiesHandler(setup.ctx, setup.dependencies)(req(), response)
+  const body = JSON.parse(response.body)
+  assert.equal(body.status, 'ready')
+  assert.ok(body.tools.items.some(item => item.name === 'tradeloom_intake_sources'))
+  assert.ok(body.tools.items.some(item => item.name === 'tradeloom_intake_candidate'))
+  assert.deepEqual(setup.calls.schemas, [live])
+})
+
+test('capability visibility discovers the execution plan reader only from center or delivery tool schemas', async () => {
+  const live = { id: 'session-delivery', session: { id: 'session-delivery', header: { cwd: '/safe' } }, ctx: {} }
+  const definitions = new Map()
+  registerBusinessTools({
+    webServer: { protocol: 'http:', host: '192.168.1.23', port: 3088, getOrigin: () => 'http://192.168.1.23:3088' },
+    tools: { register(definition) { definitions.set(definition.name, definition); return () => definitions.delete(definition.name) } },
+  }, { preset: 'tradeloom-delivery' })
+  const setup = context({
+    state: { roles: { delivery: { sessionId: live.id, agentPreset: 'tradeloom-delivery' } } },
+    agent: live,
+    presets: { composedPreset: () => 'tradeloom-delivery', async compositionInventory() { return [] } },
+  })
+  setup.ctx.tools.schemas = scope => { setup.calls.schemas.push(scope); return [...definitions.values()] }
+  const response = res()
+  await createAgentCapabilitiesHandler(setup.ctx, setup.dependencies)(req('/tradeloom/agent-capabilities?role=delivery'), response)
+  const body = JSON.parse(response.body)
+  assert.ok(body.tools.items.some(item => item.name === 'tradeloom_read_execution_plan'))
+  assert.deepEqual(setup.calls.schemas, [live])
 })
 
 test('bounded capability summaries mark truncation without hiding visible MCP tools', async () => {

@@ -116,6 +116,18 @@ TradeLoom 基线为 branch `feature/workbench-shell`、HEAD `ea61736d3d7366c9c74
 - 当前缺口包括：统一Agent注册表、跨Agent共享协作DTO、受控ERP草稿写入/回读/审计、图像与网页桥接扩展示例、完整的模块目录与新增示例；这些是未实现/未验证项，不属于不采用机制。
 - 真正下一步应对照本文件 leaf 状态选择具体未完成项，并绑定该项当前源码与独立证据；本审计没有启动运行态来补证。
 
+### 后续窄屏与 ERPNext 操作状态增量（2026-10-21）
+
+（同步前基线；其后的窗口结果见“最终窗口复核增量”。）
+
+本增量只补充对应的后台证据，不改变43个 leaf 的既有采用决策/验证状态，也不把代码存在外推为 GUI 或远端事务成功。
+
+- **shell 可见性：** candidate7 pinned React/ReactDOM server/Cordis 环境 `node --test tests/scenes.test.js` 实跑 23 pass、0 skip、0 fail、exit 0。断言覆盖窄侧栏下 `.tl-shell-top` 可见以及仅在 `html[data-meow-smooth-furled]` 状态为顶行预留既有10px内距+56px FAB空间。主控修前在同步后的 621×627 收起侧栏窗口确认顶栏可见、导航可用，但 FAB 遮住助手首行入口且 `elementFromPoint` 命中 FAB；本轮新源的窗口效果仍待复验，Node 合同不能替代 GUI 验收。
+- **草稿 API：** 隔离 PostgreSQL `workbench.tests.test_erpnext_draft_api` 实跑 32/32、exit 0，run ID `2026-10-21T133741-872Z-46892`，result SHA-256 `7B48ACE1C2A70829C95B37509F1ED4A8C7C52D8C4801FACB68C9F6A092F4B666`。专门的 forbidden-create 回归另有 1/1、exit 0 的先前记录。此前 Django 全套 389/389、exit 0 仍保持为那次全套结果；本模块定向测试不能描述成更新的全项目回归。
+- **真实只读与写尝试：** 外部 checkpoint（路径规范为 `<LOCAL_EVIDENCE_ROOT>/erpnext-live-20261021/checkpoint.json`，SHA-256 `C372C3E08E9F5602D068F7D9F3E53984F2E014E0BB5AE66DD858AC216A074FB4`）记录七类 DocType list 的 HTTP 200。一次 Quotation create 得到 HTTP 202，操作随后被读为 `outcome_unknown`，安全错误类别为 `forbidden`，没有远端名；没有重发、更新或 CAS。403 不构成无副作用证明，因此保持 unknown，不自动重试。独立远端只读证据 `<LOCAL_EVIDENCE_ROOT>/erpnext-engine-20261021/deployment/quotation-readonly-hook-evidence-20261021.json`（SHA-256 `AA1A2FDE7C3377E5EC5C14FB33E73D3FB1A6239000841C4DC9E4A6C177BE16EA`，UTC `2026-10-21T13:41:51.639290+00:00`）显示只读检查前后11类交易计数为0；它不确定403原因，也不能证明该次 Quotation 请求绝无副作用。
+- **其余界限：** 七业务场景、日夜主题及 MCP/Skill 能力列表此前已有主控 GUI 查看证据；修前窗口观察确认 `.tl-shell-top` 可见并发现 FAB 遮挡，修后窗口尚未观察，不能描述为窄屏已通过。插件 GUI 结果不代表所有插件交互均已验证；22 个共享 Skill/52个文件的资产 hash 核对也不等于逐项 GUI 查看。正式提交/取消/删除/库存未开放；图像/网页桥仍为预留扩展接缝。
+- **完整目标状态：** 本更新不是全目标完成声明。草稿在 ERPNext 的成功写入与更新 CAS、窄屏补丁窗口验收仍未验证；原43项 leaf 状态维持既有审计基线。
+
 机器可读逐项记录：`testing/desktop-package-contract/bingus-audit-20261021/methodology-audit.json`。
 
 ## 基线后的执行补充（2026-10-21）
@@ -126,3 +138,25 @@ TradeLoom 基线为 branch `feature/workbench-shell`、HEAD `ea61736d3d7366c9c74
 - Django `workbench.tests` 的357/357、43.353秒、exit 0 是此前独立 PostgreSQL 运行 `2026-10-21T072416-295Z-24040` 的结果，result JSON SHA-256 为 `A333461144A81C68CA9FCD451295492ADF3FD59DD8C95C3A4B2890A5E53BDB9A`。本次助手能力改动没有 Python 变更，因此没有重跑；该结果不覆盖客户端能力面板。
 - 方法审计基线中的 Site 主题 GUI 证据仍绑定旧 bundle `48813c1be56f59c600bf5092e04b9f8aaa5855d947d27f191e46dd979ce33618`、manifest `A58CD94C45795771BB5C634FCDD73F1BBEABD03B06C3F23A8DAFEAB96C916B2C` 及 evidence SHA `28153926322DB2B9A7295EACAC1D1A76378C318CE59AD9F162A9CED40A798CF8`。本次未同步/重启运行副本，也未对新增能力面板做 GUI 验收，旧主题截图不能充当本次面板证据。
 - 机器记录 `postBaselineVerification` 保存了上述结果、范围边界和外部日志路径；原43个 leaf 的采用决策/验证状态与“本审计未运行测试”的历史描述均保持原样。后续需逐 leaf 复核新增证据是否满足其独立条件，不能整体外推。
+
+### 后续回归与当前目标边界（2026-10-21，同步前 GUI 基线）
+
+此补充记录在方法审计基线之后的代码与测试证据；原43个leaf状态维持已审计的27项部分、14项未验证、2项未执行，本补充没有重算逐项状态，也不把单个套件结果外推成完整目标通过。
+
+- 当前实现和记录已覆盖：统一 shell role 元数据、隔离的 workflow collaboration envelope、固定ERPNext七类只读适配、Quotation 草稿 operation 后端及界面/工具、角色范围内 MCP/Skill 只读能力快照，以及全局插件/共享 Skill 的本机资产同步。前两项不把 Python workflow role 与 DSH preset 身份混为一个域；能力面板也没有提供逐项授权/编辑或连接健康证明。
+- 本轮共享卡片 inset 的综合门禁：Django `workbench.tests` 389/389，exit 0；shell Node 121/121，exit 0；launcher 57 pass、0 fail、4个 Stage 6 payload 专项skip；candidate7 pinned renderer 7/7，exit 0。Django run `2026-10-21T120157-034Z-48700` 的 `result.json` SHA-256 为 `76EFA445B0EE4CF2C39C901083B7836E629D9E653F1CD3A848DCB47931E86584`。本机原始日志在 `<LOCAL_EVIDENCE_ROOT>/ui-spacing-20261021/`；测试证明代码路径，不证明当前窗口已加载本批 CSS。
+- 四个 launcher skip 明确需要 `TRADELOOM_STAGE6_BUSINESS_SHELL` 指向经冻结的旧 Stage 6 11文件 bundle，用于旧bundle升级和事务恢复边界。该变量未设置；candidate7 是后续当前包，没有等价的历史 inventory，因此不据此删除skip或声明补验。
+- 当前尚未验证的范围包括：本批 spacing 的 GUI 效果，以及 TradeLoom 本地 Django 到 ERPNext 的真实读取、Quotation 条件更新与草稿读回。远端 ERP 服务健康，八个 token GET 返回 HTTP 200；私密配置已导入本机，但当前运行的 Django 尚未启用该配置，因而外部服务健康不能替代 TradeLoom 集成证据。正式提交、取消、删除和库存写操作仍依既定边界保持关闭；图像/网页模型桥是预留接缝，并非本阶段必做的真实 provider。MCP/Skill 面板此前已实机查看其能力摘要，但它不报告连接健康；没有已确认的逐项编辑/授权需求，不把它们列作当前必做缺口。
+- 20项插件资产（19项安装及 Codex experimental，其中14项为更新）与22项共享 Skill/52个文件此前已由主控在 GUI 核实。本轮没有重做这些检查。当前 source 已同步并后台启动；本轮没有打开 GUI，所以 spacing 尚无新窗口证据。完整目标仍未完成。
+
+### 最终窗口复核增量（2026-10-21）
+
+本节后续更新上文“同步前 GUI 基线”的状态；保留各自当时记录，不把最终版本检查范围外推。
+
+此增量只更新 GUI 观察，不重算43个 leaf 的采用决策或验证状态，也不表示整体验收完成。此前“本轮没有打开 GUI”的记录是该次审计的历史时点；之后的实际观察如下。
+
+- 七个场景逐页检查卡片留白、明暗主题、侧栏及 MCP/Skill 能力面板滚动是在前一同步版本 `a2e86a34bcdba5216c372172054885a64b14c0aea66d2be40426347a03e9fdb5` 完成。最终 bundle `babaee741aa6be4a7d3b3e35453c4b771d44d7aa110b32c16a2e944848ec8491` 仅重开桌面检查工作总览、ERP 新中性文案/已连接 DEMO Item 列表，以及 621×627 窄屏菜单、主题与单面板切换。外部 GUI 证据 `workspace/testing/ui-spacing-20261021/ui-verification-final.json` SHA-256 `6dfff530f317224cbcdcc6d36b2f555f76e2e60a2cfe2cbe819c091b19f5b4e0`，记录五张外部截图的 hash；截图未纳入源码。
+- 621×627 窄窗口中顶栏、助手选择菜单和单面板切换可用，助手菜单 hit-test 正确，页面无横向溢出；system/light 与 dark 切换可见。没有测试实体手机。
+- 本次自动化原生标签拖动只选中参考标签，没有证明移动/停靠；结果标为未证实。较早的拖放观察只适用于其当时 bundle，不能外推到本次最终版本。
+- ERP 实际只读页面可显示连接和 DEMO Item；Quotation create 仍保持 HTTP 202 后 `outcome_unknown/forbidden`、无远端名的记录状态，本次未重发、未更新、未做 CAS。远端11类交易计数只读快照为0，不足以证明该未知操作没有副作用。没有新模型请求或付费请求。
+- 本增量没有改变本审计43项逐 leaf 状态；图像/网页桥继续作为预留接缝，其余 leaf 仍按各自记录独立验证，不由预留接缝推导新增必做项。MCP/Skill 是只读能力查看，不能据此宣称逐项授权编辑或连接健康已完成。整体目标仍未完成。

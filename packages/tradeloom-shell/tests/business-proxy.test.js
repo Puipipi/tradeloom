@@ -224,6 +224,132 @@ test('oversized JSON is rejected before upstream and chunked multipart stays str
   assert.deepEqual(upstreamRequests[0].body, multipartBody)
 })
 
+test('multipart source uploads without a length are bounded and preserve their exact envelope', async t => {
+  const upstreamRequests = []
+  const upstream = createServer((req, res) => {
+    const chunks = []
+    req.on('data', chunk => chunks.push(chunk))
+    req.on('end', () => {
+      upstreamRequests.push({ headers: req.headers, body: Buffer.concat(chunks) })
+      res.writeHead(200)
+      res.end('ok')
+    })
+  })
+  await new Promise(resolve => upstream.listen(0, '127.0.0.1', resolve))
+  t.after(() => new Promise(resolve => upstream.close(resolve)))
+  const handler = createBusinessProxyHandler({ connection: { requestRejection: () => undefined } }, 'business-api', { upstreamPort: upstream.address().port })
+  const dsh = createServer(handler)
+  await new Promise(resolve => dsh.listen(0, '127.0.0.1', resolve))
+  t.after(() => new Promise(resolve => dsh.close(resolve)))
+
+  const boundary = '----tradeloom-fixture-boundary'
+  const body = Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="demo.xlsx"\r\nContent-Type: application/octet-stream\r\n\r\nsynthetic-source-bytes\r\n--${boundary}--\r\n`)
+  const response = await sendChunks(dsh, {
+    path: '/business-api/intake/sources', method: 'POST', headers: {
+      'content-type': `multipart/form-data; boundary=${boundary}`,
+      'idempotency-key': 'synthetic-intake-request-key',
+    },
+  }, [body.subarray(0, 17), body.subarray(17)])
+  assert.equal(response.status, 200)
+  assert.equal(upstreamRequests.length, 1)
+  assert.equal(upstreamRequests[0].headers['content-length'], String(body.length))
+  assert.equal(upstreamRequests[0].headers['transfer-encoding'], undefined)
+  assert.equal(upstreamRequests[0].headers['content-type'], `multipart/form-data; boundary=${boundary}`)
+  assert.equal(upstreamRequests[0].headers['idempotency-key'], 'synthetic-intake-request-key')
+  assert.deepEqual(upstreamRequests[0].body, body)
+
+  const oversized = await sendChunks(dsh, {
+    path: '/business-api/intake/sources', method: 'POST', headers: {
+      'content-type': `multipart/form-data; boundary=${boundary}`,
+    },
+  }, [Buffer.alloc(20 * 1024 * 1024 + 64 * 1024 + 1, 0x61)])
+  assert.equal(oversized.status, 413)
+  assert.equal(upstreamRequests.length, 1, 'oversized intake body must not reach Django')
+})
+
+test('multipart narrative uploads without a length are bounded and preserve their exact envelope', async t => {
+  const upstreamRequests = []
+  const upstream = createServer((req, res) => {
+    const chunks = []
+    req.on('data', chunk => chunks.push(chunk))
+    req.on('end', () => {
+      upstreamRequests.push({ headers: req.headers, body: Buffer.concat(chunks) })
+      res.writeHead(200)
+      res.end('ok')
+    })
+  })
+  await new Promise(resolve => upstream.listen(0, '127.0.0.1', resolve))
+  t.after(() => new Promise(resolve => upstream.close(resolve)))
+  const handler = createBusinessProxyHandler({ connection: { requestRejection: () => undefined } }, 'business-api', { upstreamPort: upstream.address().port })
+  const dsh = createServer(handler)
+  await new Promise(resolve => dsh.listen(0, '127.0.0.1', resolve))
+  t.after(() => new Promise(resolve => dsh.close(resolve)))
+
+  const boundary = '----tradeloom-narrative-fixture'
+  const body = Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="note.txt"\r\nContent-Type: text/plain\r\n\r\nsynthetic narrative bytes\r\n--${boundary}--\r\n`)
+  const response = await sendChunks(dsh, {
+    path: '/business-api/intake/narratives', method: 'POST', headers: {
+      'content-type': `multipart/form-data; boundary=${boundary}`,
+      'idempotency-key': 'synthetic-narrative-request-key',
+    },
+  }, [body.subarray(0, 11), body.subarray(11)])
+  assert.equal(response.status, 200)
+  assert.equal(upstreamRequests.length, 1)
+  assert.equal(upstreamRequests[0].headers['content-length'], String(body.length))
+  assert.equal(upstreamRequests[0].headers['transfer-encoding'], undefined)
+  assert.equal(upstreamRequests[0].headers['content-type'], `multipart/form-data; boundary=${boundary}`)
+  assert.equal(upstreamRequests[0].headers['idempotency-key'], 'synthetic-narrative-request-key')
+  assert.deepEqual(upstreamRequests[0].body, body)
+
+  const oversized = await sendChunks(dsh, {
+    path: '/business-api/intake/narratives', method: 'POST', headers: {
+      'content-type': `multipart/form-data; boundary=${boundary}`,
+    },
+  }, [Buffer.alloc(2 * 1024 * 1024 + 64 * 1024 + 1, 0x61)])
+  assert.equal(oversized.status, 413)
+  assert.equal(upstreamRequests.length, 1)
+})
+
+test('interrupted narrative multipart upload is rejected before upstream access', () => {
+  const request = new EventEmitter()
+  Object.assign(request, {
+    method: 'POST', url: '/business-api/intake/narratives',
+    headers: { 'content-type': 'multipart/form-data; boundary=fixture' }, socket: {},
+    resume() { this.resumed = true },
+  })
+  const response = { headersSent: false, destroyed: false, setHeader() {}, end() { this.ended = true } }
+  let upstreamCalls = 0
+  const handler = createBusinessProxyHandler({ connection: { requestRejection: () => undefined } }, 'business-api', {
+    request() { upstreamCalls++; throw new Error('must not forward partial narrative upload') },
+  })
+  handler(request, response)
+  request.emit('data', Buffer.from('partial narrative body'))
+  request.emit('aborted')
+  assert.equal(upstreamCalls, 0)
+  assert.equal(response.statusCode, 400)
+  assert.equal(response.ended, true)
+})
+
+test('interrupted intake multipart upload is rejected before upstream access', () => {
+  const request = new EventEmitter()
+  Object.assign(request, {
+    method: 'POST', url: '/business-api/intake/sources',
+    headers: { 'content-type': 'multipart/form-data; boundary=fixture' }, socket: {},
+    resume() { this.resumed = true },
+  })
+  const response = { headersSent: false, destroyed: false, setHeader() {}, end() { this.ended = true } }
+  let upstreamCalls = 0
+  const handler = createBusinessProxyHandler({ connection: { requestRejection: () => undefined } }, 'business-api', {
+    request() { upstreamCalls++; throw new Error('must not forward partial intake upload') },
+  })
+  handler(request, response)
+  request.emit('data', Buffer.from('partial multipart body'))
+  request.emit('aborted')
+  assert.equal(upstreamCalls, 0)
+  assert.equal(response.statusCode, 400)
+  assert.equal(response.ended, true)
+})
+
 test('aborted streamed JSON is not forwarded partially', async () => {
   const request = new EventEmitter()
   Object.assign(request, { method: 'PATCH', url: '/business-api/products/p-1', headers: { 'content-type': 'application/json' }, socket: {} })

@@ -13,10 +13,12 @@
     "desktop-host-lan.patch": "7FDAECF4E88FBA9B553F242B21AB5B56AAE1275C27E318BA08303FAC2A4CFB98",
     "desktop-business-csrf.patch": "AFECC88496458AAB05A42474D6E4439054BBD0A55231AED41B5E9331E6714A84",
     "desktop-managed-update.patch": "754C0E52E5842780A541C47B2301CEBD352AE78EA001EA68B04651CC6255FF7D",
-    "desktop-websocket-authority.patch": "F1828DE831BBCC7B273E8EDBC554A2CBAE7237BE698539D732647DE8E17AAE89",
+    "desktop-websocket-authority.patch": "5BFF0A8DE7562D0AA82B2681ED030506E300734D016DDC2E8D7E1DBC480BC532",
     "native-provider-ui-fix.patch": "AA336767F2B184E2AF2C44D56943699D7CD069A238F991F65619618FEF4B9CEF",
     "desktop-startup-account-free.patch": "EBBC84EABF414EDB20ECD6951916782564594849C6A67D68B063A96FF8DE5574",
-    "desktop-branding.patch": "D2BE4CB741FD1DD9F4BC5AFBFEF3742BB92E0D9F0437C3E770615C06F6021992"
+    "desktop-branding.patch": "5F4A9181FDE0A0E9B3EBD83063BBB5B3692473CD0FF7867EDD66D4AC2CF187C5",
+    "desktop-fatal-restart-in-place.patch": "e9515208d5c58d1f7a857be24240e14a08255538a0a750c7d9c7d971e16a5ba7",
+    "desktop-workspace-default-flat.patch": "21550bdd682a90ac055a9c048bba580694a13852a23483b462a20494a0eaa899"
   },
   "targetFiles": {
     "packages/client/ui-settings-models/src/client/CustomProviderCard.tsx": {
@@ -37,15 +39,15 @@
     },
     "apps/desktop/src/main.ts": {
       "baseSha256": "e345eda0425f2df795d20413bb87bb9a3ddc46e71ceb1cec0755ad1cca3fb847",
-      "newSha256": "2eb18fd3934709be02f7184560351e0db4b563b9a0d50b892a5ca834f6828479"
+      "newSha256": "e5004359ad4a777b371c6693d4532aa82400f536f308d5728291861c9b88a876"
     },
     "apps/desktop/tests/main-startup.spec.ts": {
       "baseSha256": "ef37e6257004ae386093afa73e63d16f10ead3421ba9d9982a6286437182fd3f",
-      "newSha256": "2cc246a35649d3719a2119ffcad5df6006bd17ece7596c834950e408663c5274"
+      "newSha256": "b11fae0aededbc7c91cb7d4d30ad987ae9b678ad182c6734f324834b1096d4c9"
     },
     "apps/desktop/src/locale.ts": {
       "baseSha256": "8426a3943be0dfe81d0f0ecef1d9fe3cc03dc6cd79d3b8177a316f12ac09b242",
-      "newSha256": "11e9bc93e78e6d6e5c1a6b6e13b9f0e60d7dee6b42a97ab838163efdab9d59b3"
+      "newSha256": "afb18d79a3bfc5feb3a2f5447c62063b66ac1726b02d116d810516f563fa2791"
     },
     "apps/desktop/renderer/assets/welcome-brand.svg": {
       "baseSha256": "182f040f9d3eccf25b20f5bbfc9d50a21296a88978b91b4dec7e64cbd16b4039",
@@ -114,6 +116,62 @@
     "apps/desktop/tests/expected/application-menu-zh-CN.json": {
       "baseSha256": "dff4a93233e4ec307b38e10009c40c58dc1cf942ab322719faf7381d39fff4f1",
       "newSha256": "46c6161c746e0410a76793059893bb6f3628f10f10ffbd9ba9683654fef6d866"
+    },
+    "apps/desktop/src/fatal-recovery.ts": {
+      "baseSha256": "786f45290a621d019c21866d7083a2b9137e89beabb16f2cd56b12ce965ff8d4",
+      "newSha256": "e7659c4e56e427cbdad40489ba3acaad0384ced0b863b7e078740b5ed5ab91d5"
+    },
+    "apps/desktop/tests/fatal-recovery.spec.ts": {
+      "baseSha256": "232c292d75a792050f3903a0e1303465c9b1ffbe084bd7185d8dfb88e87058da",
+      "newSha256": "80fb56b9d361a3a60fed805451a2fe3395863cbf02c9720c26d24d202881bb20"
+    },
+    "packages/client/ui-workspace/src/client/stores.ts": {
+      "baseSha256": "b94d8e12a14a6377fb8c56067dcee07ac8d0365008c5a691694ce21b2968b007",
+      "newSha256": "229cd41a862a723dca30958deff5d107789b3aa1e948efc6b916daca3ba4a0da"
+    },
+    "packages/client/ui-workspace/tests/tree.client.spec.ts": {
+      "baseSha256": "649ec5bce0592fddbab60482c4f8c9edebe3d301c1d750b59c79283d74ce9810",
+      "newSha256": "4e587d5ca05d16fd3cda037e446d82e3b598cb40bd8b244dacbe5530947f7be7"
+    },
+    "packages/client/ui-workspace/tests/workspace-browser.client.spec.tsx": {
+      "baseSha256": "626e80139fface62c0e2c1380fc51526ea82d98a1ebaab245efe7bc872f208f8",
+      "newSha256": "b418c157a4d6f8abfdd4ebc407b8837b04a35f38129de720f6a6a57cb9eec70d"
+    },
+    "apps/desktop/tests/expected/fatal-address-in-use-en.txt": {
+      "baseSha256": "af7bb36e675e589dca00a056412a14c3c80c4b30fcaee8522b1166aeb7a44068",
+      "newSha256": "37fa75c5cf47b8a265d5a8be67b08eff1d1a8c1e43628e62a5c369696e2ec6b0"
+    },
+    "apps/desktop/tests/expected/fatal-address-in-use-zh-CN.txt": {
+      "baseSha256": "7c176839723664b6154ecfd9b92400880b0f38e1d52c303ccc39bd27d6a732d6",
+      "newSha256": "a0b33bc9593710bc22b0a74cf489abdff0f2e9c97acf6ab40b326a22532ddc5d"
+    },
+    "apps/desktop/tests/expected/fatal-dialog-en.txt": {
+      "baseSha256": "40caddf7455b828d6fe449ea0e257606ab0b3580f249f3f68149ff61c833009e",
+      "newSha256": "840ce22be95c53658513d413916cc74d0c28b0f32c8919a4dd06246355964bff"
+    },
+    "apps/desktop/tests/expected/fatal-dialog-with-report-en.txt": {
+      "baseSha256": "d39a091fdb69c20db8901ec5dff81fa3f9d7cd4a5168a8b955f628fdc91cdbed",
+      "newSha256": "41ca2babba50b9c03bec07bfa795ae71eae40cdde3073afde5c25f61d358c30a"
+    },
+    "apps/desktop/tests/expected/fatal-dialog-with-report-zh-CN.txt": {
+      "baseSha256": "e9e0e7a31388311934fd4029ff9a90209c80d740dd3ff0988115691fe7249035",
+      "newSha256": "ce8228a10d662950922d82d48475a759f7fd559033511c175a0537760df4cbb4"
+    },
+    "apps/desktop/tests/expected/fatal-dialog-zh-CN.txt": {
+      "baseSha256": "1219cc75ee52b2817859c97f4ce54154ad7f8ecdffc37562645913d0110c6160",
+      "newSha256": "c0105eb134ddec79097a92c52f037667892bc6e2311dca5d1c5690f9882d512c"
+    },
+    "apps/desktop/package.json": {
+      "baseSha256": "913095d3048ad424335acccf8e3193bb9523961604709062a430f57c4ac22479",
+      "newSha256": "107949b3e4796707b0178006611a3704c86eb67a6e4db7247ccb5c31fa881e1b"
+    },
+    "scripts/client-build-environment.ts": {
+      "baseSha256": "f87c28255e90c013fe5e2c2655eff791eef1f69df9cbd534d4d6d08fff20c7b1",
+      "newSha256": "b97f593b3abd8ff7f401a90c9349e2435247cde902dd392891df1824103f0b90"
+    },
+    "scripts/client-build-environment.client.spec.ts": {
+      "baseSha256": "2d0aa232f9ec087606fcf087bd77fbe7e1efd8c306704a9e9c4d825231b1ae3e",
+      "newSha256": "138aa8860a513ed4700f09092ea4a8976862c7d20ce71ee0649ade6b51d32812"
     }
   }
 }

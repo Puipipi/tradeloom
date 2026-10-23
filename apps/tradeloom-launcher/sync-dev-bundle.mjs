@@ -1,7 +1,7 @@
-import { cp, lstat, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { cp, lstat, mkdir, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { ensureOwnedHome, launcherPipeName, reserveNamedPipe } from './core.mjs'
-import { assertNoReparseAncestors, hashTree, packageName, profileBundles, sourcePackage, validateOwnedRuntime } from './prepare-profile.mjs'
+import { assertNoReparseAncestors, hashTree, packageName, profileBundles, sameDirectoryIdentity, sourcePackage, validateOwnedRuntime } from './prepare-profile.mjs'
 
 async function readOrdinaryFile(file, label) {
   const info = await lstat(file)
@@ -47,6 +47,7 @@ async function copyBundle(source, stage, files, expectedHash) {
  */
 export async function syncDevBundle({
   runtimePath,
+  previousRuntimePath,
   home,
   mode = 'web',
   validateRuntime = validateOwnedRuntime,
@@ -55,7 +56,15 @@ export async function syncDevBundle({
   beforeRecordCommit,
 }) {
   if (!['web', 'desktop'].includes(mode)) throw new Error('启动模式只支持 web 或 desktop。')
+  if (previousRuntimePath !== undefined && (typeof previousRuntimePath !== 'string' || !previousRuntimePath.trim())) {
+    throw new Error('旧 runtime 路径必须是非空路径。')
+  }
   const runtime = await validateRuntime(runtimePath)
+  const previousRuntime = previousRuntimePath === undefined ? null : await validateRuntime(previousRuntimePath)
+  const migratingRuntime = Boolean(previousRuntime)
+  if (migratingRuntime && await sameDirectoryIdentity(previousRuntime, runtime)) {
+    throw new Error('旧 runtime 与目标 runtime 相同；拒绝作为跨 runtime 迁移处理。')
+  }
   const homePath = await ensureOwnedHome(home)
   const profileName = mode === 'desktop' ? 'desktop' : 'tradeloom'
   const profileDir = path.join(homePath, 'profiles', profileName)
@@ -81,22 +90,48 @@ export async function syncDevBundle({
   const profileDest = path.join(profileDir, 'node_modules', ...packageName.split('/'))
   const recordPath = path.join(homePath, `tradeloom-launcher-${profileName}.json`)
   const record = JSON.parse(await readOrdinaryFile(recordPath, 'TradeLoom runtime/profile record'))
+  const recordRuntime = typeof record.runtime === 'string' && path.isAbsolute(record.runtime)
+  const recordMatchesTarget = recordRuntime && await sameDirectoryIdentity(record.runtime, runtime)
+  const recordMatchesPrevious = migratingRuntime && recordRuntime && await sameDirectoryIdentity(record.runtime, previousRuntime)
   if (record.schema !== 1 || record.packageName !== packageName || record.profile !== profileName
-    || path.resolve(record.runtime).toLowerCase() !== path.resolve(runtime).toLowerCase()
+    || (!recordMatchesTarget && !recordMatchesPrevious)
     || !/^[0-9a-f]{64}$/i.test(record.bundleHash ?? '')) {
     throw new Error('TradeLoom 本地 runtime/profile 记录与所选自有 profile 不匹配；拒绝同步。')
+  }
+  if (migratingRuntime && !recordMatchesPrevious) {
+    throw new Error('TradeLoom runtime 迁移记录未绑定所声明的旧 runtime；拒绝迁移。')
   }
 
   const priorHash = record.bundleHash.toLowerCase()
   const allowedHashes = new Set([priorHash, sourceHash])
-  for (const [destination, root] of [[runtimeDest, runtime], [profileDest, profileDir]]) {
+  const expectedDestinations = migratingRuntime
+    ? [[path.join(previousRuntime, 'node_modules', ...packageName.split('/')), previousRuntime, priorHash], [profileDest, profileDir, priorHash]]
+    : [[runtimeDest, runtime, null], [profileDest, profileDir, null]]
+  for (const [destination, root, requiredHash] of expectedDestinations) {
     const destinationFiles = await bundleFilesAtDestination(destination, root)
     const actual = await assertBundleDir(destination, root, destinationFiles)
-    if (!allowedHashes.has(actual.toLowerCase())) {
-      throw new Error(`自有 bundle 既非记录版本也非当前源码版本；拒绝覆盖：${destination}`)
+    if (requiredHash ? actual.toLowerCase() !== requiredHash : !allowedHashes.has(actual.toLowerCase())) {
+      throw new Error(migratingRuntime
+        ? `迁移来源 bundle 与记录版本不一致；拒绝迁移：${destination}`
+        : `自有 bundle 既非记录版本也非当前源码版本；拒绝覆盖：${destination}`)
     }
   }
-  const nextRecord = { schema: 1, runtime: path.resolve(runtime), packageName, bundleHash: sourceHash, profile: profileName }
+  let runtimeDestinationExists = true
+  if (migratingRuntime) {
+    try { await lstat(runtimeDest) }
+    catch (error) {
+      if (error.code === 'ENOENT') runtimeDestinationExists = false
+      else throw error
+    }
+    if (runtimeDestinationExists) {
+      const destinationFiles = await bundleFilesAtDestination(runtimeDest, runtime)
+      const actual = await assertBundleDir(runtimeDest, runtime, destinationFiles)
+      if (actual.toLowerCase() !== sourceHash.toLowerCase()) {
+        throw new Error(`新 runtime 目标 bundle 不是当前源码版本；拒绝迁移：${runtimeDest}`)
+      }
+    }
+  }
+  const nextRecord = { schema: 1, runtime: await realpath(runtime), packageName, bundleHash: sourceHash, profile: profileName }
   if (JSON.stringify(record) === JSON.stringify(nextRecord)) return { runtime, profileDir, bundleHash: sourceHash, changed: false }
 
   await assertNoReparseAncestors(runtimeDest, runtime)
@@ -124,8 +159,20 @@ export async function syncDevBundle({
     await copyBundle(source, profileStage, files, sourceHash)
     await writeFile(recordStage, `${JSON.stringify(nextRecord, null, 2)}\n`, { flag: 'wx' })
 
-    await rename(runtimeDest, runtimeBackup); runtimeBackedUp = true
+    if (runtimeDestinationExists) {
+      if (migratingRuntime) {
+        const currentFiles = await bundleFilesAtDestination(runtimeDest, runtime)
+        if ((await assertBundleDir(runtimeDest, runtime, currentFiles)).toLowerCase() !== sourceHash.toLowerCase()) {
+          throw new Error('新 runtime 目标 bundle 在迁移期间发生变化；拒绝提交。')
+        }
+      }
+      await rename(runtimeDest, runtimeBackup); runtimeBackedUp = true
+    }
     await rename(profileDest, profileBackup); profileBackedUp = true
+    if (!runtimeDestinationExists) {
+      try { await lstat(runtimeDest); throw new Error('新 runtime 目标 bundle 在迁移期间出现；拒绝提交。') }
+      catch (error) { if (error.code !== 'ENOENT') throw error }
+    }
     await rename(runtimeStage, runtimeDest); runtimeInstalled = true
     await rename(profileStage, profileDest); profileInstalled = true
     if (beforeRecordCommit) await beforeRecordCommit()

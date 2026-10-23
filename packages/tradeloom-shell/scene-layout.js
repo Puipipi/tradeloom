@@ -4,6 +4,11 @@ export const BUSINESS_ROUTE_PATHS = Object.freeze(['/home', '/products', '/agent
 export const PANEL_TYPES = Object.freeze(['business-iframe', 'placeholder', 'native-chat', 'erpnext-status'])
 const ROLE_ID_SET = new Set(ROLE_IDS)
 const BUSINESS_PATHS = new Set(BUSINESS_ROUTE_PATHS)
+const DOCK_LAYOUT_PROFILES = Object.freeze({
+  assistant_lead: [1000, 360],
+  collaboration_grid: [1200, 600],
+  business_lead: [1143, 360],
+})
 
 function fail(message) { throw new Error(`invalid scene configuration: ${message}`) }
 function object(value) { return value !== null && typeof value === 'object' && !Array.isArray(value) }
@@ -19,6 +24,14 @@ export function validateSceneConfig(config, panelTypes = PANEL_TYPES) {
       || ids.has(scene.id) || typeof scene.label !== 'string' || scene.label.length > 100
       || !ROLE_ID_SET.has(scene.roleId) || !Array.isArray(scene.panels) || scene.panels.length < 1 || scene.panels.length > 12) {
       fail('scene identity, role or panel list is invalid')
+    }
+    if (scene.layoutProfile !== undefined) {
+      const profile = scene.layoutProfile
+      const expectedMinimums = DOCK_LAYOUT_PROFILES[profile?.kind]
+      if (!object(profile) || Object.keys(profile).sort().join(',') !== 'kind,minimumHeight,minimumWidth'
+        || !expectedMinimums || profile.minimumWidth !== expectedMinimums[0] || profile.minimumHeight !== expectedMinimums[1]) {
+        fail('scene dock layout profile is invalid')
+      }
     }
     ids.add(scene.id)
     const panelIds = new Set()

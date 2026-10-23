@@ -38,3 +38,32 @@ test('app fetch and upload paths pass through URL wrapper while retaining CSRF h
   assert.match(appSource, /fetch\(businessUrl\(form\.dataset\.uploadUrl\),/)
   assert.match(appSource, /"X-CSRFToken": csrfToken/)
 })
+
+test('embedded business theme bridge accepts only same-origin messages with the exact validated semantic palette', () => {
+  let messageHandler
+  const variables = new Map()
+  const html = { dataset: { businessEmbed: 'true' }, style: { setProperty(name, value) { variables.set(name, value) } } }
+  const parent = { postMessage() {} }
+  const document = { documentElement: html, querySelector() { return null }, querySelectorAll() { return [] }, getElementById() { return null } }
+  const window = {
+    parent, location: { origin: 'http://localhost:3088' },
+    addEventListener(type, listener) { if (type === 'message') messageHandler = listener },
+  }
+  runInNewContext(appSource, { document, window, URL, URLSearchParams, globalThis: {} })
+  const palette = {
+    canvas: '#0c1017', panel: '#131925', header: '#171f2c', border: '#293345',
+    text: '#dfe7f3', muted: '#8b97ab', accent: '#4d83dd', teal: '#37b5a9',
+  }
+  const event = data => messageHandler({ source: parent, origin: window.location.origin, data })
+  event({ type: 'tradeloom:theme', colorScheme: 'dark', palette })
+  assert.equal(html.dataset.colorScheme, 'dark')
+  assert.equal(variables.get('--wb-theme-canvas'), '#0c1017')
+  assert.equal(variables.get('--wb-theme-teal'), '#37b5a9')
+  event({ type: 'tradeloom:theme', colorScheme: 'light', palette: { ...palette, canvas: 'url(https://bad.example)' } })
+  assert.equal(html.dataset.colorScheme, 'dark', 'unsafe token values are ignored without partially applying the palette')
+  assert.equal(variables.get('--wb-theme-canvas'), '#0c1017')
+  messageHandler({ source: {}, origin: window.location.origin, data: { type: 'tradeloom:theme', colorScheme: 'light', palette } })
+  messageHandler({ source: parent, origin: 'https://other.example', data: { type: 'tradeloom:theme', colorScheme: 'light', palette } })
+  event({ type: 'tradeloom:theme', colorScheme: 'light', palette, extra: true })
+  assert.equal(html.dataset.colorScheme, 'dark', 'foreign senders, origins, and extra fields are rejected')
+})

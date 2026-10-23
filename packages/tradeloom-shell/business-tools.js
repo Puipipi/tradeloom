@@ -12,6 +12,42 @@ const MAX_RESPONSE_BYTES = 1024 * 1024
 const REQUEST_TIMEOUT_MS = 30_000
 const KNOWN_PRESETS = new Set(Object.values(ROLE_PRESETS))
 const ERP_DOCTYPES = Object.freeze(['Item', 'Customer', 'Supplier', 'Warehouse', 'Bin', 'Sales Order', 'Purchase Order'])
+const INTAKE_CANDIDATE_TYPES = Object.freeze(['product_identity', 'commercial_source', 'production_instruction', 'labor_analysis'])
+const INTAKE_FIELDS = Object.freeze({
+  product_identity: Object.freeze({
+    style_number: 'text', description: 'text', customer_item_code: 'text', width: 'decimal', width_unit: 'text',
+    color: 'text', roll_length: 'decimal', roll_length_unit: 'text', packing: 'text', barcode: 'text',
+  }),
+  commercial_source: Object.freeze({
+    document_reference: 'text', party_text: 'text', item_description: 'text', quantity: 'decimal', unit: 'text',
+    unit_price: 'decimal', amount: 'decimal', currency: 'text', notes: 'text',
+  }),
+  production_instruction: Object.freeze({
+    source_order_reference: 'text', description: 'text', specification: 'text', color: 'text', quantity: 'decimal',
+    unit: 'text', packing: 'text', carton_count: 'decimal', barcode_requirement: 'text', due_date: 'date',
+    requirement_text: 'text', pack_quantity: 'decimal', pack_unit: 'text',
+  }),
+  labor_analysis: Object.freeze({
+    process: 'text', observed_seconds: 'decimal', observed_quantity: 'decimal', observed_unit: 'text',
+    estimated_hourly_rate: 'decimal', estimated_efficiency: 'decimal', estimated_capacity: 'decimal',
+    estimated_piece_rate: 'decimal', notes: 'text',
+  }),
+})
+const INTAKE_OPAQUE_ID = /^[0-9a-f]{32}$/
+const INTAKE_SHA256 = /^[0-9a-f]{64}$/
+const INTAKE_COORDINATE = /^[A-Z]{1,3}[1-9][0-9]{0,6}$/
+const INTAKE_VALUE_STATES = new Set(['present', 'empty', 'formula_error', 'formula_cache_missing', 'formula_cache_empty', 'type_mismatch'])
+const INTAKE_ERROR_CODES = new Set([
+  'invalid_arguments', 'invalid_source', 'source_not_found', 'preview_not_found', 'candidate_not_found',
+  'mapping_not_found', 'idempotency_conflict', 'stale_mapping', 'source_cell_not_found', 'snapshot_not_ready',
+  'invalid_mapping', 'unsupported_schema', 'unsupported_candidate_type', 'invalid_revision', 'unknown_field',
+  'empty_mapping', 'invalid_field_mapping', 'invalid_source_cells', 'invalid_source_cell', 'too_many_source_cells',
+  'unsupported_value_type', 'invalid_source_hash', 'private_store_unavailable', 'unavailable',
+])
+const INTAKE_MAX_PAGE_SIZE = 50
+const INTAKE_MAX_NESTED = 20
+const INTAKE_MAX_FIELD_VALUES = 10
+const INTAKE_MAX_TEXT = 160
 const TOOL_ACCESS = Object.freeze({
   tradeloom_read_products: new Set([ROLE_PRESETS.center, ROLE_PRESETS.product]),
   tradeloom_read_workflow_task: new Set([ROLE_PRESETS.center, ROLE_PRESETS.delivery]),
@@ -21,6 +57,15 @@ const TOOL_ACCESS = Object.freeze({
   tradeloom_erpnext_status: new Set([ROLE_PRESETS.center, ROLE_PRESETS.product, ROLE_PRESETS.delivery]),
   tradeloom_erpnext_list: new Set([ROLE_PRESETS.center, ROLE_PRESETS.product, ROLE_PRESETS.delivery]),
   tradeloom_erpnext_detail: new Set([ROLE_PRESETS.center, ROLE_PRESETS.product, ROLE_PRESETS.delivery]),
+  tradeloom_erpnext_create_quotation_draft: new Set([ROLE_PRESETS.center]),
+  tradeloom_erpnext_update_quotation_draft: new Set([ROLE_PRESETS.center]),
+  tradeloom_erpnext_read_quotation_draft_operation: new Set([ROLE_PRESETS.center]),
+  tradeloom_intake_sources: new Set([ROLE_PRESETS.center, ROLE_PRESETS.product, ROLE_PRESETS.delivery]),
+  tradeloom_narrative_sources: new Set([ROLE_PRESETS.center]),
+  tradeloom_narrative_excerpt: new Set([ROLE_PRESETS.center]),
+  tradeloom_intake_candidates: new Set([ROLE_PRESETS.center, ROLE_PRESETS.product, ROLE_PRESETS.delivery]),
+  tradeloom_intake_candidate: new Set([ROLE_PRESETS.center, ROLE_PRESETS.product, ROLE_PRESETS.delivery]),
+  tradeloom_read_execution_plan: new Set([ROLE_PRESETS.center, ROLE_PRESETS.delivery]),
 })
 
 const TOOL_OUTPUT = {
@@ -144,7 +189,7 @@ function csrfCookie(setCookies) {
   return { cookie, token: cookie.slice('csrftoken='.length) }
 }
 
-async function djangoRequest(ctx, toolName, exec, path, method = 'GET', body, dependencies = {}) {
+async function djangoRequest(ctx, toolName, exec, path, method = 'GET', body, dependencies = {}, acceptedStatuses = []) {
   if (!exec?.agent?.session?.header) return failure('agent_session_required')
   const preset = exec.agent.session.header.agentPreset
   if (!TOOL_ACCESS[toolName]?.has(preset)) return failure('role_not_authorized')
@@ -180,7 +225,7 @@ async function djangoRequest(ctx, toolName, exec, path, method = 'GET', body, de
       cookie: csrf.cookie,
       csrfToken: csrf.token,
     })
-    if (response.status < 200 || response.status >= 300) return failure(`django_http_${response.status}`)
+    if ((response.status < 200 || response.status >= 300) && !acceptedStatuses.includes(response.status)) return failure(`django_http_${response.status}`)
     let value
     try { value = JSON.parse(response.raw) } catch { return failure('invalid_django_json') }
     return value
@@ -195,6 +240,244 @@ function boundedString(value, max = 4000) {
   return typeof value === 'string' ? value.slice(0, max) : ''
 }
 
+function boundedPageInteger(value, fallback, maximum) {
+  if (value === undefined) return fallback
+  return Number.isInteger(value) && value >= 0 && value <= maximum ? value : null
+}
+
+function intakeErrorCode(value) {
+  return INTAKE_ERROR_CODES.has(value) ? value : 'unknown'
+}
+
+function projectIntakeSources(response, limit) {
+  if (!response || response.ok !== true || !Array.isArray(response.sources)
+    || !(response.next_offset === null || (Number.isInteger(response.next_offset) && response.next_offset >= 0 && response.next_offset <= 100050))) return null
+  let truncated = response.next_offset !== null || response.sources.length > limit
+  const sources = response.sources.slice(0, limit).flatMap(source => {
+    if (!INTAKE_OPAQUE_ID.test(source?.id ?? '') || !INTAKE_SHA256.test(source?.sha256 ?? '')
+      || !Number.isSafeInteger(source?.byte_size) || source.byte_size < 0 || source.byte_size > 20 * 1024 * 1024
+      || typeof source?.received_at !== 'string' || source.received_at.length > 40 || !Number.isFinite(Date.parse(source.received_at))
+      || !Array.isArray(source?.snapshots)) {
+      truncated = true
+      return []
+    }
+    const snapshots = source.snapshots.slice(0, INTAKE_MAX_NESTED).flatMap(snapshot => {
+      if (!INTAKE_OPAQUE_ID.test(snapshot?.id ?? '') || !/^[a-zA-Z0-9._-]{1,40}$/.test(snapshot?.parser_version ?? '')) {
+        truncated = true
+        return []
+      }
+      return [{
+        id: snapshot.id,
+        parser_version: snapshot.parser_version,
+        status: ['ready', 'failed'].includes(snapshot.status) ? snapshot.status : 'unknown',
+        sheet_count: Number.isInteger(snapshot.sheet_count) && snapshot.sheet_count >= 0 ? snapshot.sheet_count : null,
+        cell_count: Number.isInteger(snapshot.cell_count) && snapshot.cell_count >= 0 ? snapshot.cell_count : null,
+        error_code: snapshot.error_code ? intakeErrorCode(snapshot.error_code) : '',
+      }]
+    })
+    if (source.snapshots.length > INTAKE_MAX_NESTED) truncated = true
+    return [{
+      id: source.id,
+      sha256: source.sha256,
+      byte_size: source.byte_size,
+      received_at: source.received_at,
+      snapshots,
+      snapshots_truncated: source.snapshots.length > INTAKE_MAX_NESTED,
+    }]
+  })
+  return {
+    sources,
+    next_offset: Number.isInteger(response.next_offset) ? response.next_offset : null,
+    truncated,
+  }
+}
+
+function projectNarrativeAnnotation(value) {
+  if (value === null) return null
+  if (!value || typeof value !== 'object' || !Number.isInteger(value.revision) || value.revision < 1
+    || !['transcript_excerpt', 'secondary_summary_analysis', 'user_supplement', 'unknown'].includes(value.source_kind)
+    || !(value.recording_date === null || (typeof value.recording_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.recording_date)))
+    || !['unknown', 'not_checked', 'operator_claimed_checked'].includes(value.audio_review_status)
+    || value.content_status !== 'unconfirmed') return undefined
+  return { revision: value.revision, source_kind: value.source_kind, recording_date: value.recording_date,
+    audio_review_status: value.audio_review_status, content_status: 'unconfirmed' }
+}
+
+function projectNarrativeSources(response, limit) {
+  if (!response || !Array.isArray(response.narratives)
+    || !(response.next_offset === null || (Number.isInteger(response.next_offset) && response.next_offset >= 0))) return null
+  let truncated = response.next_offset !== null || response.narratives.length > limit
+  const narratives = response.narratives.slice(0, limit).flatMap(source => {
+    const annotation = projectNarrativeAnnotation(source?.current_annotation)
+    if (!INTAKE_OPAQUE_ID.test(source?.id ?? '') || !INTAKE_SHA256.test(source?.sha256 ?? '')
+      || !Number.isInteger(source?.line_count) || source.line_count < 0 || annotation === undefined) { truncated = true; return [] }
+    return [{ id: source.id, sha256: source.sha256, line_count: source.line_count, current_annotation: annotation }]
+  })
+  return { narratives, next_offset: response.next_offset, truncated }
+}
+
+function projectNarrativeExcerpt(response, requestedSourceId, limit) {
+  if (!response || !response.source || !INTAKE_OPAQUE_ID.test(response.source.id ?? '')
+    || response.source.id !== requestedSourceId || response.lines?.length > limit
+    || !INTAKE_SHA256.test(response.source.sha256 ?? '') || !Array.isArray(response.lines)
+    || !(response.next_offset === null || (Number.isInteger(response.next_offset) && response.next_offset >= 0))) return null
+  const annotation = projectNarrativeAnnotation(response.source.current_annotation)
+  if (annotation === undefined) return null
+  const lines = response.lines.flatMap(line => Number.isInteger(line?.line_number) && line.line_number > 0
+    && typeof line.text === 'string' && line.text.length <= 2000 && typeof line.truncated === 'boolean'
+    ? [{ line_number: line.line_number, text: line.text, truncated: line.truncated }] : [])
+  if (lines.length !== response.lines.length) return null
+  return { source: { id: response.source.id, sha256: response.source.sha256, current_annotation: annotation }, lines, next_offset: response.next_offset }
+}
+
+function projectIntakeScalar(value) {
+  if (typeof value === 'string') return { value: value.slice(0, INTAKE_MAX_TEXT), truncated: value.length > INTAKE_MAX_TEXT }
+  if (typeof value === 'number' && Number.isFinite(value)) return { value, truncated: false }
+  if (typeof value === 'boolean' || value === null) return { value, truncated: false }
+  return { value: null, truncated: value !== undefined && value !== null }
+}
+
+function intakeCandidateTypeAllowed(preset, candidateType) {
+  if (preset === ROLE_PRESETS.center) return INTAKE_CANDIDATE_TYPES.includes(candidateType)
+  if (preset === ROLE_PRESETS.product) return candidateType === 'product_identity'
+  if (preset === ROLE_PRESETS.delivery) return candidateType === 'production_instruction'
+  return false
+}
+
+function projectIntakeCandidate(response, requestedType) {
+  const candidate = response?.ok === true ? response.candidate : null
+  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)
+    || !INTAKE_OPAQUE_ID.test(candidate.id ?? '') || !INTAKE_SHA256.test(candidate.source_sha256 ?? '')
+    || !INTAKE_CANDIDATE_TYPES.includes(candidate.candidate_type) || candidate.candidate_type !== requestedType
+    || candidate.schema_version !== 1 || !candidate.fields || typeof candidate.fields !== 'object' || Array.isArray(candidate.fields)
+    || !candidate.provenance || typeof candidate.provenance !== 'object' || Array.isArray(candidate.provenance)
+    || !Array.isArray(response.links)) return null
+
+  let truncated = false
+  const allowedFields = INTAKE_FIELDS[candidate.candidate_type]
+  if (Object.keys(candidate.fields).some(key => !Object.hasOwn(allowedFields, key))) truncated = true
+  const sourceIds = new Set()
+  const fields = {}
+  for (const [name, type] of Object.entries(allowedFields)) {
+    if (!Object.hasOwn(candidate.fields, name)) continue
+    const rawValues = candidate.fields[name]
+    if (!Array.isArray(rawValues)) { truncated = true; continue }
+    const rawSources = Array.isArray(candidate.provenance[name]) ? candidate.provenance[name] : []
+    if (!Array.isArray(candidate.provenance[name])) truncated = true
+    if (rawSources.length !== rawValues.length) truncated = true
+    const values = rawValues.slice(0, INTAKE_MAX_FIELD_VALUES).map(entry => {
+      const scalar = projectIntakeScalar(entry?.value)
+      if (scalar.truncated) truncated = true
+      return {
+        state: INTAKE_VALUE_STATES.has(entry?.state) ? entry.state : 'unknown',
+        type,
+        value: scalar.value,
+        value_truncated: scalar.truncated,
+      }
+    })
+    const sources = rawSources.slice(0, INTAKE_MAX_FIELD_VALUES).flatMap((source, valueIndex) => {
+      if (!INTAKE_OPAQUE_ID.test(source?.source_id ?? '') || !INTAKE_SHA256.test(source?.source_sha256 ?? '')
+        || !INTAKE_OPAQUE_ID.test(source?.snapshot_id ?? '') || !Number.isInteger(source?.sheet_index)
+        || source.sheet_index < 1 || source.sheet_index > 20 || !INTAKE_COORDINATE.test(source?.coordinate ?? '')) {
+        truncated = true
+        return []
+      }
+      sourceIds.add(source.source_id)
+      return [{
+        source_id: source.source_id,
+        source_sha256: source.source_sha256,
+        snapshot_id: source.snapshot_id,
+        sheet_index: source.sheet_index,
+        coordinate: source.coordinate,
+        value_index: valueIndex,
+        formula_status: ['not_formula', 'unsupported'].includes(source.formula_status) ? source.formula_status : 'unknown',
+        error_code: source.error_code ? intakeErrorCode(source.error_code) : '',
+      }]
+    })
+    if (rawValues.length > INTAKE_MAX_FIELD_VALUES || rawSources.length > INTAKE_MAX_FIELD_VALUES) truncated = true
+    fields[name] = { values, sources, values_truncated: rawValues.length > INTAKE_MAX_FIELD_VALUES, sources_truncated: rawSources.length > INTAKE_MAX_FIELD_VALUES }
+  }
+
+  const links = response.links.slice(0, INTAKE_MAX_NESTED).flatMap(link => {
+    const other = link?.left_candidate_id === candidate.id ? link?.right_candidate_id
+      : link?.right_candidate_id === candidate.id ? link?.left_candidate_id : null
+    if (!INTAKE_OPAQUE_ID.test(other ?? '') || !['suggested', 'confirmed', 'rejected'].includes(link?.decision)) {
+      truncated = true
+      return []
+    }
+    const reason = typeof link?.evidence?.reason === 'string' ? link.evidence.reason : ''
+    if (reason.length > 500) truncated = true
+    const projected = { candidate_id: other, decision: link.decision,
+      judgment_source: 'association_decision', reason: reason.slice(0, 500) }
+    if (INTAKE_OPAQUE_ID.test(link?.id ?? '')) projected.link_id = link.id
+    if (typeof link?.actor === 'string' && link.actor.length > 0) {
+      if (link.actor.length > 32) truncated = true
+      projected.actor = link.actor.slice(0, 32)
+    }
+    if (typeof link?.created_at === 'string' && link.created_at.length > 0) {
+      if (link.created_at.length > 64) truncated = true
+      projected.created_at = link.created_at.slice(0, 64)
+    }
+    return [projected]
+  })
+  if (response.links.length > INTAKE_MAX_NESTED) truncated = true
+  if (response.links_next_offset !== undefined && response.links_next_offset !== null) truncated = true
+
+  let semantics = {}
+  if (candidate.candidate_type === 'product_identity') semantics = { product_identity: 'candidate_only' }
+  if (candidate.candidate_type === 'commercial_source') semantics = { commercial_role: 'unknown', price_nature: 'unknown' }
+  if (candidate.candidate_type === 'production_instruction') semantics = { historical_or_reference: 'unconfirmed' }
+  if (candidate.candidate_type === 'labor_analysis') semantics = { labor_basis: 'unconfirmed' }
+  if (sourceIds.size === 0) return null
+  return {
+    candidate_id: candidate.id,
+    source_ids: [...sourceIds].slice(0, INTAKE_MAX_NESTED),
+    source_sha256: candidate.source_sha256,
+    candidate_type: candidate.candidate_type,
+    schema_version: candidate.schema_version,
+    status: candidate.status === 'unconfirmed' ? 'unconfirmed' : 'unknown',
+    semantics,
+    fields,
+    links,
+    truncated: truncated || sourceIds.size > INTAKE_MAX_NESTED,
+  }
+}
+
+function projectIntakeCandidateDirectory(response, requestedType, preset, limit) {
+  if (response?.ok !== true || !Array.isArray(response.candidates)) return null
+  let truncated = response.candidates.length > limit
+  const candidates = []
+  for (const raw of response.candidates.slice(0, limit)) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)
+      || !INTAKE_CANDIDATE_TYPES.includes(raw.candidate_type)
+      || (requestedType && raw.candidate_type !== requestedType)
+      || !intakeCandidateTypeAllowed(preset, raw.candidate_type)) {
+      truncated = true
+      continue
+    }
+    const projected = projectIntakeCandidate({ ok: true, candidate: raw, links: [] }, raw.candidate_type)
+    if (!projected) {
+      truncated = true
+      continue
+    }
+    candidates.push({
+      candidate_id: projected.candidate_id,
+      candidate_type: projected.candidate_type,
+      source_sha256: projected.source_sha256,
+      source_ids: projected.source_ids,
+      status: projected.status,
+    })
+    if (projected.truncated) truncated = true
+  }
+  const nextOffset = response.next_offset
+  if (nextOffset !== null && (!Number.isInteger(nextOffset) || nextOffset < 0 || nextOffset > 100000)) truncated = true
+  return {
+    candidates,
+    next_offset: Number.isInteger(nextOffset) && nextOffset >= 0 && nextOffset <= 100000 ? nextOffset : null,
+    truncated,
+  }
+}
+
 function projectRevision(revision) {
   if (!revision || typeof revision !== 'object') return null
   const snapshotFields = ['sku', 'name', 'category', 'material', 'size', 'color', 'image_filename']
@@ -205,6 +488,107 @@ function projectRevision(revision) {
     source: boundedString(revision.source, 120),
     snapshot: Object.fromEntries(snapshotFields.map(key => [key, boundedString(snapshot[key], 500)])),
     updated_at: boundedString(revision.updated_at, 80),
+  }
+}
+
+const EXECUTION_PLAN_FIELDS = new Set(Object.keys(INTAKE_FIELDS.production_instruction))
+
+function projectExecutionPlan(response, requestedId) {
+  const plan = response?.plan
+  const requirement = response?.requirement_revision
+  if (!plan || !requirement || plan.id !== requestedId || !INTAKE_OPAQUE_ID.test(plan.id)
+    || !INTAKE_OPAQUE_ID.test(requirement.id ?? '') || plan.requirement_revision_id !== requirement.id
+    || !Number.isInteger(plan.revision) || plan.revision < 1
+    || !['draft'].includes(plan.status) || !['confirmed'].includes(requirement.status)
+    || !requirement.fields || typeof requirement.fields !== 'object' || Array.isArray(requirement.fields)
+    || !Array.isArray(plan.requirement_refs) || !Array.isArray(plan.materials) || !Array.isArray(plan.operations)) return null
+  const sourceRefs = {}
+  let truncated = false
+  const safeText = (value, max) => {
+    const text = boundedString(value, max)
+    if (typeof value === 'string' && text !== value) truncated = true
+    return text
+  }
+  for (const field of EXECUTION_PLAN_FIELDS) {
+    const refs = requirement.source_refs?.[field]
+    if (refs === undefined) continue
+    if (!Array.isArray(refs)) { truncated = true; continue }
+    sourceRefs[field] = refs.slice(0, 20).flatMap(ref => {
+      if (!INTAKE_OPAQUE_ID.test(ref?.id ?? '') || ref.field_key !== field) { truncated = true; return [] }
+      return [{
+        id: ref.id, field_key: field,
+        kind: ['source_record', 'operator_statement', 'team_hypothesis', 'system_derivation'].includes(ref.kind) ? ref.kind : 'unknown',
+        status: ['unverified', 'verified', 'rejected'].includes(ref.status) ? ref.status : 'unknown',
+        summary: safeText(ref.summary, 160), snapshot_id: INTAKE_OPAQUE_ID.test(ref.snapshot_id ?? '') ? ref.snapshot_id : null,
+        sheet_index: Number.isInteger(ref.sheet_index) && ref.sheet_index > 0 ? ref.sheet_index : null,
+        coordinate: INTAKE_COORDINATE.test(ref.coordinate ?? '') ? ref.coordinate : null,
+        narrative_source_id: INTAKE_OPAQUE_ID.test(ref.narrative_source_id ?? '') ? ref.narrative_source_id : null,
+        line_start: Number.isInteger(ref.line_start) && ref.line_start > 0 ? ref.line_start : null,
+        line_end: Number.isInteger(ref.line_end) && ref.line_end > 0 ? ref.line_end : null,
+      }]
+    })
+    if (refs.length > 20) truncated = true
+  }
+  const fields = Object.fromEntries([...EXECUTION_PLAN_FIELDS].flatMap(field => {
+    const value = requirement.fields[field]
+    if (typeof value === 'string') return [[field, safeText(value, 500)]]
+    if (value === null || typeof value === 'number' || typeof value === 'boolean') return [[field, value]]
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      return [[field, { doctype: ['Customer', 'Item'].includes(value.doctype) ? value.doctype : '', name: safeText(value.name, 120) }]]
+    }
+    return []
+  }))
+  const evidenceRefs = (rows, max) => {
+    if (!Array.isArray(rows)) { truncated = true; return [] }
+    if (rows.length > max) truncated = true
+    return rows.slice(0, max).flatMap(row => {
+    if (!row || !EXECUTION_PLAN_FIELDS.has(row.field_key) || !Array.isArray(row.evidence_ids)) { truncated = true; return [] }
+    if (row.evidence_ids.length > 20) truncated = true
+    const validIds = row.evidence_ids.slice(0, 20).filter(id => {
+      const valid = INTAKE_OPAQUE_ID.test(id)
+      if (!valid) truncated = true
+      return valid
+    })
+    return [{ field_key: row.field_key, evidence_ids: validIds }]
+    })
+  }
+  const materials = plan.materials.slice(0, 200).flatMap(item => item?.resolution === 'unresolved' && item?.item_ref === null
+    ? [{ resolution: 'unresolved', item_ref: null, proposal: projectMaterialProposal(item.proposal, safeText), supporting_requirement_inputs: evidenceRefs(item.supporting_requirement_inputs || [], 20) }]
+    : (truncated = true, []))
+  const operations = plan.operations.slice(0, 100).flatMap(item => item?.resolution === 'unresolved' && item?.operation_ref === null
+    ? [{ resolution: 'unresolved', operation_ref: null, proposal: projectOperationProposal(item.proposal, safeText), supporting_requirement_inputs: evidenceRefs(item.supporting_requirement_inputs || [], 20) }]
+    : (truncated = true, []))
+  if (plan.materials.length > 200 || plan.operations.length > 100) truncated = true
+  return {
+    plan: {
+      id: plan.id, requirement_revision_id: requirement.id, revision: plan.revision,
+      status: 'draft', requirement_refs: evidenceRefs(plan.requirement_refs, 100), materials, operations,
+      latest_revision: Number.isInteger(response.latest_revision) ? response.latest_revision : null,
+      is_latest: response.is_latest === true,
+      actual: { status: 'missing' },
+    },
+    requirement: {
+      id: requirement.id, revision: requirement.revision, status: 'confirmed', fields, source_refs: sourceRefs,
+    },
+    truncated,
+  }
+}
+
+function projectMaterialProposal(proposal, safeText = boundedString) {
+  if (!proposal || typeof proposal !== 'object') return { description: null, quantity: null, unit: null, expected_date: null }
+  return {
+    description: typeof proposal.description === 'string' ? safeText(proposal.description, 500) : null,
+    quantity: typeof proposal.quantity === 'string' && /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/.test(proposal.quantity) ? proposal.quantity : null,
+    unit: typeof proposal.unit === 'string' ? safeText(proposal.unit, 80) : null,
+    expected_date: typeof proposal.expected_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(proposal.expected_date) ? proposal.expected_date : null,
+  }
+}
+
+function projectOperationProposal(proposal, safeText = boundedString) {
+  if (!proposal || typeof proposal !== 'object') return { description: null, sequence: null }
+  return {
+    description: typeof proposal.description === 'string' ? safeText(proposal.description, 500) : null,
+    sequence: Number.isInteger(proposal.sequence) && proposal.sequence > 0 ? proposal.sequence : null,
   }
 }
 
@@ -397,6 +781,147 @@ function projectErpNextPage(value, expectedDoctype) {
   return { doctype: expectedDoctype, records, next_offset: value.next_offset }
 }
 
+const QUOTATION_FIELDS = Object.freeze([
+  'name', 'modified', 'docstatus', 'quotation_to', 'company', 'party_name',
+  'transaction_date', 'valid_till', 'currency', 'total_qty', 'total', 'grand_total', 'items',
+])
+const QUOTATION_ITEM_FIELDS = Object.freeze(['item_code', 'item_name', 'qty', 'uom', 'rate', 'amount', 'description'])
+const DRAFT_STATUSES = new Set(['reserved', 'outcome_unknown', 'succeeded', 'conflict'])
+const SAFE_DRAFT_ERRORS = new Set([
+  'not_configured', 'invalid_configuration', 'unavailable', 'rate_limited', 'unauthorized',
+  'forbidden', 'http_error', 'invalid_response', 'not_found', 'conflict', 'invalid_arguments',
+  'idempotency_conflict', 'operation_outcome_unknown',
+])
+
+function projectQuotationRecord(value) {
+  if (!value || typeof value !== 'object' || value.doctype !== 'Quotation'
+    || !value.data || typeof value.data !== 'object' || Array.isArray(value.data)) return null
+  const data = Object.fromEntries(QUOTATION_FIELDS.filter(key => Object.hasOwn(value.data, key)).map(key => [key, value.data[key]]))
+  const ref = value.external_ref
+  if (typeof data.name !== 'string' || !data.name || typeof data.modified !== 'string' || !data.modified
+    || !Number.isInteger(data.docstatus) || data.docstatus < 0 || data.docstatus > 2
+    || !ref || ref.system !== 'erpnext' || ref.doctype !== 'Quotation' || ref.name !== data.name
+    || typeof ref.instance_id !== 'string' || !ref.instance_id
+    || !(ref.modified === null || typeof ref.modified === 'string')) return null
+  if (data.items !== undefined) {
+    if (!Array.isArray(data.items) || data.items.length > 100) return null
+    data.items = data.items.map(item => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return null
+      return Object.fromEntries(QUOTATION_ITEM_FIELDS.filter(key => Object.hasOwn(item, key)).map(key => [key, item[key]]))
+    })
+    if (data.items.some(item => !item)) return null
+  }
+  return {
+    doctype: 'Quotation', data,
+    truncated_children: Array.isArray(value.truncated_children) ? value.truncated_children.filter(key => key === 'items') : [],
+    external_ref: {
+      system: 'erpnext', instance_id: boundedString(ref.instance_id, 128), doctype: 'Quotation',
+      name: boundedString(ref.name, 256), modified: ref.modified === null ? null : boundedString(ref.modified, 80),
+    },
+  }
+}
+
+function projectDraftOperation(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)
+    || !/^[0-9a-f]{32}$/.test(value.operation_id ?? '')
+    || !['create', 'update'].includes(value.action) || value.doctype !== 'Quotation'
+    || !DRAFT_STATUSES.has(value.status) || !['local_workbench', 'dsh_center'].includes(value.source)
+    || (value.remote_modified !== null && value.remote_modified !== '' && typeof value.remote_modified !== 'string')
+    || !/^[0-9a-f]{64}$/.test(value.payload_sha256 ?? '')) return null
+  const receipt = value.receipt === null ? null : projectQuotationRecord(value.receipt)
+  const remoteCurrent = value.remote_current === null ? null : projectQuotationRecord(value.remote_current)
+  if ((value.receipt !== null && !receipt) || (value.remote_current !== null && !remoteCurrent)) return null
+  if (value.target_operation_id !== null && value.target_operation_id !== ''
+    && !/^[0-9a-f]{32}$/.test(value.target_operation_id)) return null
+  if ((value.action === 'create' && value.target_operation_id)
+    || (value.action === 'update' && !value.target_operation_id)) return null
+  if (value.remote_name !== null && value.remote_name !== '' && typeof value.remote_name !== 'string') return null
+  if (value.status === 'succeeded' && (!receipt || receipt.external_ref.name !== value.remote_name
+    || receipt.external_ref.modified !== value.remote_modified)) return null
+  const errorCode = typeof value.error_code === 'string' && SAFE_DRAFT_ERRORS.has(value.error_code) ? value.error_code : ''
+  const remoteErrorCode = typeof value.remote_error_code === 'string' && SAFE_DRAFT_ERRORS.has(value.remote_error_code) ? value.remote_error_code : ''
+  return {
+    operation_id: value.operation_id,
+    action: value.action,
+    doctype: 'Quotation',
+    status: value.status,
+    source: value.source === 'dsh_center' ? 'dsh_center' : 'local_workbench',
+    workflow_id: typeof value.workflow_id === 'string' ? boundedString(value.workflow_id, 80) : null,
+    target_operation_id: typeof value.target_operation_id === 'string' && value.target_operation_id ? value.target_operation_id : null,
+    remote_name: typeof value.remote_name === 'string' && value.remote_name ? boundedString(value.remote_name, 255) : null,
+    remote_modified: typeof value.remote_modified === 'string' && value.remote_modified ? boundedString(value.remote_modified, 64) : null,
+    payload_sha256: value.payload_sha256,
+    error_code: errorCode,
+    receipt,
+    remote_current: remoteCurrent,
+    remote_error_code: remoteErrorCode,
+  }
+}
+
+function draftToolResult(value) {
+  if (value?.ok === false && !value.operation_id) {
+    const code = typeof value.error_code === 'string' && /^[a-z0-9_]{1,64}$/.test(value.error_code) ? value.error_code : 'draft_request_failed'
+    return failure(code)
+  }
+  const data = projectDraftOperation(value)
+  if (!data) return failure('invalid_quotation_draft_dto')
+  const succeeded = data.status === 'succeeded'
+  return {
+    ok: succeeded,
+    data: JSON.stringify(data),
+    requires_human_confirmation: false,
+    business_ui_url: '',
+    error_code: succeeded ? '' : data.status === 'outcome_unknown' || data.status === 'reserved'
+      ? 'operation_outcome_unknown' : data.status === 'conflict' ? 'operation_conflict' : 'operation_not_succeeded',
+  }
+}
+
+function validQuotationPayload(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const allowed = ['company', 'party_name', 'transaction_date', 'valid_till', 'currency', 'items']
+  const required = ['company', 'party_name', 'transaction_date', 'currency', 'items']
+  if (Object.keys(value).some(key => !allowed.includes(key)) || required.some(key => !Object.hasOwn(value, key))) return false
+  for (const key of ['company', 'party_name', 'transaction_date', 'currency']) {
+    if (typeof value[key] !== 'string' || !value[key] || value[key].length > QUOTATION_TEXT_LIMITS[key]) return false
+  }
+  if (value.valid_till !== undefined && (typeof value.valid_till !== 'string' || !value.valid_till
+    || value.valid_till.length > QUOTATION_TEXT_LIMITS.valid_till)) return false
+  return Array.isArray(value.items) && value.items.length >= 1 && value.items.length <= 100
+    && value.items.every(item => item && typeof item === 'object' && !Array.isArray(item)
+      && Object.keys(item).length === 4
+      && ['item_code', 'qty', 'rate', 'uom'].every(key => typeof item[key] === 'string' && item[key]
+        && item[key].length <= QUOTATION_TEXT_LIMITS[key]))
+}
+
+const QUOTATION_TEXT_LIMITS = Object.freeze({
+  company: 140, party_name: 140, transaction_date: 10, valid_till: 10, currency: 3,
+  item_code: 140, qty: 32, rate: 32, uom: 140,
+})
+const quotationText = (description, maxLength) => ({
+  type: 'string', description: `${description} 最多${maxLength}个字符。`,
+})
+const quotationItemSchema = {
+  type: 'object', additionalProperties: false, required: ['item_code', 'qty', 'rate', 'uom'],
+  properties: {
+    item_code: quotationText('ERPNext 商品编码。', 140),
+    qty: quotationText('正数量，十进制文本。', 32),
+    rate: quotationText('单价，十进制文本。', 32),
+    uom: quotationText('ERPNext 单位。', 140),
+  },
+}
+const quotationPayloadSchema = {
+  type: 'object', additionalProperties: false,
+  required: ['company', 'party_name', 'transaction_date', 'currency', 'items'],
+  properties: {
+    company: quotationText('ERPNext 公司名称。', 140),
+    party_name: quotationText('ERPNext Customer 名称。', 140),
+    transaction_date: quotationText('交易日期，YYYY-MM-DD。', 10),
+    valid_till: quotationText('可选有效日期，YYYY-MM-DD。', 10),
+    currency: quotationText('三位币种代码。', 3),
+    items: { type: 'array', items: quotationItemSchema },
+  },
+}
+
 function schema(properties, required = Object.keys(properties)) {
   return { type: 'object', additionalProperties: false, required, properties }
 }
@@ -524,6 +1049,141 @@ export function registerBusinessTools(ctx, config = {}, dependencies = {}) {
       },
     },
     {
+      name: 'tradeloom_intake_sources',
+      description: 'Read-only for center, product, and delivery roles: read a bounded page of private workbook source and parser snapshot metadata. This does not return filenames, paths, cell contents, images, or perform mappings.',
+      parameters: schema({
+        offset: { type: 'integer', description: 'Optional zero-based page offset, 0 to 100000.' },
+        limit: { type: 'integer', description: 'Optional page size, 1 to 50.' },
+      }, []),
+      async execute(args, exec) {
+        if (!args || typeof args !== 'object' || Array.isArray(args)
+          || Object.keys(args).some(key => !['offset', 'limit'].includes(key))) return failure('invalid_arguments')
+        const offset = boundedPageInteger(args.offset, 0, 100000)
+        const limit = boundedPageInteger(args.limit, 50, INTAKE_MAX_PAGE_SIZE)
+        if (offset === null || limit === null || limit < 1) return failure('invalid_arguments')
+        const query = new URLSearchParams({ offset: String(offset), limit: String(limit) })
+        const result = await djangoRequest(ctx, 'tradeloom_intake_sources', exec,
+          `/api/intake/sources?${query}`, 'GET', undefined, dependencies)
+        if (result?.ok === false) return failure(result.error_code)
+        const page = projectIntakeSources(result, limit)
+        return page ? success(page, { business_ui_url: '/business/artifacts' }) : failure('invalid_intake_dto')
+      },
+    },
+    {
+      name: 'tradeloom_narrative_sources',
+      description: '仅中心角色可读取的私有访谈资料元数据目录。资料可能为摘录或二次分析，完整性与内容尚未核实，不可作为正式规则；录音日期为 null 表示未知，不得根据上传时间推断。',
+      parameters: schema({ offset: { type: 'integer', description: 'Optional zero-based page offset.' }, limit: { type: 'integer', description: 'Optional page size, 1 to 50; defaults to 20.' } }, []),
+      async execute(args, exec) {
+        if (!args || typeof args !== 'object' || Array.isArray(args) || Object.keys(args).some(key => !['offset', 'limit'].includes(key))) return failure('invalid_arguments')
+        if (!exec?.agent?.session?.header) return failure('agent_session_required')
+        if (exec.agent.session.header.agentPreset !== ROLE_PRESETS.center) return failure('role_not_authorized')
+        const offset = boundedPageInteger(args.offset, 0, 100000)
+        const limit = boundedPageInteger(args.limit, 20, 50)
+        if (offset === null || limit === null || limit < 1) return failure('invalid_arguments')
+        const query = new URLSearchParams({ offset: String(offset), limit: String(limit) })
+        const result = await djangoRequest(ctx, 'tradeloom_narrative_sources', exec, `/api/intake/narratives?${query}`, 'GET', undefined, dependencies)
+        if (result?.ok === false) return failure(result.error_code)
+        const page = projectNarrativeSources(result, limit)
+        return page ? success(page, { business_ui_url: '/business/artifacts' }) : failure('invalid_narrative_dto')
+      },
+    },
+    {
+      name: 'tradeloom_narrative_excerpt',
+      description: '仅中心角色可读取一份私有访谈资料中有界的原文行。资料可能为摘录或二次分析，完整性与内容尚未核实，不是正式规则；录入者表示已核听不等于系统验证，未知录音日期仍为 null。',
+      parameters: schema({ source_id: wireString('Existing lowercase 32-character source ID.'), offset: { type: 'integer', description: 'Optional zero-based line offset.' }, limit: { type: 'integer', description: 'Optional line count, 1 to 10; defaults to 5.' } }, ['source_id']),
+      async execute(args, exec) {
+        if (!exactArgs(args, ['source_id', 'offset', 'limit'], ['source_id']) || typeof args.source_id !== 'string' || !INTAKE_OPAQUE_ID.test(args.source_id)) return failure('invalid_arguments')
+        if (!exec?.agent?.session?.header) return failure('agent_session_required')
+        if (exec.agent.session.header.agentPreset !== ROLE_PRESETS.center) return failure('role_not_authorized')
+        const offset = boundedPageInteger(args.offset, 0, 100000)
+        const limit = boundedPageInteger(args.limit, 5, 10)
+        if (offset === null || limit === null || limit < 1) return failure('invalid_arguments')
+        const query = new URLSearchParams({ offset: String(offset), limit: String(limit) })
+        const result = await djangoRequest(ctx, 'tradeloom_narrative_excerpt', exec,
+          `/api/intake/narratives/${encodeURIComponent(args.source_id)}/lines?${query}`, 'GET', undefined, dependencies)
+        if (result?.ok === false) return failure(result.error_code)
+        const excerpt = projectNarrativeExcerpt(result, args.source_id, limit)
+        return excerpt ? success(excerpt, { business_ui_url: '/business/artifacts' }) : failure('invalid_narrative_dto')
+      },
+    },
+    {
+      name: 'tradeloom_intake_candidates',
+      description: 'Read-only bounded candidate directory for center, product, and delivery. Center may filter by any candidate type or omit it; product is restricted to product_identity and delivery to production_instruction. Optional source_id narrows the directory to candidates citing that source. Returns opaque IDs, type, digest, source IDs and unconfirmed/unknown status only; inspect details with tradeloom_intake_candidate.',
+      parameters: schema({
+        candidate_type: { type: 'string', enum: INTAKE_CANDIDATE_TYPES, description: 'Optional category filter. Product is forced to product_identity; delivery is forced to production_instruction; center may choose any category.' },
+        source_id: wireString('Optional existing 32-character lowercase opaque source ID.'),
+        offset: { type: 'integer', description: 'Optional zero-based page offset, 0 to 100000.' },
+        limit: { type: 'integer', description: 'Optional page size, 1 to 50.' },
+      }, []),
+      async execute(args, exec) {
+        if (!args || typeof args !== 'object' || Array.isArray(args)
+          || Object.keys(args).some(key => !['candidate_type', 'source_id', 'offset', 'limit'].includes(key))) return failure('invalid_arguments')
+        if (!exec?.agent?.session?.header) return failure('agent_session_required')
+        const preset = exec.agent.session.header.agentPreset
+        const roleType = preset === ROLE_PRESETS.product ? 'product_identity'
+          : preset === ROLE_PRESETS.delivery ? 'production_instruction' : null
+        const requestedType = args.candidate_type
+        if (requestedType !== undefined && !INTAKE_CANDIDATE_TYPES.includes(requestedType)) return failure('invalid_arguments')
+        if (requestedType && roleType && requestedType !== roleType) return failure('role_not_authorized')
+        if (preset !== ROLE_PRESETS.center && preset !== ROLE_PRESETS.product && preset !== ROLE_PRESETS.delivery) return failure('role_not_authorized')
+        if (args.source_id !== undefined && (typeof args.source_id !== 'string' || !INTAKE_OPAQUE_ID.test(args.source_id))) return failure('invalid_arguments')
+        const offset = boundedPageInteger(args.offset, 0, 100000)
+        const limit = boundedPageInteger(args.limit, 50, INTAKE_MAX_PAGE_SIZE)
+        if (offset === null || limit === null || limit < 1) return failure('invalid_arguments')
+        const filterType = roleType || requestedType
+        const query = new URLSearchParams()
+        if (filterType) query.set('candidate_type', filterType)
+        if (args.source_id) query.set('source_id', args.source_id)
+        query.set('offset', String(offset))
+        query.set('limit', String(limit))
+        const result = await djangoRequest(ctx, 'tradeloom_intake_candidates', exec,
+          `/api/intake/candidates?${query}`, 'GET', undefined, dependencies)
+        if (result?.ok === false) return failure(result.error_code)
+        const page = projectIntakeCandidateDirectory(result, filterType, preset, limit)
+        return page ? success(page, { business_ui_url: '/business/artifacts' }) : failure('invalid_intake_dto')
+      },
+    },
+    {
+      name: 'tradeloom_intake_candidate',
+      description: 'Read-only typed candidate details and source cell coordinates by opaque ID. Center may read all candidate types; product may read only product_identity; delivery may read only production_instruction. This tool cannot edit or confirm data.',
+      parameters: schema({
+        candidate_id: wireString('Existing 32-character lowercase opaque candidate ID.'),
+        candidate_type: { type: 'string', enum: INTAKE_CANDIDATE_TYPES, description: 'Expected fixed candidate category; center: any listed type, product: product_identity only, delivery: production_instruction only.' },
+      }),
+      async execute(args, exec) {
+        if (!exactArgs(args, ['candidate_id', 'candidate_type'], ['candidate_id', 'candidate_type'])
+          || !INTAKE_OPAQUE_ID.test(args.candidate_id) || !INTAKE_CANDIDATE_TYPES.includes(args.candidate_type)) return failure('invalid_arguments')
+        if (!exec?.agent?.session?.header) return failure('agent_session_required')
+        const preset = exec.agent.session.header.agentPreset
+        if (!intakeCandidateTypeAllowed(preset, args.candidate_type)) return failure('role_not_authorized')
+        const result = await djangoRequest(ctx, 'tradeloom_intake_candidate', exec,
+          `/api/intake/candidates/${encodeURIComponent(args.candidate_id)}`, 'GET', undefined, dependencies)
+        if (result?.ok === false) return failure(result.error_code)
+        const returnedCandidate = result?.candidate
+        if (returnedCandidate && typeof returnedCandidate === 'object' && !Array.isArray(returnedCandidate)
+          && typeof returnedCandidate.candidate_type === 'string'
+          && !intakeCandidateTypeAllowed(preset, returnedCandidate.candidate_type)) return failure('role_not_authorized')
+        const candidate = projectIntakeCandidate(result, args.candidate_type)
+        if (!candidate) return failure('invalid_intake_dto')
+        if (!intakeCandidateTypeAllowed(preset, candidate.candidate_type)) return failure('role_not_authorized')
+        return success(candidate, { business_ui_url: '/business/artifacts' })
+      },
+    },
+    {
+      name: 'tradeloom_read_execution_plan',
+      description: 'Read one locally saved execution plan draft and its exact confirmed requirement revision sources. Material and operation values are human proposals; actual receiving and production quantities remain missing. Read-only.',
+      parameters: schema({ plan_revision_id: wireString('Exact lowercase 32-character execution plan revision ID; runtime validates all 32 hex characters.') }),
+      async execute(args, exec) {
+        if (!exactArgs(args, ['plan_revision_id'], ['plan_revision_id'])
+          || !/^[0-9a-f]{32}$/.test(args.plan_revision_id)) return failure('invalid_arguments')
+        const result = await djangoRequest(ctx, 'tradeloom_read_execution_plan', exec,
+          `/api/execution-plans/${encodeURIComponent(args.plan_revision_id)}`, 'GET', undefined, dependencies)
+        if (result?.ok === false) return failure(result.error_code)
+        const projected = projectExecutionPlan(result, args.plan_revision_id)
+        return projected ? success(projected, { business_ui_url: '/business/artifacts' }) : failure('invalid_execution_plan_dto')
+      },
+    },
+    {
       name: 'tradeloom_erpnext_status',
       description: 'Read whether the locally configured ERPNext connection is configured and reachable. It does not return credentials or instance identity.',
       parameters: schema({}),
@@ -590,6 +1250,68 @@ export function registerBusinessTools(ctx, config = {}, dependencies = {}) {
         if (result?.ok === false) return failure(result.error_code)
         const record = projectErpNextRecord(result, args.doctype)
         return record ? success(record) : failure('invalid_erpnext_record_dto')
+      },
+    },
+    {
+      name: 'tradeloom_erpnext_create_quotation_draft',
+      description: 'Create one fixed ERPNext Quotation draft (docstatus 0) using the supplied idempotency key. A non-succeeded result is not success; inspect the same operation and never retry with a new key unless starting a distinct, explicit operation.',
+      parameters: schema({
+        idempotency_key: wireString('Caller-stable key; reuse this exact value if a response is lost.'),
+        payload: quotationPayloadSchema,
+        workflow_id: wireString('Optional existing TradeLoom workflow ID.'),
+      }, ['idempotency_key', 'payload']),
+      async execute(args, exec) {
+        if (!args || typeof args !== 'object' || Array.isArray(args)
+          || Object.keys(args).some(key => !['idempotency_key', 'payload', 'workflow_id'].includes(key))
+          || typeof args.idempotency_key !== 'string' || !args.idempotency_key || args.idempotency_key.length > 200
+          || !validQuotationPayload(args.payload)
+          || (args.workflow_id !== undefined && (typeof args.workflow_id !== 'string' || !args.workflow_id))) return failure('invalid_arguments')
+        const body = { idempotency_key: args.idempotency_key, payload: args.payload }
+        if (args.workflow_id !== undefined) body.workflow_id = args.workflow_id
+        const result = await djangoRequest(ctx, 'tradeloom_erpnext_create_quotation_draft', exec,
+          '/api/erpnext/quotation-drafts', 'POST', body, dependencies)
+        return draftToolResult(result)
+      },
+    },
+    {
+      name: 'tradeloom_erpnext_update_quotation_draft',
+      description: 'Create a separate update operation for one previously confirmed Quotation draft. Requires a new idempotency key and the exact current modified value. On conflict, read the operation and current ERPNext version before forming a new intent.',
+      parameters: schema({
+        target_operation_id: wireString('Previously succeeded operation for the same Quotation.'),
+        idempotency_key: wireString('New stable key for this distinct update operation.'),
+        expected_modified: wireString('Exact ERPNext modified value from the latest readback.'),
+        payload: quotationPayloadSchema,
+        workflow_id: wireString('Optional existing TradeLoom workflow ID.'),
+      }, ['target_operation_id', 'idempotency_key', 'expected_modified', 'payload']),
+      async execute(args, exec) {
+        if (!args || typeof args !== 'object' || Array.isArray(args)
+          || Object.keys(args).some(key => !['target_operation_id', 'idempotency_key', 'expected_modified', 'payload', 'workflow_id'].includes(key))
+          || typeof args.target_operation_id !== 'string' || !/^[0-9a-f]{32}$/.test(args.target_operation_id)
+          || typeof args.idempotency_key !== 'string' || !args.idempotency_key || args.idempotency_key.length > 200
+          || typeof args.expected_modified !== 'string' || !args.expected_modified
+          || !validQuotationPayload(args.payload)
+          || (args.workflow_id !== undefined && (typeof args.workflow_id !== 'string' || !args.workflow_id))) return failure('invalid_arguments')
+        const body = {
+          idempotency_key: args.idempotency_key,
+          expected_modified: args.expected_modified,
+          payload: args.payload,
+        }
+        if (args.workflow_id !== undefined) body.workflow_id = args.workflow_id
+        const result = await djangoRequest(ctx, 'tradeloom_erpnext_update_quotation_draft', exec,
+          `/api/erpnext/quotation-drafts/${encodeURIComponent(args.target_operation_id)}`,
+          'PUT', body, dependencies, [409])
+        return draftToolResult(result)
+      },
+    },
+    {
+      name: 'tradeloom_erpnext_read_quotation_draft_operation',
+      description: 'Read and reconcile one existing Quotation operation by its server-issued operation ID. This is the only action for checking an outcome_unknown result; it does not create or update a draft.',
+      parameters: schema({ operation_id: wireString('Server-issued Quotation operation ID.') }),
+      async execute(args, exec) {
+        if (!exactArgs(args, ['operation_id'], ['operation_id']) || !/^[0-9a-f]{32}$/.test(args.operation_id)) return failure('invalid_arguments')
+        const result = await djangoRequest(ctx, 'tradeloom_erpnext_read_quotation_draft_operation', exec,
+          `/api/erpnext/quotation-drafts/${encodeURIComponent(args.operation_id)}`, 'GET', undefined, dependencies)
+        return draftToolResult(result)
       },
     },
   ]

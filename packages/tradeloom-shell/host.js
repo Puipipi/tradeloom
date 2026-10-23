@@ -8,15 +8,17 @@ import { normalizeDockLayouts, validateDockLayouts } from './dock-layout.js'
 import { apply as applyBusinessProxy } from './proxy.js'
 import { apply as applyBusinessPolicy } from './policy.js'
 import { AGENT_CAPABILITIES_ROUTE, createAgentCapabilitiesHandler } from './capabilities.js'
+import { AGENT_CONFIGURATION_ROUTE, createAgentConfigurationHandler } from './agent-configuration.js'
 
 const ROUTE = '/tradeloom/session'
+const NEW_SESSION_ROUTE = '/tradeloom/session/new'
 const PROFILE_ROUTE = '/tradeloom/profile'
 const MOBILE_LINK_ROUTE = '/tradeloom/mobile-link'
 const SCENES_ROUTE = '/tradeloom/scenes'
 const SCENE_LAYOUTS_ROUTE = '/tradeloom/scene-layouts'
 const DOCK_LAYOUTS_ROUTE = '/tradeloom/dock-layouts'
 export const name = '@tradeloom/dsh-business-shell'
-export const inject = ['connection', 'webServer', 'workspaceRegistry', 'sessionController', 'tools', 'agents']
+export const inject = ['connection', 'webServer', 'workspaceRegistry', 'sessionController', 'sessionQuery', 'tools', 'agents']
 const MAX_BODY = 4096
 const MAX_DOCK_LAYOUT_BODY = 128 * 1024
 
@@ -79,6 +81,236 @@ export function createSessionHandler(ctx, dependencies = {}) {
     } catch (error) {
       ctx.logger?.error?.(`tradeloom-shell: session route failed: ${String(error)}`)
       json(res, 503, { error: 'tradeloom-home-unavailable' })
+    }
+  }
+}
+
+const CREATE_OPERATION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const sessionCreateFlights = new Map()
+
+function validNewSessionInput(input) {
+  if (input === null || typeof input !== 'object' || Array.isArray(input)
+    || Object.keys(input).length !== 3
+    || !Object.hasOwn(input, 'role') || !Object.hasOwn(input, 'expectedSessionId') || !Object.hasOwn(input, 'operationId')
+    || !ROLE_IDS.includes(input.role) || typeof input.operationId !== 'string' || !CREATE_OPERATION_ID.test(input.operationId)) return false
+  return input.expectedSessionId === null
+    || (typeof input.expectedSessionId === 'string' && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(input.expectedSessionId))
+}
+
+function sessionCreateFailure(res, status, error, operationId) {
+  json(res, status, { error, operationId })
+}
+
+async function observePendingSession(ctx, sessionId) {
+  try {
+    const observation = await ctx.sessionQuery.observeSession(sessionId)
+    try {
+      return { found: true, observation: {
+        header: { id: observation?.header?.id, cwd: observation?.header?.cwd },
+        projections: { values: {
+          agentPreset: observation?.projections?.values?.agentPreset,
+          turnBoundary: observation?.projections?.values?.turnBoundary,
+        } },
+        events: (observation?.events ?? []).map(event => ({ type: event.type })),
+      } }
+    }
+    finally { observation?.[Symbol.dispose]?.() }
+  } catch (error) {
+    if (error?.code === 'SESSION_QUERY_SESSION_NOT_FOUND') return { found: false }
+    throw error
+  }
+}
+
+function isReusablePendingObservation(observation, operation, workspace, archivedSessionIds) {
+  const boundary = observation?.projections?.values?.turnBoundary
+  const blank = boundary === undefined
+    || (boundary !== null && typeof boundary === 'object'
+      && boundary.openTurnStartSeq === null && boundary.lastTurn === 0)
+  return observation?.header?.id === operation.sessionId
+    && observation.header.cwd === operation.workspacePath
+    && observation.projections?.values?.agentPreset === operation.agentPreset
+    && blank
+    && workspace?.id === operation.workspaceId
+    && Array.isArray(workspace.sessionIds)
+    && workspace.sessionIds.includes(operation.sessionId)
+    && Array.isArray(archivedSessionIds)
+    && !archivedSessionIds.includes(operation.sessionId)
+}
+
+/** Create a new blank conversation without changing or deleting the previous session. */
+export function createNewSessionHandler(ctx, dependencies = {}) {
+  const storeFactory = dependencies.createStateStore ?? createStateStore
+  const getHome = dependencies.resolveOwnedHome ?? resolveOwnedHome
+  const getWorkspacePath = dependencies.roleWorkspacePath ?? roleWorkspacePath
+  return async (req, res) => {
+    const rejection = ctx.connection.requestRejection(req)
+    if (rejection !== undefined) { res.statusCode = rejection; res.end(); return }
+    if (req.method !== 'POST') { res.statusCode = 405; res.setHeader('allow', 'POST'); res.end(); return }
+    let ownedHome
+    try { ownedHome = await getHome() }
+    catch { json(res, 503, { error: 'session-create-unavailable' }); return }
+    let text
+    try { text = await readBody(req) }
+    catch { json(res, 400, { error: 'request-body-unavailable' }); return }
+    if (text === null) { json(res, 413, { error: 'request-too-large' }); return }
+    let input
+    try { input = JSON.parse(text) } catch { json(res, 400, { error: 'invalid-json' }); return }
+    if (!validNewSessionInput(input)) { json(res, 400, { error: 'invalid-new-session-request' }); return }
+    const operationId = input.operationId.toLowerCase()
+    const normalized = { ...input, operationId }
+    const fingerprint = JSON.stringify([normalized.role, normalized.expectedSessionId])
+    const flightKey = JSON.stringify([ownedHome, operationId])
+    const active = sessionCreateFlights.get(flightKey)
+    if (active) {
+      if (active.fingerprint !== fingerprint) { sessionCreateFailure(res, 409, 'operation-id-conflict', operationId); return }
+      const outcome = await active.promise
+      json(res, outcome.status, outcome.body)
+      return
+    }
+
+    const promise = (async () => {
+      try {
+        const store = await storeFactory()
+        const role = normalized.role
+        const preset = ROLE_PRESETS[role]
+        const workspacePath = await getWorkspacePath(role)
+        const sessionId = `session-${operationId}`
+        const reserved = await store.transact(state => {
+          state.sessionCreateOperations ??= {}
+          state.pendingSessionCreateByRole ??= {}
+          const currentOperation = state.sessionCreateOperations[operationId]
+          if (currentOperation) {
+            if (currentOperation.fingerprint !== fingerprint) return { error: 'operation-id-conflict', status: 409 }
+            if (currentOperation.status === 'completed') return { completed: true, sessionId: currentOperation.sessionId }
+            return { operation: currentOperation }
+          }
+          if (state.pendingSessionCreateByRole[role]) return { error: 'session-create-in-progress', status: 409 }
+          const currentSessionId = state.roles[role]?.sessionId ?? null
+          if (currentSessionId !== normalized.expectedSessionId) return { error: 'stale-session-binding', status: 409 }
+          const operation = {
+            operationId, fingerprint, role, expectedSessionId: normalized.expectedSessionId,
+            sessionId, workspacePath, workspaceId: null, agentPreset: preset, status: 'prepared',
+          }
+          state.sessionCreateOperations[operationId] = operation
+          state.pendingSessionCreateByRole[role] = operationId
+          return { operation }
+        })
+        if (reserved.error) return { status: reserved.status, body: { error: reserved.error, operationId } }
+        if (reserved.completed) return { status: 200, body: { role, sessionId: reserved.sessionId, operationId, replayed: true } }
+        let operation = reserved.operation
+        if (operation.status === 'outcome_unknown' || operation.status === 'created_unbound') {
+          return { status: 409, body: { error: 'session-create-outcome-unknown', operationId } }
+        }
+
+        let workspace = ctx.workspaceRegistry.list().find(item => item.path === operation.workspacePath)
+        if (workspace === undefined) workspace = await ctx.workspaceRegistry.create(operation.workspacePath, `TradeLoom ${role}`)
+        workspace = ctx.workspaceRegistry.get(workspace.id)
+        if (!workspace || workspace.path !== operation.workspacePath) {
+          await store.transact(state => { const current = state.sessionCreateOperations[operationId]; if (current) current.status = 'outcome_unknown' })
+          return { status: 409, body: { error: 'session-create-outcome-unknown', operationId } }
+        }
+        if (operation.workspaceId && operation.workspaceId !== workspace.id) {
+          await store.transact(state => { const current = state.sessionCreateOperations[operationId]; if (current) current.status = 'outcome_unknown' })
+          return { status: 409, body: { error: 'session-create-outcome-unknown', operationId } }
+        }
+        if (!operation.workspaceId) {
+          await store.transact(state => {
+            const current = state.sessionCreateOperations[operationId]
+            if (current?.status === 'prepared' && current.workspaceId === null) current.workspaceId = workspace.id
+          })
+          operation = { ...operation, workspaceId: workspace.id }
+        }
+
+        let observed = await observePendingSession(ctx, operation.sessionId)
+        if (observed.found) {
+          if (!isReusablePendingObservation(observed.observation, operation, workspace, ctx.workspaceRegistry.archivedSessionIds)) {
+            await store.transact(state => {
+              const current = state.sessionCreateOperations[operationId]
+              if (current) current.status = 'outcome_unknown'
+            })
+            return { status: 409, body: { error: 'session-create-outcome-unknown', operationId } }
+          }
+          if (operation.status !== 'attempted') {
+            await store.transact(state => {
+              const current = state.sessionCreateOperations[operationId]
+              if (current) current.status = 'outcome_unknown'
+            })
+            return { status: 409, body: { error: 'session-create-outcome-unknown', operationId } }
+          }
+        } else {
+          if (operation.status !== 'prepared') {
+            return { status: 409, body: { error: 'session-create-outcome-unknown', operationId } }
+          }
+          const claimed = await store.transact(state => {
+            const current = state.sessionCreateOperations[operationId]
+            if (!current || current.status !== 'prepared'
+              || state.pendingSessionCreateByRole[role] !== operationId
+              || (state.roles[role]?.sessionId ?? null) !== normalized.expectedSessionId) return false
+            current.status = 'attempted'
+            return true
+          })
+          if (!claimed) return { status: 409, body: { error: 'session-create-outcome-unknown', operationId } }
+          let created
+          try {
+            created = await ctx.sessionController.create({ workspaceId: workspace.id, agentPreset: preset, sessionId: operation.sessionId })
+          } catch {
+            return { status: 503, body: { error: 'session-create-outcome-unknown', operationId } }
+          }
+          if (created?.sessionId !== operation.sessionId || created?.agentPreset !== preset) {
+            await store.transact(state => {
+              const current = state.sessionCreateOperations[operationId]
+              if (current) { current.status = 'outcome_unknown'; current.returnedSessionId = created?.sessionId ?? null }
+            })
+            return { status: 409, body: { error: 'session-create-outcome-unknown', operationId } }
+          }
+          workspace = ctx.workspaceRegistry.get(operation.workspaceId)
+          if (!workspace) {
+            await store.transact(state => {
+              const current = state.sessionCreateOperations[operationId]
+              if (current) current.status = 'outcome_unknown'
+            })
+            return { status: 409, body: { error: 'session-create-outcome-unknown', operationId } }
+          }
+          observed = await observePendingSession(ctx, operation.sessionId)
+          if (!observed.found || !isReusablePendingObservation(observed.observation, operation, workspace, ctx.workspaceRegistry.archivedSessionIds)) {
+            await store.transact(state => {
+              const current = state.sessionCreateOperations[operationId]
+              if (current) current.status = 'outcome_unknown'
+            })
+            return { status: 409, body: { error: 'session-create-outcome-unknown', operationId } }
+          }
+        }
+
+        const result = await store.transact(state => {
+          const current = state.sessionCreateOperations[operationId]
+          if (!current || current.status === 'completed') return current?.status === 'completed'
+            ? { ok: true, replayed: true, sessionId: current.sessionId }
+            : { ok: false, error: 'session-create-outcome-unknown' }
+          if (state.pendingSessionCreateByRole[role] !== operationId
+            || (state.roles[role]?.sessionId ?? null) !== normalized.expectedSessionId) {
+            current.status = 'created_unbound'
+            delete state.pendingSessionCreateByRole[role]
+            return { ok: false, error: 'stale-session-binding' }
+          }
+          state.roles[role] = { workspaceId: workspace.id, workspacePath, sessionId: operation.sessionId, agentPreset: preset }
+          current.status = 'completed'
+          delete state.pendingSessionCreateByRole[role]
+          return { ok: true, replayed: false, sessionId: operation.sessionId }
+        })
+        return result.ok
+          ? { status: result.replayed ? 200 : 201, body: { role, sessionId: result.sessionId, operationId, ...(result.replayed ? { replayed: true } : {}) } }
+          : { status: 409, body: { error: result.error, operationId } }
+      } catch (error) {
+        ctx.logger?.error?.('tradeloom-shell: new session route failed (session-create-unavailable)')
+        return { status: 503, body: { error: 'session-create-unavailable', operationId } }
+      }
+    })()
+    sessionCreateFlights.set(flightKey, { fingerprint, promise })
+    try {
+      const outcome = await promise
+      json(res, outcome.status, outcome.body)
+    } finally {
+      if (sessionCreateFlights.get(flightKey)?.promise === promise) sessionCreateFlights.delete(flightKey)
     }
   }
 }
@@ -256,13 +488,15 @@ export function apply(ctx) {
   applyBusinessProxy(ctx)
   ctx.effect(() => {
     const disposeSession = ctx.webServer.register({ kind: 'exact', path: ROUTE, handler: createSessionHandler(ctx) })
+    const disposeNewSession = ctx.webServer.register({ kind: 'exact', path: NEW_SESSION_ROUTE, handler: createNewSessionHandler(ctx) })
     const disposeProfile = ctx.webServer.register({ kind: 'exact', path: PROFILE_ROUTE, handler: createProfileHandler(ctx) })
     const disposeMobileLink = ctx.webServer.register({ kind: 'exact', path: MOBILE_LINK_ROUTE, handler: createMobileLinkHandler(ctx) })
     const disposeScenes = ctx.webServer.register({ kind: 'exact', path: SCENES_ROUTE, handler: createScenesHandler(ctx) })
     const disposeSceneLayouts = ctx.webServer.register({ kind: 'exact', path: SCENE_LAYOUTS_ROUTE, handler: createSceneLayoutsHandler(ctx) })
     const disposeDockLayouts = ctx.webServer.register({ kind: 'exact', path: DOCK_LAYOUTS_ROUTE, handler: createDockLayoutsHandler(ctx) })
     const disposeAgentCapabilities = ctx.webServer.register({ kind: 'exact', path: AGENT_CAPABILITIES_ROUTE, handler: createAgentCapabilitiesHandler(ctx) })
-    return () => { disposeSession(); disposeProfile(); disposeMobileLink(); disposeScenes(); disposeSceneLayouts(); disposeDockLayouts(); disposeAgentCapabilities() }
+    const disposeAgentConfiguration = ctx.webServer.register({ kind: 'exact', path: AGENT_CONFIGURATION_ROUTE, handler: createAgentConfigurationHandler(ctx) })
+    return () => { disposeSession(); disposeNewSession(); disposeProfile(); disposeMobileLink(); disposeScenes(); disposeSceneLayouts(); disposeDockLayouts(); disposeAgentCapabilities(); disposeAgentConfiguration() }
   }, 'tradeloom-shell: protected session and profile routes')
 }
 
