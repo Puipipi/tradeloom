@@ -1369,6 +1369,7 @@ window.__ModuleLoader__.load({
       const dropEndEventRef = React.useRef(null)
       const overlayEventRef = React.useRef(null)
       const dragStartEventRef = React.useRef(null)
+      const groupDragStartEventRef = React.useRef(null)
       const headerDoubleClickRef = React.useRef(null)
       const maximizeAnimationRef = React.useRef(null)
       const maximizeStartFrameRef = React.useRef(0)
@@ -1560,6 +1561,7 @@ window.__ModuleLoader__.load({
         dropEndEventRef.current?.dispose?.()
         overlayEventRef.current?.dispose?.()
         dragStartEventRef.current?.dispose?.()
+        groupDragStartEventRef.current?.dispose?.()
         headerDoubleClickRef.current?.()
         clearMaximizeAnimation()
         clearDropIntent()
@@ -1611,18 +1613,41 @@ window.__ModuleLoader__.load({
             notifyDockActions(scene.id)
           })
           let dragPanelId = ''
+          let dragGroupId = ''
+          const resolveDraggedPanel = transfer => {
+            if (transfer) {
+              if (transfer.viewId !== readyApi.id) return null
+              if (transfer.panelId) return readyApi.getPanel(transfer.panelId)
+              if (transfer.groupId) {
+                return readyApi.groups.find(group => group.id === transfer.groupId)?.activePanel ?? null
+              }
+              return null
+            }
+            if (dragPanelId) return readyApi.getPanel(dragPanelId)
+            if (dragGroupId) return readyApi.groups.find(group => group.id === dragGroupId)?.activePanel ?? null
+            return null
+          }
           dragStartEventRef.current = readyApi.onWillDragPanel(event => {
             clearDropIntent()
             dragPanelId = event?.panel?.id ?? ''
+            dragGroupId = ''
           })
-          dropEndEventRef.current = readyApi.onDidDrop?.(() => clearDropIntent()) ?? null
+          groupDragStartEventRef.current = readyApi.onWillDragGroup?.(event => {
+            clearDropIntent()
+            dragPanelId = ''
+            dragGroupId = event?.group?.id ?? ''
+          })
+          dropEndEventRef.current = readyApi.onDidDrop?.(() => {
+            dragPanelId = ''
+            dragGroupId = ''
+            clearDropIntent()
+          }) ?? null
           overlayEventRef.current = readyApi.onWillShowOverlay(event => {
             const transfer = event.getData?.()
-            const sourceId = transfer?.viewId === readyApi.id ? transfer.panelId : dragPanelId
-            const source = sourceId ? readyApi.getPanel(sourceId) : null
+            const source = resolveDraggedPanel(transfer)
             const targetGroupId = event.group?.id ?? event.group?.model?.id
             const sourceGroupId = source?.api?.group?.id
-            if (event.kind === 'content' && sourceGroupId && sourceGroupId === targetGroupId) {
+            if (event.kind === 'content' && event.position === 'center' && sourceGroupId && sourceGroupId === targetGroupId) {
               event.preventDefault()
               removeDropIntentBeforeOverlayUpdate()
               return
@@ -1651,14 +1676,16 @@ window.__ModuleLoader__.load({
           dropEventRef.current = readyApi.onWillDrop(event => {
             if (event.kind !== 'content') return
             const transfer = event.getData?.()
-            if (!transfer || transfer.viewId !== readyApi.id || !transfer.panelId) return
-            const source = readyApi.getPanel(transfer.panelId)
+            if (!transfer || transfer.viewId !== readyApi.id) return
+            const source = resolveDraggedPanel(transfer)
             const targetPanelId = event.group?.activePanel?.id ?? event.group?.model?.activePanel?.id
             const target = targetPanelId ? readyApi.getPanel(targetPanelId) : null
             if (!source || !target) return
-            if (source.id === target.id) { event.preventDefault(); return }
             if (event.position !== 'center') return
-            if (source.api.group?.id === target.api.group?.id) { event.preventDefault(); return }
+            if (source.id === target.id || source.api.group?.id === target.api.group?.id) {
+              event.preventDefault()
+              return
+            }
             if (swapDockPanel(readyApi, source, target)) event.preventDefault()
           })
           const onHeaderDoubleClick = event => {
