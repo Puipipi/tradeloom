@@ -156,6 +156,7 @@ class ProductLibraryApiTests(TestCase):
             data["revisions"][0]["snapshot"]["sku"],
             "LIB-010",
         )
+        self.assertEqual(data["revisions"][0]["id"], product.revisions.get(version=3).pk)
         self.assertEqual(
             data["revisions"][0]["source"],
             "legacy_backfill",

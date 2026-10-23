@@ -307,7 +307,12 @@ class PageTests(TestCase):
         self.assertContains(response, 'data-testid="intake-narratives"')
         self.assertContains(response, 'data-testid="intake-requirement-workspace"')
         self.assertContains(response, "/api/production-requirements/__REQUIREMENT__/revisions")
-        self.assertContains(response, "intake.js")
+        self.assertContains(response, 'data-candidate-apply-url="/api/intake/candidates/__CANDIDATE__/apply"')
+        self.assertContains(response, 'data-tasks-url="/api/tasks"')
+        self.assertContains(response, 'data-products-url="/api/product-library"')
+        self.assertContains(response, "intake-product-application.js?v=intake-application2")
+        self.assertContains(response, "intake.js?v=intake-application2")
+        self.assertContains(response, "styles.css?v=intake-application2")
 
     def test_runs_page_shows_real_runs_events_and_platform_status(self):
         batch = self.make_batch(title="运行批次")

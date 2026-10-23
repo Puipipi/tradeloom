@@ -12,6 +12,9 @@
     data-candidate-create-url="{% business_path '/api/intake/mappings/__MAPPING__/candidates' %}"
     data-candidates-url="{% business_path '/api/intake/candidates' %}"
     data-candidate-url="{% business_path '/api/intake/candidates/__CANDIDATE__' %}"
+    data-candidate-apply-url="{% business_path '/api/intake/candidates/__CANDIDATE__/apply' %}"
+    data-tasks-url="{% business_path '/api/tasks' %}"
+    data-products-url="{% business_path '/api/product-library' %}"
     data-candidate-links-url="{% business_path '/api/intake/candidates/__CANDIDATE__/links' %}"
     data-narratives-url="{% business_path '/api/intake/narratives' %}"
     data-narrative-lines-url="{% business_path '/api/intake/narratives/__NARRATIVE__/lines' %}"
@@ -95,7 +98,7 @@
           <button class="button secondary small" type="button" data-intake-refresh-candidates>刷新</button>
         </div>
         <div class="intake-candidate-list" data-testid="intake-candidates"></div>
-        <pre class="intake-candidate-detail" data-intake-candidate-detail hidden></pre>
+        <section class="intake-candidate-detail" data-intake-candidate-detail hidden aria-live="polite"></section>
       </section>
     </div>
     </section>
@@ -245,4 +248,4 @@
   </section>
 </div>
 {% endblock %}
-{% block scripts %}<script src="{{ '/static/workbench/execution-plans.js'|business_url }}" defer></script><script src="{{ '/static/workbench/intake.js'|business_url }}" defer></script><script src="{{ '/static/workbench/intake-links.js'|business_url }}" defer></script>{% endblock %}
+{% block scripts %}<script src="{{ '/static/workbench/execution-plans.js'|business_url }}" defer></script><script src="{{ '/static/workbench/intake-product-application.js?v=intake-application2'|business_url }}" defer></script><script src="{{ '/static/workbench/intake.js?v=intake-application2'|business_url }}" defer></script><script src="{{ '/static/workbench/intake-links.js'|business_url }}" defer></script>{% endblock %}

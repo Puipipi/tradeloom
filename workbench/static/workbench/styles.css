@@ -1471,9 +1471,113 @@ html[data-business-iframe="true"] [data-testid="product-result-count"].count-not
   border-radius: 6px;
   color: var(--ink);
   background: var(--surface-soft);
-  font-size: 11px;
-  white-space: pre-wrap;
+  font-size: 13px;
+  white-space: normal;
   overflow-wrap: anywhere;
+}
+
+.intake-product-application {
+  display: grid;
+  gap: var(--wb-space-2);
+  margin-top: var(--wb-space-3);
+  padding-top: var(--wb-space-3);
+  border-top: 1px solid var(--line);
+  white-space: normal;
+}
+
+.intake-product-application > label,
+.intake-product-application-field label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.intake-product-application select,
+.intake-product-application input,
+.intake-product-application textarea {
+  width: 100%;
+  min-width: 0;
+  font: inherit;
+  color: var(--ink);
+}
+
+.intake-product-application-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--wb-space-2);
+}
+
+.intake-product-application-field {
+  display: grid;
+  gap: var(--wb-space-2);
+  min-width: 0;
+  margin: 0;
+  padding: var(--wb-space-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.intake-product-application-field legend {
+  padding: 0 4px;
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.intake-product-application-section > summary,
+.intake-application-receipt > summary {
+  cursor: pointer;
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.intake-product-application-section > summary {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-soft);
+}
+
+.intake-application-receipt {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-soft);
+  overflow-wrap: anywhere;
+}
+
+.intake-application-receipt p {
+  margin: 6px 0;
+}
+
+.intake-application-receipt-fields {
+  display: grid;
+  grid-template-columns: minmax(90px, .35fr) minmax(0, 1fr);
+  gap: 4px 10px;
+  margin: 8px 0 0;
+}
+
+.intake-application-receipt-fields dt {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.intake-application-receipt-fields dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.intake-application-history {
+  margin-top: 6px;
+}
+
+@media (max-width: 760px) {
+  .intake-product-application-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .intake-followup-columns {

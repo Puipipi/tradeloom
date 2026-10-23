@@ -23,6 +23,7 @@ from workbench.models import (
     IntakeSourceVersion,
     NarrativeSourceVersion,
     NarrativeAnnotationRevision,
+    ProductRevision,
     WorkbookImageReference,
     WorkbookSnapshot,
 )
@@ -36,6 +37,7 @@ from .narrative_storage import (
     prepare_narrative,
     store_narrative,
 )
+from .product_application import ProductApplicationError, apply_candidate
 from .schemas import FIELD_SCHEMAS, SCHEMA_VERSION, validate_mapping_shape
 from .snapshots import PARSER_VERSION, capture_snapshot
 from .storage import cleanup_unreferenced_source, open_source, store_source, verify_source_root
@@ -59,6 +61,11 @@ _ERROR_STATUSES = {
     "private_store_unavailable": 503,
     "invalid_narrative": 422, "narrative_not_found": 404,
     "stale_annotation": 409,
+    "stale_product": 409, "target_mismatch": 409,
+    "required_identity_fields": 422, "unsupported_candidate_type": 422,
+    "invalid_application": 422, "invalid_application_source": 422,
+    "unresolved_application_source": 422, "incomplete_source_unit": 422,
+    "application_unavailable": 503,
     "invalid_json": 422, "invalid_idempotency_key": 422,
     "invalid_evidence": 422, "evidence_not_found": 404,
 }
@@ -174,6 +181,7 @@ def _serialize(obj, *, cell_reference_count: int | None = None):
                 "revision": obj.revision, "mapping_sha256": obj.mapping_sha256, "mapping": obj.mapping}
     if isinstance(obj, IntakeCandidate):
         return {"id": obj.pk, "mapping_id": obj.mapping_revision_id, "source_sha256": obj.source_sha256,
+                "mapping_revision": obj.mapping_revision.revision,
                 "candidate_type": obj.candidate_type, "schema_version": obj.schema_version, "status": obj.status,
                 "fields": obj.typed_payload["fields"], "semantics": obj.typed_payload["semantics"],
                 "provenance": obj.provenance}
@@ -982,16 +990,61 @@ def candidates(request: HttpRequest) -> JsonResponse:
 
 
 @require_GET
-def candidate(_request: HttpRequest, candidate_id: str) -> JsonResponse:
+def candidate(request: HttpRequest, candidate_id: str) -> JsonResponse:
+    if set(request.GET.keys()) - {"applications_offset", "applications_limit"}:
+        return _error("invalid_arguments")
+    try:
+        applications_offset = int(request.GET.get("applications_offset", "0"))
+        applications_limit = int(request.GET.get("applications_limit", "20"))
+        if (applications_offset < 0 or applications_offset > 100000 or
+                not 1 <= applications_limit <= 20 or
+                any(len(request.GET.getlist(key)) != 1 for key in request.GET.keys())):
+            return _error("invalid_arguments")
+    except ValueError:
+        return _error("invalid_arguments")
     row = IntakeCandidate.objects.filter(pk=candidate_id).first()
     if row is None:
         return _error("candidate_not_found")
     links = (IntakeCandidateLink.objects.filter(left_candidate=row) |
              IntakeCandidateLink.objects.filter(right_candidate=row)).order_by("-created_at", "-id")
     preview = list(links[:21])
+    successful_application_revisions = IntakeOperationReceipt.objects.filter(
+        action="product_application", state=IntakeOperationReceipt.State.SUCCEEDED,
+    ).values("result_id")
+    application_rows = list(ProductRevision.objects.filter(
+        pk__in=successful_application_revisions,
+        source_refs__intake_candidate_id=row.pk,
+    ).order_by("-created_at", "-id")[applications_offset:applications_offset + applications_limit + 1])
+    applications = []
+    for revision in application_rows[:applications_limit]:
+        receipt = (revision.source_refs or {}).get("intake_application")
+        if isinstance(receipt, dict) and receipt.get("candidate_id") == row.pk:
+            applications.append(receipt)
     return JsonResponse({"ok": True, "candidate": _serialize(row),
                          "links": [_serialize(link) for link in preview[:20]],
-                         "links_next_offset": 20 if len(preview) > 20 else None})
+                         "links_next_offset": 20 if len(preview) > 20 else None,
+                         "applications": applications,
+                         "applications_next_offset": (applications_offset + applications_limit
+                                                      if len(application_rows) > applications_limit else None)})
+
+
+@require_POST
+def apply_product_candidate(request: HttpRequest, candidate_id: str) -> JsonResponse:
+    try:
+        key = _key(request)
+        body = _json_object(request)
+        application, created = apply_candidate(candidate_id, body, key)
+        status = 202 if application.get("status") == "pending" else (201 if created else 200)
+        return JsonResponse({"ok": True, "status": "pending" if status == 202 else "succeeded",
+                             "application": application}, status=status)
+    except ProductApplicationError as exc:
+        return _error(exc.code)
+    except ValueError as exc:
+        if str(exc) == "invalid_idempotency_key":
+            return _error("invalid_idempotency_key")
+        return _error("invalid_json")
+    except Exception:
+        return _error("unavailable", 503)
 
 
 @require_GET

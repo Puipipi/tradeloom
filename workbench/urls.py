@@ -38,6 +38,7 @@ urlpatterns = [
     path("api/intake/mappings/<str:mapping_id>/candidates", intake_api.create_candidate),
     path("api/intake/candidates", intake_api.candidates),
     path("api/intake/candidates/<str:candidate_id>", intake_api.candidate),
+    path("api/intake/candidates/<str:candidate_id>/apply", intake_api.apply_product_candidate),
     path("api/intake/candidates/<str:candidate_id>/links", intake_api.create_candidate_link),
     path("api/intake/candidates/<str:candidate_id>/evidence", intake_api.evidence_collection),
     path("api/intake/candidates/<str:candidate_id>/requirement-drafts", requirement_api.create_requirement_draft),

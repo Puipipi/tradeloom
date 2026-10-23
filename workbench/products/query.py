@@ -15,6 +15,7 @@ class InvalidProductFilter(ValueError):
 def _revision_payload(revision: ProductRevision) -> dict:
     source_refs = revision.source_refs or {}
     return {
+        "id": revision.pk,
         "version": revision.version,
         "status": revision.status,
         "source": source_refs.get("source", ""),

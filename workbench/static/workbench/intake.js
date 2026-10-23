@@ -59,6 +59,19 @@
     invalid_requirement: "草稿请求无效，请检查字段或重新读取此版本。",
     invalid_requirement_fields: "部分字段的格式或长度不正确，请检查后保存。",
     invalid_requirement_evidence: "出处或行范围无效，请重新选择对应资料。",
+    invalid_application: "确认请求不符合允许字段或目标格式，请检查后重试。",
+    invalid_application_source: "来源字段不在当前候选中，请重新选择出处。",
+    unresolved_application_source: "所选候选字段尚未解析为可确认值，请检查字段状态。",
+    incomplete_source_unit: "尺寸或卷长来源需要同时选择数值和单位。",
+    stale_product: "目标产品已产生新版本，请重新打开候选并核对后再提交。",
+    stale_mapping: "来源或映射版本已变化，请重新打开候选并确认当前版本。",
+    stale_source: "来源文件版本已变化，请重新读取候选。",
+    unsupported_schema: "此候选使用当前不支持的字段版本，无法应用。",
+    unsupported_candidate_type: "此候选类别不能应用为产品资料。",
+    invalid_idempotency_key: "保存请求标识无效，请刷新候选后重试。",
+    application_unavailable: "已保存结果暂时无法读取，请稍后重开候选查看记录。",
+    required_identity_fields: "SKU 和名称必须保留为非空值。",
+    target_mismatch: "所选产品不属于目标任务，请重新选择。",
     requirement_source_value_mismatch: "修改值与原单元格不一致，请提供修改依据或保留待确认。",
     stale_requirement: "其他操作已更新此草稿。请重新读取当前版本，再核对你的修改。",
     unresolved_requirement: "仍有待确认字段，请先补充内容和出处。",
@@ -747,6 +760,14 @@
       }
     }
     container.append(list);
+
+    if (candidate.candidate_type === "product_identity" && globalThis.TradeLoomIntakeProductApplication) {
+      globalThis.TradeLoomIntakeProductApplication.attach({
+        container, candidate, applications: body.applications || [],
+        applicationsNextOffset: body.applications_next_offset,
+        root, request, keyFactory: key,
+      });
+    }
 
     if (Array.isArray(body.links) && body.links.length) {
       const links = document.createElement("p");
