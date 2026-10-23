@@ -12,6 +12,9 @@ import { patchSetDigest, writeDesktopBuildReceipt } from '../receipt-writer.mjs'
 
 const lock = { upstream: { commit: '687f282e8625c6b8d11ff58211a90524be2e4317' }, patches: { 'one.patch': 'a'.repeat(64) } }
 const sha = value => createHash('sha256').update(value).digest('hex')
+const workspaceRoot = process.env.TRADELOOM_TEST_WORKSPACE_ROOT
+  ? path.resolve(process.env.TRADELOOM_TEST_WORKSPACE_ROOT)
+  : path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../workspace')
 
 test('8.3-style release-root alias is accepted only when directory identity is proven', async () => {
   const alias = 'C:\\TRADEL~1\\RELEASES'
@@ -92,7 +95,7 @@ test('foreign same-HEAD clone without the runtime ownership marker is rejected b
   const releases = path.join(temp, 'releases')
   const foreign = path.join(releases, 'foreign-clone')
   await mkdir(releases, { recursive: true })
-  const reference = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../workspace/research/references/deepseek-harness')
+  const reference = path.join(workspaceRoot, 'research/references/deepseek-harness')
   execFileSync('git', ['clone', '--shared', '--no-checkout', reference, foreign], { stdio: 'pipe' })
   execFileSync('git', ['-C', foreign, 'checkout', '--detach', lock.upstream.commit], { stdio: 'pipe' })
   const sentinel = path.join(foreign, 'sentinel.txt')

@@ -70,6 +70,18 @@ urlpatterns = [
         api.dispatch_workflow_subtask,
     ),
     path(
+        "api/workflow-tasks/<str:workflow_id>/subtasks/<str:subtask_id>/native-assignment",
+        api.begin_native_workflow_assignment,
+    ),
+    path(
+        "api/workflow-tasks/<str:workflow_id>/native-assignments/<str:assignment_id>/submit",
+        api.submit_native_workflow_assignment,
+    ),
+    path(
+        "api/workflow-tasks/<str:workflow_id>/native-assignments/<str:assignment_id>/bind",
+        api.bind_native_workflow_assignment,
+    ),
+    path(
         "api/workflow-tasks/<str:workflow_id>/subtasks/<str:subtask_id>/retry",
         api.retry_workflow_subtask,
     ),

@@ -5,7 +5,7 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { createRequire } from 'node:module'
 import {
-  buildChildEnvironment, chooseAddress, ensureOwnedDirectory, ensureOwnedHome, getDefaultPaths,
+  buildChildEnvironment, chooseAddress, createNativeBridgeKey, ensureOwnedDirectory, ensureOwnedHome, getDefaultPaths,
   launcherPipeName, networkCandidates, reserveNamedPipe, startOwnedChild,
 } from './core.mjs'
 
@@ -399,9 +399,10 @@ function pythonRunArgs(pythonPath, backendRoot, packagesRoot, managePath, django
   return ['-I', '-B', '-c', runner, spec]
 }
 
-function makeDjangoEnv(isolated, host, password, paths) {
+function makeDjangoEnv(isolated, host, password, paths, nativeBridgeKey) {
   return {
     ...isolated,
+    TRADELOOM_NATIVE_BRIDGE_KEY: nativeBridgeKey,
     TRADELOOM_DSH_EMBED: '1',
     TRADELOOM_DSH_ALLOWED_HOSTS: host,
     TRADELOOM_DSH_CSRF_TRUSTED_ORIGINS: 'http://' + host + ':' + DSH_PORT,
@@ -486,13 +487,15 @@ export async function bootstrapInstalledDesktop({ env = process.env, processEnv 
     DSH_WORKSPACE: workspace, TRADELOOM_DSH_WORKSPACE: workspace,
     TRADELOOM_DSH_APP_HOME: paths.home, TEMP: paths.localAppData, TMP: paths.localAppData,
   })
+  const nativeBridgeKey = (deps.createNativeBridgeKey ?? createNativeBridgeKey)()
+  if (!/^[a-f0-9]{64}$/.test(nativeBridgeKey)) throw new TypeError('Native bridge key generator returned an invalid key.')
   delete isolated.PGPASSWORD
   for (const [name, expected] of Object.entries({ DSH_HOME: paths.home, DSH_AGENTS_HOME: agentsHome, DSH_WORKSPACE: workspace,
     TRADELOOM_DSH_APP_HOME: paths.home, LOCALAPPDATA: paths.localAppData })) {
     if (path.resolve(isolated[name] ?? '').toLowerCase() !== path.resolve(expected).toLowerCase()) throw new Error('无法确认安装版独立运行目录：' + name)
   }
   for (const name of Object.keys(processEnv)) delete processEnv[name]
-  Object.assign(processEnv, isolated, { DSH_DESKTOP_OPEN_DEVTOOLS: '0' })
+  Object.assign(processEnv, isolated, { DSH_DESKTOP_OPEN_DEVTOOLS: '0', TRADELOOM_NATIVE_BRIDGE_KEY: nativeBridgeKey })
   const candidates = (deps.networkCandidates ?? networkCandidates)(await deps.readNetworkAdapters())
   const requested = await deps.chooseNetworkAddress(candidates)
   const host = (deps.chooseAddress ?? chooseAddress)(candidates, requested)
@@ -597,7 +600,7 @@ export async function bootstrapInstalledDesktop({ env = process.env, processEnv 
       if (created.error || created.code !== 0) throw new Error('owned PostgreSQL tradeloom database creation failed (' + (created.code ?? 'null') + ').')
     }
 
-    const djangoEnv = makeDjangoEnv(isolated, host, secret.password, { ...paths, media, artifacts })
+    const djangoEnv = makeDjangoEnv(isolated, host, secret.password, { ...paths, media, artifacts }, nativeBridgeKey)
     const runPython = async djangoArgs => {
       const result = await runFile(manifest.python, pythonRunArgs(manifest.python, manifest.backend, manifest.packages, path.join(manifest.backend, 'manage.py'), djangoArgs),
         { cwd: workspace, env: djangoEnv, logPath: path.join(logs, 'django-startup.log') })

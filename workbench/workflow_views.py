@@ -122,6 +122,35 @@ def _reference_rows(value: Any) -> list[dict[str, str]]:
     return rows
 
 
+def _native_advice_rows(source_conflict: Any) -> list[dict[str, Any]]:
+    if not isinstance(source_conflict, dict):
+        return []
+    source_refs = source_conflict.get("source_refs")
+    if not isinstance(source_refs, dict):
+        return []
+    observations = source_refs.get("native_expert_advice")
+    if not isinstance(observations, list):
+        return []
+    rows = []
+    for item in observations[:20]:
+        if not isinstance(item, dict):
+            continue
+        note = item.get("note")
+        if not isinstance(note, str) or not note.strip():
+            continue
+        field_name = item.get("field")
+        check_code = item.get("check_code")
+        label = FACT_FIELD_LABELS.get(field_name, "") if isinstance(field_name, str) else ""
+        if not label and isinstance(check_code, str):
+            label = check_code[:80]
+        advice = {"label": label, "note": note[:500], "source_rows": _reference_rows(item.get("source_refs"))}
+        suggested_value = item.get("suggested_value")
+        if isinstance(suggested_value, str):
+            advice["suggested_value"] = suggested_value[:500]
+        rows.append(advice)
+    return rows
+
+
 def _result_summary(value: Any) -> list[dict[str, str]]:
     if not isinstance(value, dict):
         return []
@@ -330,6 +359,7 @@ def workflow_detail(request, workflow_id: str):
         # source_conflict is not part of the public serializer; expose only schema-safe UI data.
         source_conflict = source_conflict_by_id.get(review["id"], {})
         metadata = source_conflict if isinstance(source_conflict, dict) else {}
+        review["native_advice"] = _native_advice_rows(metadata)
         origin_step_id = metadata.get("origin_step_id")
         if review["status"] in {"pending", "submitted"} and isinstance(origin_step_id, str) and origin_step_id:
             review_origin_ids.add(origin_step_id)
@@ -629,6 +659,7 @@ def workflow_detail(request, workflow_id: str):
             events=events,
             dispatch_target=dispatch_target,
             dispatch_blocked_reason=dispatch_blocked_reason,
+            native_dsh=data.get("execution_mode") == "native_dsh",
             apply_review_target=apply_review_target,
             facts_cycle_applied=facts_cycle_applied,
             english_name_hints=english_name_hints,

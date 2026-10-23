@@ -1,5 +1,6 @@
 import path from 'node:path'
 import { createHash } from 'node:crypto'
+import { buildNativeBridgeChildEnvironment, createNativeBridgeKey, NATIVE_BRIDGE_ENV } from './core.mjs'
 
 export const BOOTSTRAP_MARKER = '.tradeloom-bootstrap-owned'
 export const BOOTSTRAP_MARKER_CONTENT = 'tradeloom-bootstrap-v1\n'
@@ -237,12 +238,15 @@ export async function bootstrapDesktop({ env, processEnv, appPath, resourcesPath
     await deps.ensureOwnedDirectory(directory, '.tradeloom-fallback-owned', 'tradeloom-fallback-v1\n')
   }
 
-  const isolated = deps.buildChildEnvironment(env, { ...paths, agentsHome }, {
+  const bridgeKeyFactory = managed
+    ? () => env[NATIVE_BRIDGE_ENV]
+    : deps.createNativeBridgeKey ?? createNativeBridgeKey
+  const { key: nativeBridgeKey, env: isolated } = buildNativeBridgeChildEnvironment(env, { ...paths, agentsHome }, {
     DSH_WORKSPACE: workspace,
     TRADELOOM_DSH_WORKSPACE: workspace,
     TEMP: paths.localAppData,
     TMP: paths.localAppData,
-  })
+  }, bridgeKeyFactory, deps.buildChildEnvironment)
   for (const [name, expected] of Object.entries({ DSH_HOME: paths.home, DSH_AGENTS_HOME: agentsHome,
     DSH_WORKSPACE: workspace, TRADELOOM_DSH_APP_HOME: paths.home, LOCALAPPDATA: paths.localAppData })) {
     if (path.resolve(isolated[name] ?? '').toLowerCase() !== path.resolve(expected).toLowerCase()) {

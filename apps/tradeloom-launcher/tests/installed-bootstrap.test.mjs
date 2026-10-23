@@ -137,6 +137,7 @@ async function fixture(t) {
 function runtimeDeps(state) {
   const networkAdapters = [{ name: 'Wi-Fi', kind: 'wifi', status: 'Up', hardwareInterface: true, addresses: [{ addressFamily: 'IPv4', address: '192.168.8.20' }] }]
   return {
+    createNativeBridgeKey: () => 'e'.repeat(64),
     getDefaultPaths: env => getDefaultPaths(env),
     readNetworkAdapters: async () => networkAdapters,
     chooseNetworkAddress: async candidates => candidates[0].address,
@@ -149,14 +150,18 @@ function runtimeDeps(state) {
       await mkdir(profileDir, { recursive: true })
       await writeFile(path.join(profileDir, 'package.json'), JSON.stringify({ dsh: { profile: { bundles } } }))
     },
-    runControllerFile: async (_command, args) => {
+    runControllerFile: async (_command, args, options) => {
       state.events.push(`pgctl:${args[0]}`)
+      state.controllerBridgeKeys ??= []
+      state.controllerBridgeKeys.push(options?.env?.TRADELOOM_NATIVE_BRIDGE_KEY)
       if (args[0] === 'status') return { code: state.pgActive ? 0 : 3 }
       if (args[0] === 'start') { state.pgActive = true; return { code: 0 } }
       if (args[0] === 'stop') { state.pgActive = false; return { code: 0 } }
       return { code: 0 }
     },
     runFile: async (command, args, options) => {
+      state.helperBridgeKeys ??= []
+      state.helperBridgeKeys.push({ command: path.basename(command).toLowerCase(), key: options?.env?.TRADELOOM_NATIVE_BRIDGE_KEY, args: [...args] })
       if (path.basename(command).toLowerCase() === 'initdb.exe') {
         const dataDir = args[args.indexOf('-D') + 1]
         await mkdir(dataDir, { recursive: true })
@@ -187,6 +192,9 @@ function runtimeDeps(state) {
     startOwnedChild: (_command, args, options) => {
       const spec = JSON.parse(args.at(-1))
       state.events.push('django:' + spec.args[0])
+      state.djangoBridgeKey = options.env.TRADELOOM_NATIVE_BRIDGE_KEY
+      state.djangoArgs = args
+      state.djangoLogPath = options.logPath
       state.assertDjangoEnv = options.env.TRADELOOM_MEDIA_ROOT === path.join(state.dataRoot, 'media') && options.env.TRADELOOM_ARTIFACT_ROOT === path.join(state.dataRoot, 'artifacts')
       return { spawned: Promise.resolve(), exited: new Promise(() => {}), stop: async () => { state.events.push('django:stop') } }
     },
@@ -223,6 +231,14 @@ test('packaged bootstrap validates schema 2, initializes isolated runtime in ord
   assert.equal(state.assertDjangoEnv, true)
   assert.equal(processEnv.DSH_HOME, startup.paths.home)
   assert.equal(processEnv.DSH_API_KEY, undefined)
+  assert.equal(processEnv.TRADELOOM_NATIVE_BRIDGE_KEY, 'e'.repeat(64))
+  assert.equal(state.djangoBridgeKey, processEnv.TRADELOOM_NATIVE_BRIDGE_KEY)
+  assert.equal(JSON.stringify(state.djangoArgs).includes(state.djangoBridgeKey), false)
+  assert.equal(state.djangoLogPath.includes(state.djangoBridgeKey), false)
+  assert.ok(state.controllerBridgeKeys.every(key => key === undefined), 'PostgreSQL controller never receives the bridge key')
+  assert.ok(state.helperBridgeKeys.filter(item => item.command !== 'python.exe').every(item => item.key === undefined), 'PostgreSQL helpers never receive the bridge key')
+  assert.ok(state.helperBridgeKeys.filter(item => item.command === 'python.exe').every(item => item.key === state.djangoBridgeKey), 'only Django Python helpers receive the shared key')
+  assert.equal(JSON.stringify(f.manifest).includes(state.djangoBridgeKey), false)
   const profileRoot = path.join(startup.paths.home, 'profiles', 'desktop')
   const installedShell = path.join(profileRoot, 'node_modules', '@tradeloom', 'dsh-business-shell')
   assert.equal(await readFile(path.join(installedShell, 'host.js'), 'utf8'), 'export default {}\n')

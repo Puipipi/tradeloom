@@ -8,7 +8,7 @@
     <div class="panel-heading">
       <div>
         <h2>创建业务计划</h2>
-        <p>先解析目标与只读资料来源；查看候选和模拟标记后，再明确确认保存计划。确认后只保存计划并排队，尚未运行子任务。</p>
+        <p>先解析目标与只读资料来源，再确认保存计划和执行模式。确认后只保存计划并排队，尚未运行子任务。</p>
       </div>
       <span class="tag demo-tag">通用工作流</span>
     </div>
@@ -26,10 +26,17 @@
           <label for="workflow-goal">用户目标</label>
           <textarea id="workflow-goal" name="user_goal" rows="3" maxlength="4000" required placeholder="例如：整理本批产品资料；或整理产品资料并生成英文目录"></textarea>
         </div>
+        <div class="field">
+          <label for="workflow-execution-mode">执行模式</label>
+          <select id="workflow-execution-mode" name="execution_mode" required>
+            <option value="local_mock" selected>本地规则演示</option>
+            <option value="native_dsh">原生 DSH 专家协作</option>
+          </select>
+        </div>
       </div>
       <div class="workflow-form-actions">
         <button class="button primary" type="submit" data-intent-preview-button>解析目标</button>
-        <span class="muted-text">本页使用本地规则解析；也可接收聊天 Agent 的结构化提案，保存前仍需确认。</span>
+        <span class="muted-text">执行模式会随预览确认一并绑定；原生 DSH 结果仍需服务端校验与既有人审。</span>
       </div>
       <section id="workflow-intent-preview" class="intent-preview" data-testid="intent-preview" hidden aria-live="polite">
         <div class="panel-heading"><h3>解析候选</h3><span class="tag demo-tag" data-intent-mode></span></div>

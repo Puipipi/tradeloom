@@ -4,10 +4,13 @@ import os from 'node:os'
 import path from 'node:path'
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { prepareProfile, profileBundles, trustedReleaseRoot } from '../prepare-profile.mjs'
+import { prepareProfile, profileBundles, trustedReleaseRoot, validateOwnedRuntime } from '../prepare-profile.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..')
 const testRuntime = process.env.TRADELOOM_DSH_TEST_RUNTIME ? path.resolve(process.env.TRADELOOM_DSH_TEST_RUNTIME) : undefined
+const testReleaseRoot = process.env.TRADELOOM_TEST_RELEASE_ROOT
+  ? path.resolve(process.env.TRADELOOM_TEST_RELEASE_ROOT)
+  : trustedReleaseRoot
 const runtime = testRuntime ?? path.resolve(repoRoot, '../workspace/runtime/tradeloom-harness/releases/0.2.1-rc.2-tradeloom-slots-1')
 const appBootEntry = path.join(runtime, 'packages/boot/app-boot/lib/index.js')
 const appBootPackage = path.join(runtime, 'packages/boot/app-boot/package.json')
@@ -59,7 +62,7 @@ test('official DSH loader composes base, Web, and TradeLoom bundles from a tempo
 })
 
 test('prepared profile resolves its installed pinned TradeLoom bundle through official DSH and Node resolution', async t => {
-  const runtime = testRuntime ?? path.join(trustedReleaseRoot, '0.2.1-rc.2-tradeloom-desktop-2')
+  const runtime = testRuntime ?? path.join(testReleaseRoot, '0.2.1-rc.2-tradeloom-desktop-2')
   const appBootEntry = path.join(runtime, 'packages/boot/app-boot/lib/index.js')
   const appBoot = await import(pathToFileURL(appBootEntry).href)
   const temp = await mkdtemp(path.join(os.tmpdir(), 'tradeloom-prepared-profile-'))
@@ -71,6 +74,7 @@ test('prepared profile resolves its installed pinned TradeLoom bundle through of
     agentsHome: path.join(temp, 'agents'),
     workspace: path.join(temp, 'workspace'),
     mode: 'web',
+    validateRuntimeFn: runtimePath => validateOwnedRuntime(runtimePath, testReleaseRoot),
     source: path.join(runtime, 'node_modules', '@tradeloom', 'dsh-business-shell'),
   })
   const profileBundle = path.join(prepared.profileDir, 'node_modules', '@tradeloom', 'dsh-business-shell')

@@ -344,6 +344,12 @@ def build_review_candidates(
                 ):
                     raise ValueError("uncertainties 必须是字符串列表")
                 for field_name in dict.fromkeys(missing):
+                    field_advice = [
+                        observation
+                        for observation in item.get("native_advice", [])
+                        if isinstance(observation, dict)
+                        and observation.get("field") == field_name
+                    ] if isinstance(item.get("native_advice", []), list) else []
                     candidates.append(
                         _candidate(
                             f"missing_field:{field_name}",
@@ -354,6 +360,7 @@ def build_review_candidates(
                                     "missing_field": field_name,
                                     "uncertainties": uncertainties,
                                 },
+                                **({"native_expert_advice": field_advice} if field_advice else {}),
                             },
                         )
                     )
@@ -426,7 +433,13 @@ def build_review_candidates(
                     _candidate(
                         f"delivery_check:{code}",
                         item_ref,
-                        {**refs, "signal": signal},
+                        {
+                            **refs,
+                            "signal": signal,
+                            **({
+                                "native_expert_advice": check.get("native_advice")
+                            } if isinstance(check.get("native_advice"), list) and check.get("native_advice") else {}),
+                        },
                     )
                 )
 

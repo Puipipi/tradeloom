@@ -14,7 +14,7 @@ class MemoryStorage {
   removeItem(key) { this.values.delete(key); }
 }
 
-function makeForm(batchId = "", userGoal = "") {
+function makeForm(batchId = "", userGoal = "", executionMode = "local_mock") {
   const listeners = new Map();
   const submitButton = { disabled: false };
   const form = {
@@ -22,7 +22,7 @@ function makeForm(batchId = "", userGoal = "") {
       workflowCreateEndpoint: "/api/workflow-tasks",
       intentPreviewEndpoint: "/api/workflow-intent/preview",
     },
-    elements: { batch_id: { value: batchId }, user_goal: { value: userGoal } },
+    elements: { batch_id: { value: batchId }, user_goal: { value: userGoal }, execution_mode: { value: executionMode } },
     addEventListener(name, handler) { listeners.set(name, handler); },
     querySelector(selector) { return selector === 'button[type="submit"]' ? submitButton : null; },
     reportValidity() { return true; },
@@ -123,6 +123,7 @@ async function testPreviewMustBeFollowedByExplicitConfirmation() {
   const ui = makePage({ storage, form: page.form, fetch, location });
   await submit(page.form);
   assert.equal(requests.length, 1);
+  assert.equal(requests[0].body.execution_mode, "local_mock");
   assert.match(requests[0].url, /preview/);
   assert.equal(storage.getItem(storageKey) !== null, true);
   assert.equal(ui.confirmButton.disabled, false);
@@ -132,9 +133,31 @@ async function testPreviewMustBeFollowedByExplicitConfirmation() {
   assert.equal(requests.length, 2);
   assert.match(requests[1].url, /workflow-tasks/);
   assert.equal(requests[1].body.confirmation_token, "signed-preview-token");
+  assert.equal(requests[1].body.execution_mode, "local_mock");
   assert.equal(requests[1].body.idempotency_key, "stable-key");
   assert.equal(location.href, "/workflow-tasks/workflow-1");
   assert.equal(storage.getItem(storageKey), null);
+}
+
+async function testNativeExecutionModeIsPreviewedAndConfirmedWithSameValue() {
+  const requests = [];
+  const page = makeForm("batch-1", "整理产品资料", "native_dsh");
+  const ui = makePage({
+    storage: new MemoryStorage(), form: page.form,
+    fetch: async (url, options) => {
+      const body = JSON.parse(options.body);
+      requests.push({ url, body });
+      return url.includes("preview")
+        ? response({ ...previewBody, execution_mode: "native_dsh", model_provider: "unknown" })
+        : response({ id: "workflow-native" });
+    },
+    location: { href: "" },
+  });
+  await submit(page.form);
+  assert.equal(requests[0].body.execution_mode, "native_dsh");
+  await confirm(ui);
+  assert.equal(requests[1].body.execution_mode, "native_dsh");
+  assert.equal(requests[1].body.confirmation_token, "signed-preview-token");
 }
 
 async function testPreviewFailureNeverCallsCreate() {
@@ -374,6 +397,7 @@ async function testStructuredProposalHandoffReachesExistingPreviewAndExplicitCre
     batch_id: proposal.batch_id,
     user_goal: proposal.user_goal,
     task_type: proposal.task_type,
+    execution_mode: "local_mock",
   });
   assert.equal(ui.confirmButton.disabled, false);
   await confirm(ui);
@@ -503,6 +527,7 @@ async function testStructuredPreviewIsDiscardedAfterRefreshAndRecreatedBeforeCon
     batch_id: "batch-structured",
     user_goal: "Please prepare the catalog.",
     task_type: "generate_deliverables",
+    execution_mode: "local_mock",
   };
   storage.setItem(storageKey, JSON.stringify({
     version: 2,
@@ -538,6 +563,7 @@ async function testStructuredPreviewIsDiscardedAfterRefreshAndRecreatedBeforeCon
 
 (async () => {
   await testPreviewMustBeFollowedByExplicitConfirmation();
+  await testNativeExecutionModeIsPreviewedAndConfirmedWithSameValue();
   await testPreviewFailureNeverCallsCreate();
   await testUnknownCreateResultReloadKeepsSameTokenAndKey();
   await testEditThenRestoreReusesTheOriginalConfirmation();

@@ -73,7 +73,17 @@ Shell 顶部“查看 MCP 与 Skill 能力”调用固定的 `GET /tradeloom/age
 
 注册按 Agent preset 的 scoped context 隔离。Pinned ToolRuntime 的源码和 scoped registry 测试确认同名工具可分别注册在不同 Agent scope，scope 内重复仍拒绝；scoped context 继承服务依赖 API，`webServer` 是宿主服务。因此三种 preset 都可在自身 scope 注册对应工具而不发生全局重复冲突。当前本地 fixture 验证 preset→工具集合；这不等于真实 DSH composer/E2E 验收。
 
-HTTP 只连本机 `127.0.0.1:3090`，Host/Origin 来自当前 DSH Host 的受信 LAN IPv4 `:3088` 配置，POST 先从 Django 根页面取得 CSRF cookie，并只转发该 CSRF cookie 和 `X-CSRFToken`。不读取或使用 native DSH/provider 凭据。dispatch 先读取工作流 API 的 server-side `dispatch_target`，只在 subtask 与当前候选一致时发送服务端生成的幂等键；该 DTO 不含 `resume_authority`，因此人工 apply 后也由同一服务端逻辑选择正确恢复键。HTTP fixture 验证不等于真实 DSH/Django/model 端到端验收；实际工作流仍由当前 Django `local_mock`/`simulated_rules` 执行。
+HTTP 只连本机 `127.0.0.1:3090`，Host/Origin 来自当前 DSH Host 的受信 LAN IPv4 `:3088` 配置；POST 仍使用原 CSRF cookie 与 `X-CSRFToken`。另外，三个 native workflow POST 专用启动器生成的临时 `TRADELOOM_NATIVE_BRIDGE_KEY`，经 `X-TradeLoom-Native-Bridge` header 做恒定时间比较；只在受控 Host 与 Django 进程环境中共享，不放进模型参数、DTO、CLI 参数、日志或 manifest。缺失/无效密钥返回固定 403。普通业务路由与 CSRF 请求不附带该 header。该 key 证明的是同一次受控启动的进程配对，不提供同用户进程之间或恶意 Host 插件的隔离保证。它不是 native DSH/provider 凭据，也不转发 `Authorization`。`local_mock` dispatch 先读取工作流 API 的 server-side `dispatch_target`，只在 subtask 与当前候选一致时发送服务端生成的幂等键；该 DTO 不含 `resume_authority`，因此人工 apply 后也由同一服务端逻辑选择正确恢复键。HTTP fixture 验证不等于真实 DSH/Django/model 端到端验收。
+
+工作流创建显式保存 `execution_mode`：`local_mock` 是兼容默认的本地规则演示；`native_dsh` 需在创建预览/确认时明确选择并绑定确认指纹。执行模式只选择已保存步骤由哪条路径执行，当前目标解析和工作计划仍来自固定规则，不是模型规划。`native_dsh` 不得调用旧 `dispatch`/`retry` 的 `MockAgentRuntime` 路径；失败、中断或响应未知时保留 `unknown`，不自动回退 `local_mock`、重试或再次派生专家。
+
+原生中心工具按以下顺序协作：
+
+1. 中心调用 `tradeloom_begin_native_workflow_assignment`，服务端持久化并返回 assignment、step、状态和冻结的 `advice_context`。该上下文只列服务端确定性检查得到的可建议字段或 `needs_human` 检查代码及精确来源 ID，不含产品原值、文件路径或内部指纹。只有返回允许新派生的状态时，中心才使用 DSH 原生 `subagent` 能力创建所选专家。
+2. `subagent` 返回的 `subagentId` 后，中心调用 `tradeloom_bind_native_workflow_expert`。宿主侧从 live Agent context 读取 child ID、preset、parent 和 delegation depth；只有绑定成功后，中心才用 DSH `send_message` 将任务引用、冻结 `advice_context` 与提交要求原样传递给专家。重放或 `unknown` 状态不能触发自动再次派生。
+3. 已绑定的商品/交付专家按各自读取权限检查来源，仅针对 `advice_context` 列出的目标调用 `tradeloom_submit_native_workflow_advice` 提交有界 typed advice，来源 ID 必须与上下文一致。Django 校验 assignment、来源及当前版本，由服务端确定性角色检查生成 canonical 结果；专家建议保持未确认，不能直接写产品事实、ERP 或声明交付已通过。未经程序验证的新事实进入既有人审流程。
+
+这三个工具对应 `POST /api/workflow-tasks/{workflow_id}/subtasks/{subtask_id}/native-assignment`、`POST /api/workflow-tasks/{workflow_id}/native-assignments/{assignment_id}/bind` 和 `POST /api/workflow-tasks/{workflow_id}/native-assignments/{assignment_id}/submit`。完整来源引用不会截断；超过契约上限的 advice context 返回 `advice_context_too_large`（HTTP 413），并且不会保存 assignment。工具回执表示 assignment 已保存、child 已绑定或 typed advice 已接受，不代表 DSH child lifecycle 已结束。当前 Host 接缝无法证实实际 provider/model，相关字段记录为 `unknown`，不能以模型选择器中的配置代替执行证据。现有 pinned ToolRuntime/schema、合成 Host context 与 PostgreSQL 测试不等于真实 DSH Host、真实模型或 GUI 端到端验收；本轮没有付费模型调用。
 
 `WorkflowContext.from_workflow()` 从 ORM 读取当前 `WorkflowTask`、关联批次的 `Product`、`TaskFile`，以及这些产品的当前 `ProductRevision`。角色通过 context 和 `RoleToolbox` 只读这些已限定来源；输入使用 `SubTask.input_refs`，结果的 `source_refs` 应指出实际记录 ID，避免复制或编造企业事实。跨批产品引用和过期修订由现有引用校验拒绝。
 

@@ -95,8 +95,8 @@ class BusinessEmbedTests(SimpleTestCase):
         request = RequestFactory().get("/business/home")
         html = render_to_string("workbench/base.html", _page_context("home"), request=request)
         self.assertIn('data-business-embed="true"', html)
-        self.assertIn('href="/business-static/workbench/styles.css?v=iframe-density3"', html)
-        self.assertIn('src="/business-static/workbench/app.js?v=iframe-density3"', html)
+        self.assertIn('href="/business-static/workbench/styles.css?v=intake-application2"', html)
+        self.assertIn('src="/business-static/workbench/app.js?v=native-workflow-bridge1"', html)
         self.assertNotIn('aria-label="主导航"', html)
 
     @override_settings(TRADELOOM_DSH_EMBED=True)
@@ -205,8 +205,8 @@ class BusinessEmbedTests(SimpleTestCase):
         request = RequestFactory().get("/home")
         html = render_to_string("workbench/base.html", _page_context("home"), request=request)
         self.assertIn('data-business-embed="false"', html)
-        self.assertIn('href="/static/workbench/styles.css?v=iframe-density3"', html)
-        self.assertIn('src="/static/workbench/app.js?v=iframe-density3"', html)
+        self.assertIn('href="/static/workbench/styles.css?v=intake-application2"', html)
+        self.assertIn('src="/static/workbench/app.js?v=native-workflow-bridge1"', html)
         self.assertIn('aria-label="主导航"', html)
 
     def test_embed_frame_header_preserves_existing_csp_directives(self):

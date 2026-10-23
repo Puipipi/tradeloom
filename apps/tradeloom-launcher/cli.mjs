@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
-  assertPortsAvailable, buildChildEnvironment, buildDesktopChildEnvironment, buildDjangoChildEnvironment, chooseAddress, ensureOwnedDirectory,
+  assertPortsAvailable, buildChildEnvironment, buildDesktopChildEnvironment, buildDjangoChildEnvironment, buildNativeBridgeChildEnvironment, chooseAddress, ensureOwnedDirectory,
   ensureOwnedHome, getDefaultPaths, launcherPipeName, networkCandidates, requestStop, reserveNamedPipe, serveStopRequest, startOwnedChild, startTransaction,
 } from './core.mjs'
 import { prepareProfile } from './prepare-profile.mjs'
@@ -126,7 +126,9 @@ async function start(options) {
   }
   const prepared = await prepareProfile({ runtimePath: appHome, home, agentsHome, workspace, mode: options.mode })
   const envPaths = { ...paths, home, agentsHome }
-  const safeBase = buildChildEnvironment(process.env, envPaths, { TRADELOOM_DSH_APP_HOME: home })
+  const { key: nativeBridgeKey, env: safeBase } = buildNativeBridgeChildEnvironment(process.env, envPaths, {
+    TRADELOOM_DSH_APP_HOME: home,
+  })
   const dshEnv = { ...safeBase }
   delete dshEnv.TRADELOOM_DB_PASSWORD
   const dbPassword = process.env.TRADELOOM_DB_PASSWORD
@@ -135,6 +137,7 @@ async function start(options) {
     TRADELOOM_DSH_EMBED: '1',
     TRADELOOM_DSH_ALLOWED_HOSTS: host,
     TRADELOOM_DSH_CSRF_TRUSTED_ORIGINS: `http://${host}:3088`,
+    TRADELOOM_NATIVE_BRIDGE_KEY: nativeBridgeKey,
     TRADELOOM_DB_NAME: 'tradeloom_dev',
     TRADELOOM_DB_HOST: '127.0.0.1',
     TRADELOOM_DB_PORT: '55432',
@@ -154,7 +157,7 @@ async function start(options) {
       const desktopEntry = path.join(prepared.runtime, 'apps', 'desktop')
       const primaryRuntimeDir = path.join(desktopEntry, '.desktop-build', 'targets', 'win-x64', 'runtime', 'primary-runtime')
       await access(primaryRuntimeDir).catch(() => { throw new Error('桌面 Primary Runtime 尚未准备；请先完成受控运行时准备。') })
-      const desktopEnv = buildDesktopChildEnvironment(process.env, envPaths, { runtimePath: prepared.runtime, host, port: 3088 })
+      const desktopEnv = buildDesktopChildEnvironment(process.env, envPaths, { runtimePath: prepared.runtime, host, port: 3088, nativeBridgeKey })
       const record = startOwnedChild(electron, [desktopEntry],
         { cwd: workspace, env: desktopEnv, logPath: path.join(logs, 'dsh-desktop.log'), logLabel: 'DSH Desktop', windowsHide: false })
       record.ready = waitForListener(host, 3088, record)

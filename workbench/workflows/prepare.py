@@ -7,7 +7,7 @@ from typing import Any
 from django.db import transaction
 from django.db.models import Prefetch
 
-from workbench.agents.workflow_contracts import SIMULATED_MARKERS
+from workbench.agents.workflow_contracts import workflow_markers
 from workbench.intent.parser import verify_confirmation_token
 from workbench.models import HumanReview, SubTask, Task, WorkflowStep, WorkflowTask
 from workbench.workflows.orchestrator import WorkflowOrchestrator
@@ -32,7 +32,7 @@ class WorkflowCreationIdempotencyConflict(ValueError):
 @transaction.atomic
 def create_prepared_workflow(
     *, batch_id: str, user_goal: str, task_type: str = "prepare_product_data",
-    confirmation_token: str | None = None,
+    confirmation_token: str | None = None, execution_mode: str = "local_mock",
 ) -> WorkflowTask:
     try:
         batch = Task.objects.get(pk=batch_id)
@@ -45,10 +45,13 @@ def create_prepared_workflow(
             batch_id=batch_id,
             user_goal=user_goal,
             task_type=task_type,
+            execution_mode=execution_mode,
         )
         if confirmation_token is not None
         else None
     )
+    if execution_mode == "native_dsh" and confirmed_intent is None:
+        raise ValueError("原生 DSH 执行必须先确认绑定执行模式的意图")
 
     workflow = WorkflowTask.objects.create(
         batch=batch,
@@ -59,9 +62,14 @@ def create_prepared_workflow(
     # plan_task persists the center step and its two queued roles; the outer
     # transaction makes the workflow and complete plan an all-or-nothing unit.
     if confirmed_intent is None:
-        WorkflowOrchestrator().plan_task(workflow.id)
+        WorkflowOrchestrator().plan_task(workflow.id, execution_mode=execution_mode)
     else:
-        WorkflowOrchestrator().plan_task(workflow.id, confirmed_intent=confirmed_intent)
+        WorkflowOrchestrator().plan_task(
+            workflow.id,
+            confirmed_intent=confirmed_intent,
+            execution_mode=execution_mode,
+            execution_confirmation_fingerprint=hashlib.sha256(confirmation_token.encode("utf-8")).hexdigest(),
+        )
     return get_prepared_workflow(workflow.id)
 
 
@@ -73,8 +81,11 @@ def create_idempotent_prepared_workflow(
     task_type: str,
     idempotency_key: str,
     confirmation_token: str | None = None,
+    execution_mode: str = "local_mock",
 ) -> tuple[WorkflowTask, dict[str, Any]]:
     request_components = [batch_id, user_goal, task_type]
+    if execution_mode != "local_mock":
+        request_components.append(execution_mode)
     if confirmation_token is not None:
         request_components.append(confirmation_token)
     fingerprint = hashlib.sha256(
@@ -126,18 +137,26 @@ def create_idempotent_prepared_workflow(
             batch_id=batch_id,
             user_goal=user_goal,
             task_type=task_type,
+            execution_mode=execution_mode,
         )
         if confirmation_token is not None
         else None
     )
+    if execution_mode == "native_dsh" and confirmed_intent is None:
+        raise ValueError("原生 DSH 执行必须先确认绑定执行模式的意图")
 
     # The unique key, plan and frozen public receipt commit as one unit. The
     # get_or_create savepoint handles a competing insert without poisoning this
     # outer transaction.
     if confirmed_intent is None:
-        WorkflowOrchestrator().plan_task(workflow.id)
+        WorkflowOrchestrator().plan_task(workflow.id, execution_mode=execution_mode)
     else:
-        WorkflowOrchestrator().plan_task(workflow.id, confirmed_intent=confirmed_intent)
+        WorkflowOrchestrator().plan_task(
+            workflow.id,
+            confirmed_intent=confirmed_intent,
+            execution_mode=execution_mode,
+            execution_confirmation_fingerprint=hashlib.sha256(confirmation_token.encode("utf-8")).hexdigest(),
+        )
     workflow = get_prepared_workflow(workflow.id)
     receipt = serialize_prepared_workflow(workflow)
     workflow.creation_receipt = receipt
@@ -180,6 +199,11 @@ def serialize_prepared_workflow(workflow: WorkflowTask) -> dict[str, Any]:
         if center_step and isinstance(center_step.output_refs, dict)
         else None
     )
+    execution_mode = (
+        center_step.input_refs.get("execution_mode", "local_mock")
+        if center_step and isinstance(center_step.input_refs, dict)
+        else "local_mock"
+    )
     reviews = list(
         HumanReview.objects.filter(task_id=workflow.id).order_by("created_at", "id")
     )
@@ -197,7 +221,7 @@ def serialize_prepared_workflow(workflow: WorkflowTask) -> dict[str, Any]:
         "current_step": workflow.current_step,
         "result_refs": workflow.result_refs,
         "error_summary": workflow.error_summary,
-        **SIMULATED_MARKERS,
+        **workflow_markers(execution_mode),
         "plan": plan,
         "steps": [
             {

@@ -84,6 +84,7 @@
       const payload = {
         batch_id: workflowCreateForm.elements.batch_id.value,
         user_goal: workflowCreateForm.elements.user_goal.value,
+        execution_mode: workflowCreateForm.elements.execution_mode?.value || "local_mock",
       };
       if (proposedTaskType) payload.task_type = proposedTaskType;
       return payload;
@@ -92,7 +93,8 @@
     function sameWorkflowPayload(left, right) {
       return left?.batch_id === right?.batch_id
         && left?.user_goal === right?.user_goal
-        && left?.task_type === right?.task_type;
+        && left?.task_type === right?.task_type
+        && (left?.execution_mode || "local_mock") === (right?.execution_mode || "local_mock");
     }
 
     function persistDrafts() {
@@ -129,7 +131,7 @@
 
     function renderPreview(preview) {
       previewPanel.hidden = false;
-      previewMode.textContent = `${preview.mode || "local_mock"} · ${preview.execution || "simulated_rules"} · ${preview.model_provider || "not_configured"}`;
+      previewMode.textContent = `${preview.execution_mode || "local_mock"} · ${preview.execution || "simulated_rules"} · ${preview.model_provider || "not_configured"}`;
       previewReason.textContent = preview.classification?.reason || "";
       previewTaskType.textContent = preview.classification?.task_type
         ? `提案类型：${taskTypeLabels[preview.classification.task_type] || "不支持的类型"}`
@@ -216,7 +218,10 @@
       if (saved) {
         const draft = JSON.parse(saved);
         if (draft?.version === 2 && Array.isArray(draft.requests)) {
-          drafts = draft.requests.filter((item) => typeof item?.key === "string" && item.payload);
+          drafts = draft.requests.filter((item) => typeof item?.key === "string" && item.payload).map((item) => ({
+            ...item,
+            payload: { ...item.payload, execution_mode: item.payload.execution_mode || "local_mock" },
+          }));
           activeDraft = drafts.find((item) => item.key === draft.activeKey) || null;
         } else if (
           typeof draft?.key === "string" && draft.key
@@ -226,7 +231,7 @@
         ) {
           const legacy = {
             key: draft.key,
-            payload: { batch_id: draft.payload.batch_id, user_goal: draft.payload.user_goal },
+            payload: { batch_id: draft.payload.batch_id, user_goal: draft.payload.user_goal, execution_mode: "local_mock" },
             legacyReplayPayload: draft.payload,
             preview: { status: "legacy_retry", mode: "local_mock", execution: "simulated_rules", model_provider: "not_configured" },
           };
@@ -298,7 +303,7 @@
     workflowCreateForm.addEventListener("input", () => {
       shownPayload = null;
       hidePreview();
-      if (activeDraft?.payload?.task_type && !activeDraft.createAttempted) {
+      if (activeDraft && !activeDraft.createAttempted) {
         activeDraft.preview = null;
         persistDrafts();
         showDraftNotice("Agent提案字段已变化，旧预览已失效；请重新解析目标。");
@@ -307,7 +312,7 @@
     workflowCreateForm.addEventListener("change", () => {
       shownPayload = null;
       hidePreview();
-      if (activeDraft?.payload?.task_type && !activeDraft.createAttempted) {
+      if (activeDraft && !activeDraft.createAttempted) {
         activeDraft.preview = null;
         persistDrafts();
         showDraftNotice("Agent提案字段已变化，旧预览已失效；请重新解析目标。");

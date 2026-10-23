@@ -7,6 +7,7 @@ import { apply, registerBusinessTools } from '../business-tools.js'
 
 const TRUSTED_WEB_SERVER = { protocol: 'http:', host: '192.168.1.23', port: 3088, getOrigin: () => 'http://192.168.1.23:3088' }
 const NATIVE_TOKEN = 'native-auth-must-never-be-forwarded'
+const NATIVE_BRIDGE_KEY = 'c'.repeat(64)
 const CSRF_TOKEN = 'fixture-csrf-token'
 
 async function fixture(t, handler = defaultHandler, dependencies = {}) {
@@ -21,11 +22,12 @@ async function fixture(t, handler = defaultHandler, dependencies = {}) {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
   t.after(() => new Promise(resolve => server.close(resolve)))
   const definitions = new Map()
-  const { webServer = TRUSTED_WEB_SERVER, preset = 'tradeloom-center', ...toolDependencies } = dependencies
+  const { webServer = TRUSTED_WEB_SERVER, preset = 'tradeloom-center', agents, nativeBridgeKey = NATIVE_BRIDGE_KEY, ...toolDependencies } = dependencies
   registerBusinessTools({
     webServer,
+    agents,
     tools: { register(definition) { definitions.set(definition.name, definition); return () => definitions.delete(definition.name) } },
-  }, { preset }, { ...toolDependencies, port: server.address().port })
+  }, { preset }, { ...toolDependencies, nativeBridgeKey, port: server.address().port })
   return { requests, tools: definitions }
 }
 
@@ -75,7 +77,7 @@ async function defaultHandler(record, response) {
     latest_revision: { version: 2, status: 'confirmed', source: 'legacy_confirm', snapshot: { sku: 'SKU-1' }, updated_at: '2026-10-19' },
   }]
   else if (record.path === '/api/workflow-tasks/wf-1') payload = {
-    id: 'wf-1', batch_id: 'batch-1', status: 'waiting_human', current_step: 'review', mode: 'local_mock', execution: 'simulated_rules',
+    id: 'wf-1', batch_id: 'batch-1', status: 'waiting_human', current_step: 'review', execution_mode: 'local_mock', mode: 'local_mock', execution: 'simulated_rules',
     steps: [{ id: 'step-1', step_key: 'center_plan', status: 'completed', attempt: 1 }],
     subtasks: [{ id: 'sub-1', agent_role: 'product_profile', status: 'queued', retry_count: 0, depends_on: [] }],
     reviews: [{ id: 'review-1', review_key: 'source-check', status: 'pending', question: 'Confirm source?', source_refs: { product_id: 'product-1' } }],
@@ -112,7 +114,7 @@ test('registers bounded business tools with native ToolRuntime definitions and n
   registerBusinessTools(ctx, { preset: 'tradeloom-center' })
   assert.deepEqual([...tools.keys()], [
     'tradeloom_read_products', 'tradeloom_read_workflow_task', 'tradeloom_read_deliverables',
-    'tradeloom_preview_workflow_intent', 'tradeloom_dispatch_workflow_subtask',
+    'tradeloom_preview_workflow_intent', 'tradeloom_dispatch_workflow_subtask', 'tradeloom_begin_native_workflow_assignment', 'tradeloom_bind_native_workflow_expert',
     'tradeloom_intake_sources', 'tradeloom_narrative_sources', 'tradeloom_narrative_excerpt',
     'tradeloom_intake_candidates', 'tradeloom_intake_candidate', 'tradeloom_read_execution_plan',
     'tradeloom_erpnext_status', 'tradeloom_erpnext_list', 'tradeloom_erpnext_detail',
@@ -126,7 +128,7 @@ test('registers bounded business tools with native ToolRuntime definitions and n
   }
   const module = await import('../business-tools.js')
   assert.equal('default' in module, false)
-  assert.deepEqual(module.inject, ['tools', 'webServer'])
+  assert.deepEqual(module.inject, ['tools', 'webServer', 'agents'])
   assert.equal(typeof module.apply, 'function')
   const toolsLibrary = process.env.TRADELOOM_DSH_TOOLS_LIBRARY
   if (toolsLibrary) {
@@ -135,13 +137,13 @@ test('registers bounded business tools with native ToolRuntime definitions and n
     const runtime = { ctx: {}, layers: { effect(_ctx, install) { return install({ tools: { insert(name, definition) { registrations.push({ name, definition }); return () => {} } } }) } } }
     for (const definition of tools.values()) {
       assertSupportedJsonSchema(definition.output.schema)
-      if (definition.name.startsWith('tradeloom_erpnext_') || definition.name.startsWith('tradeloom_intake_') || definition.name.startsWith('tradeloom_narrative_') || definition.name === 'tradeloom_read_execution_plan') {
+      if (definition.name.startsWith('tradeloom_erpnext_') || definition.name.startsWith('tradeloom_intake_') || definition.name.startsWith('tradeloom_narrative_') || definition.name === 'tradeloom_read_execution_plan' || definition.name === 'tradeloom_begin_native_workflow_assignment' || definition.name === 'tradeloom_bind_native_workflow_expert' || definition.name === 'tradeloom_submit_native_workflow_advice') {
         assertSupportedJsonSchema(definition.parameters)
         assert.equal(definition.parameters.type, 'object', `${definition.name} wire parameters must have an object root`)
       }
       assert.equal(typeof ToolRuntime.prototype.register.call(runtime, definition), 'function')
     }
-    assert.equal(registrations.length, 17)
+    assert.equal(registrations.length, 19)
   }
 })
 
@@ -149,15 +151,15 @@ test('preset configuration limits registered tools to the center, product, and d
   const expected = {
     'tradeloom-center': [
       'tradeloom_read_products', 'tradeloom_read_workflow_task', 'tradeloom_read_deliverables',
-      'tradeloom_preview_workflow_intent', 'tradeloom_dispatch_workflow_subtask',
+      'tradeloom_preview_workflow_intent', 'tradeloom_dispatch_workflow_subtask', 'tradeloom_begin_native_workflow_assignment', 'tradeloom_bind_native_workflow_expert',
       'tradeloom_intake_sources', 'tradeloom_narrative_sources', 'tradeloom_narrative_excerpt',
       'tradeloom_intake_candidates', 'tradeloom_intake_candidate', 'tradeloom_read_execution_plan',
       'tradeloom_erpnext_status', 'tradeloom_erpnext_list', 'tradeloom_erpnext_detail',
       'tradeloom_erpnext_create_quotation_draft', 'tradeloom_erpnext_update_quotation_draft',
       'tradeloom_erpnext_read_quotation_draft_operation',
     ],
-    'tradeloom-product': ['tradeloom_read_products', 'tradeloom_intake_sources', 'tradeloom_intake_candidates', 'tradeloom_intake_candidate', 'tradeloom_erpnext_status', 'tradeloom_erpnext_list', 'tradeloom_erpnext_detail'],
-    'tradeloom-delivery': ['tradeloom_read_workflow_task', 'tradeloom_read_deliverables', 'tradeloom_intake_sources', 'tradeloom_intake_candidates', 'tradeloom_intake_candidate', 'tradeloom_read_execution_plan', 'tradeloom_erpnext_status', 'tradeloom_erpnext_list', 'tradeloom_erpnext_detail'],
+    'tradeloom-product': ['tradeloom_read_products', 'tradeloom_read_workflow_task', 'tradeloom_submit_native_workflow_advice', 'tradeloom_intake_sources', 'tradeloom_intake_candidates', 'tradeloom_intake_candidate', 'tradeloom_erpnext_status', 'tradeloom_erpnext_list', 'tradeloom_erpnext_detail'],
+    'tradeloom-delivery': ['tradeloom_read_workflow_task', 'tradeloom_read_deliverables', 'tradeloom_submit_native_workflow_advice', 'tradeloom_intake_sources', 'tradeloom_intake_candidates', 'tradeloom_intake_candidate', 'tradeloom_read_execution_plan', 'tradeloom_erpnext_status', 'tradeloom_erpnext_list', 'tradeloom_erpnext_detail'],
   }
   for (const [preset, names] of Object.entries(expected)) {
     const registered = []
@@ -364,6 +366,7 @@ test('Quotation create and update tools use fixed same-origin CSRF paths, preser
   assert.equal(requests[1].headers.cookie, `csrftoken=${CSRF_TOKEN}`)
   assert.equal(requests[1].headers['x-csrftoken'], CSRF_TOKEN)
   assert.equal(requests[1].headers.authorization, undefined)
+  assert.equal(requests[1].headers['x-tradeloom-native-bridge'], undefined)
 
   const succeeded = await read.execute({ operation_id: 'a'.repeat(32) }, agent())
   assert.equal(succeeded.ok, true)
@@ -534,6 +537,118 @@ test('ERPNext tools serialize object-root parameters in the pinned provider wire
   }
 })
 
+test('native expert submit schemas register and serialize for both pinned expert presets', async t => {
+  const toolsLibrary = process.env.TRADELOOM_DSH_TOOLS_LIBRARY
+  if (!toolsLibrary) return t.skip('requires the pinned compiled DSH tools library')
+
+  const { ToolRuntime } = await import(pathToFileURL(toolsLibrary).href)
+  const packagesRoot = resolve(dirname(toolsLibrary), '../../../llm/llm-pi-ai/node_modules/@earendil-works/pi-ai/dist')
+  const [{ stream }, { getBuiltinModels }, { normalizeContext }] = await Promise.all([
+    import(pathToFileURL(resolve(packagesRoot, 'api/openai-completions.js')).href),
+    import(pathToFileURL(resolve(packagesRoot, 'providers/all.js')).href),
+    import(pathToFileURL(resolve(packagesRoot, 'utils/transcript.js')).href),
+  ])
+  const model = getBuiltinModels('deepseek').find(candidate => candidate.api === 'openai-completions')
+  assert.ok(model)
+
+  for (const preset of ['tradeloom-product', 'tradeloom-delivery']) {
+    const definitions = new Map()
+    const runtime = {
+      ctx: {},
+      layers: { effect(_ctx, install) { return install({ tools: { insert(name, definition) { definitions.set(name, definition); return () => {} } } }) } },
+    }
+    registerBusinessTools({ webServer: TRUSTED_WEB_SERVER, tools: { register(definition) {
+      return ToolRuntime.prototype.register.call(runtime, definition)
+    } } }, { preset })
+
+    const registered = definitions.get('tradeloom_submit_native_workflow_advice')
+    assert.ok(registered, `${preset} must register native advice submission`)
+    assert.equal(registered.parameters.type, 'object')
+    assert.equal(registered.parameters.additionalProperties, false)
+    assert.deepEqual(registered.parameters.required, ['workflow_id', 'assignment_id', 'step_id', 'advice'])
+    assert.equal(registered.parameters.properties.actor, undefined)
+    assert.equal(registered.parameters.properties.provider, undefined)
+    assert.equal(registered.parameters.properties.child_agent_id, undefined)
+
+    let wirePayload
+    const events = stream(model, normalizeContext({
+      systemPrompt: 'Local schema serialization test.',
+      tools: [...definitions.values()],
+      messages: [{ role: 'user', content: 'Prepare a bounded observation.' }],
+    }), {
+      apiKey: 'fixture-only-not-a-secret',
+      fetch: async () => { throw new Error('schema inspection must stop before network dispatch') },
+      onPayload(payload) { wirePayload = payload; throw new Error('captured before dispatch') },
+    })
+    for await (const _event of events) { /* exercise the local provider serializer only */ }
+
+    const wireSchema = wirePayload?.tools?.find(tool => tool.function?.name === 'tradeloom_submit_native_workflow_advice')?.function?.parameters
+    assert.equal(wireSchema?.type, 'object')
+    assert.equal(wireSchema?.additionalProperties, false)
+    assert.ok(wireSchema?.properties?.advice?.properties?.observations)
+    if (preset === 'tradeloom-product') {
+      assert.ok(wireSchema.properties.advice.properties.observations.items.properties.source_refs)
+      assert.deepEqual(wireSchema.properties.advice.properties.observations.items.properties.source_refs.properties.revision_id.oneOf,
+        [{ type: 'string' }, { type: 'null' }])
+    } else {
+      assert.ok(wireSchema.properties.advice.properties.observations.items.properties.source_refs)
+    }
+  }
+})
+
+test('native center assignment and bind schemas serialize as closed provider-wire objects', async t => {
+  const toolsLibrary = process.env.TRADELOOM_DSH_TOOLS_LIBRARY
+  if (!toolsLibrary) return t.skip('requires the pinned compiled DSH tools library')
+  const { ToolRuntime } = await import(pathToFileURL(toolsLibrary).href)
+  const definitions = new Map()
+  const runtime = {
+    ctx: {},
+    layers: { effect(_ctx, install) { return install({ tools: { insert(name, definition) { definitions.set(name, definition); return () => {} } } }) } },
+  }
+  registerBusinessTools({ webServer: TRUSTED_WEB_SERVER, tools: { register(definition) {
+    return ToolRuntime.prototype.register.call(runtime, definition)
+  } } }, { preset: 'tradeloom-center' })
+  const begin = definitions.get('tradeloom_begin_native_workflow_assignment')
+  const bind = definitions.get('tradeloom_bind_native_workflow_expert')
+  assert.ok(begin)
+  assert.ok(bind)
+  assert.deepEqual(begin.parameters.required, ['workflow_id', 'subtask_id'])
+  assert.equal(begin.parameters.additionalProperties, false)
+  assert.deepEqual(bind.parameters.required, ['workflow_id', 'assignment_id', 'child_agent_id'])
+  assert.equal(bind.parameters.additionalProperties, false)
+  assert.equal(begin.parameters.properties.agent_id, undefined)
+  assert.equal(bind.parameters.properties.agent_id, undefined)
+  assert.equal(begin.parameters.properties.parent_session, undefined)
+  assert.equal(bind.parameters.properties.parent_session, undefined)
+
+  const packagesRoot = resolve(dirname(toolsLibrary), '../../../llm/llm-pi-ai/node_modules/@earendil-works/pi-ai/dist')
+  const [{ stream }, { getBuiltinModels }, { normalizeContext }] = await Promise.all([
+    import(pathToFileURL(resolve(packagesRoot, 'api/openai-completions.js')).href),
+    import(pathToFileURL(resolve(packagesRoot, 'providers/all.js')).href),
+    import(pathToFileURL(resolve(packagesRoot, 'utils/transcript.js')).href),
+  ])
+  const model = getBuiltinModels('deepseek').find(candidate => candidate.api === 'openai-completions')
+  assert.ok(model)
+  let payload
+  const events = stream(model, normalizeContext({
+    systemPrompt: 'Test only.', tools: [...definitions.values()],
+    messages: [{ role: 'user', content: 'Bind the selected child.' }],
+  }), {
+    apiKey: 'fixture-only-not-a-secret',
+    fetch: async () => { throw new Error('wire inspection must stop before network dispatch') },
+    onPayload(value) { payload = value; throw new Error('captured before dispatch') },
+  })
+  for await (const _event of events) { /* inspect the local serializer only */ }
+  const wire = payload?.tools?.find(tool => tool.function?.name === 'tradeloom_bind_native_workflow_expert')?.function?.parameters
+  const beginWire = payload?.tools?.find(tool => tool.function?.name === 'tradeloom_begin_native_workflow_assignment')?.function?.parameters
+  assert.equal(beginWire?.type, 'object')
+  assert.equal(beginWire?.additionalProperties, false)
+  assert.deepEqual(beginWire?.required, ['workflow_id', 'subtask_id'])
+  assert.equal(wire?.type, 'object')
+  assert.equal(wire?.additionalProperties, false)
+  assert.deepEqual(wire?.required, ['workflow_id', 'assignment_id', 'child_agent_id'])
+})
+
 test('preview uses fixed Django path, trusted LAN authority and CSRF; strips signed token and requests human confirmation', async t => {
   const { requests, tools } = await fixture(t)
   const result = await tools.get('tradeloom_preview_workflow_intent').execute(
@@ -602,6 +717,7 @@ test('product, workflow and deliverable reads keep source, version, readiness an
   assert.equal(dataOf(product)[0].missing_fields[0], 'color')
   assert.equal(dataOf(product)[0].latest_revision.source, 'legacy_confirm')
   assert.equal(dataOf(workflow).reviews[0].status, 'pending')
+  assert.equal(dataOf(workflow).execution_mode, 'local_mock')
   assert.equal(dataOf(workflow).reviews_scope, 'business_facts')
   assert.equal(dataOf(workflow).pending_review_count, 1)
   assert.equal('dispatch_target' in dataOf(workflow), false, 'delivery experts do not receive center dispatch targets')
@@ -612,6 +728,69 @@ test('product, workflow and deliverable reads keep source, version, readiness an
   })
   assert.equal(JSON.stringify(delivery).includes('must-not-reach-model'), false)
   assert.equal(requests[0].headers.authorization, undefined)
+})
+
+test('workflow projection preserves the saved native execution mode for center routing', async t => {
+  const { tools } = await fixture(t, async (record, response) => {
+    if (record.method === 'GET' && record.path === '/api/workflow-tasks/wf-native') {
+      response.writeHead(200, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({
+        id: 'wf-native', batch_id: 'batch-1', status: 'queued', current_step: 'product_profile',
+        execution_mode: 'native_dsh', planning_mode: 'simulated_rules',
+        steps: [], subtasks: [], reviews: [], dispatch_target: { subtask_id: 'sub-native', idempotency_key: 'key-1' },
+      }))
+      return
+    }
+    return defaultHandler(record, response)
+  })
+
+  const result = await tools.get('tradeloom_read_workflow_task').execute({ workflow_id: 'wf-native' }, agent())
+
+  assert.equal(result.ok, true)
+  assert.equal(dataOf(result).execution_mode, 'native_dsh')
+  assert.equal(dataOf(result).dispatch_target.subtask_id, 'sub-native')
+  assert.equal(dataOf(result).dispatch_target.idempotency_key, 'key-1')
+  assert.equal(JSON.stringify(dataOf(result)).includes('planning_mode'), false)
+})
+
+test('product expert can read its saved workflow goal and bounded product assignment refs', async t => {
+  const { requests, tools } = await fixture(t, async (record, response) => {
+    if (record.method === 'GET' && record.path === '/api/workflow-tasks/wf-native') {
+      response.writeHead(200, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({
+        id: 'wf-native', batch_id: 'batch-1', user_goal: 'Prepare this batch', status: 'running',
+        current_step: 'product_profile', execution_mode: 'native_dsh', steps: [], reviews: [],
+        subtasks: [{
+          id: 'sub-product', agent_role: 'product_profile', status: 'running',
+          input_refs: {
+            workflow_task_id: 'wf-native', batch_id: 'batch-1', scope: 'full_batch',
+            product_ids: ['product-1'], product_revision_ids: ['revision-1'],
+            private_reasoning: 'must not reach the expert',
+          },
+        }, {
+          id: 'sub-delivery', agent_role: 'delivery_quality', status: 'queued',
+          input_refs: { all_product_ids: ['product-1'], untrusted_extra: 'not exposed' },
+        }],
+      }))
+      return
+    }
+    return defaultHandler(record, response)
+  })
+
+  const result = await tools.get('tradeloom_read_workflow_task').execute(
+    { workflow_id: 'wf-native' }, agent('tradeloom-product'),
+  )
+
+  assert.equal(result.ok, true)
+  const workflow = dataOf(result)
+  assert.equal(workflow.user_goal, 'Prepare this batch')
+  assert.deepEqual(workflow.subtasks[0].source_refs, {
+    workflow_task_id: 'wf-native', batch_id: 'batch-1', scope: 'full_batch',
+    product_ids: ['product-1'], product_revision_ids: ['revision-1'],
+  })
+  assert.equal('source_refs' in workflow.subtasks[1], false)
+  assert.equal(JSON.stringify(workflow).includes('must not reach'), false)
+  assert.equal(requests.length, 1)
 })
 
 test('deliverables from older API responses project a null delivery review summary', async t => {
@@ -651,10 +830,396 @@ test('dispatch reuses the saved subtask idempotency key and Django rejects/contr
   assert.equal(requests[2].headers.origin, 'http://192.168.1.23:3088')
   assert.equal(requests[2].headers.cookie, `csrftoken=${CSRF_TOKEN}`)
   assert.equal(requests[2].headers.authorization, undefined)
+  assert.equal(requests[2].headers['x-tradeloom-native-bridge'], undefined)
   assert.equal(dataOf(result).status, 'waiting_human')
   assert.equal(dataOf(result).execution_mode, 'local_mock')
   assert.equal(dataOf(result).planning_mode, 'simulated_rules')
   assert.equal(result.business_ui_url, '/business/workflow-tasks/wf-1')
+})
+
+test('native assignment uses Host-observed center identity and the server-selected dispatch key', async t => {
+  const { requests, tools } = await fixture(t, async (record, response) => {
+    if (record.method === 'GET' && record.path === '/api/workflow-tasks/wf-native') {
+      response.writeHead(200, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({
+        id: 'wf-native',
+        dispatch_target: { subtask_id: 'sub-product', idempotency_key: 'wf-native:product:attempt-1', blocked_reason: '' },
+        subtasks: [{ id: 'sub-product', agent_role: 'product_profile', status: 'queued' }],
+      }))
+      return
+    }
+    if (record.method === 'POST' && record.path === '/api/workflow-tasks/wf-native/subtasks/sub-product/native-assignment') {
+      response.writeHead(200, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({
+        assignment_id: 'assignment-1', step_id: 'assignment-1', workflow_id: 'wf-native',
+        subtask_id: 'sub-product', batch_id: 'batch-1', agent_role: 'product_profile', attempt: 1,
+        status: 'awaiting_expert', provider: 'unknown', model: 'unknown',
+        advice_context: {
+          schema_version: 'native-advice-context.v1', role: 'product_profile',
+          products: [{
+            product_id: 'product-1', fields: ['material'],
+            source_refs: { product_id: 'product-1', revision_id: null, task_file_ids: ['file-1'], raw_path: 'C:\\private\\source.xlsx' },
+            image_candidates: [{ path: 'C:\\private\\image.png' }],
+          }],
+        },
+      }))
+      return
+    }
+    return defaultHandler(record, response)
+  })
+  const hostCenter = { agent: { id: 'host-center-1', session: { header: {
+      agentPreset: 'tradeloom-center', parentSession: null, delegationDepth: 0,
+    } } } }
+  const spoofed = await tools.get('tradeloom_begin_native_workflow_assignment').execute(
+    { workflow_id: 'wf-native', subtask_id: 'sub-product', center_identity: { agent_id: 'forged' } },
+    hostCenter,
+  )
+  assert.equal(spoofed.error_code, 'invalid_arguments')
+  assert.equal(requests.length, 0)
+  const child = await tools.get('tradeloom_begin_native_workflow_assignment').execute(
+    { workflow_id: 'wf-native', subtask_id: 'sub-product' },
+    { agent: { id: 'child-agent', session: { header: {
+      agentPreset: 'tradeloom-center', parentSession: 'host-center-1', delegationDepth: 1,
+    } } } },
+  )
+  assert.equal(child.error_code, 'root_center_required')
+  assert.equal(requests.length, 0)
+  const result = await tools.get('tradeloom_begin_native_workflow_assignment').execute(
+    { workflow_id: 'wf-native', subtask_id: 'sub-product' }, hostCenter,
+  )
+
+  assert.equal(result.ok, true)
+  assert.deepEqual(dataOf(result).advice_context, {
+    schema_version: 'native-advice-context.v1', role: 'product_profile',
+    products: [{
+      product_id: 'product-1', fields: ['material'],
+      source_refs: { product_id: 'product-1', revision_id: null, task_file_ids: ['file-1'] },
+    }],
+  })
+  assert.equal(JSON.stringify(dataOf(result)).includes('private'), false)
+  assert.deepEqual(requests.map(item => [item.method, item.path]), [
+    ['GET', '/api/workflow-tasks/wf-native'],
+    ['GET', '/'],
+    ['POST', '/api/workflow-tasks/wf-native/subtasks/sub-product/native-assignment'],
+  ])
+  assert.deepEqual(JSON.parse(requests[2].body), {
+    idempotency_key: 'wf-native:product:attempt-1',
+    expected_expert_preset: 'tradeloom-product',
+    center_identity: {
+      agent_id: 'host-center-1',
+      agent_preset: 'tradeloom-center',
+      parent_session: null,
+      delegation_depth: 0,
+    },
+  })
+  assert.equal(result.data.includes('host-center-1'), false)
+})
+
+test('native bridge key comes from the launcher process environment when no test dependency is supplied', async t => {
+  const previous = process.env.TRADELOOM_NATIVE_BRIDGE_KEY
+  process.env.TRADELOOM_NATIVE_BRIDGE_KEY = NATIVE_BRIDGE_KEY
+  try {
+    const { requests, tools } = await fixture(t, async (record, response) => {
+      if (record.method === 'GET' && record.path === '/api/workflow-tasks/wf-native') {
+        response.writeHead(200, { 'content-type': 'application/json' })
+        response.end(JSON.stringify({
+          id: 'wf-native',
+          dispatch_target: { subtask_id: 'sub-product', idempotency_key: 'native-env-key' },
+          subtasks: [{ id: 'sub-product', agent_role: 'product_profile', status: 'queued' }],
+        }))
+        return
+      }
+      if (record.method === 'POST' && record.path.endsWith('/native-assignment')) {
+        response.writeHead(200, { 'content-type': 'application/json' })
+        response.end(JSON.stringify({
+          assignment_id: 'assignment-env', step_id: 'assignment-env', workflow_id: 'wf-native',
+          subtask_id: 'sub-product', batch_id: 'batch-1', agent_role: 'product_profile', attempt: 1,
+          status: 'awaiting_expert',
+          advice_context: { schema_version: 'native-advice-context.v1', role: 'product_profile', products: [] },
+        }))
+        return
+      }
+      return defaultHandler(record, response)
+    }, { nativeBridgeKey: null })
+    const center = { agent: { id: 'center-env', session: { header: {
+      agentPreset: 'tradeloom-center', parentSession: null, delegationDepth: 0,
+    } } } }
+    const result = await tools.get('tradeloom_begin_native_workflow_assignment').execute(
+      { workflow_id: 'wf-native', subtask_id: 'sub-product' }, center,
+    )
+    assert.equal(result.ok, true, JSON.stringify(result))
+    const post = requests.find(item => item.method === 'POST')
+    assert.equal(post.headers['x-tradeloom-native-bridge'], NATIVE_BRIDGE_KEY)
+    assert.equal(post.headers.authorization, undefined)
+    assert.equal(requests.filter(item => item.method === 'GET').every(item => item.headers['x-tradeloom-native-bridge'] === undefined), true)
+  } finally {
+    if (previous === undefined) delete process.env.TRADELOOM_NATIVE_BRIDGE_KEY
+    else process.env.TRADELOOM_NATIVE_BRIDGE_KEY = previous
+  }
+})
+
+test('native assignment retry reads an existing center assignment without posting or spawning again', async t => {
+  const assignment = {
+    assignment_id: 'assignment-1',
+    state: 'awaiting_expert',
+    center: {
+      agent_id: 'host-center-1',
+      agent_preset: 'tradeloom-center',
+      parent_session: null,
+      delegation_depth: 0,
+    },
+    expected_expert_preset: 'tradeloom-product',
+    provider: 'unknown',
+    model: 'unknown',
+  }
+  const { requests, tools } = await fixture(t, async (record, response) => {
+    if (record.method === 'GET' && record.path === '/api/workflow-tasks/wf-native') {
+      response.writeHead(200, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({
+        id: 'wf-native',
+        dispatch_target: { subtask_id: '', idempotency_key: '', blocked_reason: 'assignment已运行' },
+        steps: [{
+          id: 'assignment-1',
+          step_key: 'subtask:sub-product',
+          status: 'running',
+          attempt: 1,
+          input_refs: { execution_mode: 'native_dsh', subtask_id: 'sub-product', native_assignment: assignment },
+          output_refs: {},
+        }],
+        subtasks: [{ id: 'sub-product', agent_role: 'product_profile', status: 'running' }],
+      }))
+      return
+    }
+    return defaultHandler(record, response)
+  })
+  const result = await tools.get('tradeloom_begin_native_workflow_assignment').execute(
+    { workflow_id: 'wf-native', subtask_id: 'sub-product' },
+    { agent: { id: 'host-center-1', session: { header: {
+      agentPreset: 'tradeloom-center', parentSession: null, delegationDepth: 0,
+    } } } },
+  )
+
+  assert.equal(result.ok, true)
+  assert.deepEqual(requests.map(item => [item.method, item.path]), [
+    ['GET', '/api/workflow-tasks/wf-native'],
+  ])
+  assert.equal(dataOf(result).assignment_id, 'assignment-1')
+  assert.equal(dataOf(result).status, 'existing_unconfirmed')
+  assert.equal(dataOf(result).spawn_allowed, false)
+  assert.equal(dataOf(result).provider, 'unknown')
+  assert.equal(dataOf(result).model, 'unknown')
+  assert.equal(JSON.stringify(dataOf(result)).includes('host-center-1'), false)
+})
+
+test('native child binding uses a live Host child and refuses siblings, wrong preset, and wrong parent', async t => {
+  const assignment = {
+    assignment_id: 'assignment-1', state: 'awaiting_expert',
+    center: { agent_id: 'center-live', agent_preset: 'tradeloom-center', parent_session: null, delegation_depth: 0 },
+    expected_expert_preset: 'tradeloom-product',
+  }
+  const liveChildren = new Map([
+    ['child-good', { id: 'child-good', session: { header: { agentPreset: 'tradeloom-product', parentSession: 'center-live', delegationDepth: 1 } } }],
+    ['child-sibling', { id: 'child-sibling', session: { header: { agentPreset: 'tradeloom-product', parentSession: 'center-live', delegationDepth: 1 } } }],
+    ['child-wrong-preset', { id: 'child-wrong-preset', session: { header: { agentPreset: 'tradeloom-delivery', parentSession: 'center-live', delegationDepth: 1 } } }],
+    ['child-wrong-parent', { id: 'child-wrong-parent', session: { header: { agentPreset: 'tradeloom-product', parentSession: 'other-center', delegationDepth: 1 } } }],
+    ['child-deep', { id: 'child-deep', session: { header: { agentPreset: 'tradeloom-product', parentSession: 'center-live', delegationDepth: 2 } } }],
+  ])
+  const { requests, tools } = await fixture(t, async (record, response) => {
+    if (record.method === 'GET' && record.path === '/api/workflow-tasks/wf-native') {
+      response.writeHead(200, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({
+        id: 'wf-native',
+        steps: [{ id: 'assignment-1', status: 'running', input_refs: {
+          execution_mode: 'native_dsh', native_assignment: assignment,
+        } }],
+      }))
+      return
+    }
+    if (record.method === 'POST' && record.path.endsWith('/bind')) {
+      response.writeHead(200, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({
+        assignment_id: 'assignment-1', step_id: 'assignment-1', child_agent_id: 'child-good', status: 'bound',
+      }))
+      return
+    }
+    return defaultHandler(record, response)
+  }, { agents: { get: async id => liveChildren.get(id) } })
+  const centerExec = { agent: { id: 'center-live', session: { header: {
+    agentPreset: 'tradeloom-center', parentSession: null, delegationDepth: 0,
+  } } } }
+  const tool = tools.get('tradeloom_bind_native_workflow_expert')
+
+  for (const childId of ['missing-child', 'child-wrong-preset', 'child-wrong-parent', 'child-deep']) {
+    const rejected = await tool.execute({ workflow_id: 'wf-native', assignment_id: 'assignment-1', child_agent_id: childId }, centerExec)
+    assert.equal(rejected.error_code, 'direct_expert_child_required', childId)
+  }
+  assert.equal(requests.some(item => item.method === 'POST'), false)
+
+  const bound = await tool.execute({ workflow_id: 'wf-native', assignment_id: 'assignment-1', child_agent_id: 'child-good' }, centerExec)
+  assert.equal(bound.ok, true)
+  assert.equal(dataOf(bound).child_agent_id, 'child-good')
+  assert.equal(dataOf(bound).child_lifecycle, 'not_observed')
+  const post = requests.find(item => item.method === 'POST')
+  assert.equal(post.path, '/api/workflow-tasks/wf-native/native-assignments/assignment-1/bind')
+  assert.deepEqual(JSON.parse(post.body).child_identity, {
+    agent_id: 'child-good', agent_preset: 'tradeloom-product', parent_session: 'center-live', delegation_depth: 1,
+  })
+  assert.equal(post.headers['x-tradeloom-native-bridge'], NATIVE_BRIDGE_KEY)
+  assert.equal(post.headers.authorization, undefined)
+  assert.ok(liveChildren.has('child-sibling'), 'another valid sibling may be selected by center, but cannot replace the saved binding')
+})
+
+test('native child bind tool is exposed only to center and has a closed identity-free schema', async t => {
+  const { tools: centerTools } = await fixture(t)
+  assert.ok(centerTools.has('tradeloom_bind_native_workflow_expert'))
+  const { tools: productTools } = await fixture(t, defaultHandler, { preset: 'tradeloom-product' })
+  assert.equal(productTools.has('tradeloom_bind_native_workflow_expert'), false)
+  const definition = centerTools.get('tradeloom_bind_native_workflow_expert')
+  assert.deepEqual(Object.keys(definition.parameters.properties).sort(), ['assignment_id', 'child_agent_id', 'workflow_id'])
+  assert.deepEqual(definition.parameters.required.sort(), ['assignment_id', 'child_agent_id', 'workflow_id'])
+  assert.equal(definition.parameters.additionalProperties, false)
+})
+
+test('native assignment allows a new server-authorized resume attempt after a completed prior attempt', async t => {
+  const center = {
+    agent_id: 'host-center-1', agent_preset: 'tradeloom-center', parent_session: null, delegation_depth: 0,
+  }
+  const prior = {
+    assignment_id: 'assignment-prior', state: 'accepted', center,
+    expected_expert_preset: 'tradeloom-product', provider: 'unknown', model: 'unknown',
+  }
+  const { requests, tools } = await fixture(t, async (record, response) => {
+    if (record.method === 'GET' && record.path === '/api/workflow-tasks/wf-native') {
+      response.writeHead(200, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({
+        id: 'wf-native', batch_id: 'batch-1',
+        dispatch_target: { subtask_id: 'sub-product', idempotency_key: 'resume-key-2' },
+        steps: [{
+          id: 'assignment-prior', step_key: 'subtask:sub-product', status: 'completed', attempt: 1,
+          idempotency_key: 'resume-key-1',
+          input_refs: { execution_mode: 'native_dsh', subtask_id: 'sub-product', native_assignment: prior },
+          output_refs: { native_submission: { receipt: { result_status: 'needs_human' } } },
+        }],
+        subtasks: [{ id: 'sub-product', agent_role: 'product_profile', status: 'queued' }],
+      }))
+      return
+    }
+    if (record.method === 'POST' && record.path === '/api/workflow-tasks/wf-native/subtasks/sub-product/native-assignment') {
+      response.writeHead(200, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({
+        assignment_id: 'assignment-next', step_id: 'assignment-next', workflow_id: 'wf-native',
+        subtask_id: 'sub-product', batch_id: 'batch-1', agent_role: 'product_profile',
+        attempt: 2, status: 'awaiting_expert',
+        advice_context: { schema_version: 'native-advice-context.v1', role: 'product_profile', products: [] },
+      }))
+      return
+    }
+    return defaultHandler(record, response)
+  })
+  const result = await tools.get('tradeloom_begin_native_workflow_assignment').execute(
+    { workflow_id: 'wf-native', subtask_id: 'sub-product' },
+    { agent: { id: 'host-center-1', session: { header: {
+      agentPreset: 'tradeloom-center', parentSession: null, delegationDepth: 0,
+    } } } },
+  )
+
+  assert.equal(result.ok, true)
+  assert.deepEqual(requests.map(item => [item.method, item.path]), [
+    ['GET', '/api/workflow-tasks/wf-native'],
+    ['GET', '/'],
+    ['POST', '/api/workflow-tasks/wf-native/subtasks/sub-product/native-assignment'],
+  ])
+  assert.equal(JSON.parse(requests[2].body).idempotency_key, 'resume-key-2')
+  assert.equal(requests[2].headers['x-tradeloom-native-bridge'], NATIVE_BRIDGE_KEY)
+  assert.equal(requests[2].headers.authorization, undefined)
+  assert.equal(dataOf(result).assignment_id, 'assignment-next')
+  assert.equal(dataOf(result).attempt, 2)
+  assert.equal(dataOf(result).spawn_allowed, true)
+})
+
+test('native expert advice requires bounded source refs and derives child identity from Host context', async t => {
+  const revisionId = 'r'.repeat(32)
+  const productId = 'p'.repeat(32)
+  const taskFileId = 'f'.repeat(32)
+  const advice = {
+    schema_version: 'native-expert-advice.v1',
+    observations: [{
+      product_id: productId,
+      field: 'english_name',
+      source_refs: { product_id: productId, revision_id: revisionId, task_file_ids: [taskFileId] },
+      note: 'Unverified suggestion',
+      suggested_value: 'Proposed name only',
+    }],
+  }
+  const { requests, tools } = await fixture(t, async (record, response) => {
+    if (record.method === 'POST' && record.path === '/api/workflow-tasks/wf-native/native-assignments/step-1/submit') {
+      response.writeHead(200, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({
+        assignment_id: 'step-1', step_id: 'step-1', status: 'accepted',
+        result_status: 'needs_human', subtask_status: 'waiting_human',
+        execution_mode: 'native_dsh', provider: 'unknown', model: 'unknown',
+      }))
+      return
+    }
+    return defaultHandler(record, response)
+  }, { preset: 'tradeloom-product' })
+  const tool = tools.get('tradeloom_submit_native_workflow_advice')
+  const child = {
+    agent: { id: 'host-child-1', session: { header: {
+      agentPreset: 'tradeloom-product', parentSession: 'host-center-1', delegationDepth: 1,
+    } } },
+  }
+  const forged = await tool.execute({
+    workflow_id: 'wf-native', assignment_id: 'step-1', step_id: 'step-1', advice,
+    child_identity: { agent_id: 'forged' },
+  }, child)
+  assert.equal(forged.error_code, 'invalid_arguments')
+  assert.equal(requests.length, 0)
+  const malformed = await tool.execute({
+    workflow_id: 'wf-native', assignment_id: 'step-1', step_id: 'step-1',
+    advice: { ...advice, observations: [{ product_id: productId, field: 'english_name', note: 'Missing frozen refs' }] },
+  }, child)
+  assert.equal(malformed.error_code, 'invalid_arguments')
+  assert.equal(requests.length, 0)
+  const accepted = await tool.execute({
+    workflow_id: 'wf-native', assignment_id: 'step-1', step_id: 'step-1', advice,
+  }, child)
+  assert.equal(accepted.ok, true)
+  assert.equal(requests.filter(item => item.method === 'POST').length, 1)
+  assert.equal(JSON.parse(requests.find(item => item.method === 'POST').body).child_identity.agent_id, 'host-child-1')
+  assert.equal(JSON.parse(requests.find(item => item.method === 'POST').body).child_identity.parent_session, 'host-center-1')
+  assert.deepEqual(JSON.parse(requests.find(item => item.method === 'POST').body).advice, advice)
+  assert.equal(requests.find(item => item.method === 'POST').headers['x-tradeloom-native-bridge'], NATIVE_BRIDGE_KEY)
+  assert.equal(requests.find(item => item.method === 'POST').headers.authorization, undefined)
+  assert.equal(requests.filter(item => item.method === 'GET').every(item => item.headers['x-tradeloom-native-bridge'] === undefined), true)
+  assert.equal(requests.some(item => item.headers.authorization === NATIVE_TOKEN), false)
+  assert.equal(dataOf(accepted).child_lifecycle, 'not_observed')
+  assert.equal(dataOf(accepted).provider, 'unknown')
+
+})
+
+test('native workflow POST fails closed without a bridge key', async t => {
+  const { requests, tools } = await fixture(t, async (record, response) => {
+    if (record.method === 'GET' && record.path === '/api/workflow-tasks/wf-native') {
+      response.writeHead(200, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({
+        id: 'wf-native', dispatch_target: { subtask_id: 'sub-1', idempotency_key: 'key-1' },
+        subtasks: [{ id: 'sub-1', agent_role: 'product_profile', status: 'queued' }],
+      }))
+      return
+    }
+    return defaultHandler(record, response)
+  }, { nativeBridgeKey: '' })
+  const center = { agent: { id: 'host-center', session: { header: {
+    agentPreset: 'tradeloom-center', parentSession: null, delegationDepth: 0,
+  } } } }
+
+  const result = await tools.get('tradeloom_begin_native_workflow_assignment').execute(
+    { workflow_id: 'wf-native', subtask_id: 'sub-1' }, center,
+  )
+  assert.equal(result.error_code, 'native_bridge_unavailable')
+  assert.equal(requests.some(item => item.method === 'POST'), false)
+  assert.equal(requests.every(item => item.headers['x-tradeloom-native-bridge'] === undefined), true)
 })
 
 test('a server-reported human review block prevents dispatch and points to the existing review UI', async t => {

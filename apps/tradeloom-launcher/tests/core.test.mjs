@@ -7,8 +7,8 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import {
-  assertPortsAvailable, buildChildEnvironment, buildDesktopChildEnvironment, chooseAddress, ensureOwnedDirectory, ensureOwnedHome,
-  isPrivateIPv4, launcherPipeName, networkCandidates, startOwnedChild, startTransaction,
+  assertPortsAvailable, buildChildEnvironment, buildDesktopChildEnvironment, buildNativeBridgeChildEnvironment, chooseAddress, ensureOwnedDirectory, ensureOwnedHome,
+  createNativeBridgeKey, isPrivateIPv4, launcherPipeName, networkCandidates, startOwnedChild, startTransaction,
   reserveNamedPipe, serveStopRequest,
 } from '../core.mjs'
 import * as coreModule from '../core.mjs'
@@ -54,7 +54,7 @@ test('named-pipe ownership rejects a concurrent launcher and releases for the ne
 })
 
 test('child environment skips secret getters and points all fallback stores to owned paths', () => {
-  const inherited = { PATH: 'safe', DSH_HOME: 'foreign', OPENAI_BASE_URL: 'never-read', TRADELOOM_DB_PASSWORD: 'db-secret', TRADELOOM_DATA_ROOT: 'private-root', TRADELOOM_INTAKE_ROOT: 'private-intake', ROUTER_PROVIDER: 'foreign' }
+  const inherited = { PATH: 'safe', DSH_HOME: 'foreign', OPENAI_BASE_URL: 'never-read', TRADELOOM_DB_PASSWORD: 'db-secret', TRADELOOM_DATA_ROOT: 'private-root', TRADELOOM_INTAKE_ROOT: 'private-intake', TRADELOOM_NATIVE_BRIDGE_KEY: 'stale-bridge-key', ROUTER_PROVIDER: 'foreign' }
   Object.defineProperty(inherited, 'DEEPSEEK_API_KEY', { enumerable: true, get() { throw new Error('secret value was read') } })
   const env = buildChildEnvironment(inherited, {
     home: 'C:\\owned\\harness-home', agentsHome: 'C:\\owned\\agents',
@@ -68,9 +68,41 @@ test('child environment skips secret getters and points all fallback stores to o
   assert.equal(env.APPDATA, path.resolve('C:\\owned\\appdata'))
   assert.equal(env.LOCALAPPDATA, path.resolve('C:\\owned\\local'))
   assert.equal(env.XDG_CACHE_HOME, path.resolve('C:\\owned\\cache'))
-  for (const key of ['DSH_HOME', 'OPENAI_BASE_URL', 'TRADELOOM_DB_PASSWORD', 'TRADELOOM_DATA_ROOT', 'TRADELOOM_INTAKE_ROOT', 'ROUTER_PROVIDER', 'DEEPSEEK_API_KEY']) {
+  for (const key of ['DSH_HOME', 'OPENAI_BASE_URL', 'TRADELOOM_DB_PASSWORD', 'TRADELOOM_DATA_ROOT', 'TRADELOOM_INTAKE_ROOT', 'TRADELOOM_NATIVE_BRIDGE_KEY', 'ROUTER_PROVIDER', 'DEEPSEEK_API_KEY']) {
     if (key !== 'DSH_HOME') assert.equal(Object.hasOwn(env, key), false)
   }
+})
+
+test('native bridge key is one fresh opaque 256-bit hex value per launch', () => {
+  const bytes = Buffer.alloc(32, 0xab)
+  const key = createNativeBridgeKey(size => {
+    assert.equal(size, 32)
+    return bytes
+  })
+  assert.equal(key, 'ab'.repeat(32))
+  assert.throws(() => createNativeBridgeKey(() => Buffer.alloc(31)), /exactly 32 bytes/)
+})
+
+test('native bridge environment replaces inherited key and shares one generated value with both children', () => {
+  const key = '9'.repeat(64)
+  const paths = {
+    home: 'C:\\owned\\harness-home', agentsHome: 'C:\\owned\\agents',
+    appData: 'C:\\owned\\appdata', localAppData: 'C:\\owned\\local',
+    xdgCache: 'C:\\owned\\cache', xdgConfig: 'C:\\owned\\config', xdgData: 'C:\\owned\\data',
+  }
+  const base = buildNativeBridgeChildEnvironment({
+    LOCALAPPDATA: 'C:\\foreign\\local', TRADELOOM_NATIVE_BRIDGE_KEY: 'stale-value',
+  }, paths, {}, () => key)
+  const desktop = buildDesktopChildEnvironment(base.env, paths, {
+    runtimePath: 'C:\\owned\\runtime', host: '192.168.1.10', port: 3088, nativeBridgeKey: base.key,
+  })
+  const django = coreModule.buildDjangoChildEnvironment(base.env, { ...paths, dataRoot: 'C:\\owned\\data-root' }, {
+    TRADELOOM_NATIVE_BRIDGE_KEY: base.key,
+  })
+  assert.equal(base.key, key)
+  assert.equal(base.env.TRADELOOM_NATIVE_BRIDGE_KEY, key)
+  assert.equal(desktop.TRADELOOM_NATIVE_BRIDGE_KEY, django.TRADELOOM_NATIVE_BRIDGE_KEY)
+  assert.equal(django.TRADELOOM_NATIVE_BRIDGE_KEY, key)
 })
 
 test('Django child intake root is derived from DataRoot instead of inherited environment', () => {
@@ -109,13 +141,14 @@ test('desktop child gets its primary runtime path from the selected managed runt
     home: 'C:\\owned\\harness-home', agentsHome: 'C:\\owned\\agents',
     appData: 'C:\\owned\\appdata', localAppData: 'C:\\owned\\local', xdgCache: 'C:\\owned\\cache',
     xdgConfig: 'C:\\owned\\config', xdgData: 'C:\\owned\\data',
-  }, { runtimePath: 'C:\\owned\\runtime', host: '192.168.1.10', port: 3088 })
+  }, { runtimePath: 'C:\\owned\\runtime', host: '192.168.1.10', port: 3088, nativeBridgeKey: 'd'.repeat(64) })
 
   assert.equal(env.DSH_DESKTOP_PRIMARY_RUNTIME_DIR, path.resolve('C:\\owned\\runtime\\apps\\desktop\\.desktop-build\\targets\\win-x64\\runtime\\primary-runtime'))
   assert.equal(env.DSH_HOME, path.resolve('C:\\owned\\harness-home'))
   assert.equal(env.TRADELOOM_DSH_BIND_HOST, '192.168.1.10')
   assert.equal(env.TRADELOOM_DSH_BIND_PORT, '3088')
   assert.equal(env.DSH_DESKTOP_OPEN_DEVTOOLS, '0')
+  assert.equal(env.TRADELOOM_NATIVE_BRIDGE_KEY, 'd'.repeat(64))
   assert.equal(Object.hasOwn(env, 'ELECTRON_RUN_AS_NODE'), false)
   assert.equal(Object.hasOwn(env, 'DEEPSEEK_API_KEY'), false)
 })

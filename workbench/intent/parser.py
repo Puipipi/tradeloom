@@ -17,6 +17,7 @@ CONFIRMATION_SALT = "workbench.task-intent.confirm.v1"
 AVAILABLE_TASK_TYPES = ("prepare_product_data", "generate_deliverables")
 STRUCTURED_CONFIRMATION_KIND = "structured_agent_proposal"
 STRUCTURED_CONFIRMATION_VERSION = 1
+EXECUTION_MODES = ("local_mock", "native_dsh")
 
 RULES_SCHEMA = {
     "type": "object",
@@ -209,7 +210,7 @@ def _structured_proposal(*, batch_id: str, user_goal: str, task_type: str) -> di
     }
 
 
-def _structured_confirmation_payload(*, batch_id: str, user_goal: str, task_type: str, config: dict[str, Any]) -> dict[str, Any]:
+def _structured_confirmation_payload(*, batch_id: str, user_goal: str, task_type: str, execution_mode: str, config: dict[str, Any]) -> dict[str, Any]:
     if task_type not in AVAILABLE_TASK_TYPES:
         raise InvalidStructuredProposal("task_type 当前不受支持")
     return {
@@ -218,6 +219,7 @@ def _structured_confirmation_payload(*, batch_id: str, user_goal: str, task_type
         "batch_id": batch_id,
         "user_goal": user_goal,
         "task_type": task_type,
+        "execution_mode": execution_mode,
         "rules_version": config["rules_version"],
         "rules_sha256": config["rules_sha256"],
         "prompt_version": config["prompt_version"],
@@ -225,7 +227,9 @@ def _structured_confirmation_payload(*, batch_id: str, user_goal: str, task_type
     }
 
 
-def preview_intent(*, batch: Task, user_goal: str, task_type: str | None = None) -> dict[str, Any]:
+def preview_intent(*, batch: Task, user_goal: str, task_type: str | None = None, execution_mode: str = "local_mock") -> dict[str, Any]:
+    if execution_mode not in EXECUTION_MODES:
+        raise InvalidStructuredProposal("execution_mode 当前不受支持")
     config = load_intent_config()
     structured = task_type is not None
     parsed = (
@@ -237,6 +241,7 @@ def preview_intent(*, batch: Task, user_goal: str, task_type: str | None = None)
         **parsed,
         "mode": "agent_proposal" if structured else "local_mock",
         "execution": "human_confirmation_required" if structured else "simulated_rules",
+        "execution_mode": execution_mode,
         "model_provider": "not_verified" if structured else "not_configured",
         "prompt": {"version": config["prompt_version"], "sha256": config["prompt_sha256"]},
         "rules": {"version": config["rules_version"], "sha256": config["rules_sha256"]},
@@ -249,19 +254,20 @@ def preview_intent(*, batch: Task, user_goal: str, task_type: str | None = None)
     if parsed["status"] == "ready":
         result["confirmation_token"] = signing.dumps(
             _structured_confirmation_payload(
-                batch_id=batch.id, user_goal=user_goal, task_type=task_type, config=config,
-            ) if structured else _confirmation_payload(batch_id=batch.id, user_goal=user_goal, parsed=parsed, config=config),
+                batch_id=batch.id, user_goal=user_goal, task_type=task_type, execution_mode=execution_mode, config=config,
+            ) if structured else _confirmation_payload(batch_id=batch.id, user_goal=user_goal, parsed=parsed, execution_mode=execution_mode, config=config),
             salt=CONFIRMATION_SALT,
             compress=True,
         )
     return result
 
 
-def _confirmation_payload(*, batch_id: str, user_goal: str, parsed: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
+def _confirmation_payload(*, batch_id: str, user_goal: str, parsed: dict[str, Any], execution_mode: str = "local_mock", config: dict[str, Any]) -> dict[str, Any]:
     return {
         "batch_id": batch_id,
         "user_goal": user_goal,
         "task_type": parsed["action"]["task_type"],
+        "execution_mode": execution_mode,
         "action": parsed["action"],
         "classification": parsed["classification"],
         "evidence": parsed["evidence"],
@@ -272,7 +278,9 @@ def _confirmation_payload(*, batch_id: str, user_goal: str, parsed: dict[str, An
     }
 
 
-def verify_confirmation_token(*, token: str, batch_id: str, user_goal: str, task_type: str) -> dict[str, Any]:
+def verify_confirmation_token(*, token: str, batch_id: str, user_goal: str, task_type: str, execution_mode: str = "local_mock") -> dict[str, Any]:
+    if execution_mode not in EXECUTION_MODES:
+        raise InvalidIntentConfirmation("执行模式不受支持")
     try:
         signed = signing.loads(token, salt=CONFIRMATION_SALT)
         config = load_intent_config()
@@ -280,9 +288,10 @@ def verify_confirmation_token(*, token: str, batch_id: str, user_goal: str, task
             if task_type not in AVAILABLE_TASK_TYPES:
                 raise InvalidIntentConfirmation("结构化提案任务类型不受支持")
             expected = _structured_confirmation_payload(
-                batch_id=batch_id, user_goal=user_goal, task_type=task_type, config=config,
+                batch_id=batch_id, user_goal=user_goal, task_type=task_type, execution_mode=execution_mode, config=config,
             )
-            if signed != expected:
+            legacy_expected = {key: value for key, value in expected.items() if key != "execution_mode"}
+            if signed != expected and not (execution_mode == "local_mock" and signed == legacy_expected):
                 raise InvalidIntentConfirmation("结构化提案确认与当前目标、类型或规则不一致")
             label = "产品资料准备" if task_type == "prepare_product_data" else "生成交付文件"
             return {
@@ -298,11 +307,13 @@ def verify_confirmation_token(*, token: str, batch_id: str, user_goal: str, task
                 "mode": "agent_proposal",
                 "execution": "human_confirmation_required",
                 "model_provider": "not_verified",
+                "execution_mode": execution_mode,
                 "plan_source": "confirmed_structured_agent_proposal",
             }
         parsed = parse_goal(batch_id=batch_id, user_goal=user_goal, config=config)
-        expected = _confirmation_payload(batch_id=batch_id, user_goal=user_goal, parsed=parsed, config=config)
-        if parsed["status"] != "ready" or task_type != parsed["action"]["task_type"] or signed != expected:
+        expected = _confirmation_payload(batch_id=batch_id, user_goal=user_goal, parsed=parsed, execution_mode=execution_mode, config=config)
+        legacy_expected = {key: value for key, value in expected.items() if key != "execution_mode"}
+        if parsed["status"] != "ready" or task_type != parsed["action"]["task_type"] or (signed != expected and not (execution_mode == "local_mock" and signed == legacy_expected)):
             raise InvalidIntentConfirmation("预览确认与当前目标或规则不一致")
         return {
             "classification": parsed["classification"],
@@ -310,6 +321,7 @@ def verify_confirmation_token(*, token: str, batch_id: str, user_goal: str, task
             "rules": {"version": config["rules_version"], "sha256": config["rules_sha256"]},
             "prompt": {"version": config["prompt_version"], "sha256": config["prompt_sha256"]},
             "mode": "local_mock",
+            "execution_mode": execution_mode,
             "execution": "simulated_rules",
             "model_provider": "not_configured",
             "plan_source": "confirmed_natural_language_intent",

@@ -21,8 +21,21 @@
       <div><dt>人审待填写</dt><dd>{{ workflow.pending_review_count }}</dd></div>
       <div><dt>人审未核验</dt><dd>{{ workflow.unresolved_review_count }}</dd></div>
     </dl>
+    {% if native_dsh %}
+    <p class="workflow-boundary">已保存为原生 DSH 模式。工作流详情页不会调用本地模拟派发；由中心助手读取已保存任务并申请原生专家 assignment。</p>
+    {% else %}
     <p class="workflow-boundary">计划与子任务已保存；保存不会执行。点击按钮只运行一个本地模拟子任务。</p>
-    {% if dispatch_target %}
+    {% endif %}
+    {% if native_dsh and dispatch_target %}
+    <section class="workflow-boundary" data-testid="native-expert-dispatch">
+      <h3>由中心助手派发原生专家</h3>
+      <p>请在中心对话中读取此工作流并让中心助手按服务端下一步授权派发。未知或重放状态不会自动再次启动专家。</p>
+      <p>工作流引用（可选择复制）：<input aria-label="工作流引用" readonly value="{{ workflow.id }}"></p>
+      <p>下一子任务引用（可选择复制）：<input aria-label="下一子任务引用" readonly value="{{ dispatch_target.subtask_id }}"></p>
+    </section>
+    {% elif native_dsh %}
+    <p class="workflow-boundary" data-testid="native-expert-dispatch-blocked">当前没有可由中心助手派发的下一子任务：{{ dispatch_blocked_reason }}</p>
+    {% elif dispatch_target %}
     <form class="workflow-dispatch-form" data-testid="workflow-dispatch" data-dispatch-url="{{ dispatch_target.url|business_url }}">
       <input type="hidden" name="subtask_id" value="{{ dispatch_target.subtask_id }}">
       <input type="hidden" name="idempotency_key" value="{{ dispatch_target.idempotency_key }}">
@@ -156,12 +169,14 @@
         {% if step.error_summary %}<p class="workflow-error">错误：{{ step.error_summary }}</p>{% endif %}
         {% if step.input_source_rows %}<details><summary>输入来源引用</summary>{% include "workbench/workflow_reference_rows.html" with rows=step.input_source_rows %}</details>{% endif %}
         {% if step.output_source_rows %}<details><summary>输出来源引用</summary>{% include "workbench/workflow_reference_rows.html" with rows=step.output_source_rows %}</details>{% endif %}
-        {% if step.retry_available %}
+        {% if step.retry_available and not native_dsh %}
         <form class="workflow-retry-form" data-testid="workflow-retry" data-execution-url="{{ step.retry_url|business_url }}" data-idempotency-key="{{ step.retry_key }}" data-expected-step-id="{{ step.id }}">
           <button class="button primary" type="submit">错误重试（剩余 {{ step.retry_remaining }} 次额度）</button>
           <p class="form-error" data-execution-error role="alert" aria-live="polite" hidden></p>
           <a class="button secondary" data-execution-refresh href="{% business_path '/workflow-tasks/' workflow.id %}" hidden>刷新状态</a>
         </form>
+        {% elif step.retry_available and native_dsh %}
+        <p class="workflow-boundary" data-testid="native-retry-route">此原生专家步骤不能走本地模拟重试。请由中心助手先读取状态，并只在服务端返回新的授权 assignment 时派发。</p>
         {% elif step.status == "failed" and step.retry_remaining == 0 %}
         <p class="workflow-boundary">2次错误重试额度耗尽，请人工排查。</p>
         {% endif %}
@@ -209,6 +224,20 @@
         <div class="workflow-record-heading"><h3>{{ review.item_ref }}</h3><span class="status-pill">{% if review.status == "pending" %}待填写{% elif review.ui_unapplied %}已提交待应用{% elif review.status == "approved" %}已核验{% else %}已提交待核验{% endif %}</span></div>
         <p>{{ review.question }}</p>
         {% if review.options_display %}<ul class="review-options">{% for option in review.options_display %}<li>{{ option }}</li>{% endfor %}</ul>{% endif %}
+        {% if review.native_advice %}
+        <details class="native-expert-advice" data-testid="native-expert-advice">
+          <summary>专家未核实建议</summary>
+          <p class="muted-text">以下内容来自原生专家的未核实建议，仅供人工参考；不会自动填写或应用。</p>
+          {% for advice in review.native_advice %}
+          <div class="review-native-advice-item">
+            {% if advice.label %}<p><strong>{{ advice.label }}</strong></p>{% endif %}
+            {% if advice.suggested_value %}<p>建议值：{{ advice.suggested_value }}</p>{% endif %}
+            <p>说明：{{ advice.note }}</p>
+            {% if advice.source_rows %}<details><summary>建议来源引用</summary>{% include "workbench/workflow_reference_rows.html" with rows=advice.source_rows %}</details>{% endif %}
+          </div>
+          {% endfor %}
+        </details>
+        {% endif %}
         <p class="muted-text">创建于 {{ review.created_at_display }}</p>
         {% if review.source_rows %}<details><summary>来源引用</summary>{% include "workbench/workflow_reference_rows.html" with rows=review.source_rows %}</details>{% endif %}
         {% if review.status == "pending" and review.ui_kind == "image_selection" %}

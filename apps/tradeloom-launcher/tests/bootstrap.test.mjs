@@ -96,28 +96,51 @@ function dependencies(fx, overrides = {}) {
 
 test('managed entry isolates environment, validates receipt, and imports main without starting Django', async () => {
   const fx = await fixture()
+  const bridgeKey = '7'.repeat(64)
   const runtimeApp = path.join(fx.runtime, 'apps', 'desktop')
   await mkdir(runtimeApp, { recursive: true })
   await mkdir(path.join(runtimeApp, 'lib'), { recursive: true })
   await writeFile(path.join(runtimeApp, 'lib', 'main.js'), fx.appMain)
-  const env = { LOCALAPPDATA: fx.paths.localAppData, DSH_HOME: fx.paths.home, DSH_AGENTS_HOME: fx.paths.agentsHome,
-    TRADELOOM_DSH_APP_HOME: fx.paths.home, DSH_API_KEY: 'sentinel', TRADELOOM_EXTERNAL_SUPERVISOR: '1' }
+  const { env: cliDshEnv, key: cliBridgeKey } = coreApi.buildNativeBridgeChildEnvironment(
+    { LOCALAPPDATA: fx.paths.localAppData, DSH_API_KEY: 'sentinel' },
+    fx.paths,
+    { runtimePath: fx.runtime, host: fx.manifest.hostAddress, port: 3088 },
+    () => bridgeKey,
+  )
+  assert.equal(cliBridgeKey, bridgeKey)
+  const env = coreApi.buildDesktopChildEnvironment(cliDshEnv, fx.paths,
+    { runtimePath: fx.runtime, host: fx.manifest.hostAddress, port: 3088, nativeBridgeKey: cliBridgeKey })
   const processEnv = { ...env }
-  const { deps, calls } = dependencies(fx, { importMain: async () => {
+  const { deps, calls } = dependencies(fx, {
+    createNativeBridgeKey: () => { throw new Error('managed bootstrap must reuse the CLI key') },
+    importMain: async () => {
     calls.imports += 1
     assert.equal(processEnv.DSH_HOME, fx.paths.home)
     assert.equal(processEnv.DSH_AGENTS_HOME, fx.paths.agentsHome)
     assert.equal(processEnv.DSH_WORKSPACE, fx.paths.workspace)
     assert.equal(processEnv.LOCALAPPDATA, fx.paths.localAppData)
     assert.equal(processEnv.DSH_API_KEY, undefined)
+    assert.equal(processEnv.TRADELOOM_NATIVE_BRIDGE_KEY, bridgeKey)
     assert.equal(calls.cwd, fx.workspace)
-  } })
+    },
+  })
   const result = await bootstrapDesktop({ env, processEnv, appPath: runtimeApp, resourcesPath: path.dirname(fx.resourceRoot), platform: process.platform, deps })
   assert.equal(result.managed, true)
   assert.equal(calls.receipt, 1)
   assert.equal(calls.started, 0)
   assert.equal(calls.closed, 0)
   assert.equal(calls.imports, 1)
+
+  const missingBridgeEnv = { ...env }
+  delete missingBridgeEnv.TRADELOOM_NATIVE_BRIDGE_KEY
+  await assert.rejects(bootstrapDesktop({
+    env: missingBridgeEnv,
+    processEnv: { ...missingBridgeEnv },
+    appPath: runtimeApp,
+    resourcesPath: path.dirname(fx.resourceRoot),
+    platform: process.platform,
+    deps,
+  }), /invalid key/i)
 })
 
 test('packaged first launch initializes the desktop profile through the supplied official initProfile adapter', async () => {
@@ -196,9 +219,13 @@ test('direct launch filters provider getters, preserves DB password, binds LAN h
   const env = { LOCALAPPDATA: fx.local, TRADELOOM_DB_PASSWORD: 'db-only-sentinel' }
   Object.defineProperty(env, 'ROUTER_PROVIDER_API_KEY', { enumerable: true, get() { throw new Error('provider secret read') } })
   const processEnv = { LOCALAPPDATA: fx.local }
+  const bridgeKey = 'f'.repeat(64)
+  let djangoChild
   const { deps, calls } = dependencies(fx, {
+    createNativeBridgeKey: () => bridgeKey,
     startOwnedChild: (_exe, _args, options) => {
       calls.started += 1
+      djangoChild = { args: _args, env: options.env, logPath: options.logPath }
       assert.equal(options.env.TRADELOOM_DB_PASSWORD, 'db-only-sentinel')
       assert.equal(Object.hasOwn(options.env, 'ROUTER_PROVIDER_API_KEY'), false)
       return { spawned: Promise.resolve(), exited: new Promise(() => {}), stop: async () => { calls.stopped += 1 } }
@@ -207,12 +234,17 @@ test('direct launch filters provider getters, preserves DB password, binds LAN h
       calls.imports += 1
       assert.equal(processEnv.TRADELOOM_DSH_BIND_HOST, fx.manifest.hostAddress)
       assert.equal(processEnv.TRADELOOM_DSH_BIND_PORT, '3088')
+      assert.equal(processEnv.TRADELOOM_NATIVE_BRIDGE_KEY, bridgeKey)
       assert.equal(calls.cwd, fx.workspace)
     },
   })
   await bootstrapDesktop({ env, processEnv, appPath: fx.appPath, resourcesPath: path.dirname(fx.resourceRoot), deps })
   assert.equal(calls.started, 1)
   assert.equal(calls.imports, 1)
+  assert.equal(djangoChild.env.TRADELOOM_NATIVE_BRIDGE_KEY, bridgeKey)
+  assert.equal(djangoChild.env.TRADELOOM_NATIVE_BRIDGE_KEY, processEnv.TRADELOOM_NATIVE_BRIDGE_KEY)
+  assert.equal(JSON.stringify(djangoChild.args).includes(bridgeKey), false)
+  assert.equal(djangoChild.logPath.includes(bridgeKey), false)
 })
 
 test('spawn rejection rolls back child and mutex without importing app main', async () => {

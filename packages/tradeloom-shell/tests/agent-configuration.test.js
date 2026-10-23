@@ -793,3 +793,29 @@ test('default role presets register the scoped policy plugin without a global gu
   assert.equal((patch.match(/name: '@tradeloom\/dsh-business-shell\/tool-policy'/g) ?? []).length, 6)
   assert.doesNotMatch(patch, /id: tradeloom-tool-policy[\s\S]{0,120}deniedTools:\s*\n\s+-/)
 })
+
+test('native workflow prompts require persisted begin before one direct spawn and typed expert submission', async () => {
+  const patch = await readFile(new URL('../cordis.patch.yml', import.meta.url), 'utf8')
+  const section = (start, end) => patch.slice(patch.indexOf(`id: ${start}`), patch.indexOf(`id: ${end}`))
+  const center = section('tradeloom-center-preset', 'tradeloom-product-preset')
+  const product = section('tradeloom-product-preset', 'tradeloom-market-preset')
+  const delivery = section('tradeloom-delivery-preset', 'tradeloom-user-profile-preset')
+
+  assert.ok(center.indexOf('tradeloom_begin_native_workflow_assignment') < center.indexOf('原生 subagent 工具启动一次直接专家子代理'))
+  assert.match(center, /只有返回status=bound后，才用原生 send_message向该child发送任务目标/)
+  assert.match(center, /激活返回字段 subagentId/)
+  assert.match(center, /user_goal、workflow_id、batch_id、subtask_id、agent_role/)
+  assert.match(center, /spawn_allowed=true/)
+  assert.match(center, /already_persisted=false/)
+  assert.match(center, /existing_unconfirmed、accepted、spawn_allowed=false、blocked或unknown，不得再次spawn/)
+  assert.match(center, /禁止对native_dsh调用该本地模拟接口/)
+  for (const preset of [product, delivery]) {
+    assert.match(preset, /只有当中心助手的任务提示明确包含已保存且已由中心绑定到当前Host child的 native assignment/)
+    assert.match(preset, /已由中心绑定到当前Host child的 native assignment/)
+    assert.match(preset, /恰好调用一次 tradeloom_submit_native_workflow_advice/)
+  }
+  assert.match(product, /没有完整assignment引用或当前child未被绑定时不要调用提交工具/)
+  assert.match(delivery, /没有assignment引用或当前child未被绑定时不要调用提交工具/)
+  assert.match(product, /source_refs 必须来自实际读取结果/)
+  assert.match(delivery, /ready、完成、文件生成或审核结论必须由服务端确定性流程给出/)
+})

@@ -1,12 +1,21 @@
 import os from 'node:os'
 import net from 'node:net'
-import { createHash } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { mkdir, readFile, writeFile, lstat, realpath } from 'node:fs/promises'
 import path from 'node:path'
 
 export const OWNED_MARKER = '.tradeloom-owned'
 export const OWNED_MARKER_CONTENT = 'tradeloom-dsh-apphome-v1\n'
+export const NATIVE_BRIDGE_ENV = 'TRADELOOM_NATIVE_BRIDGE_KEY'
+
+export function createNativeBridgeKey(randomBytesFactory = randomBytes) {
+  const bytes = randomBytesFactory(32)
+  if (!(Buffer.isBuffer(bytes) || bytes instanceof Uint8Array) || bytes.byteLength !== 32) {
+    throw new TypeError('Native bridge key generator must return exactly 32 bytes.')
+  }
+  return Buffer.from(bytes).toString('hex')
+}
 
 export function isPrivateIPv4(value) {
   const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(value ?? '')
@@ -188,7 +197,7 @@ const secretPattern = /^(?:DEEPSEEK|OPENAI|ANTHROPIC|GOOGLE|GEMINI|AZURE_OPENAI|
 export function buildChildEnvironment(source, paths, extra = {}) {
   const env = {}
   for (const name of Object.keys(source)) {
-    if (/^DSH_/i.test(name) || secretPattern.test(name) || /^TRADELOOM_.*(?:API_KEY|TOKEN|SECRET|PASSWORD|BASE_URL|ENDPOINT)$/i.test(name)
+    if (/^DSH_/i.test(name) || name.toUpperCase() === NATIVE_BRIDGE_ENV || secretPattern.test(name) || /^TRADELOOM_.*(?:API_KEY|TOKEN|SECRET|PASSWORD|BASE_URL|ENDPOINT)$/i.test(name)
       || /^TRADELOOM_(?:DATA_ROOT|INTAKE_ROOT)$/i.test(name)
       || /^(?:ROUTER|CAVEMAN|LLM)_(?:.*(?:API_KEY|TOKEN|SECRET|PASSWORD|BASE_URL|ENDPOINT|PROVIDER|MODEL).*)$/i.test(name)) continue
     env[name] = source[name]
@@ -206,6 +215,15 @@ export function buildChildEnvironment(source, paths, extra = {}) {
   return env
 }
 
+export function buildNativeBridgeChildEnvironment(source, paths, extra = {}, keyFactory = createNativeBridgeKey, environmentBuilder = buildChildEnvironment) {
+  const key = keyFactory()
+  if (!/^[a-f0-9]{64}$/.test(key)) throw new TypeError('Native bridge key generator returned an invalid key.')
+  return {
+    key,
+    env: environmentBuilder(source, paths, { ...extra, [NATIVE_BRIDGE_ENV]: key }),
+  }
+}
+
 export function buildDjangoChildEnvironment(source, paths, extra = {}) {
   const dataRoot = canonical(paths.dataRoot)
   return buildChildEnvironment(source, paths, {
@@ -215,13 +233,14 @@ export function buildDjangoChildEnvironment(source, paths, extra = {}) {
   })
 }
 
-export function buildDesktopChildEnvironment(source, paths, { runtimePath, host, port }) {
+export function buildDesktopChildEnvironment(source, paths, { runtimePath, host, port, nativeBridgeKey }) {
   const primaryRuntimeDir = path.resolve(runtimePath, 'apps', 'desktop', '.desktop-build', 'targets', 'win-x64', 'runtime', 'primary-runtime')
   const env = buildChildEnvironment(source, paths, {
     TRADELOOM_MANAGED_DESKTOP: '1',
     TRADELOOM_EXTERNAL_SUPERVISOR: '1',
     TRADELOOM_DSH_BIND_HOST: host,
     TRADELOOM_DSH_BIND_PORT: String(port),
+    ...(nativeBridgeKey ? { [NATIVE_BRIDGE_ENV]: nativeBridgeKey } : {}),
     DSH_DESKTOP_PRIMARY_RUNTIME_DIR: primaryRuntimeDir,
     DSH_DESKTOP_OPEN_DEVTOOLS: '0',
   })

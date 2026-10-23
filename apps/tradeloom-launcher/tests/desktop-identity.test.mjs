@@ -7,7 +7,10 @@ import { execFileSync } from 'node:child_process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..')
-const upstream = path.resolve(repoRoot, '../workspace/research/references/deepseek-harness')
+const workspaceRoot = process.env.TRADELOOM_TEST_WORKSPACE_ROOT
+  ? path.resolve(process.env.TRADELOOM_TEST_WORKSPACE_ROOT)
+  : path.resolve(repoRoot, '../workspace')
+const upstream = path.join(workspaceRoot, 'research/references/deepseek-harness')
 const patchFile = path.join(repoRoot, 'integrations/dsh/patches/desktop-identity.patch')
 const targets = [
   'apps/desktop/scripts/electron-builder-config.mjs',
@@ -36,17 +39,26 @@ test('desktop identity patch applies to pinned builder and main source in an iso
     await mkdir(path.dirname(destination), { recursive: true })
     await cp(path.join(upstream, relative), destination)
   }
-  execFileSync('git', ['-C', temp, 'apply', '--check', patchFile], { stdio: 'pipe' })
-  execFileSync('git', ['-C', temp, 'apply', patchFile], { stdio: 'pipe' })
+  const normalizePatch = async (source, name) => {
+    const normalized = path.join(temp, name)
+    await writeFile(normalized, (await readFile(source, 'utf8')).replaceAll('\r\n', '\n'))
+    return normalized
+  }
+  const identityPatch = await normalizePatch(patchFile, 'desktop-identity.patch')
+  execFileSync('git', ['-C', temp, 'apply', '--check', identityPatch], { stdio: 'pipe' })
+  execFileSync('git', ['-C', temp, 'apply', identityPatch], { stdio: 'pipe' })
   const hostPatch = path.join(repoRoot, 'integrations/dsh/patches/desktop-host-lan.patch')
-  execFileSync('git', ['-C', temp, 'apply', '--check', hostPatch], { stdio: 'pipe' })
-  execFileSync('git', ['-C', temp, 'apply', hostPatch], { stdio: 'pipe' })
+  const normalizedHostPatch = await normalizePatch(hostPatch, 'desktop-host-lan.patch')
+  execFileSync('git', ['-C', temp, 'apply', '--check', normalizedHostPatch], { stdio: 'pipe' })
+  execFileSync('git', ['-C', temp, 'apply', normalizedHostPatch], { stdio: 'pipe' })
   const csrfPatch = path.join(repoRoot, 'integrations/dsh/patches/desktop-business-csrf.patch')
-  execFileSync('git', ['-C', temp, 'apply', '--check', csrfPatch], { stdio: 'pipe' })
-  execFileSync('git', ['-C', temp, 'apply', csrfPatch], { stdio: 'pipe' })
+  const normalizedCsrfPatch = await normalizePatch(csrfPatch, 'desktop-business-csrf.patch')
+  execFileSync('git', ['-C', temp, 'apply', '--check', normalizedCsrfPatch], { stdio: 'pipe' })
+  execFileSync('git', ['-C', temp, 'apply', normalizedCsrfPatch], { stdio: 'pipe' })
   const updatePatch = path.join(repoRoot, 'integrations/dsh/patches/desktop-managed-update.patch')
-  execFileSync('git', ['-C', temp, 'apply', '--check', updatePatch], { stdio: 'pipe' })
-  execFileSync('git', ['-C', temp, 'apply', updatePatch], { stdio: 'pipe' })
+  const normalizedUpdatePatch = await normalizePatch(updatePatch, 'desktop-managed-update.patch')
+  execFileSync('git', ['-C', temp, 'apply', '--check', normalizedUpdatePatch], { stdio: 'pipe' })
+  execFileSync('git', ['-C', temp, 'apply', normalizedUpdatePatch], { stdio: 'pipe' })
   const builder = await readFile(path.join(temp, targets[0]), 'utf8')
   const main = await readFile(path.join(temp, targets[1]), 'utf8')
   const uninstaller = await readFile(path.join(temp, targets[2]), 'utf8')
@@ -94,9 +106,13 @@ test('actual electron-builder config returns independent TradeLoom metadata', as
   await mkdir(path.join(stage, 'resources'), { recursive: true })
   await writeFile(path.join(stage, '.tradeloom-desktop-stage-owned'), 'tradeloom-desktop-stage-v1\n')
   await cp(path.join(upstream, 'apps/desktop/package.json'), path.join(temp, 'apps/desktop/package.json'))
-  execFileSync('git', ['-C', temp, 'apply', patchFile], { stdio: 'pipe' })
+  const normalizedIdentityPatch = path.join(temp, 'desktop-identity.patch')
+  await writeFile(normalizedIdentityPatch, (await readFile(patchFile, 'utf8')).replaceAll('\r\n', '\n'))
+  execFileSync('git', ['-C', temp, 'apply', normalizedIdentityPatch], { stdio: 'pipe' })
   const updatePatch = path.join(repoRoot, 'integrations/dsh/patches/desktop-managed-update.patch')
-  execFileSync('git', ['-C', temp, 'apply', updatePatch], { stdio: 'pipe' })
+  const normalizedUpdatePatch = path.join(temp, 'desktop-managed-update.patch')
+  await writeFile(normalizedUpdatePatch, (await readFile(updatePatch, 'utf8')).replaceAll('\r\n', '\n'))
+  execFileSync('git', ['-C', temp, 'apply', normalizedUpdatePatch], { stdio: 'pipe' })
   const configPath = path.join(temp, 'apps/desktop/scripts/electron-builder-config.mjs')
   const configSource = (await readFile(configPath, 'utf8')).replaceAll('\r\n', '\n')
   const functionSource = configSource.slice(configSource.indexOf('/**\n * Create electron-builder configuration'))

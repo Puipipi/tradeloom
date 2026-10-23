@@ -763,6 +763,12 @@ def apply_fact_review_cycle(
             "workflow_task_id": workflow.id,
             "applied_review_ids": sorted(review_ids),
             "prior_plan_step_id": latest_plan.id,
+            "execution_mode": latest_plan.input_refs.get("execution_mode", "local_mock"),
+            **({
+                "execution_confirmation_fingerprint": latest_plan.input_refs["execution_confirmation_fingerprint"]
+            } if isinstance(latest_plan.input_refs, dict)
+                and isinstance(latest_plan.input_refs.get("execution_confirmation_fingerprint"), str)
+                else {}),
         },
         output_refs={
             "plan": plan,

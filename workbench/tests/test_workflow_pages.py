@@ -200,6 +200,74 @@ class WorkflowPagesTests(TestCase):
         plan.assert_not_called()
         dispatch.assert_not_called()
 
+    def test_native_workflow_detail_never_offers_legacy_mock_dispatch_or_retry(self):
+        batch = self.make_batch()
+        workflow = self.make_workflow(batch)
+        WorkflowStep.objects.create(
+            task=workflow,
+            step_key="center_plan",
+            status="completed",
+            attempt=1,
+            idempotency_key=f"workflow:{workflow.id}:plan",
+            input_refs={
+                "execution_mode": "native_dsh",
+                "execution_confirmation_fingerprint": "a" * 64,
+            },
+            output_refs={"plan": {"subtasks": []}},
+        )
+        subtask = SubTask.objects.create(
+            task=workflow,
+            agent_role="product_profile",
+            status="queued",
+            input_refs={"batch_id": batch.id},
+        )
+
+        response = self.client.get(f"/workflow-tasks/{workflow.id}")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'data-testid="native-expert-dispatch"')
+        self.assertContains(response, "由中心助手派发原生专家")
+        self.assertContains(response, workflow.id)
+        self.assertContains(response, subtask.id)
+        self.assertNotContains(response, 'data-testid="workflow-dispatch"')
+        self.assertNotContains(response, 'data-testid="workflow-retry"')
+        self.assertNotContains(response, "执行下一步（本地模拟）")
+
+    def test_native_failed_step_routes_retry_back_through_center_without_legacy_form(self):
+        batch = self.make_batch()
+        workflow = self.make_workflow(batch, status="failed")
+        WorkflowStep.objects.create(
+            task=workflow,
+            step_key="center_plan",
+            status="completed",
+            attempt=1,
+            idempotency_key=f"workflow:{workflow.id}:plan",
+            input_refs={"execution_mode": "native_dsh", "execution_confirmation_fingerprint": "a" * 64},
+            output_refs={"plan": {"subtasks": []}},
+        )
+        subtask = SubTask.objects.create(
+            task=workflow,
+            agent_role="product_profile",
+            status="failed",
+            retry_count=0,
+            input_refs={"batch_id": batch.id},
+        )
+        WorkflowStep.objects.create(
+            task=workflow,
+            step_key=f"subtask:{subtask.id}",
+            status="failed",
+            attempt=1,
+            idempotency_key=f"workflow:{workflow.id}:subtask:{subtask.id}",
+            input_refs={"subtask_id": subtask.id, "execution_mode": "native_dsh"},
+            output_refs={"retryable": True},
+        )
+
+        response = self.client.get(f"/workflow-tasks/{workflow.id}")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'data-testid="native-retry-route"')
+        self.assertNotContains(response, 'data-testid="workflow-retry"')
+
     def test_detail_is_get_only_unknown_is_404_and_sets_csrf_cookie(self):
         self.assertEqual(self.client.get(f"/workflow-tasks/{'f' * 32}").status_code, 404)
         batch = self.make_batch()
@@ -247,6 +315,44 @@ class WorkflowPagesTests(TestCase):
         self.assertContains(response, "提交人审回执")
         self.assertContains(response, "待填写")
 
+    def test_pending_native_advice_is_visible_escaped_and_does_not_prefill_human_answer(self):
+        _batch, _product, _revision, _file, workflow, _engine, _subtask, review = create_pending_review()
+        review.answer = {}
+        review.source_conflict = {
+            "source_refs": {
+                "product_id": "product-demo",
+                "revision_id": "revision-demo",
+                "native_expert_advice": [{
+                    "field": "english_name",
+                    "suggested_value": "<script>unsafe()</script>",
+                    "note": "<img src=x onerror=unsafe()>",
+                    "source_refs": {
+                        "product_id": "product-demo",
+                        "revision_id": "revision-demo",
+                        "task_file_ids": ["file-demo"],
+                    },
+                }],
+            },
+        }
+        review.save(update_fields=["answer", "source_conflict"])
+
+        response = self.client.get(f"/workflow-tasks/{workflow.id}")
+        html = response.content.decode("utf-8")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'data-testid="native-expert-advice"')
+        self.assertContains(response, "专家未核实建议")
+        self.assertContains(response, "英文名称（人工填写）")
+        self.assertContains(response, "revision-demo")
+        self.assertContains(response, "file-demo")
+        self.assertIn("&lt;script&gt;unsafe()&lt;/script&gt;", html)
+        self.assertIn("&lt;img src=x onerror=unsafe()&gt;", html)
+        self.assertNotIn("<script>unsafe()</script>", html)
+        self.assertNotIn("<img src=x onerror=unsafe()>", html)
+        self.assertIn('name="value" value=""', html)
+        self.assertNotIn('name="value" value="&lt;script&gt;', html)
+        self.assertEqual(review.answer, {})
+
     def test_create_form_uses_existing_workflow_api_contract(self):
         batch = self.make_batch()
         Product.objects.create(
@@ -260,13 +366,13 @@ class WorkflowPagesTests(TestCase):
         self.assertNotContains(response, "data-default-task-type")
         self.assertContains(response, "本地规则模拟")
         self.assertContains(response, "先解析目标")
-        self.assertContains(response, "查看候选和模拟标记后")
-        self.assertContains(response, "明确确认保存计划")
+        self.assertContains(response, "先解析目标与只读资料来源，再确认保存计划和执行模式。")
+        self.assertContains(response, "确认并保存计划")
         self.assertContains(response, "确认后只保存计划并排队，尚未运行子任务")
-        self.assertContains(response, "本页使用本地规则解析；也可接收聊天 Agent 的结构化提案，保存前仍需确认。")
+        self.assertContains(response, "执行模式会随预览确认一并绑定；原生 DSH 结果仍需服务端校验与既有人审。")
         self.assertContains(response, 'id="workflow-create-error"')
         self.assertContains(response, 'id="workflow-create-notice"')
-        self.assertContains(response, "app.js")
+        self.assertContains(response, "app.js?v=native-workflow-bridge1")
 
         with patch("workbench.agents.mock_runtime.MockAgentRuntime.run_subtask") as run:
             created = self.client.post(

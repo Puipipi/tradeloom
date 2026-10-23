@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import csv
+import hmac
 import io
 import json
+import os
 from pathlib import Path
 
 from django.conf import settings
@@ -46,6 +48,7 @@ from .workflows.prepare import (
 from .workflows.dispatch_target import resolve_dispatch_target
 from .intent.parser import (
     AVAILABLE_TASK_TYPES,
+    EXECUTION_MODES,
     IntentConfigurationError,
     InvalidStructuredProposal,
     InvalidIntentConfirmation,
@@ -71,6 +74,7 @@ from .workflows.fact_application import (
 from .workflows.validation import frozen_image_candidates_for_review
 from .workflows.execution import (
     DispatchTargetNotFound,
+    NativeAssignmentRequired,
     dispatch_saved_subtask,
     interrupt_saved_subtask,
     retry_saved_subtask,
@@ -79,12 +83,15 @@ from .workflows.orchestrator import (
     DependencyNotReady,
     IdempotencyConflict,
     InvalidAgentResult,
+    NativeAdviceContextTooLarge,
     RetryLimitReached,
     RetryNotAllowed,
     StepInProgress,
     StaleAttemptResult,
     SubTaskNotDispatchable,
     WorkflowOrchestrationError,
+    WorkflowOrchestrator,
+    UnknownWorkflowTaskError,
 )
 from .delivery.service import (
     DeliveryConflict,
@@ -261,12 +268,13 @@ def create_workflow_task(request: HttpRequest) -> JsonResponse:
     if not isinstance(body, dict):
         return error("请求体必须是 JSON 对象", 422)
 
-    allowed = {"batch_id", "user_goal", "task_type", "idempotency_key", "confirmation_token"}
+    allowed = {"batch_id", "user_goal", "task_type", "idempotency_key", "confirmation_token", "execution_mode"}
     if set(body) - allowed:
         return error("请求包含不支持的字段", 422)
     batch_id = body.get("batch_id")
     user_goal = body.get("user_goal")
     task_type = body.get("task_type", "prepare_product_data")
+    execution_mode = body.get("execution_mode", "local_mock")
     if (
         not isinstance(batch_id, str)
         or not batch_id.strip()
@@ -281,6 +289,8 @@ def create_workflow_task(request: HttpRequest) -> JsonResponse:
         or len(task_type) > 64
     ):
         return error("task_type 必须是非空且不超过 64 个字符的字符串", 422)
+    if not isinstance(execution_mode, str) or execution_mode not in EXECUTION_MODES:
+        return error("execution_mode 必须是 local_mock 或 native_dsh", 422)
 
     has_idempotency_key = "idempotency_key" in body
     idempotency_key = body.get("idempotency_key")
@@ -299,6 +309,8 @@ def create_workflow_task(request: HttpRequest) -> JsonResponse:
         or len(confirmation_token) > 10000
     ):
         return error("confirmation_token 必须是非空字符串", 422)
+    if execution_mode == "native_dsh" and not has_confirmation_token:
+        return error("原生 DSH 执行必须先预览并确认执行模式", 422)
 
     try:
         if has_idempotency_key:
@@ -308,6 +320,7 @@ def create_workflow_task(request: HttpRequest) -> JsonResponse:
                 task_type=task_type,
                 idempotency_key=idempotency_key,
                 confirmation_token=confirmation_token,
+                execution_mode=execution_mode,
             )
         else:
             workflow = create_prepared_workflow(
@@ -315,6 +328,7 @@ def create_workflow_task(request: HttpRequest) -> JsonResponse:
                 user_goal=user_goal,
                 task_type=task_type,
                 confirmation_token=confirmation_token,
+                execution_mode=execution_mode,
             )
     except UnknownWorkflowBatchError as exc:
         return error(str(exc), 404)
@@ -338,12 +352,13 @@ def preview_workflow_intent(request: HttpRequest) -> JsonResponse:
     body, invalid = _parse_standard_json(request)
     if invalid:
         return invalid
-    if set(body) - {"batch_id", "user_goal", "task_type"} or not {"batch_id", "user_goal"}.issubset(body):
-        return error("仅接受 batch_id、user_goal 和可选 task_type 字段", 422)
+    if set(body) - {"batch_id", "user_goal", "task_type", "execution_mode"} or not {"batch_id", "user_goal"}.issubset(body):
+        return error("仅接受 batch_id、user_goal、task_type 和 execution_mode 字段", 422)
     batch_id = body.get("batch_id")
     user_goal = body.get("user_goal")
     task_type = body.get("task_type")
     has_task_type = "task_type" in body
+    execution_mode = body.get("execution_mode", "local_mock")
     if not isinstance(batch_id, str) or not batch_id.strip() or len(batch_id) > 32:
         return error("batch_id 必须是非空且不超过 32 个字符的字符串", 422)
     if not isinstance(user_goal, str) or not user_goal.strip() or len(user_goal) > 4000:
@@ -353,13 +368,15 @@ def preview_workflow_intent(request: HttpRequest) -> JsonResponse:
         or task_type not in AVAILABLE_TASK_TYPES
     ):
         return error("task_type 必须是当前支持的工作流类型", 422)
+    if not isinstance(execution_mode, str) or execution_mode not in EXECUTION_MODES:
+        return error("execution_mode 必须是 local_mock 或 native_dsh", 422)
     from .models import Task
 
     batch = Task.objects.filter(pk=batch_id).first()
     if batch is None:
         return error("未知批次", 404)
     try:
-        return JsonResponse(preview_intent(batch=batch, user_goal=user_goal, task_type=task_type))
+        return JsonResponse(preview_intent(batch=batch, user_goal=user_goal, task_type=task_type, execution_mode=execution_mode))
     except InvalidStructuredProposal as exc:
         return error(str(exc), 422)
     except IntentConfigurationError:
@@ -537,6 +554,8 @@ def dispatch_workflow_subtask(
             subtask_id=subtask_id,
             idempotency_key=idempotency_key,
         )
+    except NativeAssignmentRequired:
+        return JsonResponse({"code": "native_assignment_required", "detail": "原生工作流不能使用本地模拟派发"}, status=409)
     except (DispatchTargetNotFound, UnknownSubTaskError):
         return JsonResponse(
             {"code": "not_found", "detail": "工作流或所属子任务不存在"},
@@ -576,6 +595,159 @@ def dispatch_workflow_subtask(
             status=500,
         )
     return JsonResponse(result)
+
+
+@require_POST
+def begin_native_workflow_assignment(
+    request: HttpRequest, workflow_id: str, subtask_id: str
+) -> JsonResponse:
+    if not _native_bridge_authorized(request):
+        return JsonResponse({"code": "native_bridge_forbidden", "detail": "原生工作流桥接未获授权"}, status=403)
+    body, invalid = _parse_standard_json(request)
+    if invalid:
+        return invalid
+    if not isinstance(body, dict) or set(body) != {
+        "idempotency_key", "center_identity", "expected_expert_preset"
+    }:
+        return JsonResponse({"code": "invalid_request", "detail": "原生 assignment 请求字段无效"}, status=422)
+    idempotency_key = body.get("idempotency_key")
+    expected_preset = body.get("expected_expert_preset")
+    if (
+        not isinstance(idempotency_key, str)
+        or not idempotency_key.strip()
+        or len(idempotency_key) > 200
+        or not isinstance(expected_preset, str)
+    ):
+        return JsonResponse({"code": "invalid_request", "detail": "原生 assignment 参数无效"}, status=422)
+    try:
+        step = WorkflowOrchestrator().begin_native_assignment(
+            workflow_id,
+            subtask_id,
+            idempotency_key,
+            center_identity=body["center_identity"],
+            expected_expert_preset=expected_preset,
+        )
+    except UnknownSubTaskError:
+        return JsonResponse({"code": "not_found", "detail": "工作流或子任务不存在"}, status=404)
+    except (IdempotencyConflict, StepInProgress):
+        return JsonResponse({"code": "idempotency_conflict", "detail": "assignment 与已保存步骤冲突"}, status=409)
+    except NativeAdviceContextTooLarge:
+        return JsonResponse({"code": "advice_context_too_large", "detail": "完整建议来源超出当前支持范围，未保存 assignment"}, status=413)
+    except DependencyNotReady:
+        return JsonResponse({"code": "dependency_not_ready", "detail": "子任务依赖或人工审核尚未解决"}, status=409)
+    except SubTaskNotDispatchable:
+        return JsonResponse({"code": "state_conflict", "detail": "当前工作流、执行模式或Host角色不能开始assignment"}, status=409)
+    except WorkflowOrchestrationError:
+        return JsonResponse({"code": "assignment_failed", "detail": "原生assignment未保存，请读取工作流状态"}, status=500)
+
+    assignment = step.input_refs.get("native_assignment", {})
+    return JsonResponse({
+        "assignment_id": step.id,
+        "step_id": step.id,
+        "workflow_id": step.task_id,
+        "subtask_id": step.input_refs.get("subtask_id", ""),
+        "batch_id": step.input_refs.get("batch_id", ""),
+        "agent_role": step.input_refs.get("agent_role", ""),
+        "attempt": step.attempt,
+        "status": assignment.get("state", "unknown"),
+        "expected_expert_preset": assignment.get("expected_expert_preset", ""),
+        "advice_context": assignment.get("advice_context", {}),
+        "provider": "unknown",
+        "model": "unknown",
+    })
+
+
+@require_POST
+def bind_native_workflow_assignment(
+    request: HttpRequest, workflow_id: str, assignment_id: str
+) -> JsonResponse:
+    if not _native_bridge_authorized(request):
+        return JsonResponse({"code": "native_bridge_forbidden", "detail": "原生工作流桥接未获授权"}, status=403)
+    body, invalid = _parse_standard_json(request)
+    if invalid:
+        return invalid
+    if not isinstance(body, dict) or set(body) != {
+        "assignment_id", "step_id", "center_identity", "child_identity"
+    }:
+        return JsonResponse({"code": "invalid_request", "detail": "原生 child 绑定请求字段无效"}, status=422)
+    if body.get("assignment_id") != assignment_id or body.get("step_id") != assignment_id:
+        return JsonResponse({"code": "assignment_conflict", "detail": "assignment 引用不匹配"}, status=409)
+    try:
+        step = WorkflowOrchestrator().bind_native_assignment(
+            workflow_id,
+            assignment_id,
+            body["step_id"],
+            center_identity=body["center_identity"],
+            child_identity=body["child_identity"],
+        )
+    except UnknownWorkflowTaskError:
+        return JsonResponse({"code": "not_found", "detail": "工作流或 assignment 不存在"}, status=404)
+    except (IdempotencyConflict, StaleAttemptResult):
+        return JsonResponse({"code": "assignment_conflict", "detail": "assignment 已变化或绑定与已保存子代理冲突"}, status=409)
+    except SubTaskNotDispatchable:
+        return JsonResponse({"code": "host_identity_rejected", "detail": "Host child 身份与 assignment 不匹配"}, status=403)
+    except WorkflowOrchestrationError:
+        return JsonResponse({"code": "assignment_bind_failed", "detail": "原生 child 绑定未保存，请读取工作流状态"}, status=500)
+
+    assignment = step.input_refs["native_assignment"]
+    return JsonResponse({
+        "assignment_id": assignment_id,
+        "step_id": step.id,
+        "child_agent_id": assignment["child_agent_id"],
+        "status": "bound",
+        "provider": "unknown",
+        "model": "unknown",
+        "child_lifecycle": "not_observed",
+    })
+
+
+@require_POST
+def submit_native_workflow_assignment(
+    request: HttpRequest, workflow_id: str, assignment_id: str
+) -> JsonResponse:
+    if not _native_bridge_authorized(request):
+        return JsonResponse({"code": "native_bridge_forbidden", "detail": "原生工作流桥接未获授权"}, status=403)
+    body, invalid = _parse_standard_json(request)
+    if invalid:
+        return invalid
+    if not isinstance(body, dict) or set(body) != {
+        "assignment_id", "step_id", "child_identity", "advice"
+    }:
+        return JsonResponse({"code": "invalid_request", "detail": "原生提交请求字段无效"}, status=422)
+    if body.get("assignment_id") != assignment_id:
+        return JsonResponse({"code": "assignment_conflict", "detail": "assignment引用不匹配"}, status=409)
+    try:
+        receipt = WorkflowOrchestrator().submit_native_assignment(
+            workflow_id,
+            assignment_id,
+            body.get("step_id"),
+            child_identity=body.get("child_identity"),
+            advice=body.get("advice"),
+        )
+    except UnknownWorkflowTaskError:
+        return JsonResponse({"code": "not_found", "detail": "工作流或assignment不存在"}, status=404)
+    except (IdempotencyConflict, StaleAttemptResult):
+        return JsonResponse({"code": "assignment_conflict", "detail": "assignment已变化或提交与已保存结果冲突"}, status=409)
+    except DependencyNotReady:
+        return JsonResponse({"code": "dependency_not_ready", "detail": "当前来源或工作流门禁不允许提交"}, status=409)
+    except SubTaskNotDispatchable:
+        return JsonResponse({"code": "host_identity_rejected", "detail": "Host专家身份与assignment不匹配"}, status=403)
+    except InvalidAgentResult:
+        return JsonResponse({"code": "invalid_native_advice", "detail": "专家建议超出受支持范围或未对应服务端审核项"}, status=422)
+    except WorkflowOrchestrationError:
+        return JsonResponse({"code": "native_submission_failed", "detail": "原生专家结果未接受，请读取工作流状态"}, status=500)
+    return JsonResponse(receipt)
+
+
+def _native_bridge_authorized(request: HttpRequest) -> bool:
+    expected = os.environ.get("TRADELOOM_NATIVE_BRIDGE_KEY", "")
+    supplied = request.headers.get("X-TradeLoom-Native-Bridge", "")
+    if len(expected) != 64 or len(supplied) != 64:
+        return False
+    try:
+        return hmac.compare_digest(expected.encode("ascii"), supplied.encode("ascii"))
+    except UnicodeEncodeError:
+        return False
 
 
 def _parse_standard_json(request: HttpRequest):
