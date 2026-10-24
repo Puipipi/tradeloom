@@ -34,6 +34,20 @@ window.__ModuleLoader__.load({
     let agentCenterHref = '/business/agent-center'
     let removeProposalHandoff
     const agentCenterHrefListeners = new Set()
+    let mobileQrRequest
+
+    function loadMobileQr() {
+      if (!mobileQrRequest) {
+        mobileQrRequest = Promise.resolve(require.async('./client.mobile-qr.js'))
+          .then(value => {
+            const module = value?.default ?? value
+            if (typeof module?.createQrMatrix !== 'function') throw new Error('mobile-qr-unavailable')
+            return module
+          })
+          .catch(error => { mobileQrRequest = undefined; throw error })
+      }
+      return mobileQrRequest
+    }
 
     function businessFrames() {
       return [...(window.document?.querySelectorAll?.('iframe[data-tradeloom-business-frame]') ?? [])]
@@ -194,6 +208,8 @@ window.__ModuleLoader__.load({
       const [mobileUrl, setMobileUrl] = React.useState('')
       const [mobileBusy, setMobileBusy] = React.useState(false)
       const [mobileError, setMobileError] = React.useState('')
+      const [mobileQr, setMobileQr] = React.useState(null)
+      const [mobileQrError, setMobileQrError] = React.useState('')
       const mobileRequest = React.useRef(0)
       const rootRef = React.useRef(null)
       const triggerRef = React.useRef(null)
@@ -236,12 +252,20 @@ window.__ModuleLoader__.load({
       async function showMobileLink() {
         if (mobileBusy) return
         const requestId = ++mobileRequest.current
-        setMobileBusy(true); setMobileError(''); setMobileUrl(''); setMobileOpen(true)
+        setMobileBusy(true); setMobileError(''); setMobileQrError(''); setMobileQr(null); setMobileUrl(''); setMobileOpen(true)
         try {
           const response = await fetch('/tradeloom/mobile-link', { method: 'GET', credentials: 'same-origin' })
           const result = await response.json()
           if (!response.ok || typeof result.url !== 'string') throw new Error()
-          if (mobileRequest.current === requestId) setMobileUrl(result.url)
+          if (mobileRequest.current !== requestId) return
+          setMobileUrl(result.url)
+          try {
+            const qr = await loadMobileQr()
+            const matrix = qr.createQrMatrix(result.url)
+            if (mobileRequest.current === requestId) setMobileQr(matrix)
+          } catch {
+            if (mobileRequest.current === requestId) setMobileQrError('二维码暂不可用，请复制下方授权链接到手机浏览器打开。')
+          }
         } catch {
           if (mobileRequest.current === requestId) setMobileError('暂时无法生成手机连接链接，请确认电脑已连接局域网后重试。')
         } finally {
@@ -251,7 +275,7 @@ window.__ModuleLoader__.load({
 
       function closeMobileLink() {
         mobileRequest.current++
-        setMobileOpen(false); setMobileBusy(false); setMobileUrl(''); setMobileError('')
+        setMobileOpen(false); setMobileBusy(false); setMobileUrl(''); setMobileQr(null); setMobileQrError(''); setMobileError('')
       }
 
       async function copyMobileLink() {
@@ -262,6 +286,30 @@ window.__ModuleLoader__.load({
           setMobileError('自动复制不可用，请点按链接并手动复制。')
         }
       }
+
+      function qrPath(matrix) {
+        if (!matrix || !Number.isInteger(matrix.size) || matrix.size < 21 || matrix.size > 177
+          || !Array.isArray(matrix.modules) || matrix.modules.length !== matrix.size) return ''
+        const quietZone = 4
+        const segments = []
+        for (let row = 0; row < matrix.size; row++) {
+          const line = matrix.modules[row]
+          if (typeof line !== 'string' || line.length !== matrix.size || !/^[01]+$/.test(line)) return ''
+          let col = 0
+          while (col < matrix.size) {
+            if (line[col] !== '1') { col++; continue }
+            const start = col
+            while (col < matrix.size && line[col] === '1') col++
+            const x = start + quietZone
+            const y = row + quietZone
+            const width = col - start
+            segments.push(`M${x} ${y}h${width}v1h-${width}z`)
+          }
+        }
+        return segments.join('')
+      }
+
+      const qrD = qrPath(mobileQr)
 
       function action(label, onClick, disabled = false) {
         return h('button', { key: label, type: 'button', disabled, onClick: () => {
@@ -288,8 +336,14 @@ window.__ModuleLoader__.load({
         h('ol', null,
           h('li', null, '电脑保持开启。'),
           h('li', null, '手机连接同一 Wi-Fi。'),
-          h('li', null, '复制授权链接，在手机浏览器打开。')),
+          h('li', null, '扫码或复制授权链接，在手机浏览器打开。')),
         mobileBusy ? h('p', { role: 'status' }, '正在生成链接…') : null,
+        qrD ? h('div', { className: 'tl-mobile-link-qr-frame' }, h('svg', {
+          className: 'tl-mobile-link-qr', viewBox: `0 0 ${mobileQr.size + 8} ${mobileQr.size + 8}`,
+          role: 'img', 'aria-label': '手机授权链接二维码', shapeRendering: 'crispEdges',
+        }, h('rect', { x: 0, y: 0, width: mobileQr.size + 8, height: mobileQr.size + 8, fill: '#fff' }),
+        h('path', { d: qrD, fill: '#000' }))) : null,
+        mobileQrError ? h('p', { role: 'status' }, mobileQrError) : null,
         mobileUrl ? h('div', null,
           h('input', { type: 'text', readOnly: true, value: mobileUrl, 'aria-label': '手机授权链接', onFocus: event => event.currentTarget.select() }),
           h('button', { type: 'button', onClick: () => { void copyMobileLink() } }, '复制链接')) : null,
@@ -368,6 +422,20 @@ window.__ModuleLoader__.load({
           min-height: 34px; padding: 6px 9px; border: 0; border-radius: 5px; background: transparent;
           color: inherit; font: inherit; text-align: start; cursor: pointer;
         }
+        .tl-mobile-link-panel {
+          position: fixed; z-index: 1100; inset-block-start: 78px; inset-inline-end: 12px;
+          box-sizing: border-box; display: grid; gap: 9px; width: min(420px, calc(100vw - 24px));
+          max-block-size: calc(100vh - 96px); max-block-size: calc(100dvh - 96px); overflow: auto;
+          padding: 12px; border: 1px solid var(--tl-shell-line); border-radius: 10px;
+          background: var(--tl-shell-surface); color: var(--tl-shell-ink); box-shadow: 0 10px 32px rgb(0 0 0 / 20%);
+          font: 13px/1.5 "Segoe UI", "Microsoft YaHei", sans-serif;
+        }
+        .tl-mobile-link-panel ol { margin: 0; padding-inline-start: 22px; color: var(--tl-shell-muted); }
+        .tl-mobile-link-panel input { box-sizing: border-box; width: 100%; min-width: 0; padding: 7px 8px; border: 1px solid var(--tl-shell-line); border-radius: 6px; background: var(--tl-shell-surface); color: var(--tl-shell-ink); font: inherit; }
+        .tl-mobile-link-panel button { min-height: 34px; padding: 6px 9px; border: 1px solid var(--tl-shell-line); border-radius: 6px; background: var(--tl-shell-soft); color: var(--tl-shell-ink); font: inherit; cursor: pointer; }
+        .tl-mobile-link-panel button:focus-visible { outline: 2px solid var(--tl-shell-accent); outline-offset: 2px; }
+        .tl-mobile-link-qr-frame { box-sizing: border-box; width: min(264px, 100%); aspect-ratio: 1; margin-inline: auto; padding: 12px; border: 1px solid #d5d5d5; border-radius: 8px; background: #fff; }
+        .tl-mobile-link-qr { display: block; width: 100%; height: 100%; background: #fff; shape-rendering: crispEdges; }
         html[data-meow-smooth-furled] .tl-top-model-row { padding-inline-start: 66px; }
         .tl-navigation .tl-scene-tab { font: inherit; color: inherit; background: transparent; }
         .tl-navigation .tl-conversation-entry {
