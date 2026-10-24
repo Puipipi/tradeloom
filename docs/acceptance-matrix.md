@@ -453,3 +453,10 @@
 - 本次候选由 primary checkout 的本地验收分支启动；launcher 的受信 release-root 校验不接受直接从隔离 worktree 启动。记录只标识分支与 bundle，不公开本机目录。任务创建页显示默认“本地规则演示”；未提交业务操作、未调用模型。实际模型、实体手机仍未验收。
 - 手机入口实现为 `GET /tradeloom/mobile-link`，仅在受保护请求后按当前受信私有 IPv4 与端口 3088 生成授权入口；当前只读监听核对显示 DSH 占用局域网地址的 3088、Django 仅监听 `127.0.0.1:3090`。此处不记录本机 IP 或授权 URL/token。实体手机连接与配对尚未实测；应从应用内“连接手机”入口取得授权链接，不把 `127.0.0.1` 当作手机地址。
 - runtime8 真实 Dockview integration 与 pointer DnD、`dock-layout.test.js`、`scenes.test.js` 共 36 项：35 pass、1 skip、0 fail，exit 0。skip 是 `client entry passes the real Cordis context through to scene registration`，因当前 runtime8 未提供 `TRADELOOM_CORDIS_LIBRARY`；为执行 empty-session DOM 用例另设置了 runtime8 的 `TRADELOOM_DOM_TEST_ROOT`，该用例通过。此次测试没有操作业务数据库或模型。
+
+## 手机连接二维码候选（2026-10-24，本地部署待实机验收）
+
+- 本地连接面板使用现有受保护的 `/tradeloom/mobile-link` 返回值生成二维码，并保留复制链接路径；二维码编码与渲染均在本地，不改变授权路由或 token 生命周期。源码提交 `35aaaa11051ff0c1e21d78d4072efafa0959a210`，部署 bundle hash `bc53b8c3c894fe48ef7ef95114b137e35e5d34c3a06f32c512ff968d871e4b5e`，清单 29 个文件。
+- 本地 Node shell suite：253 项，238 pass、15 skip、0 fail，exit 0；QR 定向测试 2 pass、0 skip。15 个 skip 是现有测试声明的可选 DSH/Cordis/平台依赖未配置，不代表这些条件路径已验证。独立解码使用 MIT `qrcode-generator` 2.0.4 生成矩阵，并以 Apache-2.0 `jsQR` 1.4.0 对实际 SVG path 与静区栅格做 4 组纯合成 URL 往返，均逐字匹配；第三方解码器仅用于项目外验证，不是运行时依赖。
+- Root 已在桌面工作台打开连接面板，看到约 264px 的黑白二维码、完整链接输入框和复制按钮；点击复制后因桌面应用与 IAB 剪贴板隔离，未能验证粘贴结果。没有稳定识别手机浏览器的当前地址，浏览器验收按未完成处理；没有实体手机扫码或 LAN 连接证据。
+- 官方同步后 source/runtime/profile/manifest hash 一致；启动后的 layout-only 指纹与启动前备份相同。Host 的 app-boot 与 ui-layout 固定修复 hash 未变。owned Django 与 Electron 进程及 3088/3090 监听已就绪；这些只证明本地候选启动，不代表手机扫码或实体手机网络访问通过。
