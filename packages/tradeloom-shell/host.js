@@ -9,6 +9,7 @@ import { apply as applyBusinessProxy } from './proxy.js'
 import { apply as applyBusinessPolicy } from './policy.js'
 import { AGENT_CAPABILITIES_ROUTE, createAgentCapabilitiesHandler } from './capabilities.js'
 import { AGENT_CONFIGURATION_ROUTE, createAgentConfigurationHandler } from './agent-configuration.js'
+import { WORKFLOW_ROUTE, createWorkflowHandler } from './workflow-tools.js'
 
 const ROUTE = '/tradeloom/session'
 const NEW_SESSION_ROUTE = '/tradeloom/session/new'
@@ -496,7 +497,8 @@ export function apply(ctx) {
     const disposeDockLayouts = ctx.webServer.register({ kind: 'exact', path: DOCK_LAYOUTS_ROUTE, handler: createDockLayoutsHandler(ctx) })
     const disposeAgentCapabilities = ctx.webServer.register({ kind: 'exact', path: AGENT_CAPABILITIES_ROUTE, handler: createAgentCapabilitiesHandler(ctx) })
     const disposeAgentConfiguration = ctx.webServer.register({ kind: 'exact', path: AGENT_CONFIGURATION_ROUTE, handler: createAgentConfigurationHandler(ctx) })
-    return () => { disposeSession(); disposeNewSession(); disposeProfile(); disposeMobileLink(); disposeScenes(); disposeSceneLayouts(); disposeDockLayouts(); disposeAgentCapabilities(); disposeAgentConfiguration() }
+    const disposeWorkflows = ctx.webServer.register({ kind: 'exact', path: WORKFLOW_ROUTE, handler: createWorkflowHandler(ctx) })
+    return () => { disposeSession(); disposeNewSession(); disposeProfile(); disposeMobileLink(); disposeScenes(); disposeSceneLayouts(); disposeDockLayouts(); disposeAgentCapabilities(); disposeAgentConfiguration(); disposeWorkflows() }
   }, 'tradeloom-shell: protected session and profile routes')
 }
 

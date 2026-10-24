@@ -1,7 +1,7 @@
 import { ROLE_IDS } from './roles.js'
 
 export const BUSINESS_ROUTE_PATHS = Object.freeze(['/home', '/products', '/agent-center', '/artifacts', '/runs'])
-export const PANEL_TYPES = Object.freeze(['business-iframe', 'placeholder', 'native-chat', 'erpnext-status'])
+export const PANEL_TYPES = Object.freeze(['business-iframe', 'placeholder', 'native-chat', 'erpnext-status', 'workflow-canvas'])
 const ROLE_ID_SET = new Set(ROLE_IDS)
 const BUSINESS_PATHS = new Set(BUSINESS_ROUTE_PATHS)
 const DOCK_LAYOUT_PROFILES = Object.freeze({

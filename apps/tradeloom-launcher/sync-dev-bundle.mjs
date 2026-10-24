@@ -1,4 +1,4 @@
-import { cp, lstat, mkdir, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises'
+import { cp, lstat, mkdir, readFile, realpath, rename, rm, utimes, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { ensureOwnedHome, launcherPipeName, reserveNamedPipe } from './core.mjs'
 import { assertNoReparseAncestors, hashTree, packageName, profileBundles, sameDirectoryIdentity, sourcePackage, validateOwnedRuntime } from './prepare-profile.mjs'
@@ -39,6 +39,12 @@ async function copyBundle(source, stage, files, expectedHash) {
     },
   })
   if (await hashTree(stage, files) !== expectedHash) throw new Error('bundle staging hash mismatch。')
+  // DSH 只按 client.js 的 mtime/ctime/size 算插件 rev，懒加载分块（client.*.js）共用这个 rev，
+  // 且以 immutable 缓存一年。只改分块时 rev 不变，浏览器会一直用旧分块，所以同步时刷新入口时间戳。
+  if (files.includes('client.js')) {
+    const now = new Date()
+    await utimes(path.join(stage, 'client.js'), now, now)
+  }
 }
 
 /**

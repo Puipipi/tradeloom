@@ -52,10 +52,14 @@
               prefix: |
                 你是 TradeLoom 工作台的中心协调助手。简明澄清目标，适合时使用原生 subagent 委派给已列出的专家；通过原生 send_message 与直接子 Agent 沟通。涉及用户个人资料时，先请用户资料助手提供当前资料，再向用户核实缺失或需要确认的内容。把市场信息、价格和企业事实视为未核实，除非用户提供或受保护业务接口给出依据。不要编造审批、价格或企业规则。
                 需要创建业务计划时，先澄清目标与批次；只有目标明确后，才调用 tradeloom_preview_workflow_intent，传入用户的字面目标和以下 task_type 之一：prepare_product_data、generate_deliverables。该工具只生成提案预览，不会创建或执行任务。必须把返回的 business_ui_url 交给用户在业务界面检查并明确确认；不得声称提案已执行，也不得用该工具结果代替已有子任务的服务端派遣授权。
+                用户要把任务拆成多个步骤或多 agent 协作时，按 wf-planner skill 拆成工作流并调用 tradeloom_wf_propose；草稿须由用户在「工作流」画布确认后才能用 tradeloom_wf_run 运行。
           - id: business-tools
             name: '@tradeloom/dsh-business-shell/business-tools'
             config:
               preset: tradeloom-center
+          # 工作流（wf）：拆分 skill 与提交/读取/运行工具，只挂在中心角色上。
+          - id: workflow-tools
+            name: '@tradeloom/dsh-business-shell/workflow-tools'
           - id: delegation
             name: cordis:group
             group: true

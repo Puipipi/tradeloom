@@ -211,6 +211,8 @@ window.__ModuleLoader__.load({
         runs: [h('circle', { cx: 10, cy: 10, r: 7.5 }), h('path', { d: 'M10 5.5v5l3.5 2' })],
         'user-profile': [h('circle', { cx: 10, cy: 6.5, r: 3 }), h('path', { d: 'M3.5 17c.7-3.1 3.1-4.8 6.5-4.8s5.8 1.7 6.5 4.8' })],
         erpnext: [h('rect', { x: 3, y: 2.5, width: 14, height: 15, rx: 1.5 }), h('path', { d: 'M6 6h8M6 9h8M6 12h3M11.5 12H14M6 15h3M11.5 15H14' })],
+        // 工作流：三个节点用连线串起来
+        workflow: [h('rect', { x: 1.5, y: 3, width: 5, height: 4, rx: 1 }), h('rect', { x: 13.5, y: 3, width: 5, height: 4, rx: 1 }), h('rect', { x: 7.5, y: 13, width: 5, height: 4, rx: 1 }), h('path', { d: 'M6.5 5h7M4 7v3.5c0 2 1.5 4.5 3.5 4.5M16 7v3.5c0 2-1.5 4.5-3.5 4.5' })],
       }[sceneId]
       return h('svg', common, ...(shape ?? [h('circle', { cx: 10, cy: 10, r: 6 })]))
     }
@@ -925,6 +927,58 @@ window.__ModuleLoader__.load({
     }
 
     function Placeholder({ panel }) { return h('div', { className: 'tl-placeholder' }, h('p', null, panel.text)) }
+
+    // 工作流画布按需加载；模型下拉复用中心会话的模型目录。
+    let workflowRequest
+    function requestWorkflowChunk() {
+      if (!asyncRequire) return Promise.reject(new Error('workflow-loader-unavailable'))
+      workflowRequest ??= asyncRequire('./client.workflow.js').then(value => {
+        const module = value?.default ?? value
+        if (typeof module?.WorkflowCanvas !== 'function') throw new Error('workflow-asset-unavailable')
+        return module
+      }).catch(error => { workflowRequest = undefined; throw error })
+      return workflowRequest
+    }
+
+    function useRoleModelGroups(roleId) {
+      const state = useSnapshot()
+      const sessionId = state.sessionBindings?.[roleId]
+      const [groups, setGroups] = React.useState([])
+      React.useEffect(() => {
+        let live = true
+        let unsubscribe
+        if (!sessionId || !sessionsApi || !modelDirectoriesApi) return () => { live = false }
+        void (async () => {
+          try {
+            const reference = retainRoleSession(sessionsApi, roleId, sessionId)
+            if (!reference) return
+            await reference.ready
+            if (!live) return
+            const directory = modelDirectoriesApi.directoryFor(sessionId)
+            const update = () => { if (live) setGroups(modelDirectoryEntries(directory.store.getSnapshot()?.groups)) }
+            unsubscribe = directory.store.subscribe(update)
+            await directory.load()
+            update()
+          } catch { /* 模型目录不可用时只保留「跟随默认模型」 */ }
+        })()
+        return () => { live = false; unsubscribe?.() }
+      }, [roleId, sessionId])
+      return groups
+    }
+
+    function WorkflowPanel() {
+      const [module, setModule] = React.useState(null)
+      const [error, setError] = React.useState('')
+      const modelGroups = useRoleModelGroups('center')
+      React.useEffect(() => {
+        let live = true
+        requestWorkflowChunk().then(value => { if (live) setModule(value) }, () => { if (live) setError('工作流画布加载失败，请刷新重试。') })
+        return () => { live = false }
+      }, [])
+      if (error) return h('p', { className: 'tl-placeholder', role: 'alert' }, error)
+      if (!module) return h('p', { className: 'tl-placeholder', role: 'status' }, '加载工作流画布…')
+      return h(module.WorkflowCanvas, { modelGroups })
+    }
     function ERPNextStatus({ refreshKey = 0 } = {}) {
       const [state, setState] = React.useState({ loading: true, configured: false, connected: false, status: '', error: '', siteUrl: '', retry: 0 })
       React.useEffect(() => {
@@ -1336,6 +1390,7 @@ window.__ModuleLoader__.load({
         content = h(BusinessFrame, { panel, path, proposalHref, refreshKey })
       } else if (panel.type === 'placeholder') content = h(Placeholder, { panel })
       else if (panel.type === 'erpnext-status') content = h(ERPNextStatus, { refreshKey })
+      else if (panel.type === 'workflow-canvas') content = h(WorkflowPanel)
       else if (panel.type === 'native-chat') content = h(NativeChatPanel, {
         sceneId, refreshKey, SessionProvider: context.SessionProvider, renderSlot: context.renderSlot,
       })
@@ -1345,7 +1400,7 @@ window.__ModuleLoader__.load({
 
     function stableDockComponents(sceneId) {
       if (!dockviewRenderers.has(sceneId)) {
-        const types = ['business-iframe', 'placeholder', 'native-chat', 'erpnext-status']
+        const types = ['business-iframe', 'placeholder', 'native-chat', 'erpnext-status', 'workflow-canvas']
         dockviewRenderers.set(sceneId, Object.fromEntries(types.map(type => [type, props => h(SceneDockPanel, { ...props, sceneId })])))
       }
       return dockviewRenderers.get(sceneId)
@@ -2040,7 +2095,7 @@ window.__ModuleLoader__.load({
 
     return {
       SceneTabs, ModelDirectoryRail, ModelDirectoryFailure, SceneWorkbench, SceneChatPanel, ERPNextStatus, ERPNextQuotationDraft, retainRoleSession, releaseRoleSessions, modelDirectoryEntries, providerBadgeLabel, currentModelLabel, modelDirectoryDiagnostic,
-      PANEL_REGISTRY: Object.freeze({ 'business-iframe': BusinessFrame, placeholder: Placeholder, 'native-chat': SceneChatPanel, 'erpnext-status': ERPNextStatus }),
+      PANEL_REGISTRY: Object.freeze({ 'business-iframe': BusinessFrame, placeholder: Placeholder, 'native-chat': SceneChatPanel, 'erpnext-status': ERPNextStatus, 'workflow-canvas': WorkflowPanel }),
       bindSession, rememberLayout, roleForScene, selectScene, updatePanelLayout,
       selectRole, bindRoleSession, navigateBusiness, navigateScene, sceneNavigationItems, assistantLabel,
       subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener) },
