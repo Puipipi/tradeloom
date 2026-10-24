@@ -85,7 +85,7 @@ try {
 
 source-mode desktop launcher 还要求发行根有普通 `.tradeloom-runtime-owned` marker、`apps/desktop/lib/main.js`、`apps/desktop-host/lib/index.js`、Electron 运行文件，以及 `.tradeloom-desktop-build-receipt.json`。receipt schema 为 1，记录 pinned source commit、marker、patch-set digest 和上述两个编译文件的 SHA-256。产品提供的 `apps/tradeloom-launcher/receipt-writer.mjs` 只接受外部 builder 报告的真实成功证据；它不是编译器，也不提供可用虚构 exit code 生成 receipt 的命令。不得手工伪造 receipt 来绕过启动校验。
 
-当前仓库没有把 clean clone 到完整 patched/build/receipt/first-launch 串成已验证的一键流程。需要管理员/维护者提供受控 builder 过程并保留 build receipt，再按[源码启动指南](quick-start.md)启动。普通包装脚本默认寻找 `0.2.1-rc.2-tradeloom-desktop-2`；它不会自动升级到别的 runtime。其他版本必须使用维护者准备好的启动入口，不能只给 `launch-tradeloom.ps1` 添加未支持的 `-Runtime` 参数。
+当前仓库没有把 clean clone 到完整 patched/build/receipt/first-launch 串成已验证的一键流程。需要管理员/维护者提供受控 builder 过程并保留 build receipt，再按[源码启动指南](quick-start.md)启动。普通包装脚本默认寻找 `0.2.1-rc.2-tradeloom-desktop-2`；它不会自动升级到别的 runtime。PowerShell 包装脚本支持可选 `-Runtime` 参数，但这不绕过 launcher 的信任校验：runtime 必须是当前 checkout 推导出的受信 `workspace/runtime/tradeloom-harness/releases` 根目录的直接子目录，并通过 ownership marker、真实 desktop build receipt 与编译文件摘要、产品身份和开发 project descriptor 检查。仅传入另一个路径或完成 `prepare-runtime.ps1` 不满足启动条件。
 
 ## 升级原则
 

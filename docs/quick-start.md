@@ -23,9 +23,9 @@ py -3.14 -m venv $pythonRoot
 
 通用准备命令和锁定 commit、marker、patch receipt 的验证方法见[运行时准备与升级说明](upgrade-harness.md)。准备脚本使用仓库父目录下的 `workspace/research/references/deepseek-harness` 和 `workspace/runtime/tradeloom-harness/releases/<version>`。这些外部目录须自行按说明创建；clone 不会带入它们。
 
-普通启动脚本默认候选仍由 `apps/tradeloom-launcher/candidate-payload.mjs` 固定为 `0.2.1-rc.2-tradeloom-desktop-2`，不会下载 runtime。`-Runtime` 是包装脚本实际支持的可选参数；source-mode 还要求该发行目录具备匹配的 compiled desktop、`.tradeloom-runtime-owned` marker 和 `.tradeloom-desktop-build-receipt.json`。仅运行 `prepare-runtime.ps1` 不满足启动条件。
+普通启动脚本默认候选仍由 `apps/tradeloom-launcher/candidate-payload.mjs` 固定为 `0.2.1-rc.2-tradeloom-desktop-2`，不会下载 runtime。`-Runtime` 是包装脚本实际支持的可选参数，但 runtime 必须位于当前 checkout 推导出的受信 `workspace/runtime/tradeloom-harness/releases` 根目录下，并且是其直接子目录。launcher 还会验证 ownership marker、真实 desktop build receipt 和编译文件摘要、产品身份及开发 project descriptor；不能用参数指定其他任意目录来代替这些检查。仅运行 `prepare-runtime.ps1` 不满足启动条件。
 
-本地源码候选使用当前 worktree 的 launcher，并显式传入维护者已准备好的受管 desktop-8 runtime。示例中的 `$runtime` 必须替换为已准备的受管 runtime 绝对路径；各 worktree 的目录布局不同，不要从仓库父目录推导 runtime。`$dataRoot` 是本机新建的绝对路径，首次须不存在或为空。若你没有这份受管 runtime，应先按[固定 runtime 准备与升级说明](upgrade-harness.md)完成准备、官方构建及 receipt 流程；单改 `-Runtime` 不会同步或部署候选 shell/UI/launcher bundle。所需同步/构建尚未在此处执行，也不能把已有运行中应用的 UI bundle 称为本轮候选。
+本地源码候选使用当前 worktree 的 launcher，并显式传入维护者已准备好的受管 desktop runtime。示例中的 `$runtime` 必须是当前 checkout 推导出的 `workspace/runtime/tradeloom-harness/releases/<version>` 下的直接子目录；各 worktree 的受信发行根不同，不要把别的 clone/worktree 的 runtime 路径传进来。`$dataRoot` 是本机新建的绝对路径，首次须不存在或为空。它只隔离 TradeLoom 的文件/profile；launcher 当前仍连接同一 PostgreSQL 实例中的 `tradeloom_dev`，因此不同 DataRoot 不会自动隔离数据库。若你没有位于受信发行根、且已具备 marker、真实 build receipt、产品身份和开发 project descriptor 的 runtime，应先按[固定 runtime 准备与升级说明](upgrade-harness.md)完成受控准备。fresh clone 尚缺一条完整、已验证的官方 Desktop prepare/build、TradeLoom receipt 与 descriptor 生成/首次启动流程；上游生成 descriptor 的 `dev.ts` 会继续启动应用，本文不虚构一个安全的一键命令。单改 `-Runtime` 不会同步或部署候选 shell/UI/launcher bundle。
 
 ```powershell
 # 从本 worktree 的仓库根目录运行；将 runtime 替换为已准备的受管绝对路径。
@@ -70,4 +70,4 @@ powershell -ExecutionPolicy Bypass -File .\scripts\stop-tradeloom.ps1 -DataRoot 
 - ERPNext 默认未配置。管理员准备连接前，后端状态仍为未连接且不会访问 ERP 外部服务；普通桌面用户不需要安装 Linux、WSL、Docker 或 ERPNext。
 - 窄屏网页视口通过过业务验收，实体手机尚未验收。p8 安装版未包含最近 source-mode 更新，且其历史首启问题仍待单独处理。
 
-本机 GUI、专属 runtime、数据根与 runner 的历史启动证据见[本地启动入口核验](verification/2026-10-23-local-start-entry.md)、[验收矩阵](acceptance-matrix.md)及[工作报告](work-report.md)。这些记录不证明本轮候选已在运行，也不是实体手机、真实模型或 ERP 的验收证据。
+本机 GUI、专属 runtime、数据根与 runner 的历史启动证据见[本地启动入口核验](verification/2026-10-23-local-start-entry.md)、[验收矩阵](acceptance-matrix.md)及[工作报告](work-report.md)。这些记录不证明本轮候选已在运行，也不是实体手机、真实模型或 ERP 的验收证据。相关的[DSH 生态源码参考与采用边界](open-source-reuse.md)是固定提交的静态研究；[Intake live 只读一致性核查](verification/2026-10-24-intake-live-readonly.md)仅记录脱敏 GET/XML 核验。
