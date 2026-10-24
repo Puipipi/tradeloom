@@ -445,3 +445,11 @@
 - Root 在 runtime8 实际验证：助手同组标签拖至内容边缘后恢复四组；空白助手组标题拖至资料内容中心成功交换；助手标签拖至资料内容中心反向交换成功；根分隔条 y=546 调整至约 y=656 后恢复；双击下方标题最大化，再双击还原；任务标题拖向侧栏后布局无变化。验证均为合成工作台面板，不涉及业务数据。另此前对同组助手标签边缘拆分、目标组标题合并和中心多标签交换的实机记录继续有效。
 - Node shell 全套使用 runtime8 React/ReactDOM/JSDOM：232 项，219 pass、13 skip、0 fail、exit 0；13 项为需要本机未配置 pinned DSH/Cordis/WebServer 等依赖的条件测试。最终真实 Dockview integration 与 pointer 测试由 Root 独立复跑为 2 pass、0 skip、0 warning、exit 0。全套结果在最后实机复验前已完成；没有把 GUI 实测描述为全套自动化。
 - 官方同步后的 desktop-8 bundle hash 为 `cdcd6411f614adb65085cb609a6e954b1ed752de12ee893165b05af59c24695e`，runtime/profile 中 package 文件与源码逐项一致；app-boot `05FCB004…82C964` 和 ui-layout `567B3E31…01697` 保持不变。JSDOM 事件测试不替代物理输入之外的浏览器/手机验收；本节不代表整体项目目标完成。
+
+## Dockview 稳定帧复验与手机入口只读核对（2026-10-24，bundle `33d31ced…adee18`）
+
+- Root 在 1707×1019 窗口用独立稳定帧复验。先前“空白标题栏无变化”和“拖到底缘合并整行”的即时截图没有等待画面稳定，随后 fresh capture 未复现；这些旧观察不作为缺陷已修复或回归通过的证据。
+- 稳定帧实测：资料 tab 拖到本组右缘后成为独立右栏；拖到另一组空白标题区后合并；拖到本组底缘后仅资料拆为第二行，商品与总览仍在首行、商品助手仍在第三组。资料标题拖到上组右缘可恢复两列加底部助手。上下分隔条可调整，侧栏空白落点不改变布局。中心商品/资料交换、宽屏与展开侧栏时场景切换、根分隔条调整、双击组标题展开/还原均可用。主题 dark→跟随系统 light 成功；原生侧栏、会话、插件、设置和搜索入口仍可达。未测动画帧率。
+- 本次候选由 primary checkout 的本地验收分支启动；launcher 的受信 release-root 校验不接受直接从隔离 worktree 启动。记录只标识分支与 bundle，不公开本机目录。任务创建页显示默认“本地规则演示”；未提交业务操作、未调用模型。实际模型、实体手机仍未验收。
+- 手机入口实现为 `GET /tradeloom/mobile-link`，仅在受保护请求后按当前受信私有 IPv4 与端口 3088 生成授权入口；当前只读监听核对显示 DSH 占用局域网地址的 3088、Django 仅监听 `127.0.0.1:3090`。此处不记录本机 IP 或授权 URL/token。实体手机连接与配对尚未实测；应从应用内“连接手机”入口取得授权链接，不把 `127.0.0.1` 当作手机地址。
+- runtime8 真实 Dockview integration 与 pointer DnD、`dock-layout.test.js`、`scenes.test.js` 共 36 项：35 pass、1 skip、0 fail，exit 0。skip 是 `client entry passes the real Cordis context through to scene registration`，因当前 runtime8 未提供 `TRADELOOM_CORDIS_LIBRARY`；为执行 empty-session DOM 用例另设置了 runtime8 的 `TRADELOOM_DOM_TEST_ROOT`，该用例通过。此次测试没有操作业务数据库或模型。

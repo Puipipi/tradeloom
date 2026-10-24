@@ -268,10 +268,11 @@ test('real Dockview snapshot survives the client HTTP save and server restore co
       offsetHeight: { configurable: true, get: () => dropRect.height },
     })
     const pointerHits = []
+    let pointerHitOverride = null
     const pointerHit = (x, y) => {
       pointerHits.push({ x, y })
       return x >= dropRect.left && x <= dropRect.right && y >= dropRect.top && y <= dropRect.bottom
-      ? targetContent : null
+      ? (pointerHitOverride ?? targetContent) : null
     }
     dom.window.document.elementFromPoint = (x, y) => pointerHit(x, y)
     dom.window.document.elementsFromPoint = (x, y) => {
@@ -281,6 +282,11 @@ test('real Dockview snapshot survives the client HTTP save and server restore co
     const previewEvents = []
     const previewListener = api.onWillShowOverlay(event => previewEvents.push({
       kind: event.kind, position: event.position, transfer: event.getData?.(),
+    }))
+    const finalDropEvents = []
+    const finalDropListener = api.onWillDrop(event => finalDropEvents.push({
+      kind: event.kind, position: event.position, transfer: event.getData?.(),
+      groupId: event.group?.id ?? event.group?.model?.id,
     }))
     const dragStarts = []
     const dragStartListener = api.onWillDragPanel(event => dragStarts.push(event.panel?.id))
@@ -432,6 +438,52 @@ test('real Dockview snapshot survives the client HTTP save and server restore co
       [['business-main'], ['auxiliary'], ['reference'], ['native-chat']])
 
     await act(async () => { api.fromJSON(recommendation, { reuseExistingPanels: true }); await settle(50) })
+    const bottomEdgeSource = api.getPanel('auxiliary')
+    const bottomEdgeTarget = api.getPanel('business-main')
+    const bottomEdgeGroup = bottomEdgeTarget.api.group
+    await act(async () => {
+      bottomEdgeSource.api.moveTo({ group: bottomEdgeGroup, index: 1, skipSetActive: true })
+      bottomEdgeSource.api.setActive()
+      await settle(40)
+    })
+    assert.equal(bottomEdgeGroup.activePanel.id, 'auxiliary', 'the bottom-edge source is the active tab in its multitab group')
+    targetContent = bottomEdgeGroup.element.querySelector('.dv-content-container')
+    targetContent.getBoundingClientRect = () => dropRect
+    bottomEdgeGroup.element.getBoundingClientRect = () => dropRect
+    Object.defineProperties(targetContent, {
+      offsetWidth: { configurable: true, get: () => dropRect.width },
+      offsetHeight: { configurable: true, get: () => dropRect.height },
+    })
+    Object.defineProperties(bottomEdgeGroup.element, {
+      offsetWidth: { configurable: true, get: () => dropRect.width },
+      offsetHeight: { configurable: true, get: () => dropRect.height },
+    })
+    pointerHits.length = 0
+    previewEvents.length = 0
+    finalDropEvents.length = 0
+    pointerId++
+    const activeBottomEdgeTab = activeScene.querySelector('.dv-tab[data-tab-panel-id="auxiliary"]')
+    const bottomEdgeGroupId = bottomEdgeGroup.id
+    await act(async () => {
+      activeBottomEdgeTab.dispatchEvent(dragPointer('pointerdown', 120, 20))
+      dom.window.dispatchEvent(dragPointer('pointermove', 700, 624))
+      dom.window.dispatchEvent(dragPointer('pointermove', 701, 625))
+      assert.ok(previewEvents.some(event => event.kind === 'content' && event.position === 'bottom'),
+        `an active same-group tab at the content bottom edge previews a bottom split; previews=${JSON.stringify(previewEvents)} hits=${JSON.stringify(pointerHits)}`)
+      dom.window.dispatchEvent(dragPointer('pointerup', 701, 625))
+      await settle(80)
+    })
+    assert.ok(finalDropEvents.some(event => event.kind === 'content' && event.position === 'bottom'),
+      `the final pointerup target matches the bottom-edge preview; drops=${JSON.stringify(finalDropEvents)}`)
+    assert.notEqual(bottomEdgeSource.api.group.id, bottomEdgeGroupId,
+      'dropping the active tab at its own group bottom edge detaches only that panel into a split')
+    assert.equal(bottomEdgeTarget.api.group.id, bottomEdgeGroupId,
+      'the original group retains its other panel after the same-group bottom split')
+    assert.deepEqual(walkLeaves(api.toJSON().grid.root).map(leaf => leaf.views),
+      [['business-main'], ['auxiliary'], ['reference'], ['native-chat']],
+      'a bottom-edge tab drop preserves the other three groups instead of merging the row')
+
+    await act(async () => { api.fromJSON(recommendation, { reuseExistingPanels: true }); await settle(50) })
     const groupSource = api.getPanel('business-main')
     const groupTarget = api.getPanel('native-chat')
     const groupSourceGroup = groupSource.api.group
@@ -481,7 +533,45 @@ test('real Dockview snapshot survives the client HTTP save and server restore co
     assert.deepEqual(geometrySignature(api.toJSON().grid), geometryBeforeGroupSwap,
       'a group-header center swap preserves the existing Dockview topology and split sizes')
     await act(async () => { api.fromJSON(recommendation, { reuseExistingPanels: true }); await settle(50) })
+
+    const blankHeaderSource = api.getPanel('reference')
+    const blankHeaderTarget = api.getPanel('native-chat').api.group
+    const targetVoidHeader = blankHeaderTarget.element.querySelector('.dv-void-container')
+    assert.ok(targetVoidHeader, 'the destination group exposes its real Dockview blank header drop target')
+    blankHeaderTarget.element.getBoundingClientRect = () => dropRect
+    targetVoidHeader.getBoundingClientRect = () => dropRect
+    Object.defineProperties(blankHeaderTarget.element, {
+      offsetWidth: { configurable: true, get: () => dropRect.width },
+      offsetHeight: { configurable: true, get: () => dropRect.height },
+    })
+    Object.defineProperties(targetVoidHeader, {
+      offsetWidth: { configurable: true, get: () => dropRect.width },
+      offsetHeight: { configurable: true, get: () => dropRect.height },
+    })
+    pointerHitOverride = targetVoidHeader
+    pointerHits.length = 0
+    previewEvents.length = 0
+    finalDropEvents.length = 0
+    pointerId++
+    const blankHeaderTab = activeScene.querySelector('.dv-tab[data-tab-panel-id="reference"]')
+    await act(async () => {
+      blankHeaderTab.dispatchEvent(dragPointer('pointerdown', 120, 20))
+      dom.window.dispatchEvent(dragPointer('pointermove', 700, 510))
+      dom.window.dispatchEvent(dragPointer('pointermove', 701, 511))
+      assert.ok(previewEvents.some(event => event.kind === 'header_space'),
+        `a real panel-tab drag over blank header reports Dockview header_space; previews=${JSON.stringify(previewEvents)} hits=${JSON.stringify(pointerHits)} starts=${JSON.stringify(dragStarts)} target=${targetVoidHeader.className}`)
+      dom.window.dispatchEvent(dragPointer('pointerup', 701, 511))
+      await settle(80)
+    })
+    assert.ok(finalDropEvents.some(event => event.kind === 'tab' && event.position === 'center'),
+      `Dockview resolves a blank-header drop as an indexed tab insertion; drops=${JSON.stringify(finalDropEvents)}`)
+    assert.equal(blankHeaderSource.api.group.id, blankHeaderTarget.id,
+      'a panel-tab drop on another group blank header joins that native tab group')
+    assert.ok(blankHeaderTarget.panels.some(panel => panel.id === 'reference'))
+    pointerHitOverride = null
+    await act(async () => { api.fromJSON(recommendation, { reuseExistingPanels: true }); await settle(50) })
     previewListener.dispose?.()
+    finalDropListener.dispose?.()
     dragStartListener.dispose?.()
     const rawPanelRecord = recommendation.panels['business-main']
     const allowedPanelKeys = ['id', 'contentComponent', 'title', 'renderer', 'params']
