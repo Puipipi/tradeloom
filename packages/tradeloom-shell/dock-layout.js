@@ -64,8 +64,8 @@ function buildRecommendation(scene, businessPanels, chatPanels) {
         dockview: {
           grid: {
             root: { type: 'branch', size: 100, data: [
-              row('top', 58, ['business-main', 75], ['auxiliary', 25]),
-              row('bottom', 42, ['reference', 25], ['native-chat', 75]),
+              row('top', 60, ['business-main', 75], ['auxiliary', 25]),
+              row('bottom', 40, ['reference', 50], ['native-chat', 50]),
             ] },
             width: 100, height: 100, orientation: 'VERTICAL',
           },

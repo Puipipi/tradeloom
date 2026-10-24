@@ -6,7 +6,7 @@ const ROLE_ID_SET = new Set(ROLE_IDS)
 const BUSINESS_PATHS = new Set(BUSINESS_ROUTE_PATHS)
 const DOCK_LAYOUT_PROFILES = Object.freeze({
   assistant_lead: [1000, 360],
-  collaboration_grid: [1200, 600],
+  collaboration_grid: [960, 560],
   business_lead: [1143, 360],
 })
 

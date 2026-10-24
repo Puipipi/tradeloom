@@ -4657,6 +4657,7 @@ var PointerDragController = class PointerDragController2 extends CompositeDispos
     this._onDragMove.fire(dragEvent);
   }
   _handleEnd(e, dropped) {
+    if (dropped && this._active) this._handleMove(e);
     const dragEvent = {
       clientX: e.clientX,
       clientY: e.clientY,

@@ -37,9 +37,9 @@ test('scene JSON defines role-bound 4x4 grids and maps all known business routes
     'each scene has a compact, accessible glyph for the unified navigation rail')
   assert.deepEqual(config.scenes.map(scene => [scene.id, scene.layoutProfile.kind, scene.layoutProfile.minimumWidth, scene.layoutProfile.minimumHeight]), [
     ['center', 'assistant_lead', 1000, 360],
-    ['products', 'collaboration_grid', 1200, 600],
-    ['agent-center', 'collaboration_grid', 1200, 600],
-    ['deliverables', 'collaboration_grid', 1200, 600],
+    ['products', 'collaboration_grid', 960, 560],
+    ['agent-center', 'collaboration_grid', 960, 560],
+    ['deliverables', 'collaboration_grid', 960, 560],
     ['runs', 'business_lead', 1143, 360],
     ['user-profile', 'business_lead', 1143, 360],
     ['erpnext', 'business_lead', 1143, 360],
@@ -163,7 +163,10 @@ test('scene client chunk exposes independent layout state and scene-to-role mapp
 test('native chat panel uses the pinned conversation factory', async () => {
   let registration
   runInNewContext(await readFile(sceneChunkUrl, 'utf8'), {
-    window: { __ModuleLoader__: { load(value) { registration = value } } },
+    window: {
+      __ModuleLoader__: { load(value) { registration = value } },
+      addEventListener() {}, removeEventListener() {},
+    },
   })
   const React = { Fragment: 'Fragment', createElement: (type, props, ...children) => ({ type, props, children }) }
   const exports = registration.factory(() => React)
@@ -524,7 +527,10 @@ test('scene chat renders the pinned conversation factory inside its retained rol
   const fetchCalls = []
   let dockActionRefreshes = 0
   let resizeViewport = { width: 2000, height: 800 }
-  const sceneDockHost = { getBoundingClientRect: () => resizeViewport }
+  const sceneDockHost = {
+    getBoundingClientRect: () => resizeViewport,
+    addEventListener() {}, removeEventListener() {},
+  }
   let resizeCallback
   const legacyState = defaultSceneWorkbench(sceneConfig)
   const dockLayouts = normalizeDockLayouts(sceneConfig, { version: 2, scenes: {} }, legacyState.layouts)
@@ -572,7 +578,10 @@ test('scene chat renders the pinned conversation factory inside its retained rol
       observe(target) { resizeCallback([{ target, contentRect: resizeViewport }]) }
       disconnect() {}
     },
-    window: { __ModuleLoader__: { load(value) { registration = value } } },
+    window: {
+      __ModuleLoader__: { load(value) { registration = value } },
+      addEventListener() {}, removeEventListener() {},
+    },
     document: { getElementById() { return null } },
   })
   const createDockPanel = panel => {
@@ -618,6 +627,9 @@ test('scene chat renders the pinned conversation factory inside its retained rol
     onDidLayoutChange(listener) { layoutListener = listener; return { dispose() {} } },
     onDidActivePanelChange(listener) { activePanelListener = listener; return { dispose() {} } },
     onDidMaximizedGroupChange(listener) { maximizeListener = listener; return { dispose() {} } },
+    onWillDragPanel() { return { dispose() {} } },
+    onWillShowOverlay() { return { dispose() {} } },
+    onWillDrop() { return { dispose() {} } },
   }
   let dockReady = false
   let dockRenderProps
@@ -698,6 +710,8 @@ test('scene chat renders the pinned conversation factory inside its retained rol
   renderWorkbench()
   await new Promise(resolve => setImmediate(resolve))
   let mounted = renderWorkbench()
+  assert.equal(dockRenderProps.theme?.gap, 10,
+    'the default Dockview theme configures a real inter-group gap rather than outer padding or sash styling')
   assert.equal(sidebarSuppressionCalls, 0, 'rendering a workbench never claims to hide the native sidebar')
   assert.equal(sidebarToggleCalls, 0, 'entering and rendering a workbench never toggles the native sidebar')
   await new Promise(resolve => setImmediate(resolve))
@@ -715,6 +729,10 @@ test('scene chat renders the pinned conversation factory inside its retained rol
       if (found) return found
     }
   }
+  const dockThemeStyles = find(mounted, node => node.type === 'style' && node.children?.some(child => typeof child === 'string' && child.includes('--dv-spacing-padding: 0px;')))
+  assert.ok(dockThemeStyles, 'Dockview spacing padding is zero so the canvas padding does not duplicate the split gap')
+  assert.ok(dockThemeStyles.children.some(child => typeof child === 'string' && child.includes('background: var(--tl-canvas);')),
+    'the official split gap exposes the workbench canvas behind surface-colored groups')
   const standaloneNavigation = resolve(invoke(exports.SceneTabs, { workbenchActive: false }))
   assert.equal(find(standaloneNavigation, node => node.props?.className === 'tl-scene-tab' && node.props?.['aria-current']), undefined,
     'standalone conversation mode does not leave the previous business scene selected')
@@ -795,6 +813,7 @@ test('scene chat renders the pinned conversation factory inside its retained rol
   businessRefresh.props.onClick()
   assert.equal(exports.getSnapshot().panelRefreshKeys.center['business-main'], 2,
     'refresh targets the active business panel rather than the previously active chat')
+  const centerLayoutBeforeNarrow = JSON.stringify(dockLayouts.scenes.center)
   resizeViewport = { width: 900, height: 800 }
   resizeCallback([{ target: sceneDockHost, contentRect: resizeViewport }])
   const narrowTree = renderWorkbench()
@@ -809,6 +828,8 @@ test('scene chat renders the pinned conversation factory inside its retained rol
   assert.equal(exports.getSnapshot().panelRefreshKeys.center['business-main'], 3,
     'narrow-mode group refresh still targets its own panel')
   assert.equal(dockRenderProps.disableDnd, true, 'narrow mode disables layout dragging so responsive geometry stays transient')
+  assert.equal(JSON.stringify(dockLayouts.scenes.center), centerLayoutBeforeNarrow,
+    'narrow mode keeps the serialized saved layout unchanged')
   resizeViewport = { width: 2000, height: 800 }
   resizeCallback([{ target: sceneDockHost, contentRect: resizeViewport }])
   const wideTree = renderWorkbench()
@@ -850,14 +871,23 @@ test('narrow scene navigation focuses the requested panel when mounting an unvis
   const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
     url: 'http://desktop.local/', pretendToBeVisual: true,
   })
+  let hostSize = { width: 980, height: 650 }
+  let dockResizeCallback
   const globals = ['window', 'document', 'navigator', 'fetch', 'requestAnimationFrame', 'cancelAnimationFrame', 'IS_REACT_ACT_ENVIRONMENT']
     .map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)])
   let root
   try {
+    const dockWriteCalls = []
+    const dockWriteBodies = []
     const fetch = async (url, options = {}) => {
+      dockWriteCalls.push([url, options.method ?? 'GET'])
       if (url === '/tradeloom/scenes') return { ok: true, async json() { return { ...config, businessOrigin: 'http://desktop.local' } } }
       if (url === '/tradeloom/scene-layouts' && options.method === 'PUT') return { ok: true, async json() { return {} } }
       if (url === '/tradeloom/scene-layouts') return { ok: true, async json() { return savedSceneState } }
+      if (url === '/tradeloom/dock-layouts' && options.method === 'PUT') {
+        dockWriteBodies.push(JSON.parse(options.body))
+        return { ok: true, async json() { return {} } }
+      }
       if (url === '/tradeloom/dock-layouts') return { ok: true, async json() { return savedDockLayouts } }
       if (url === '/business-api/erpnext/status') return { ok: true, async json() { return { configured: false, connected: false, status: 'not_configured' } } }
       throw new Error(`unexpected synthetic request: ${url}`)
@@ -876,6 +906,10 @@ test('narrow scene navigation focuses the requested panel when mounting an unvis
     savedSceneState.activeSceneId = 'center'
     savedSceneState.businessPath = '/home'
     const savedDockLayouts = normalizeDockLayouts(config, { version: 2, scenes: {} }, savedSceneState.layouts)
+    const productsLayout = savedDockLayouts.scenes.products
+    productsLayout.dockview.grid.root.data[0].size = 64
+    productsLayout.closedPanelIds = ['auxiliary']
+    const savedProductsLayoutBeforeNavigation = structuredClone(productsLayout)
     const centerLeaf = savedDockLayouts.scenes.center.dockview.grid.root.data[0]
     centerLeaf.data.activeView = 'business-main'
     savedDockLayouts.scenes.center.dockview.activeGroup = centerLeaf.data.id
@@ -890,23 +924,31 @@ test('narrow scene navigation focuses the requested panel when mounting an unvis
     runInNewContext(chunkSource, {
       window: dom.window, document: dom.window.document, React, URLSearchParams, fetch,
       crypto: dom.window.crypto,
+      ResizeObserver: class {
+        constructor(callback) { dockResizeCallback = callback }
+        observe() {}
+        disconnect() {}
+      },
       requestAnimationFrame: callback => dom.window.setTimeout(callback, 0),
       cancelAnimationFrame: id => dom.window.clearTimeout(id),
       setTimeout: dom.window.setTimeout.bind(dom.window), clearTimeout: dom.window.clearTimeout.bind(dom.window),
     })
 
     const sceneByComponents = new WeakMap()
-    const mountOrder = ['center', 'erpnext']
+    const mountOrder = ['center', 'products', 'erpnext']
     let nextSceneIndex = 0
     const apiForScene = (sceneId, onPanelChange) => {
       const scene = config.scenes.find(item => item.id === sceneId)
+    let maximizedPanelId = ''
       const makePanel = panel => ({
         id: panel.id,
         component: panel.type,
         api: {
           id: panel.id,
           setActive() { activePanelId = panel.id; activeListener?.({ panel: panels.get(panel.id), origin: 'user' }); onPanelChange() },
-          setTitle() {}, close() {}, isMaximized() { return false }, maximize() {}, exitMaximized() {},
+        setTitle() {}, close() {}, isMaximized() { return maximizedPanelId === panel.id },
+        maximize() { maximizedPanelId = panel.id; maximizeListener?.() },
+        exitMaximized() { maximizedPanelId = ''; maximizeListener?.() },
         },
       })
       const initiallyClosed = new Set(savedDockLayouts.scenes[sceneId].closedPanelIds ?? [])
@@ -940,10 +982,15 @@ test('narrow scene navigation focuses the requested panel when mounting an unvis
           onPanelChange()
           return result
         },
-        hasMaximizedGroup() { return false }, maximizeGroup() {}, exitMaximizedGroup() {},
+        hasMaximizedGroup() { return Boolean(maximizedPanelId) },
+        maximizeGroup(panel) { panel.api.maximize() },
+        exitMaximizedGroup() { panels.get(maximizedPanelId)?.api.exitMaximized() },
         onDidLayoutChange(listener) { layoutListener = listener; return { dispose() {} } },
         onDidActivePanelChange(listener) { activeListener = listener; return { dispose() {} } },
         onDidMaximizedGroupChange(listener) { maximizeListener = listener; return { dispose() {} } },
+        onWillDragPanel() { return { dispose() {} } },
+        onWillShowOverlay() { return { dispose() {} } },
+        onWillDrop() { return { dispose() {} } },
       }
       return api
     }
@@ -981,7 +1028,7 @@ test('narrow scene navigation focuses the requested panel when mounting an unvis
     const host = dom.window.document.getElementById('root')
     const originalRect = dom.window.HTMLElement.prototype.getBoundingClientRect
     dom.window.HTMLElement.prototype.getBoundingClientRect = function () {
-      if (this.classList?.contains('tl-dockview-host')) return { x: 0, y: 0, left: 0, top: 0, right: 980, bottom: 650, width: 980, height: 650, toJSON() { return this } }
+      if (this.classList?.contains('tl-dockview-host')) return { x: 0, y: 0, left: 0, top: 0, right: hostSize.width, bottom: hostSize.height, width: hostSize.width, height: hostSize.height, toJSON() { return this } }
       return originalRect.call(this)
     }
     root = createRoot(host)
@@ -989,6 +1036,64 @@ test('narrow scene navigation focuses the requested panel when mounting an unvis
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
     assert.ok(host.querySelector('.tl-dock-scene.is-active[aria-label="工作总览工作区"]'), 'the initial scene is visibly mounted')
 
+    const productsTab = host.querySelector('button.tl-scene-tab[aria-label="商品"]')
+    assert.ok(productsTab)
+    await act(async () => {
+      productsTab.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
+      await new Promise(resolve => setTimeout(resolve, 20))
+    })
+    const activeProducts = host.querySelector('.tl-dock-scene.is-active[aria-label="商品工作区"]')
+    assert.ok(activeProducts, 'clicking Products mounts its visible scene')
+    assert.equal(activeProducts.querySelector('select[aria-label="选择当前面板"]'), null,
+      'a 980x650 collaboration-grid host stays in multi-panel mode')
+    assert.equal(activeProducts.querySelector('.test-dockview')?.getAttribute('data-disable-dnd'), 'false')
+    assert.equal(activeProducts.querySelector('.tl-dock-panel')?.getAttribute('data-panel-id'), 'business-main')
+    assert.deepEqual(savedDockLayouts.scenes.products, savedProductsLayoutBeforeNavigation,
+      'scene navigation leaves an existing custom recommendation and its closed-panel list intact')
+    const productsHost = activeProducts.querySelector('.tl-dockview-host')
+    const productPutCountBeforeNarrow = dockWriteCalls.filter(([url, method]) => url === '/tradeloom/dock-layouts' && method === 'PUT').length
+    const resizeProductHost = async size => {
+      hostSize = size
+      await act(async () => {
+        dockResizeCallback([{ target: productsHost, contentRect: size }])
+        await new Promise(resolve => setTimeout(resolve, 0))
+      })
+    }
+    await resizeProductHost({ width: 959, height: 650 })
+    assert.ok(activeProducts.querySelector('select[aria-label="选择当前面板"]'),
+      '959px host width is below the collaboration-grid cutoff')
+    assert.equal(activeProducts.querySelector('.test-dockview')?.getAttribute('data-disable-dnd'), 'true')
+    await resizeProductHost({ width: 980, height: 559 })
+    assert.ok(activeProducts.querySelector('select[aria-label="选择当前面板"]'),
+      '559px host height is below the collaboration-grid cutoff')
+    assert.equal(JSON.stringify(savedDockLayouts.scenes.products), JSON.stringify(savedProductsLayoutBeforeNavigation),
+      'responsive single-panel mode does not rewrite user proportions or closed panels')
+    assert.equal(dockWriteCalls.filter(([url, method]) => url === '/tradeloom/dock-layouts' && method === 'PUT').length,
+      productPutCountBeforeNarrow, 'responsive resizing does not persist a narrow Dockview geometry')
+    await resizeProductHost({ width: 960, height: 560 })
+    assert.equal(activeProducts.querySelector('select[aria-label="选择当前面板"]'), null,
+      'the recommended grid returns at the exact 960x560 boundary')
+    assert.equal(activeProducts.querySelector('.test-dockview')?.getAttribute('data-disable-dnd'), 'false')
+
+    const productsApi = sceneExports.getDockviewApi('products')
+    const stableProductsAfterWideRestore = structuredClone(savedDockLayouts.scenes.products)
+    const putCountBeforeHostResize = dockWriteBodies.length
+    await resizeProductHost({ width: 940, height: 540 })
+    assert.ok(activeProducts.querySelector('select[aria-label="选择当前面板"]'),
+      'the observed 940x540 host enters single-panel mode')
+    assert.equal(productsApi.hasMaximizedGroup(), true, 'narrow mode maximizes the selected panel in memory')
+    assert.equal(dockWriteBodies.length, putCountBeforeHostResize,
+      'the observed narrow resize does not persist temporary maximized geometry')
+    await resizeProductHost({ width: 980, height: 650 })
+    assert.equal(activeProducts.querySelector('select[aria-label="选择当前面板"]'), null,
+      'the observed 980x650 host restores the multi-panel workbench')
+    assert.equal(productsApi.hasMaximizedGroup(), false, 'returning wide exits temporary maximize')
+    assert.deepEqual(savedDockLayouts.scenes.products, stableProductsAfterWideRestore,
+      'narrow/wide host transitions preserve custom ratios and closed-panel IDs')
+    assert.ok(dockWriteBodies.every(body => !Object.hasOwn(body.scenes.products.dockview.grid, 'maximizedNode')),
+      'the HTTP queue never persists temporary maximized geometry')
+
+    await resizeProductHost({ width: 959, height: 650 })
     const erpTab = host.querySelector('button.tl-scene-tab[aria-label="ERPNext"]')
     assert.ok(erpTab)
     await act(async () => {
@@ -999,7 +1104,7 @@ test('narrow scene navigation focuses the requested panel when mounting an unvis
     assert.ok(activeScene, 'clicking the scene navigator makes ERPNext the active visible workbench')
     assert.equal(activeScene.style.display, 'flex')
     assert.equal(host.querySelector('button.tl-scene-tab[aria-label="ERPNext"]').getAttribute('aria-current'), 'page')
-    assert.ok(activeScene.querySelector('select[aria-label="选择当前面板"]'), 'the 980px canvas enters narrow single-pane mode')
+    assert.ok(activeScene.querySelector('select[aria-label="选择当前面板"]'), 'the 959px canvas enters narrow single-pane mode')
     assert.equal(activeScene.querySelector('.test-dockview')?.getAttribute('data-disable-dnd'), 'true')
     const visiblePanel = activeScene.querySelector('.tl-dock-panel')
     assert.equal(visiblePanel?.getAttribute('data-panel-id'), 'business-main',
