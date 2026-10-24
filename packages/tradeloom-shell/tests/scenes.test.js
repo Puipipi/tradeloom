@@ -31,9 +31,8 @@ test('scene JSON defines role-bound 4x4 grids and maps all known business routes
     ['runs', '运行记录', 'center'],
     ['user-profile', '资料整理', 'user-profile'],
     ['erpnext', 'ERPNext', 'center'],
-    ['workflow', '工作流', 'center'],
   ])
-  assert.deepEqual(config.scenes.map(scene => scene.icon), ['⌂', '▦', '◉', '⇩', '≋', '◈', '▤', '⛓'],
+  assert.deepEqual(config.scenes.map(scene => scene.icon), ['⌂', '▦', '◉', '⇩', '≋', '◈', '▤'],
     'each scene has a compact, accessible glyph for the unified navigation rail')
   assert.deepEqual(config.scenes.map(scene => [scene.id, scene.layoutProfile.kind, scene.layoutProfile.minimumWidth, scene.layoutProfile.minimumHeight]), [
     ['center', 'assistant_lead', 1000, 360],
@@ -43,7 +42,6 @@ test('scene JSON defines role-bound 4x4 grids and maps all known business routes
     ['runs', 'business_lead', 1143, 360],
     ['user-profile', 'business_lead', 1143, 360],
     ['erpnext', 'business_lead', 1143, 360],
-    ['workflow', 'business_lead', 1143, 360],
   ], 'every scene uses the reviewed split profile and canvas fit threshold')
   const invalidProfile = structuredClone(config)
   invalidProfile.scenes[0].layoutProfile.minimumWidth++
@@ -70,7 +68,7 @@ test('scene JSON defines role-bound 4x4 grids and maps all known business routes
       { col: 2, row: 3, w: 3, h: 2 },
     ])
     assert.equal(chat.type, 'native-chat')
-    assert.ok(['business-iframe', 'erpnext-status', 'workflow-canvas'].includes(business.type))
+    assert.ok(['business-iframe', 'erpnext-status'].includes(business.type))
     if (scene.id !== 'erpnext') {
       assert.equal(auxiliary.type, 'business-iframe', `${scene.id} uses an existing business page in its auxiliary panel`)
       assert.equal(reference.type, 'business-iframe', `${scene.id} uses an existing business page in its reference panel`)
@@ -139,7 +137,6 @@ test('scene client chunk exposes independent layout state and scene-to-role mapp
     { id: 'runs', label: '运行记录', icon: '≋', route: '/runs' },
     { id: 'user-profile', label: '资料整理', icon: '◈', route: null },
     { id: 'erpnext', label: 'ERPNext', icon: '▤', route: null },
-    { id: 'workflow', label: '工作流', icon: '⛓', route: null },
   ])
   const current = { config, activeSceneId: 'center', businessPath: '/home', layouts: bothStates }
   const selectedProfile = exports.selectScene(current, 'user-profile')
@@ -673,7 +670,7 @@ test('scene chat renders the pinned conversation factory inside its retained rol
   }
   invoke(exports.SceneTabs)
   assert.equal(await exports.selectRole('center', 'native-center-session'), true)
-  assert.equal(exports.getSnapshot().config?.scenes.length, 8, JSON.stringify({ error: exports.getSnapshot().configError, fetchCalls }))
+  assert.equal(exports.getSnapshot().config?.scenes.length, 7, JSON.stringify({ error: exports.getSnapshot().configError, fetchCalls }))
   assert.equal(exports.getSnapshot().sessionBindings.center, 'native-center-session')
   for (const scene of sceneConfig.scenes) {
     assert.equal(JSON.stringify(exports.getSnapshot().dockDefaults[scene.id].dockview), JSON.stringify(dockLayouts.scenes[scene.id].dockview),
@@ -2291,7 +2288,7 @@ test('scene navigation exposes config reload after a failed request and refreshe
   assert.equal(buttons(tree).some(button => button.children.includes('刷新场景配置')), false,
     'scene config refresh is moved out of the scene tab strip into the shell tools menu')
   const sceneTabButtons = buttons(tree).filter(button => button.props?.className === 'tl-scene-tab')
-  assert.equal(sceneTabButtons.length, 8)
+  assert.equal(sceneTabButtons.length, 7)
   for (const button of sceneTabButtons) {
     assert.equal(button.children[0]?.children?.[0]?.type, 'svg', `${button.props['aria-label']} should use a recognizable inline icon`)
     assert.equal(button.children[1]?.props?.className, 'tl-scene-tab-label')
