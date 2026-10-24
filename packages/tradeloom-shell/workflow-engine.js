@@ -97,7 +97,9 @@ export function createWorkflowRunner(options = {}) {
           run.pending.delete(node.id)
           if (![...run.pending.keys()].length && run.status === 'waiting') run.status = 'running'
           if (decision.approved !== true) throw new Error(decision.note || '人工确认未通过')
-          state.output = decision.note || '已确认'
+          // 审核通过后把上游内容原样传下去，下游节点才拿得到被审核的结果
+          const passed = parents.map(id => run.nodes[id].output).filter(Boolean)
+          state.output = [...passed, `【人工确认】${decision.note || '已通过'}`].join('\n')
         } else {
           const inputs = parents.map(id => ({ id, output: run.nodes[id].output }))
           state.output = String(await executors[node.kind](node, { inputs, signal: run.abort.signal, run: publicRun(run) }))

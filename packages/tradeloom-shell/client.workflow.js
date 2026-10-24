@@ -168,6 +168,24 @@ window.__ModuleLoader__.load({
         setView(current => ({ ...current, scale }))
       }
 
+      // 新出现待确认节点时，把视角平移到该节点并选中它，用户不用自己找
+      const waitingKey = Object.entries(run?.nodes ?? {}).filter(([, state]) => state.status === 'waiting').map(([id]) => id).join(',')
+      const focusedRef = React.useRef('')
+      React.useEffect(() => {
+        if (!waitingKey || waitingKey === focusedRef.current) { focusedRef.current = waitingKey; return }
+        const previous = new Set(focusedRef.current.split(','))
+        focusedRef.current = waitingKey
+        const target = doc?.nodes.find(node => node.id === waitingKey.split(',').find(id => !previous.has(id)))
+        const rect = surface.current?.getBoundingClientRect()
+        if (!target || !rect) return
+        setSelected(target.id)
+        setView(current => ({
+          ...current,
+          x: Math.round(rect.width / 2 - (target.position.x + NODE_W / 2) * current.scale),
+          y: Math.round(rect.height / 2 - (target.position.y + NODE_H / 2) * current.scale),
+        }))
+      }, [waitingKey])
+
       if (!doc) return h('div', { className: 'tl-wf-empty', role: 'status' }, message.text || '加载工作流…')
       const byId = new Map(doc.nodes.map(node => [node.id, node]))
       const nodeState = id => run?.nodes?.[id]
@@ -188,13 +206,14 @@ window.__ModuleLoader__.load({
         active ? h('button', { type: 'button', className: 'is-danger', onClick: cancel }, '停止')
           : h('button', { type: 'button', className: 'is-primary', onClick: start, disabled: !doc.confirmed }, '▶ 运行'),
         h('button', { type: 'button', onClick: remove, disabled: editingRun || !list.some(item => item.id === doc.id) }, '删除'),
-        h('span', { className: 'tl-wf-sep', 'aria-hidden': true }),
-        (catalog?.kinds ?? []).map(kind => h('button', {
-          key: kind.kind, type: 'button', disabled: editingRun, onClick: () => addNode(kind.kind),
-          title: `添加${kind.label}节点`, style: { '--tl-wf-color': kind.color },
-        }, h('span', { 'aria-hidden': true }, kind.icon), ` ${kind.label}`)),
         h('span', { className: 'tl-wf-runstate', role: 'status', 'aria-live': 'polite' },
-          doc.source === 'agent' && !doc.confirmed ? '中心 agent 草稿，确认后可运行' : run ? `运行：${RUN_LABEL[run.status] ?? run.status}` : ''))
+          doc.source === 'agent' && !doc.confirmed ? '中心 agent 草稿，确认后可运行' : run ? `运行：${RUN_LABEL[run.status] ?? run.status}` : ''),
+        // 添加节点的按钮统一放第二行
+        h('div', { className: 'tl-wf-kinds', role: 'group', 'aria-label': '添加节点' },
+          (catalog?.kinds ?? []).map(kind => h('button', {
+            key: kind.kind, type: 'button', disabled: editingRun, onClick: () => addNode(kind.kind),
+            title: `添加${kind.label}节点`, style: { '--tl-wf-color': kind.color },
+          }, h('span', { 'aria-hidden': true }, kind.icon), ` ${kind.label}`))))
 
       const edges = h('svg', { className: 'tl-wf-edges', 'aria-hidden': true },
         doc.edges.map(edge => {
@@ -245,7 +264,27 @@ window.__ModuleLoader__.load({
           }))
       })
 
+      // 待确认节点两侧的快捷按钮：左绿通过、右红驳回
+      const quickDecisions = doc.nodes.filter(node => nodeState(node.id)?.status === 'waiting').map(node =>
+        h('div', {
+          key: `decide-${node.id}`, className: 'tl-wf-quick', role: 'group', 'aria-label': `${node.title}：人工确认`,
+          style: { left: node.position.x, top: node.position.y, width: NODE_W, height: NODE_H },
+          onPointerDown: event => event.stopPropagation(),
+        },
+          h('button', { type: 'button', className: 'tl-wf-quick-btn is-approve', title: '通过', 'aria-label': `通过「${node.title}」`, onClick: () => decide(node.id, true) }, '✓'),
+          h('button', { type: 'button', className: 'tl-wf-quick-btn is-reject', title: '驳回', 'aria-label': `驳回「${node.title}」`, onClick: () => decide(node.id, false) }, '✕')))
+
+      // 审核时要看的内容：上游节点的输出
+      const reviewInputs = selectedNode?.kind === 'review'
+        ? doc.edges.filter(edge => edge.to === selectedNode.id).map(edge => ({ node: byId.get(edge.from), output: nodeState(edge.from)?.output })).filter(item => item.node && item.output)
+        : []
+
       const inspector = selectedNode && h('aside', { className: 'tl-wf-inspector', 'aria-label': '节点设置' },
+        reviewInputs.length > 0 && h('div', { className: 'tl-wf-review' },
+          h('strong', null, '待审核内容'),
+          reviewInputs.map(item => h('div', { key: item.node.id },
+            h('small', null, item.node.title),
+            h('pre', { className: 'tl-wf-output' }, item.output)))),
         h('label', null, '名称', h('input', { value: selectedNode.title, disabled: editingRun, onChange: event => updateNode(selectedNode.id, { title: event.target.value }) })),
         selectedNode.kind === 'agent' && h('label', null, 'Agent',
           h('select', { value: selectedNode.agent, disabled: editingRun, onChange: event => updateNode(selectedNode.id, { agent: event.target.value }) },
@@ -287,7 +326,7 @@ window.__ModuleLoader__.load({
             },
             onPointerMove, onPointerUp, onPointerLeave: onPointerUp, onWheel,
           },
-            h('div', { className: 'tl-wf-layer', style: { transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` } }, edges, nodes)),
+            h('div', { className: 'tl-wf-layer', style: { transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` } }, edges, nodes, quickDecisions)),
           inspector))
     }
 
@@ -301,7 +340,7 @@ window.__ModuleLoader__.load({
       .tl-wf button.is-primary { background:var(--tl-accent,#356fc4); border-color:var(--tl-accent,#356fc4); color:#fff; }
       .tl-wf button.is-danger { border-color:#c0392b; color:#c0392b; }
       .tl-wf-title { width:180px; }
-      .tl-wf-sep { width:1px; height:20px; background:var(--tl-border,#cbd5e2); }
+      .tl-wf-kinds { flex-basis:100%; display:flex; flex-wrap:wrap; gap:6px; }
       .tl-wf-runstate { margin-left:auto; color:var(--tl-muted,#68778c); }
       .tl-wf-message { padding:4px 10px; background:var(--tl-surface-soft,#eef3f9); }
       .tl-wf-message ul { margin:2px 0 0 18px; padding:0; color:#c0392b; }
@@ -342,6 +381,13 @@ window.__ModuleLoader__.load({
       .tl-wf-inspector label { display:flex; flex-direction:column; gap:3px; color:var(--tl-muted,#68778c); }
       .tl-wf-inspector input, .tl-wf-inspector select, .tl-wf-inspector textarea { color:var(--tl-ink,#202b3a); font:inherit; }
       .tl-wf-decide { display:flex; gap:6px; }
+      .tl-wf-quick { position:absolute; pointer-events:none; }
+      .tl-wf-quick-btn { pointer-events:auto; position:absolute; top:50%; width:40px; height:40px; margin-top:-20px; border:0; border-radius:50%; color:#fff; font-size:20px; font-weight:700; cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,.35); }
+      .tl-wf-quick-btn.is-approve { left:-54px; background:#2f9e44; }
+      .tl-wf-quick-btn.is-reject { right:-54px; background:#d9363e; }
+      .tl-wf-quick-btn:hover, .tl-wf-quick-btn:focus-visible { transform:scale(1.1); outline:2px solid #fff; outline-offset:2px; }
+      .tl-wf-review { display:flex; flex-direction:column; gap:4px; padding:6px; border:1px solid #e0a100; border-radius:6px; }
+      .tl-wf-review small { color:var(--tl-muted,#68778c); }
       .tl-wf-output { white-space:pre-wrap; margin:0; padding:6px; max-height:160px; overflow:auto; background:var(--tl-surface-soft,#eef3f9); border-radius:6px; font-size:12px; }
       .tl-wf-error { color:#c0392b; margin:0; }
     `

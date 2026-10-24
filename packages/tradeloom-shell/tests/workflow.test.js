@@ -82,8 +82,9 @@ test('runner runs independent nodes in parallel, waits on review, and finishes',
   await runner.settle(run.id)
   snapshot = runner.get(run.id)
   assert.equal(snapshot.status, 'done')
-  assert.equal(snapshot.nodes.check.output, '没问题')
-  assert.equal(snapshot.nodes.out.output, '没问题', 'output collects its upstream results')
+  // 审核节点把被审核的上游内容和确认意见一起传给下游
+  assert.equal(snapshot.nodes.check.output, `${snapshot.nodes.a.output}\n${snapshot.nodes.b.output}\n【人工确认】没问题`)
+  assert.equal(snapshot.nodes.out.output, snapshot.nodes.check.output, 'output collects its upstream results')
   assert.equal(snapshot.nodes.a.output, 'ok')
   assert.equal(runner.latestFor('demo').id, run.id)
 })
@@ -214,4 +215,12 @@ test('canvas chunk renders status classes, agent icons and model names', { skip:
   assert.match(html, /运行：运行中/)
   assert.match(html, /<optgroup label="DeepSeek">/)
   assert.match(html, />停止</, 'a running wf offers stop instead of run')
+
+  // 审核等待：节点旁出现绿通过/红驳回，检查面板展示待审核的上游内容
+  const waitingRun = { ...run, status: 'waiting', nodes: { ...run.nodes, a: { status: 'done', output: '商品资料草稿' }, b: { status: 'done', output: '译文' }, check: { status: 'waiting' } } }
+  const waitingHtml = renderToStaticMarkup(React.createElement(WorkflowCanvas, { modelGroups, initial: { catalog: workflowCatalog(), list: [], doc, run: waitingRun, selected: 'check' } }))
+  assert.match(waitingHtml, /tl-wf-quick-btn is-approve/)
+  assert.match(waitingHtml, /tl-wf-quick-btn is-reject/)
+  assert.match(waitingHtml, /待审核内容/)
+  assert.match(waitingHtml, /商品资料草稿/)
 })
