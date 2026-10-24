@@ -247,11 +247,17 @@ registry = AdapterRegistry(web_model_bridge=ExampleWebModelBridgeAdapter())
   Object.freeze({ id: 'example', preset: 'tradeloom-example', label: '示例助手', assistantLabel: '示例助手' }),
   ```
 
+  新角色注册并部署后，可在顶部“选择助手”菜单中打开“查看 MCP 与 Skill 能力”，再在对话框的“查看助手”选择该角色，进入“已保存配置”编辑：在此配置 stdio 或 Streamable HTTP MCP、是否包含默认 Skill 目录及“本项目相对目录”字段指定的 Skill 目录，并设置工具拒绝项。凭据只填环境变量名引用，不填写明文 Key。插件仍在织贸助手所用的 DSH profile 中统一管理，不要为每个 Agent 重复安装插件。
+
+  保存会更新该角色的新 Agent 默认配置；应用配置时可能立即校验或连接 MCP。已运行会话继续沿用原有能力。保存成功后，使用“用已保存配置新建对话”，再回到“当前能力”核对该会话实际可见的工具与 Skill。没有绑定会话时，能力显示为未知；已保存默认配置不证明 MCP 已连接或外部调用成功。若编辑器发现当前配置含有它不管理的条目，会以只读方式显示；保留该配置，不要删除或覆盖这些条目。
+
   加角色不会自动授予 TradeLoom 工具。`packages/tradeloom-shell/business-tools.js` 先按工具的 `TOOL_ACCESS` 集合筛选注册项，再在执行时按 live preset 检查；新 preset 默认不会继承现有工具。如果确实需要某个既有工具，只把新 preset 加入该工具对应的集合，并为允许和拒绝路径更新测试。例如下方改动会明确把现有商品只读工具授权给新 preset，未作此决定时不要添加这一行：
 
   ```js
   tradeloom_read_products: new Set([ROLE_PRESETS.center, ROLE_PRESETS.product, ROLE_PRESETS.example]),
   ```
+
+  配置面板中的工具拒绝项只会进一步限制当前 Agent，不能替代 `TOOL_ACCESS` 给新角色授权业务工具。
 
   顶部助手菜单的注册测试在 `packages/tradeloom-shell/tests/shell.test.js`，它逐项断言角色定义与派生映射；添加角色时同步更新契约期望。`business-tools.test.js` 覆盖工具集合及未授权拒绝。当前没有独立的 Agent 示例 dry-run 验证器。shell role 与 Python `WorkflowRoleRegistry` 是不同 ID 域；只添加顶部聊天角色不会把它加入工作流计划。需要让中心通过原生 subagent 委派时，还必须显式更新中心 preset 的 `allowedAgentPresets`；非中心 preset 不会因此获得委派权。
 
