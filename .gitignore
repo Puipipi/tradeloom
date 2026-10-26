@@ -1,0 +1,8 @@
+node_modules/
+*.zip
+verification-data/
+*.log
+.env
+.env.*
+publication-git/
+excluded-development-desktop-package/

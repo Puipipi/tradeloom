@@ -1,0 +1,20 @@
+{
+  "payloadManifestFiles": 21089,
+  "zipEntries": 21091,
+  "zipCRC": "passed",
+  "cleanExtractHashedFiles": 21090,
+  "cleanExtractCmdCheckExitCode": 0,
+  "systemOnlyPATH": true,
+  "hostileInheritedNodeVariablesCleared": true,
+  "headlessShellInjected": true,
+  "headlessSceneStatus": 200,
+  "headlessCheckedRoutes": 23,
+  "headlessAllRoutes200": true,
+  "sceneCount": 7,
+  "roleCount": 6,
+  "finalGUIRechecked": false,
+  "otherWindowsUserAccountTested": false,
+  "businessServicesIncluded": false,
+  "officeMSVCPBundled": false,
+  "ownedEngineProcessesRemaining": 0
+}

@@ -1,0 +1,19 @@
+{
+  "product": "TradeLoom desktop16 portable",
+  "platform": "win32-x64",
+  "sourceCommit": "1f81c047fc48fa190a683e469daa699857e9afe8",
+  "shellDigest": "ea6a7e30985d360099d39af9ca9035d718bf46d1681ff0bd7f05f10e0ccf2eca",
+  "electron": "44.7.0",
+  "engineDigest": "142d28396b3abe2ead4238c85c2c96c7718135eb0bc083956dc198a51277e3fa",
+  "mainHash": "d42278d60092ad90e96fdd8df18fa861722dedbb7940b22bbfe31bc91c560373",
+  "hostHash": "61896cd7416a9955b015e013a51b9a770272c68997fe2d9da92cb45508f4e59e",
+  "release": {
+    "schemaVersion": 1,
+    "version": "0.2.1-rc.3",
+    "hostProtocolVersion": 4,
+    "nodeVersion": "24.21.0",
+    "pnpmVersion": "11.28.5"
+  },
+  "kind": "unsigned-unpackaged-portable",
+  "businessServicesIncluded": false
+}

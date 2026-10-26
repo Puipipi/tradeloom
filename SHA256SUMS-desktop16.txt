@@ -1,0 +1,2 @@
+ab973c6bf742979ef3875819a4b7729ef0ba1a3f2018dbc7b28d536cc6b13660  TradeLoom-desktop16-portable-win-x64.zip
+1267cbb919058460cf5d30631114bc6c9009817e366af247e350fa7b33214976  TradeLoom-desktop16-portable-packaging-source.zip

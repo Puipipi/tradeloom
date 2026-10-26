@@ -1,0 +1,176 @@
+{
+  "schemaVersion": 1,
+  "treeHash": "ea6a7e30985d360099d39af9ca9035d718bf46d1681ff0bd7f05f10e0ccf2eca",
+  "files": [
+    {
+      "path": "agent-configuration.js",
+      "bytes": 31501,
+      "sha256": "89743308fcd5bf213abde0dd20c8a394adc65a49cb72066139e058e16cf49f6c"
+    },
+    {
+      "path": "assets/tradeloom-mark.svg",
+      "bytes": 961,
+      "sha256": "7e2cdb6592de4456295d455056a1d5ca500cf8ef3c759aef90ceba66c76b5849"
+    },
+    {
+      "path": "business-tools.js",
+      "bytes": 112587,
+      "sha256": "1cef19e7566225bafb199c578d8293de2bcabc7489c8bc88a21713d287e8366f"
+    },
+    {
+      "path": "capabilities.js",
+      "bytes": 6717,
+      "sha256": "85903ce0220f03b7329b025c72d8ae84817e2853e2f87e2a71fb6f44c0ce5cb2"
+    },
+    {
+      "path": "client.dockview.js",
+      "bytes": 978001,
+      "sha256": "63f1a125d08d469895d1e55cf54bad9fc76f97ddd94f7370eb69385c438bbc9b"
+    },
+    {
+      "path": "client.js",
+      "bytes": 133649,
+      "sha256": "fc62af98ec8e17d12ec2dc145f6f2461a19c9f5227c00ca9402165ae813e2b28"
+    },
+    {
+      "path": "client.mobile-qr.js",
+      "bytes": 57681,
+      "sha256": "dd1e38ed79c19ef4d642bd9913ce73b42f27a3881a84f830929f1c914fcc468d"
+    },
+    {
+      "path": "client.scenes.js",
+      "bytes": 277082,
+      "sha256": "de1bdf8704c2fa15e1228a291b2041ebe51487d702179e2e06d5922268c53aa1"
+    },
+    {
+      "path": "client.workflow.js",
+      "bytes": 28017,
+      "sha256": "7b28f4fe7df4ca2a7725a6dbe93ad7801808bfc213701751d0cbe8b176e6e59e"
+    },
+    {
+      "path": "cordis.patch.yml",
+      "bytes": 12551,
+      "sha256": "e3d39c367888350bb8647279b08e662fa54c1889607c840ad38fa483aee212d4"
+    },
+    {
+      "path": "dock-layout.js",
+      "bytes": 24267,
+      "sha256": "ff73311a5a80298a48d2403b6d798d9919205cf207621b17b552846ea6bea31d"
+    },
+    {
+      "path": "host.js",
+      "bytes": 28033,
+      "sha256": "87285d6abcd925261acc1dd568f840248b00951f578b4e19812272118e663703"
+    },
+    {
+      "path": "package.json",
+      "bytes": 2121,
+      "sha256": "a95be21e987d2201f8eee8d36d432473ed437fae3be1c522f028354be166cd73"
+    },
+    {
+      "path": "policy.js",
+      "bytes": 12981,
+      "sha256": "9c455cf1358b875c2caaa91999eeee71a1c53607cd89292c7d6ddbad698a8b0c"
+    },
+    {
+      "path": "profile-tool.js",
+      "bytes": 1368,
+      "sha256": "6a6ddb71a2e777d0a59fae6b19ddb60e167ac54ebdc68eb3507cd6e4a8848d3b"
+    },
+    {
+      "path": "proxy.js",
+      "bytes": 7855,
+      "sha256": "a3755c4445ccc9685352d517f4bb9fbc71973906b7c3c85e96403c43c23a9167"
+    },
+    {
+      "path": "roles.js",
+      "bytes": 1824,
+      "sha256": "d1f67e79c5aca73e3d82e4a71b083aa830d87a6d98815deef128a5971abf05bb"
+    },
+    {
+      "path": "scene-layout.js",
+      "bytes": 10128,
+      "sha256": "fba0af4c1255e073c18642c6f8845cf9d52cbecf761765530966dc7b3635d1ce"
+    },
+    {
+      "path": "scenes.json",
+      "bytes": 10284,
+      "sha256": "e01a2f3e213020d39cd123de56a053d9f47c3d96bb2cfa6786ba9a1aa55d3949"
+    },
+    {
+      "path": "scripts/build-dockview-chunk.mjs",
+      "bytes": 3577,
+      "sha256": "d022e79da41d2896e060c7f09f7f258e7e0cec74892a678573cd84b0a64ce37c"
+    },
+    {
+      "path": "scripts/build-mobile-qr-chunk.mjs",
+      "bytes": 1745,
+      "sha256": "f8080af52d25e86f8199c02923b7806ab792321f80bd72f1f9dea4ffcba3ced8"
+    },
+    {
+      "path": "skills/wf-planner/SKILL.md",
+      "bytes": 3621,
+      "sha256": "6c4572de1cac7a833ba325263e9a4a18e2057d3404ba6685f2aed398b69e0424"
+    },
+    {
+      "path": "state.js",
+      "bytes": 5739,
+      "sha256": "6d6a000e42cf2aab1dfbcc558750a0cef782f12340cbd1a178116da9feab750b"
+    },
+    {
+      "path": "step-policy.js",
+      "bytes": 479,
+      "sha256": "9749399b874a3599548d0b2e21d299611750991ea5297497126a6cb24f930cce"
+    },
+    {
+      "path": "tool-policy.js",
+      "bytes": 997,
+      "sha256": "b706267219c78486e16a1e77179b3709640ffda3f736d51fe1abc7ce6ccf535e"
+    },
+    {
+      "path": "vendor/LICENSE.dockview-react",
+      "bytes": 1063,
+      "sha256": "1d56757fdc06c9b33c0f80821efe4f4b11960dd7fb6544232cff61752101f513"
+    },
+    {
+      "path": "vendor/LICENSE.qrcode-generator",
+      "bytes": 1071,
+      "sha256": "3a850fa5f08101db6f40676c2786e10bd2cd5fff7b12ffdf1e0c434d4e49d90c"
+    },
+    {
+      "path": "vendor/dockview-entry.ts",
+      "bytes": 330,
+      "sha256": "26c0e668bb56be72aa3c4d5a42450a0fe7b7318edeef8d8bae8b95e8d174c54a"
+    },
+    {
+      "path": "vendor/dockview-package-lock.json",
+      "bytes": 1608,
+      "sha256": "b05d55ac0d0723da236cf7b0dcbb401a0e98434bcdc8943c5f241b6a0e948422"
+    },
+    {
+      "path": "vendor/dockview.css",
+      "bytes": 159552,
+      "sha256": "72a757b4d2d0d0f1e38b928b1343c85a7b09766bb2dc2c16c9e3c880f231545d"
+    },
+    {
+      "path": "vendor/qrcode-generator-2.0.4.js",
+      "bytes": 56694,
+      "sha256": "79ec86f82856005b1c887905cfccfcfbec3821ca61c7fd5a952faa5f778f791c"
+    },
+    {
+      "path": "workflow-engine.js",
+      "bytes": 8069,
+      "sha256": "f75b774274178fd91928d699de55a680d7452808743768a2617107a0931c542f"
+    },
+    {
+      "path": "workflow-schema.js",
+      "bytes": 8959,
+      "sha256": "c1d6c993d2d76f76b0e607d8b0c3781d36e5a3b0f50a0b6746ca1d4c9a3dd07e"
+    },
+    {
+      "path": "workflow-tools.js",
+      "bytes": 10681,
+      "sha256": "e279172f4e053cb0247a446e8209ce6fe22c76f40d17b7f903cc76416fbb7d4d"
+    }
+  ]
+}

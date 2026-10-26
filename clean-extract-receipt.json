@@ -1,0 +1,12 @@
+{
+  "archiveCRC": "passed",
+  "extractedFilesHashVerified": 21090,
+  "cleanPathContainsSpaces": true,
+  "systemOnlyPATH": true,
+  "hostileInheritedNodeVariables": "NODE_OPTIONS/NODE_PATH cleared by cmd launcher",
+  "inheritedDshHome": "ignored and replaced by explicit data root",
+  "launcherExitCode": 0,
+  "guiStarted": false,
+  "dataRootRelativeToStage": "verification-data/clean user data 07",
+  "electronDataRelativeToDataRoot": "local-app-data/TradeLoom/desktop/user-data"
+}

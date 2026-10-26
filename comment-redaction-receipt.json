@@ -1,0 +1,690 @@
+{
+  "scope": "Only complete //#region build comment lines containing development machine path. No executable statements changed.",
+  "changes": [
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-locale/lib/client.js",
+      "removedCommentLines": 1,
+      "before": "2fe21e08a9971eac760384291bfeef933e96ee21f90c9cc7217b9f3e5aaa7d1e",
+      "after": "be483067eda19233c8ac88edf3f098124ffb8faebd24a25e49f7e6aae500dffa"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-agent-preset/lib/client.js",
+      "removedCommentLines": 5,
+      "before": "c290db2a46dc7a72e8a6b9471df64eac16c22438a994b1eba951874d8d3a7a3b",
+      "after": "584c6152706177afa26e4e8a7c7f9c35223b1c53deeaa2403ae7571e2a6bdae2"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-approval/lib/client.js",
+      "removedCommentLines": 1,
+      "before": "4d7be664da629d73d13ec82b3c9bedcce1b71760a753ef38d7032a1f1d423a74",
+      "after": "b0ef9af040370206e596adf697da14b63f0f7354fc68c0427c537028e3413297"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-attachment/lib/client.js",
+      "removedCommentLines": 5,
+      "before": "8704f695a022209705714e99f398df6d62c77f436a795d8032244053fabbf41c",
+      "after": "2dddc4bd00578fc3b5b0cb97cd40fb0071adc52ba1d3b264311d10263dd1a85a"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-chat/lib/client.js",
+      "removedCommentLines": 18,
+      "before": "8d52183952ee6630b44aaf27232a27083647c0993bfb5a0bce44ee7bec19eed1",
+      "after": "9c338a760948ea8b525d748979715165ea26b9fe280684586bdfdb50b0e61923"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-commands/lib/client.js",
+      "removedCommentLines": 1,
+      "before": "8bd2ecff83f43427db8be3c7227dbe5d6e3fdf5f34d4d410a9fce456521ccb4e",
+      "after": "291bff9a917e4ab8fe2f7aec9b30b93fd2487e8b4fc42ce4d013e6dbfd25864f"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-conversation/lib/client.js",
+      "removedCommentLines": 10,
+      "before": "4958f90e4099e17032348927a26e17f6a8d5cac2c7e5cd1f3206d0a60433a2e5",
+      "after": "1a9f06b2cc77739dbc935dde3b13a7085540760c647a6c7f9a3bee1ba7bf587a"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-cordis/lib/client.js",
+      "removedCommentLines": 3,
+      "before": "f1cef94d1e50230f764832080b6f58ee1857698050050fee4ce54619bdd2a7b5",
+      "after": "1900355c93ed3906e79696b57d3de05666540b6a67492c157965e57e15a926d6"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-deepseek-model-label-1017/lib/client.js",
+      "removedCommentLines": 1,
+      "before": "076383f0f10e0d8c76b69481ea2684cedcafc61d3e8b1dd44aead6ad7aa10ab2",
+      "after": "adad8580ee53623d42e0506509a4a162df819ea469019eb7fd097318be9ccb3c"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-deliverables/lib/client.js",
+      "removedCommentLines": 5,
+      "before": "ad4146b0c7976aaf5ee87eb0d0a0b57238e7895ef8023146339aed74ef0e5340",
+      "after": "e89677a0df8177cde67a25020a46ca20c2b065aec62af7ce2b78259861d6b873"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-directory-picker-browse/lib/client.js",
+      "removedCommentLines": 1,
+      "before": "86257de21d8ef66dd232aa3067271a785999438d446ee42336787ea461b23c43",
+      "after": "2e96e2680cb864d9c2cc2e758ba22148d770fcf7fc357ca9dba6deec5621edce"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-entry-customization/lib/client.js",
+      "removedCommentLines": 1,
+      "before": "5721efe1c75254a3df893c9d2afd26ef80b1646c228af9a7bf6f6e849b7b95dd",
+      "after": "b9801ee3460f86c893c110e00d727813ee520f20e698814ec2964d24f26bb8ea"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-goal/lib/client.js",
+      "removedCommentLines": 2,
+      "before": "3248316b73fe805f1bb89d0c68d2d64a72c66accea652d4dbfa6c4156204691c",
+      "after": "d0b7146c4d33ee9c5eccf10200ee12f889b63816acea6fe4aa22983c1f6ce287"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-input-trigger/lib/client.js",
+      "removedCommentLines": 1,
+      "before": "ec06455b220c3fae367f29e74423a186f02642eeada41475e114001ff63613b8",
+      "after": "eb1161e7717d11edc60488432a183fd24c481e26a2c958d0a8701a1e5fb624b7"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-jobs/lib/client.js",
+      "removedCommentLines": 1,
+      "before": "ad2e45f7f3fc4402091a77f3d009309d299f5f0daa5e27eb38c5ec6daa606d6a",
+      "after": "9fbce205f6e541dc2da4dec74cddaae77dbd867e72b5179034247de2b754cef1"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-layout/lib/client.js",
+      "removedCommentLines": 1,
+      "before": "4d59056d3fca109a5006d69d3829c50d5597a77c758f8f30aa3739e4cbf85c0a",
+      "after": "6a62cfedcccc78126bd24a4204e9b42408ce49a7c6db0b70500530acd0b01259"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-message-feedback/lib/client.js",
+      "removedCommentLines": 2,
+      "before": "33b74ce7b5ac0f82e02add417c7235d6e75d9a3224e69288548c80f4300e13f7",
+      "after": "e2c8e3f60e0a8fb14cb2e29d11db3345ad0a017522df30290e4670e24f67326b"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-model-selection/lib/client.js",
+      "removedCommentLines": 1,
+      "before": "d8e56b955e70fb78daed8c9a476fdc5582f13999b030084c5e52ae7b6d5eb069",
+      "after": "423d8bf2d78158a4bb91e721a3c0644c71ca46b82d102b720b401b9e275fb8ee"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-open-in-app/lib/client.js",
+      "removedCommentLines": 1,
+      "before": "451a047cbce69deee62d886bc8db0f6948daff3dc3bc56f583f877f69976ca84",
+      "after": "953ea0c558ea5bae9f2fa53a768ad2dcf3f32ff2f8d5977fe00533d45cf2502d"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-permission-presets/lib/client.js",
+      "removedCommentLines": 2,
+      "before": "8fb13a353979cac3bf3c497074115d0c5451ff7c0e9c97e07daaa43fbf59da01",
+      "after": "b451538acbfe9f7dc09b7968b8f84d4f759a611f717f4352a9ac73acb651a95e"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-plan/lib/client.js",
+      "removedCommentLines": 2,
+      "before": "a678f804eba82925ad8e5076c4836c327fff8f4ac5f0426ac77adf46c2c22853",
+      "after": "4bf9d5102f297218aeb03fec99ff83f777eb51e156ea295abbc78be4dca65781"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-plugin-manager/lib/client.js",
+      "removedCommentLines": 1,
+      "before": "c1093d390e42f7ef7b61e2ed033fee7bf08db1b22e58d0e7615fd49519425a56",
+      "after": "cc93362f5944060084afba297ffab894fc72ec7f1f6816a7225ba83e3ed3a078"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-plugin-market/lib/client.js",
+      "removedCommentLines": 1,
+      "before": "b3ed9c78796e453278eb9220f3001d673b3e2b86e09d530884388aa4c65f1ec2",
+      "after": "28da8cc112330a3338117cf2696ac7a752040b8b10b73715d904b8a397555660"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-schedule/lib/client.js",
+      "removedCommentLines": 9,
+      "before": "425ed1c232b421121dc5a1e60942070f59830a8711d5ce874e0474a45639e8cf",
+      "after": "c7681a27e09845d4eb686f1a8f7f11179ab1080994add31a3bdebcf53993b0fd"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-secret-mask/lib/client.js",
+      "removedCommentLines": 1,
+      "before": "7956647bb059681fd21ebeadbce15d07f049ac16c02b8b1ebc5ca7c1905a7737",
+      "after": "097c4e66a798363151b5edf1e64e2c52f59a1dbc65bc29518c532cc2ecceaf01"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-settings-account/lib/client.js",
+      "removedCommentLines": 8,
+      "before": "f4be1fcc25cb7520ebab6a86d160c673274a4d7321ea223033752f1dacfd1f54",
+      "after": "8243768f801023b10cb1c077970780905fdd6525ca4cfb483910c6d3787a7f5a"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-settings-general/lib/client.js",
+      "removedCommentLines": 8,
+      "before": "ed51b433a056fbda104cedd47e5baac81d14dbcc4277f6b1a9f61210ef07aa12",
+      "after": "31bbd0fbe027b8b98bd044b7fb5b6d37491f1a2d5c8f68df009c9dd646950f9d"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-settings-models/lib/client.js",
+      "removedCommentLines": 4,
+      "before": "15469c64c493b2e22bbdf2f3fad778475deb6748b129a749357ae93af9e9820e",
+      "after": "b2d3058f2e082a716a79ffa3cf568a6226fc5c7674910991ce11f4d59567aa70"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-settings-plugin-inventory/lib/client.js",
+      "removedCommentLines": 1,
+      "before": "f725f92f8c89b2d8b2566795e0421a4704db4ce78dad67f5518ac0d2a00ef37e",
+      "after": "ba32d9f0d8dc8ddf33f009163bd59f78d2712ad1486a2a6665f069f916d2b876"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-settings-plugins/lib/client.js",
+      "removedCommentLines": 1,
+      "before": "7272dff69a69af36c861cf1a82178981b3e97497acf42893070e8de4a9445b4a",
+      "after": "3dc5664b3121ad5a2088af41ba826aceed0db80ddedf8582618b0acdf9f5773c"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-settings-session-log/lib/client.js",
+      "removedCommentLines": 1,
+      "before": "7f013609f103c44c79d575159bff911eb8c32261e4ad81dd4bc8739afeef9672",
+      "after": "0289b1cae1128b5c6b32a6ea7b41b88bf7fad9b729b109eb2714a2660ba12db6"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-settings-subagent/lib/client.js",
+      "removedCommentLines": 3,
+      "before": "8f8ad20f65c16550f6256023428d402c2a24bfe6381ab4cf9d68b3a83304ca75",
+      "after": "69968631e61407f20db3e59d4da69341cf6a5bcddd112949c340b96d1cf5c4ad"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-settings-web-search/lib/client.js",
+      "removedCommentLines": 1,
+      "before": "013b4556968181d17d669d058f4759e00f8fd44e16c225406efa02ca1fe08320",
+      "after": "c340e143816cf591d79292b9f8e2b0c1592411473b41b5a1192ba18e5bcf5ba2"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-shortcuts/lib/client.js",
+      "removedCommentLines": 1,
+      "before": "187bcd16de435f18c1c2c716a5924128496b654284249ce37beb9d9e803ef171",
+      "after": "188915b1a5d2b192f78d4eaeb450f8f0f309d820b665d8b1b7c1463aaa16ded6"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-sidebar/lib/client.js",
+      "removedCommentLines": 2,
+      "before": "29104b1a61ba3972006b48fe509a61fb5beeaffb7fbc6cc5dbd5432a55b18a22",
+      "after": "3c01c5435fe43c68549b4879a61ecf0d8dbd5ba33ea7b1328ff56e6735f5630a"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-sidebar-browser/lib/client.js",
+      "removedCommentLines": 1,
+      "before": "818e63a1dc7a6c56531faf32a1973cff4544f5f16a7e410ae756fbd95f2d1d43",
+      "after": "17af66063e029bd48baee762fab80da9c3d252b8d88256e8226432b676f75c0b"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-sidebar-documentpreview/lib/client.excel.js",
+      "removedCommentLines": 2,
+      "before": "0fd6c5b6f3a1ed330e1c1ed0ac36a64ac1a8b0c31844f7b675e5ac4bdb29b837",
+      "after": "78f0dea663da787fe743956ca656de6e202a92d74221a37b4bcf3edb3c6ed271"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-sidebar-documentpreview/lib/client.frontmatter-fields.js",
+      "removedCommentLines": 1,
+      "before": "ba3842a14f10a04626e4696162d0ae79e95cc1d3c76cd4f127c8676cf66c0113",
+      "after": "ac038401a3d0afd62528bce90b1a024d881b4eca54de427f67645c741d6f4495"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-sidebar-documentpreview/lib/client.js",
+      "removedCommentLines": 10,
+      "before": "b6012c209a9ee3b313af74577b182b5ca9c225f1c4d6e6ff51a036fcd74496a7",
+      "after": "700d8642bfbe84bbcfde69ee1cf37cff5e6f05052c341a0d45b98e9113658091"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-sidebar-documentpreview/lib/client.pdf.js",
+      "removedCommentLines": 1,
+      "before": "89a2987dc9b53849ec64e396135a0383d2e6d1e6c66e48c697af3784085f1634",
+      "after": "df726a0202df618dd26849b4e9b56e9d8c28aa17f7f2ceeef596af0bb72fda1f"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-sidebar-files/lib/client.js",
+      "removedCommentLines": 1,
+      "before": "891adaf579da1f801c483c3be1a1daad62aec5ec12a5262f9874577cba2b1391",
+      "after": "5f69afcd369dd97064f32c116902c615c79ab2f130b38c65c55a32719e5507fb"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-sidebar-right/lib/client.js",
+      "removedCommentLines": 3,
+      "before": "05b0da5a07aad95baf653e9124091b513d3f27c817aa5d98150585f0a3351407",
+      "after": "9e00b6c49b06e642c3423634f387725f85e721634596e46db4c6e63b95162b09"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-sidebar-terminal/lib/client.js",
+      "removedCommentLines": 2,
+      "before": "38b7eb0384c20a078d4ca68601ef1d2b1516f16566eef14ac26ea4e8dc1725b1",
+      "after": "2f522bd19b17e7cf8ce67ae85ca0da8c52e67d714918bde1df73eb816043575f"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-sidebar-terminal/lib/client.terminal.js",
+      "removedCommentLines": 2,
+      "before": "932f91bbc4739cb897318d1a94abaf0ae2f6f59561ee963bad11ba1d945921db",
+      "after": "4e6923b6228f71b8a1f19490e999edfaf74d230e58ca833e22165b238da78a66"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-skill/lib/client.js",
+      "removedCommentLines": 1,
+      "before": "a415c29b3d017bbcc4952e2a0f5115a48e5a0c3d36d3e94794767dbf5bac9d24",
+      "after": "1b28ddc387f534158da7956b73292849e8e702e01fd05226ee2dcee6bd734c36"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-subagent/lib/client.js",
+      "removedCommentLines": 3,
+      "before": "c56cc8595e881fcb8807a1cb641b2c58d7908ecdc5a1e644ebef47efc114b546",
+      "after": "609773446aad752e2f01722b1353ed30d26c25c861f4b4a8f9ea0ddcd944ca37"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-theme/lib/client.js",
+      "removedCommentLines": 12,
+      "before": "c16ac4b958fa623ca9375d0dc6092b6e0fdc9f9e1b1b5247a05fcf5c8ca849fc",
+      "after": "261a6737ab03ca7be65b7fbe91ae343b0e79d8adb8896d2e0ef761b7d66a53ab"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-tool/lib/client.js",
+      "removedCommentLines": 7,
+      "before": "88ebf5192138e4b5cb2e872f1a992cb245d447b9dbfe9778583ef4298987955c",
+      "after": "c58924a69cee37d0aad08223bbf1206b8807dd215c6f80caa27cd19ed3c4ff67"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-trajectory/lib/client.js",
+      "removedCommentLines": 4,
+      "before": "e3cafac0ea4deeb82cdd674331d9a5c2a2fb43923aa6ebf226694f2b16f25c10",
+      "after": "6acc1b17dd4761ac0c9d86afe04bdd2d97a2c6eee01b2d2c2f065e2458ccab30"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-user-questions/lib/client.js",
+      "removedCommentLines": 3,
+      "before": "ffae02cf2253a4e3644ac64346888660bb8c94366bba2da12ecf30bb9c02a951",
+      "after": "86bdd5c6d7aa0a10bcf1aa32a4c8d329c0814898562d1065c15fa765b391206b"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-workflow-run/lib/client.js",
+      "removedCommentLines": 1,
+      "before": "53a9e28f62a3bf76203f233a02c817504be5288a5bb48b0026fd02493672e505",
+      "after": "a984e997d22f8b8ae0b5b8aa57d450fd8b836306551b55acf45b8783c8865d49"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-client-ui-workspace/lib/client.js",
+      "removedCommentLines": 4,
+      "before": "0f53f196f46c79d5feb7eef29acf8a65598099ffde582ba26558c93800b061e7",
+      "after": "e2dd86792e540d72f495486e5ebeec3df683ce081f4e1a3a6fea38f786cc3939"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-client-ui-agent-team/lib/client.js",
+      "removedCommentLines": 1,
+      "before": "e9baa10fbd2e96453ba10999fdd313ec33c510dd6d84e68154cb6ea115f7b52c",
+      "after": "66830c3f89ce7054858ce69a896bc557b436199191a75cd1d236658d3d52ba52"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-client-ui-cot-translation/lib/client.js",
+      "removedCommentLines": 1,
+      "before": "3a8dd22a8dc836f0f045657e5c74be3b2fef9bdce2ffc817c47b809fa8016057",
+      "after": "58507b263fb4420792e36b2a5b45f6733fc27a32ffe54a1c99c152c14b6110f7"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-client-ui-voice-input/lib/client.js",
+      "removedCommentLines": 1,
+      "before": "6d91eef57204d7cf23e2240f6cd90052f94793eaeb19ec6f3ce211dfb307ec68",
+      "after": "437045a376b633cf27ea21330c43c59bcc3ce691c6b08d6b628c6715a6e30d4d"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/client.page.js",
+      "removedCommentLines": 1,
+      "before": "8b25b3e71ca6f1100e2641d8b3b3833e72fa1edc80112b0b109f13b4497075fa",
+      "after": "c25da52d45d1f8b8d38c1337ca955cd73ee2237abc7489a10ce4de8a74a60ee7"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/accessibility-CmlVRH4w.js",
+      "removedCommentLines": 1,
+      "before": "e2393477aff4dd7e5972e0950bc5e25abaa41c55402c647046d3c8b3b587bc5b",
+      "after": "65223a57d3a61c5b69d2d7cd1d7c50ccaee23adb1060dcac81d2c247c43bf4a9"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/adorners-DsjlujfY.js",
+      "removedCommentLines": 1,
+      "before": "f39274d0041f5b1730cc79df315b833b867280ca01cc86e4b2264b316727233b",
+      "after": "e18a5100cc2aabc8a3d7e2ea877ed97d4ae3babb6ccc1156f075f8f51d6657cd"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/ai_assistance-E-Dv_ImV.js",
+      "removedCommentLines": 5,
+      "before": "80948723a065c988dec25fa1c4ab25d99f6b0f4593bf8b2d1cd0dca6dfe0ff2e",
+      "after": "bd6ef30916bec3b0c01eb5a6c0cfdc0ee0b35c11347b0bb9de45415b0bbfd6c4"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/animation-TGFINHHz.js",
+      "removedCommentLines": 1,
+      "before": "fdf877081063618782027aa1856db790398ccc2ac5cbbba70dfead4aee8422c2",
+      "after": "62d0cb732927e01bb517042ebb1525a6c7bfcf3d98e3dcd20f786f4353494884"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/application-B5aa63T1.js",
+      "removedCommentLines": 5,
+      "before": "f7bc5237164d476a1bbef3d1a26a765f0f6f4e19f083651ee20292fc1f1bad8f",
+      "after": "af3bffc48b2eceeaeac2a6660cdcbb89d3fa9d4d1d7bb5fc0ff9a051de3e9b02"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/autofill-C0OLjA-c.js",
+      "removedCommentLines": 1,
+      "before": "ea65b26413889b72489fe1838b9b854be2cbc759630d47d54c3c50569d95470b",
+      "after": "2930f4308d8aab6b50755cbd1a491564d38c925d77ce5274e39bc795e9115656"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/browser_debugger-DLvacNEF.js",
+      "removedCommentLines": 1,
+      "before": "78bcf7f777083fddf20c43169808c09995b92e01b008faf4aa1e7aaf3c487170",
+      "after": "6a4893d3d08baf5a2329a85838a71b70238a2211d94db43f2140f527dba0a200"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/changes-C2Nftb4o.js",
+      "removedCommentLines": 1,
+      "before": "005f8b758aa13e7b7e36b55d15464a8e6c9eaef5cce89f4e38f2992c70c1d813",
+      "after": "fec2413aa52370d128cad21df5ef5e40ce8034e2f3b27fdee8ea2925e0d5cd6c"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/checkbox.css-s8Sgo1Ha.js",
+      "removedCommentLines": 1,
+      "before": "872e980e1149864b7f5aaa614dc54663bbb2502e430d1dcd0c27e5e509b6007f",
+      "after": "cdb259f6a2057c91b8e44fa1bcf057802b1e262ef1367151bb69a9101ae3a9e5"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/code_highlighter-d7a7V-kK.js",
+      "removedCommentLines": 1,
+      "before": "9d536341248443d5a3a9509d1a008e0e03954f88c0b4287ffd16a21b386b8a6a",
+      "after": "be31a605168287c059caa239ec0e512a4cece41dbd7dd5c38152db48b9e4e901"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/color_picker-DDpQDA5G.js",
+      "removedCommentLines": 1,
+      "before": "1d89a9ad6121cc688ffbe35b6e9cb8222b182df4112663b91545ee818c091b7b",
+      "after": "7377c364c8dce887b69ff034dae71eb69d7629b4e99c2c1fb24f85b1b24baa61"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/common-wp2LLP1F.js",
+      "removedCommentLines": 3,
+      "before": "9a66da364aa295716538938de81d620116fd46b96774cfd6ac7d3afaeac85410",
+      "after": "7bb0773503f116a9db56ae97aec49f8f38b070b85bce75f449f21f8d180e8693"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/components-1OHlmq_a.js",
+      "removedCommentLines": 1,
+      "before": "dcf381b71ed90a1a7ecc8ae135b3cfa5258f8f13708def6a7d5fd2b1d25d3e6f",
+      "after": "7635ea8135268af16f742dada798042416f66b719af7bdb27332e6a6b5e4c7fc"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/components-CoWndRTt.js",
+      "removedCommentLines": 3,
+      "before": "e1ff860cd9a10e97795a219d8ac61a665feffb3a297a907cd2c6a90e4472eedf",
+      "after": "1d04165837aeab796abf4557f9cca2aeefedcd8b91b8d6d5345afe4a58a92840"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/components-DGsN1vWp.js",
+      "removedCommentLines": 12,
+      "before": "3d549a5bacfad14c214a97161a1aa8e444a5dce37a63c583c2daed2f9b6cda34",
+      "after": "39b9a55db81b94f53e7640a9dc54f00581234c971734f8836d1acd46cac5bc45"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/console-DvjNSNvf.js",
+      "removedCommentLines": 1,
+      "before": "8416f86952a2d3376e8e67e06b6f3f82773fb0a122fbe3fd9d16cea066a0c627",
+      "after": "284f7c7ceb2d2488505deb4b7f0546208200512680d0827b4763e666fa4c2300"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/css_overview-Cyun3agc.js",
+      "removedCommentLines": 5,
+      "before": "d894fe9b2257cbcb413e248ae74563ef9c090545ee95ad4a1e1762ffa30bcc89",
+      "after": "a97c277e8f46bda39fb40fc4f0a0d7da9d6fef556890bfe7515fba751d5f08de"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/data_grid-DtTydkw6.js",
+      "removedCommentLines": 1,
+      "before": "e5366d8da04d33e2478e16577229851fcadb155bc3fb32f568b62f0fc3b6168c",
+      "after": "56e2eca22d10ede217e9c4a93e0d4b3eef1ff56fb099327ec757dffbd94531c3"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/developer_resources-oYKJrWNc.js",
+      "removedCommentLines": 1,
+      "before": "69e3ca0b41b262f3243bc37b3ad52ceb37595f6f33b5b1180e00aa73eb71ad76",
+      "after": "a57250edee443a8270a47cdb1e89b6f09a5f0f763d816e71aa0a354e30ae0d17"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/elements-C0ZcKj42.js",
+      "removedCommentLines": 2,
+      "before": "451d4738b082f9175b8bd5530b4d41490368278b959fc734393588add9be2a70",
+      "after": "792c6b52cd5b42475e204157e0f11001a6938dcdad82850bcfefa5047bedc68a"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/emulation-DkhD7WRu.js",
+      "removedCommentLines": 1,
+      "before": "a0a208c1112dda33cb1a104bdfea21934b5e0b9d6c96a409af8748c9ebeddd98",
+      "after": "600f07e3e5fe705d8dd6fe918579cdfc240ae0b0fbe1a63b599436a5c779b974"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/emulation-DTYsP91u.js",
+      "removedCommentLines": 1,
+      "before": "cf41b927e4bc6e7e2e2b5613483422eaa17545725b67afaed56b8e0f0bac42f5",
+      "after": "8ed1659340ffa919fd98653d5a263dacfc1fe4db12e77ac2d2d0b845492eb9b7"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/event_listeners-At70Ugnm.js",
+      "removedCommentLines": 1,
+      "before": "9956e409328099e7028aa82a75936add6c59babfb6c7dde822f68efc9d231a87",
+      "after": "193207c640ea509351a77e49df71411cb83c802758f0577d9f996c67156e8b1a"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/explain-Bg9plAdG.js",
+      "removedCommentLines": 1,
+      "before": "5a2cec693685666090b14cb7b1344f7bbb27b4068e8824e542ca2c7abe4ee753",
+      "after": "b40357901d55183d10bd74f2ea961ce13c26bda50df37e33deb825386adcc678"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/greendev-DWwxIFy6.js",
+      "removedCommentLines": 1,
+      "before": "818cae8dc458c2bab2ce0abcc4378af4789d9591c359ee412849f9f911345227",
+      "after": "c202102dde859feeb160dba6dc7f62a2705ae1de4d906521dae84c28b85cb886"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/icon_button-CYCloyK3.js",
+      "removedCommentLines": 2,
+      "before": "25f952c4c5929eb2c684516ab3b7eadb5a8c4a8b5898cef6f462d0a83933981a",
+      "after": "138d9357410e371bd327be98007054eb76247246781e292854c52f79d101c6dd"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/inline_editor-PG3ReOPO.js",
+      "removedCommentLines": 7,
+      "before": "72fb47e9323f604dc189f124e72d64b92e8671287634130587c5e4a0dcdc5c7c",
+      "after": "773282fcdc79cf483e90fe8f48ab883280c8f88be5cd399835358bbc7dab1f22"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/inspector_main-CflpFIf5.js",
+      "removedCommentLines": 2,
+      "before": "46c9da01321cfe947de4258705b7aefff3595e854846abd5db2d008479ccc0a5",
+      "after": "d090931ba2347a31bfc1fd64abc65e25ac0001b8eb1b01b94879c6fbc6a52018"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/issues-3CGnm6cZ.js",
+      "removedCommentLines": 1,
+      "before": "7652ee0ce52e6fd755a5e5a972c738e3da5d26c3b9ef3e0138f9bb48fb30487f",
+      "after": "d882516ac8cbd7b28c09d4a2cc966781c5232401b54bef4647dc42b2f7d14c6b"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/issue_counter-Cq1MSLf3.js",
+      "removedCommentLines": 2,
+      "before": "eff9dc63f863e1c48d8d6dc31202f8fa05bb065ee1684450eb0653df51039492",
+      "after": "9d090f3cd37952313b5caf908dace63785cde4b251d978d8df48b4b21c346e4c"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/layer_viewer-Coe8tS5p.js",
+      "removedCommentLines": 1,
+      "before": "f958d557ed7c442088f9cc1c4c8b115f0fc5a1add2eb9229d8fd2fa20f20f210",
+      "after": "f0bf54b95062af836fbf6b6ef2ea1be9849e11168e5e76a097a4d55b2ca6704b"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/legacy-rsdbEB12.js",
+      "removedCommentLines": 7,
+      "before": "75f8c30b36a06f7061cbbc4a0a6548e8f1240d8d28fe53ac0752a984584700aa",
+      "after": "1ecebbe7ea11d9d4f9d4962daf3cc37d1e2e46035c9ebfa5f897b47daed0f9a6"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/markdown_view-BUNsF_Wo.js",
+      "removedCommentLines": 2,
+      "before": "542b6e29fc25a9c3b971c9582c985fbe791c6d063e32ba0c9347da895bf432ea",
+      "after": "80edefe1e626075a7c9fb2f5ddfbf79faf4d235dfd1de1e737062b02e687b593"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/media-DTC2CfVE.js",
+      "removedCommentLines": 1,
+      "before": "e4facefd449f70f74863e2a8eeb9bce812a4ff31757eb10e7460ff59ad34aa1b",
+      "after": "3cb8fe80c7fa5949a459688435d423c5bd2f51a4288f52dd200dea383c6e9f09"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/menus-Ci1huN1W.js",
+      "removedCommentLines": 3,
+      "before": "55f568c7ca2028f2b78a4d5204dc2f627a9e8f8f266d0be6e57af99c1fb3b050",
+      "after": "57b44968db47ebbbe7d65e89d687e0e3ecd48439cc96b93e574dce73bf194760"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/mobile_throttling-BmJf9eKq.js",
+      "removedCommentLines": 1,
+      "before": "021e83ce54df45bbfa0d205b5373a400d180ebeca8fcb4bee99ce412a38a64b8",
+      "after": "9e86032ed788ba177c56a61621893fff5d2cf6ecc565980a49954cc143cafcd1"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/network-B9sLObvO.js",
+      "removedCommentLines": 6,
+      "before": "e4d4c523ee30607053948a241482b6ec7eb8d898f6efb4dd88df30b6c70cc661",
+      "after": "e8e29b0fff20434489e0ef23136688198d6e6524f53be7aeb88478a494af2c94"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/objectValue.css-DP8_I0mD.js",
+      "removedCommentLines": 1,
+      "before": "d20f55ecdaf42b0c41301d923c34e318c94d4dd77243fa681fb91e47d70f606d",
+      "after": "575a41ba08fc76856bfbeb5afb3b06b71a7a9b7edfdb54808fb55e2a2dc75ebd"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/object_ui-D6KIsmCZ.js",
+      "removedCommentLines": 1,
+      "before": "ceab26cbe2d89d9366b4c9110aa21e18028596357be501d96de4f88d0bbc8d58",
+      "after": "3e4787bb7060c7cb447a0e8b1e6ed92586e13e57da89ff469592798dfd8ab341"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/performance_monitor-DVyLBzBR.js",
+      "removedCommentLines": 1,
+      "before": "c1a069270b490e09f213f14b2a3ee831b2dece28e0efab4a5f6dc4e111ad8dc0",
+      "after": "6a7a94465a967ec41b112caad99b84418ebff3d7da213ae3ff8aa3492a818d1d"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/perf_ui-Dchkksfc.js",
+      "removedCommentLines": 3,
+      "before": "aa80e86e8f2e00e7000e2e628ab98e508ea49e0dcf96c8bad49692b13546c107",
+      "after": "443bd369e10b85fc16932182d26246f91e898115495ee9b17c03846a4de30032"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/protocol_monitor-Zpi-X7Wm.js",
+      "removedCommentLines": 1,
+      "before": "2f0cf7198b238e9a49dc45787d0b322d14e801ac47a4500817907518b8db3ba1",
+      "after": "e0b46bec1f9193153ec2c8757bd1fe8987aba8405370d44801fbf4def8cc8f79"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/quick_open-DVO8WNA9.js",
+      "removedCommentLines": 2,
+      "before": "374850c9d59051458b320e9b7fa9f6ea8d1773baa7ac22624df6dec086f0ef7b",
+      "after": "c67a9f707040c4cc0ac708ef2f4736be235c9c57c06da47e2967f8210a48f773"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/recorder-BZsCQFpI.js",
+      "removedCommentLines": 4,
+      "before": "5e5445fea6f9b636afb53885dda5a4c78f2ca9db99e9026064ef2877db700699",
+      "after": "55972acca9b8a313e0ba1d02b69ef0a0127d9cff04fb634919b2ea7fe2e04e62"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/request_link_icon-DvCLdaX4.js",
+      "removedCommentLines": 1,
+      "before": "76bcc1eb23addc134a0ff4ed2d48e722f0f4e62d5e416012bdf562d246fdfb8b",
+      "after": "dd3a5167aabf37a5c52705289e5cfafe470b23abde882ad1c97723f1bf5cd635"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/sensors-DXDTfSM1.js",
+      "removedCommentLines": 1,
+      "before": "df6350ceeab3a535e0f2335346aabf94f3bbe0194a205dd2a1925796a3bfe72e",
+      "after": "61a815a932e20b945cf823655aa6e71e47b6e11450117232c5e6550a7366781b"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/settings-CzYEY3dI.js",
+      "removedCommentLines": 2,
+      "before": "44732773620e1eaccb0bac9fb34daaa594dee82263e1faf3b1585c6c71a5fa08",
+      "after": "5bb1806d11e5e9e0efd611b595261f5257ffa9898b0d9a66e102833b84f9c76f"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/settings_ui-CHhhgmg-.js",
+      "removedCommentLines": 2,
+      "before": "b9c3ec78210dfd701551df4d8348b8c063d6ece5b613e375f446cb696ada28b3",
+      "after": "d8b3cbc12d62db23b0fc32d270e8a2f1308ca639465b4964f645859245d02903"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/snackbars-DCS6EDhF.js",
+      "removedCommentLines": 1,
+      "before": "4433902c963fcc5ccca22b194a9f2daa11484984c864c1aa75474f711478e6b7",
+      "after": "f980ebedbcb361b463a7bbd1f0ea7e4f6d318b710bd0e92853c077973b4e3b1c"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/sources-bc4Dehky.js",
+      "removedCommentLines": 3,
+      "before": "f97d7f2c16cffe102da51025428d64e65f73222cd268a1848120cf2851646b43",
+      "after": "8c8f8591aeb1de64e21d9831b8f6b25cef14a40e5e9f0cbe58c4eee7d3b0f9c6"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/source_frame-78KceKlu.js",
+      "removedCommentLines": 1,
+      "before": "d4898e27cd92e91e32cbec3473afec71a6f826c42acf49c51e2130a2ecec2a77",
+      "after": "cb134b1a9bc3228ecec8667be3ea0598a93e465f2357f106b0da453d73c241ec"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/suggestion_input-Bc0yAPPE.js",
+      "removedCommentLines": 1,
+      "before": "f94fb6a0e3570c7b736c210efd27bd2636bf3532b37baf8c1843162e737189c9",
+      "after": "a58137ae8b4b008c10f0f59651478bfe4fd39ee1cc79be796e9c9e489a12ea77"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/textInput.css-BTEcuu-T.js",
+      "removedCommentLines": 1,
+      "before": "408307942a65579dcb3dff3819d608a20ae222518673ae21e0e2b3b92738962c",
+      "after": "1b1f2e5a2f984406b66b00010cfdc047827b618a6333d1dfd190263f37af1f4c"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/timeline-nldQCLVp.js",
+      "removedCommentLines": 17,
+      "before": "4fc5c5cf5f1c12727ca030c45d9d8e0e012a427b1cd406d5f627de39e9ea404a",
+      "after": "3c8a41df1ec08b01106d9a96556c936fde714826bb50c54089c2c9b954b1b3fe"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/utils-BfGO-Avp.js",
+      "removedCommentLines": 1,
+      "before": "7dd93677778ade31dd3b98587f9f45c8a16dc60c4e0173d057ea231c916b5cd8",
+      "after": "8e72bad7ae419f324201f7f7457b433bb063e58f7911d84c19e5537db37af12e"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-inspector/lib/devtools/chunks/webauthn-Udslv_Y-.js",
+      "removedCommentLines": 1,
+      "before": "09af3c1362136c45c880c0ec154c28ac37dc89d3b0a6d7248f6e54557bf1fb65",
+      "after": "1157e6f039b8dfa0e250b788a82c97364fb92f575dae3c6be37cc10dfc6c6b8f"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-experimental-session-inspector/lib/client.js",
+      "removedCommentLines": 1,
+      "before": "f1b52eac21b31dab342fa142c2e6a74a6697d2bc86e1260e6aa13f1ed87dca65",
+      "after": "eb7779d2b6989cbac71518df931106fa162a4305c4b540b5c73465b306978995"
+    },
+    {
+      "path": "node_modules/@deepseek-ai/dsh-session-log-export/lib/client.js",
+      "removedCommentLines": 1,
+      "before": "3c1b9444c9e33c430cce85d2035d5bc0e7fa521fac7e43a9cdb65dee041b8822",
+      "after": "35951e528a8eedbb1ff2b889d24e72ca88dfd5fc9d71f94576842ed210ed8da4"
+    }
+  ],
+  "remaining": []
+}

@@ -1,0 +1,13 @@
+{
+  "artifact": "TradeLoom-desktop16-portable-win-x64.zip",
+  "archiveRoot": "TradeLoom",
+  "bytes": 406666826,
+  "sha256": "ab973c6bf742979ef3875819a4b7729ef0ba1a3f2018dbc7b28d536cc6b13660",
+  "zipEntries": 21091,
+  "zipCRC": "passed",
+  "gitHubSingleAssetUnder2GiB": true,
+  "payloadManifestFiles": 21089,
+  "maxPayloadRelativePathLength": 216,
+  "licenseFilesIndexed": 451,
+  "guiVerification": "not-repeated-after-final-bootstrap-corrections; actual headless Host route proof is separate"
+}
