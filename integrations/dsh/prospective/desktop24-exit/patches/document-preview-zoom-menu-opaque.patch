@@ -1,0 +1,12 @@
+diff --git a/packages/client/ui-sidebar-documentpreview/src/client/zoom/ZoomControls.module.css b/packages/client/ui-sidebar-documentpreview/src/client/zoom/ZoomControls.module.css
+--- a/packages/client/ui-sidebar-documentpreview/src/client/zoom/ZoomControls.module.css
++++ b/packages/client/ui-sidebar-documentpreview/src/client/zoom/ZoomControls.module.css
+@@ -32,7 +32,7 @@
+ .controlAnchor { display: flex; }
+ .zoomButton { width: 28px; padding: 0; flex: none; }
+ .percent { display: inline-flex; align-items: center; justify-content: center; gap: 2px; min-width: 58px; padding-inline: 6px; font-variant-numeric: tabular-nums; }
+-.zoomMenu { min-width: 112px; }
++.zoomMenu { min-width: 112px; --dsw-menu-surface-fill: var(--dsw-alias-bg-layer-1); }
+ 
+ @media (hover: none), (pointer: coarse) {
+   .panel {

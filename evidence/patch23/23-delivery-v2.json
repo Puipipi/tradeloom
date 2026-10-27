@@ -1,0 +1,50 @@
+{
+  "version": "patch23-v2",
+  "patch": "desktop-ai-web-readonly-diagnostics.patch",
+  "patchSha256": "2A3EFE8E01C040696C72F2F27908C1DEAC8B77CB6D7584498C420FBFFF5C0AB7",
+  "supersedes": {
+    "sha256": "45E35CC6935E8E21E1DDC8FC13DC38C8987E6E476F25142AE1700890FEC6431B",
+    "status": "obsolete; not consumed by frontend",
+    "patch": "desktop-ai-web-readonly-diagnostics-v1-45E3-obsolete.patch"
+  },
+  "basePatchSha256": "858DBAED145ACB6F124989597A980F641CC9592D3F007C2740D1181C96091088",
+  "runtime": "private 22 candidate only; apply after multisite-state patch",
+  "targets": {
+    "apps/desktop/src/browser-guests.ts": {
+      "beforeSha256": "0DF772C8ADBA1CD62CD9889A6EC1BF5E0B03AC0D693B147D432691E8195F88B5",
+      "afterSha256": "527F2FB4035526AA199DA916B1F8C157D29D17D327BAB2CB18F073931D9D05CC"
+    },
+    "apps/desktop/tests/build-ai-web-diagnostics-fixture.cjs": {
+      "beforeSha256": null,
+      "afterSha256": "1A7C5C346AC6EB659390098B691FFEE102FD88CA0AC7E7701530EA0DEBF0D3DD"
+    },
+    "apps/desktop/src/ai-web-diagnostics.ts": {
+      "beforeSha256": null,
+      "afterSha256": "152DDFA2F449A44C49836650E3EBD2126D90763EFD40AFC885B1D8D1FEF64262"
+    },
+    "apps/desktop/tests/ai-web-diagnostics-electron.fixture.cjs": {
+      "beforeSha256": null,
+      "afterSha256": "029A2CD3C1056C8A3066DA7A60C7CF4ADAF0EB240E2EA03B349C9014A74F538C"
+    }
+  },
+  "roundtrip": "roundtrip-v3 core.autocrlf=false forward --check/apply and reverse --check/reverse apply; exact four target hashes; browser-guests reverse hash equals v22 baseline; added files removed",
+  "fixtureHardening": {
+    "buildHelper": "checks fixture source and each transpiled CJS with spawnSync(process.execPath, [--check], stdio ignored); nonzero stops build",
+    "nodeCheck": "builder and fixture manually node --check exit 0; builder auto-check pass; generated CJS manual check pass",
+    "profile": "random UUID app-owned userData below private candidate; no recursive deletion"
+  },
+  "targetedElectronFixture": {
+    "export": "electron-export-v6-85de79d6-cb3a-42df-907a-9d3d7af0a96d.json",
+    "runId": "85de79d6-cb3a-42df-907a-9d3d7af0a96d",
+    "liveSite": false,
+    "checks": 12,
+    "candidateProcessesAfter": 0,
+    "exitCode": 0,
+    "result": "electron-diagnostics-result-v6-85de79d6-cb3a-42df-907a-9d3d7af0a96d.json"
+  },
+  "existingRegressionEvidence": "See 23-delivery-v1-45E3-obsolete.json for the v1 baseline; v2-specific controlled Electron evidence is recorded in this delivery.",
+  "live16": "not modified",
+  "productionUploadLogic": "not modified",
+  "restart": "not performed",
+  "frontendConsumed": false
+}

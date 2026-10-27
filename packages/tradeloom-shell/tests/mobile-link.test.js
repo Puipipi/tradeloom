@@ -76,3 +76,18 @@ test('apply registers and disposes the exact protected mobile-link endpoint', ()
   dispose()
   assert.equal(route.disposed, true)
 })
+
+test('mobile link accepts only the trusted configured custom Host port', async () => {
+  const previous = process.env.TRADELOOM_DSH_BIND_PORT
+  try {
+    process.env.TRADELOOM_DSH_BIND_PORT = '43088'
+    const ctx = context({webServer:{port:43088}}), res = response()
+    await createMobileLinkHandler(ctx)(request(), res)
+    assert.equal(res.statusCode,200)
+    assert.equal(ctx.calls.authenticated[0],'http://192.168.1.23:43088')
+    const wrong = context({webServer:{port:3088}}), rejected = response()
+    await createMobileLinkHandler(wrong)(request(), rejected)
+    assert.equal(rejected.statusCode,503)
+    assert.equal(wrong.calls.authenticated.length,0)
+  } finally { if(previous === undefined) delete process.env.TRADELOOM_DSH_BIND_PORT; else process.env.TRADELOOM_DSH_BIND_PORT = previous }
+})

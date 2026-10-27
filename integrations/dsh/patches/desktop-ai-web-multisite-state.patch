@@ -1,0 +1,324 @@
+--- a/apps/desktop/src/browser-guests.ts
++++ b/apps/desktop/src/browser-guests.ts
+@@ -4,7 +4,7 @@
+ import { stat, writeFile } from 'node:fs/promises'
+ import { basename } from 'node:path'
+ import type { DesktopBrowserLeaseId, DesktopBrowserOpenRequest, DesktopBrowserReservation } from '@deepseek-ai/dsh-client-ui-sidebar-browser/types'
+-import { DESKTOP_IPC, type DesktopAiWebState, type DesktopAiWebFileResult } from './ipc.ts'
++import { DESKTOP_IPC, type DesktopAiWebState, type DesktopAiWebFileResult, type DesktopAiWebProvider } from './ipc.ts'
+ 
+ interface GuestLease {
+   readonly owner: WebContents
+@@ -172,23 +172,38 @@
+ }
+ 
+ /** Persistent remote website window, isolated from product documents and personal DSH. */
+-export class DesktopAiWebWindows {
++interface AiWebSite {
++  readonly provider: DesktopAiWebProvider
++  readonly label: string
++  readonly url: string
++  readonly host: string
++  readonly partition: string
++}
++
++const AI_WEB_SITES: Readonly<Record<DesktopAiWebProvider, AiWebSite>> = {
++  deepseek: { provider: 'deepseek', label: 'DeepSeek', url: 'https://chat.deepseek.com/', host: 'deepseek.com', partition: 'persist:tradeloom-ai-web-deepseek-v1' },
++  doubao: { provider: 'doubao', label: '豆包', url: 'https://www.doubao.com/chat/', host: 'doubao.com', partition: 'persist:tradeloom-ai-web-doubao-v1' },
++}
++
++type AiWebChanged = (owner: BrowserWindow, state: DesktopAiWebState) => void
++
++class DesktopAiWebWindow {
+   private window: BrowserWindow | undefined
+   private owner: BrowserWindow | undefined
+   private phase: DesktopAiWebState['phase'] = 'closed'
+   private failure: DesktopAiWebState['error'] = null
+   private busy = false
+   private configured = false
+-  private readonly partition = 'persist:tradeloom-ai-web-deepseek-v1'
++  private revision = 0
+ 
+   /** @param hostUrl - authenticated application endpoint, never accessible to the website. */
+-  constructor(private readonly hostUrl: () => string | undefined) {}
++  constructor(private readonly hostUrl: () => string | undefined, private readonly site: AiWebSite, private readonly onChanged?: AiWebChanged) {}
+ 
+   /** Accept only the fixed website provider; the renderer cannot provide URLs or paths. */
+   private validate(request: unknown): void {
+     if (request === null || typeof request !== 'object' || Array.isArray(request)
+       || Object.keys(request).join(',') !== 'provider'
+-      || Reflect.get(request, 'provider') !== 'deepseek') throw new Error('ai web: invalid provider request')
++      || Reflect.get(request, 'provider') !== this.site.provider) throw new Error('ai web: invalid provider request')
+   }
+ 
+   /** Return non-secret window state without opening or focusing it. */
+@@ -196,8 +211,8 @@
+     this.validate(request)
+     const window = this.liveWindow()
+     return {
+-      provider: 'deepseek', available: true, open: window !== undefined,
+-      visible: window?.isVisible() ?? false,
++      provider: this.site.provider, available: true, revision: this.revision, open: window !== undefined,
++      visible: window !== undefined && window.isVisible() && !window.isMinimized(),
+       phase: window === undefined ? 'closed' : this.phase,
+       error: window === undefined ? null : this.failure,
+       persistentSession: true,
+@@ -217,13 +232,13 @@
+       else { if (previous.isMinimized()) previous.restore(); previous.show(); previous.focus() }
+       return this.status(request)
+     }
+-    const browserSession = session.fromPartition(this.partition)
++    const browserSession = session.fromPartition(this.site.partition)
+     if (!this.configured) {
+       this.configureSession(browserSession)
+       this.configured = true
+     }
+     const window = new BrowserWindow({
+-      title: 'DeepSeek 网页 · 织贸助手', width: 1100, height: 780,
++      title: `${this.site.label} 网页 · 织贸助手`, width: 1100, height: 780,
+       minWidth: 420, minHeight: 360, show: false,
+       frame: true, minimizable: true, maximizable: true, closable: true, resizable: true,
+       webPreferences: {
+@@ -242,20 +257,24 @@
+     owner.once('closed', ownerClosed)
+     window.once('closed', () => {
+       owner.removeListener('closed', ownerClosed)
+-      if (this.window === window) { this.window = undefined; this.owner = undefined; this.phase = 'closed'; this.failure = null }
++      if (this.window === window) { this.window = undefined; this.owner = undefined; this.phase = 'closed'; this.failure = null; this.changed(owner) }
+     })
+     window.webContents.on('did-start-navigation', (_event, _url, inPlace, mainFrame) => {
+-      if (owned() && mainFrame && !inPlace) { this.phase = 'loading'; this.failure = null }
++      if (owned() && mainFrame && !inPlace) { this.phase = 'loading'; this.failure = null; this.changed() }
+     })
+     window.webContents.on('did-frame-finish-load', (_event, mainFrame) => {
+-      if (owned() && mainFrame) { this.phase = 'ready'; this.failure = null }
++      if (owned() && mainFrame) { this.phase = 'ready'; this.failure = null; this.changed() }
+     })
+     window.webContents.on('did-fail-load', (_event, code, _description, _url, mainFrame) => {
+-      if (owned() && mainFrame && code !== -3) { this.phase = 'error'; this.failure = 'page_load_failed' }
++      if (owned() && mainFrame && code !== -3) { this.phase = 'error'; this.failure = 'page_load_failed'; this.changed() }
+     })
+     window.webContents.on('render-process-gone', () => {
+-      if (owned()) { this.phase = 'error'; this.failure = 'page_process_stopped' }
+-    })
++      if (owned()) { this.phase = 'error'; this.failure = 'page_process_stopped'; this.changed() }
++    })
++    window.on('show', () => { this.changed() })
++    window.on('hide', () => { this.changed() })
++    window.on('minimize', () => { this.changed() })
++    window.on('restore', () => { this.changed() })
+     window.webContents.on('will-frame-navigate', (event) => {
+       if (event.isMainFrame && !this.allowedNavigation(event.url)) event.preventDefault()
+     })
+@@ -269,20 +288,21 @@
+     })
+     window.setMenu(Menu.buildFromTemplate([
+       { label: '文件', submenu: [
+-        { label: '上传文件到网页…', click: () => { void this.menuAction(() => this.upload(owner, { provider: 'deepseek' })) } },
+-        { label: '保存可见网页文字…', click: () => { void this.menuAction(() => this.saveText(owner, { provider: 'deepseek' })) } },
++        { label: '上传文件到网页…', click: () => { void this.menuAction(() => this.upload(owner, { provider: this.site.provider })) } },
++        { label: '保存可见网页文字…', click: () => { void this.menuAction(() => this.saveText(owner, { provider: this.site.provider })) } },
+         { type: 'separator' }, { role: 'close' },
+       ] },
+       { role: 'editMenu' },
+       { label: '网页', submenu: [
+         { label: '刷新', click: () => { if (owned()) window.webContents.reload() } },
+-        { label: '在浏览器打开', click: () => { void shell.openExternal('https://chat.deepseek.com/').catch(() => {}) } },
++        { label: '在浏览器打开', click: () => { void shell.openExternal(this.site.url).catch(() => {}) } },
+       ] },
+     ]))
+-    void window.loadURL('https://chat.deepseek.com/').catch(() => {
+-      if (owned()) { this.phase = 'error'; this.failure = 'page_load_failed' }
++    void window.loadURL(this.site.url).catch(() => {
++      if (owned()) { this.phase = 'error'; this.failure = 'page_load_failed'; this.changed() }
+     })
+     window.show()
++    this.changed()
+     return this.status(request)
+   }
+ 
+@@ -292,7 +312,7 @@
+     if (this.busy) throw new Error('ai web: file operation busy')
+     this.busy = true
+     try {
+-      const choice = await dialog.showOpenDialog(window, { title: '上传文件到 DeepSeek 网页', properties: ['openFile'] })
++      const choice = await dialog.showOpenDialog(window, { title: `上传文件到 ${this.site.label} 网页`, properties: ['openFile'] })
+       if (choice.canceled || choice.filePaths.length !== 1) return { cancelled: true }
+       this.requireSameWindow(window)
+       const path = choice.filePaths[0]!
+@@ -320,7 +340,7 @@
+     try {
+       const text: unknown = await window.webContents.executeJavaScript('document.body.innerText', false)
+       if (typeof text !== 'string' || Buffer.byteLength(text, 'utf8') > 2 * 1024 * 1024) throw new Error('ai web: visible text exceeds 2 MiB')
+-      const choice = await dialog.showSaveDialog(window, { title: '保存可见网页文字', defaultPath: 'DeepSeek网页文字.txt', filters: [{ name: '文本', extensions: ['txt'] }] })
++      const choice = await dialog.showSaveDialog(window, { title: '保存可见网页文字', defaultPath: `${this.site.label}网页文字.txt`, filters: [{ name: '文本', extensions: ['txt'] }] })
+       if (choice.canceled || choice.filePath === undefined) return { cancelled: true }
+       this.requireSameWindow(window)
+       await writeFile(choice.filePath, text, 'utf8')
+@@ -333,10 +353,15 @@
+     catch (error) {
+       const window = this.liveWindow()
+       if (window !== undefined) await dialog.showMessageBox(window, {
+-        type: 'info', title: 'DeepSeek 网页文件操作',
++        type: 'info', title: `${this.site.label} 网页文件操作`,
+         message: error instanceof Error ? error.message : '网页文件操作未完成',
+       })
+     }
++  }
++
++  private changed(owner = this.owner): void {
++    this.revision++
++    if (owner !== undefined && !owner.isDestroyed()) this.onChanged?.(owner, this.status({ provider: this.site.provider }))
+   }
+ 
+   private liveWindow(): BrowserWindow | undefined {
+@@ -352,14 +377,14 @@
+   }
+ 
+   private requireSameWindow(window: BrowserWindow): void {
+-    if (this.liveWindow() !== window || new URL(window.webContents.getURL()).origin !== 'https://chat.deepseek.com') throw new Error('ai web: website is not ready')
++    if (this.liveWindow() !== window || (!URL.canParse(window.webContents.getURL()) || new URL(window.webContents.getURL()).origin !== new URL(this.site.url).origin)) throw new Error('ai web: website is not ready')
+   }
+ 
+   private allowedNavigation(value: string): boolean {
+     if (!URL.canParse(value)) return false
+     const url = new URL(value)
+     return url.protocol === 'https:' && url.username === '' && url.password === '' && url.port === ''
+-      && (url.hostname === 'deepseek.com' || url.hostname.endsWith('.deepseek.com'))
++      && (url.hostname === this.site.host || url.hostname.endsWith('.' + this.site.host))
+   }
+ 
+   private allowedExternal(value: string): boolean {
+@@ -386,7 +411,32 @@
+     })
+     browserSession.on('will-download', (event, item, contents) => {
+       if (contents === undefined || contents !== this.liveWindow()?.webContents) { event.preventDefault(); return }
+-      item.setSaveDialogOptions({ title: '保存 DeepSeek 网页下载', defaultPath: basename(item.getFilename()) })
+-    })
+-  }
+-}
++      item.setSaveDialogOptions({ title: `保存 ${this.site.label} 网页下载`, defaultPath: basename(item.getFilename()) })
++    })
++  }
++}
++
++/** Fixed-site registry; each site owns one independently persistent window/session. */
++export class DesktopAiWebWindows {
++  private readonly windows = new Map<DesktopAiWebProvider, DesktopAiWebWindow>()
++
++  constructor(private readonly hostUrl: () => string | undefined, private readonly onChanged?: AiWebChanged) {}
++
++  private siteWindow(request: unknown): DesktopAiWebWindow {
++    if (request === null || typeof request !== 'object' || Array.isArray(request)
++      || Object.keys(request).join(',') !== 'provider') throw new Error('ai web: invalid provider request')
++    const provider: unknown = Reflect.get(request, 'provider')
++    if (provider !== 'deepseek' && provider !== 'doubao') throw new Error('ai web: invalid provider request')
++    let window = this.windows.get(provider)
++    if (window === undefined) {
++      window = new DesktopAiWebWindow(this.hostUrl, AI_WEB_SITES[provider], this.onChanged)
++      this.windows.set(provider, window)
++    }
++    return window
++  }
++
++  toggle(owner: BrowserWindow, request: unknown): DesktopAiWebState { return this.siteWindow(request).toggle(owner, request) }
++  status(request: unknown): DesktopAiWebState { return this.siteWindow(request).status(request) }
++  upload(owner: BrowserWindow, request: unknown): Promise<DesktopAiWebFileResult> { return this.siteWindow(request).upload(owner, request) }
++  saveText(owner: BrowserWindow, request: unknown): Promise<DesktopAiWebFileResult> { return this.siteWindow(request).saveText(owner, request) }
++}
+--- a/apps/desktop/src/ipc.ts
++++ b/apps/desktop/src/ipc.ts
+@@ -17,6 +17,7 @@
+   onboardingActive: 'dsh-desktop:onboarding-active',
+   onboardingApiKey: 'dsh-desktop:onboarding-api-key',
+   bootFailed: 'dsh-desktop:boot-failed',
++  aiWebChanged: 'tradeloom:ai-web-changed',
+   aiWebToggle: 'tradeloom:ai-web-toggle',
+   aiWebStatus: 'tradeloom:ai-web-status',
+   aiWebUpload: 'tradeloom:ai-web-upload',
+@@ -74,11 +75,13 @@
+ }
+ 
+ /** Fixed real website entry; no arbitrary URL, credentials or local path is accepted. */
+-export interface DesktopAiWebRequest { readonly provider: 'deepseek' }
++export type DesktopAiWebProvider = 'deepseek' | 'doubao'
++export interface DesktopAiWebRequest { readonly provider: DesktopAiWebProvider }
+ 
+ /** Non-secret state of the independently owned persistent webpage window. */
+ export interface DesktopAiWebState {
+-  readonly provider: 'deepseek'
++  readonly provider: DesktopAiWebProvider
++  readonly revision: number
+   readonly available: true
+   readonly open: boolean
+   readonly visible: boolean
+@@ -102,6 +105,7 @@
+ export interface DshDesktopProductApi {
+   readonly protocolVersion: 1
+   readonly aiWeb: {
++    subscribe(listener: (state: DesktopAiWebState) => void): () => void
+     toggle(request: DesktopAiWebRequest): Promise<DesktopAiWebState>
+     status(request: DesktopAiWebRequest): Promise<DesktopAiWebState>
+     upload(request: DesktopAiWebRequest): Promise<DesktopAiWebFileResult>
+--- a/apps/desktop/src/preload-app.ts
++++ b/apps/desktop/src/preload-app.ts
+@@ -2,7 +2,7 @@
+ 
+ import type { DesktopShortcutInput, ShortcutConfigSnapshot, ShortcutSaveResult } from '@deepseek-ai/dsh-client-shortcuts/protocol'
+ import { contextBridge, ipcRenderer, webUtils } from 'electron'
+-import { DESKTOP_IPC, SCHEME, type DshDesktopProductApi, type DesktopUpdatePresentation } from './ipc.ts'
++import { DESKTOP_IPC, SCHEME, type DshDesktopProductApi, type DesktopUpdatePresentation, type DesktopAiWebState } from './ipc.ts'
+ import { PLATFORM_IPC } from './platform-ipc.ts'
+ import { markDocumentPlatform, syncWindowFullscreen } from './preload-platform.ts'
+ import { syncNativeTheme } from './preload-theme.ts'
+@@ -14,6 +14,11 @@
+   return {
+     protocolVersion: 1,
+     aiWeb: {
++      subscribe(listener) {
++        const handle = (_event: Electron.IpcRendererEvent, state: DesktopAiWebState): void => { listener(state) }
++        ipcRenderer.on(DESKTOP_IPC.aiWebChanged, handle)
++        return () => { ipcRenderer.off(DESKTOP_IPC.aiWebChanged, handle) }
++      },
+       toggle: request => ipcRenderer.invoke(DESKTOP_IPC.aiWebToggle, request) as ReturnType<DshDesktopProductApi['aiWeb']['toggle']>,
+       status: request => ipcRenderer.invoke(DESKTOP_IPC.aiWebStatus, request) as ReturnType<DshDesktopProductApi['aiWeb']['status']>,
+       upload: request => ipcRenderer.invoke(DESKTOP_IPC.aiWebUpload, request) as ReturnType<DshDesktopProductApi['aiWeb']['upload']>,
+--- a/apps/desktop/src/main.ts
++++ b/apps/desktop/src/main.ts
+@@ -478,7 +478,9 @@
+   let hostUrl: string | undefined
+   let hostCookie: string | undefined
+   const browserGuests = new DesktopBrowserGuests(() => hostUrl)
+-  const aiWebWindows = new DesktopAiWebWindows(() => hostUrl)
++  const aiWebWindows = new DesktopAiWebWindows(() => hostUrl, (owner, state) => {
++    if (!owner.isDestroyed()) owner.webContents.send(DESKTOP_IPC.aiWebChanged, state)
++  })
+   let injections: readonly unknown[] = []
+   let welcomeBackend: DesktopWelcomeBackend | undefined
+   let reportedLaunch = false
+--- a/apps/desktop/tests/preload-app.spec.ts
++++ b/apps/desktop/tests/preload-app.spec.ts
+@@ -57,7 +57,22 @@
+   expect(electron.ipcRenderer.off).toHaveBeenCalledWith(DESKTOP_IPC.updatesPresentation, handler)
+ })
+ 
+-it.each(['dsh-app://shell/plugin-manager.html', 'dsh-app://other/index.html', 'https://shell/startup.html', 'http://example.com/'])('exposes only the carrier marker to %s', async (url) => {
++it('subscribes to provider window state and removes the exact native listener', async () => {
++  vi.stubGlobal('location', new URL('dsh-app://app/index.html'))
++  await import('../src/preload-app.ts')
++  const api = electron.contextBridge.exposeInMainWorld.mock.calls.find(([name]) => name === 'dshDesktop')?.[1] as DshDesktopProductApi
++  const listener = vi.fn()
++  const dispose = api.aiWeb.subscribe(listener)
++  const handler = electron.ipcRenderer.on.mock.calls.find(([channel]) => channel === DESKTOP_IPC.aiWebChanged)?.[1] as
++    (event: unknown, state: unknown) => void
++  const state = { provider: 'doubao', revision: 2, available: true, open: false, visible: false, phase: 'closed', error: null, persistentSession: true, origin: null }
++  handler({}, state)
++  expect(listener).toHaveBeenCalledExactlyOnceWith(state)
++  dispose()
++  expect(electron.ipcRenderer.off).toHaveBeenCalledWith(DESKTOP_IPC.aiWebChanged, handler)
++})
++
++it.each(['dsh-app://shell/plugin-manager.html', 'dsh-app://other/index.html', 'https://shell/startup.html', 'http://example.com/', 'https://www.doubao.com/chat/', 'https://chat.deepseek.com/'])('exposes only the carrier marker to %s', async (url) => {
+   vi.stubGlobal('location', new URL(url))
+   await import('../src/preload-app.ts')
+   expect(electron.contextBridge.exposeInMainWorld).toHaveBeenCalledWith('dshDesktop', { protocolVersion: 1 })

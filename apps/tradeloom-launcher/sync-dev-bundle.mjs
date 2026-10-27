@@ -1,4 +1,4 @@
-import { cp, lstat, mkdir, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises'
+import { cp, lstat, mkdir, readFile, realpath, rename, rm, utimes, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { ensureOwnedHome, launcherPipeName, reserveNamedPipe } from './core.mjs'
 import { assertNoReparseAncestors, hashTree, packageName, profileBundles, sameDirectoryIdentity, sourcePackage, validateOwnedRuntime } from './prepare-profile.mjs'
@@ -39,6 +39,11 @@ async function copyBundle(source, stage, files, expectedHash) {
     },
   })
   if (await hashTree(stage, files) !== expectedHash) throw new Error('bundle staging hash mismatch。')
+  // DSH chunk URLs share the client.js revision: refresh it after copying unchanged entry bytes.
+  if (files.includes('client.js')) {
+    const now = new Date()
+    await utimes(path.join(stage, 'client.js'), now, now)
+  }
 }
 
 /**
@@ -51,6 +56,8 @@ export async function syncDevBundle({
   home,
   mode = 'web',
   validateRuntime = validateOwnedRuntime,
+  validatePreviousRuntime = validateRuntime,
+  expectedPreviousBundleHash,
   source = sourcePackage,
   transactionId = `${process.pid}-${Date.now()}`,
   beforeRecordCommit,
@@ -60,8 +67,10 @@ export async function syncDevBundle({
     throw new Error('旧 runtime 路径必须是非空路径。')
   }
   const runtime = await validateRuntime(runtimePath)
-  const previousRuntime = previousRuntimePath === undefined ? null : await validateRuntime(previousRuntimePath)
+  const previousRuntime = previousRuntimePath === undefined ? null : await validatePreviousRuntime(previousRuntimePath)
   const migratingRuntime = Boolean(previousRuntime)
+  if (expectedPreviousBundleHash !== undefined
+    && !/^[0-9a-f]{64}$/i.test(expectedPreviousBundleHash)) throw new Error('预期旧 bundle hash 格式无效。')
   if (migratingRuntime && await sameDirectoryIdentity(previousRuntime, runtime)) {
     throw new Error('旧 runtime 与目标 runtime 相同；拒绝作为跨 runtime 迁移处理。')
   }
@@ -94,12 +103,13 @@ export async function syncDevBundle({
   const recordMatchesTarget = recordRuntime && await sameDirectoryIdentity(record.runtime, runtime)
   const recordMatchesPrevious = migratingRuntime && recordRuntime && await sameDirectoryIdentity(record.runtime, previousRuntime)
   if (record.schema !== 1 || record.packageName !== packageName || record.profile !== profileName
-    || (!recordMatchesTarget && !recordMatchesPrevious)
+    || (migratingRuntime ? !recordMatchesPrevious : !recordMatchesTarget)
     || !/^[0-9a-f]{64}$/i.test(record.bundleHash ?? '')) {
     throw new Error('TradeLoom 本地 runtime/profile 记录与所选自有 profile 不匹配；拒绝同步。')
   }
-  if (migratingRuntime && !recordMatchesPrevious) {
-    throw new Error('TradeLoom runtime 迁移记录未绑定所声明的旧 runtime；拒绝迁移。')
+  if (migratingRuntime && expectedPreviousBundleHash !== undefined
+    && record.bundleHash.toLowerCase() !== expectedPreviousBundleHash.toLowerCase()) {
+    throw new Error('TradeLoom runtime 迁移记录不属于已知先前 bundle；拒绝迁移。')
   }
 
   const priorHash = record.bundleHash.toLowerCase()

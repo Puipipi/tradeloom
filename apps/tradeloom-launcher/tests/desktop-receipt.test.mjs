@@ -10,7 +10,7 @@ import { assertNoReparseAncestors, bundleDestinationIsCurrent, runtimeMarkerCont
 import { desktopReceiptFiles, desktopReceiptName, expectedPatchSetDigest, verifyDesktopBuildReceipt } from '../desktop-receipt.mjs'
 import { patchSetDigest, writeDesktopBuildReceipt } from '../receipt-writer.mjs'
 
-const lock = { upstream: { commit: '687f282e8625c6b8d11ff58211a90524be2e4317' }, patches: { 'one.patch': 'a'.repeat(64) } }
+const lock = { upstream: { commit: '1f81c047fc48fa190a683e469daa699857e9afe8' }, patches: { 'one.patch': 'a'.repeat(64) } }
 const sha = value => createHash('sha256').update(value).digest('hex')
 const workspaceRoot = process.env.TRADELOOM_TEST_WORKSPACE_ROOT
   ? path.resolve(process.env.TRADELOOM_TEST_WORKSPACE_ROOT)
@@ -39,7 +39,7 @@ test('validateOwnedRuntime accepts a real 8.3 alias for the runtime leaf', async
   const temp = await mkdtemp(path.join(os.tmpdir(), 'tradeloom-runtime-short-alias-'))
   t.after(() => rm(temp, { recursive: true, force: true }))
   const releases = path.join(temp, 'releases')
-  const releaseName = '0.2.1-rc.2-tradeloom-desktop-fixture-release'
+  const releaseName = '0.2.1-rc.3-tradeloom-desktop-fixture-release'
   const runtime = path.join(releases, releaseName)
   await mkdir(runtime, { recursive: true })
   await writeFile(path.join(runtime, runtimeMarkerName), runtimeMarkerContents)
@@ -95,7 +95,7 @@ test('foreign same-HEAD clone without the runtime ownership marker is rejected b
   const releases = path.join(temp, 'releases')
   const foreign = path.join(releases, 'foreign-clone')
   await mkdir(releases, { recursive: true })
-  const reference = path.join(workspaceRoot, 'research/references/deepseek-harness')
+  const reference = path.join(workspaceRoot, 'research/references/deepseek-harness-v0.2.1-rc.3-readonly')
   execFileSync('git', ['clone', '--shared', '--no-checkout', reference, foreign], { stdio: 'pipe' })
   execFileSync('git', ['-C', foreign, 'checkout', '--detach', lock.upstream.commit], { stdio: 'pipe' })
   const sentinel = path.join(foreign, 'sentinel.txt')
@@ -178,4 +178,39 @@ test('desktop receipt rejects a linked compiled parent before reading the foreig
   }))
   await assert.rejects(verifyDesktopBuildReceipt(runtime, lock, releases), /路径含链接祖先/)
   assert.equal(await readFile(sentinel, 'utf8'), 'must-not-be-read')
+})
+
+test('native artifact validator selection binds reviewed receipt and node bytes', async t => {
+  const { resolveNativeArtifactValidator, nativeArtifactNodeRelative } = await import('../desktop-receipt.mjs')
+  const temp = await mkdtemp(path.join(os.tmpdir(), 'tradeloom-native-node-'))
+  t.after(() => rm(temp, { recursive: true, force: true }))
+  const releases = path.join(temp, 'releases'), runtime = path.join(releases, 'owned')
+  await mkdir(runtime, { recursive: true }); await writeFile(path.join(runtime, runtimeMarkerName), runtimeMarkerContents)
+  const compiledFiles = {}
+  for (const [i, relative] of desktopReceiptFiles.entries()) { const p = path.join(runtime, relative); await mkdir(path.dirname(p), {recursive:true}); await writeFile(p, `file-${i}`); compiledFiles[relative]=sha(`file-${i}`) }
+  const receipt = JSON.stringify({schemaVersion:1,sourceCommit:lock.upstream.commit,runtimeMarker:runtimeMarkerContents,patchSetSha256:expectedPatchSetDigest(lock.patches),compiledFiles})
+  await writeFile(path.join(runtime,desktopReceiptName),receipt)
+  const binary=path.join(runtime,...nativeArtifactNodeRelative.split('/')); await mkdir(path.dirname(binary),{recursive:true}); await writeFile(binary,'node fixture')
+  const candidate={...lock,nativeArtifactValidator:{receiptSha256:sha(receipt),nodeRelativePath:nativeArtifactNodeRelative,nodeSha256:sha('node fixture')}}
+  const valid=await resolveNativeArtifactValidator(runtime,candidate,releases); assert.equal(valid.available,true); assert.equal(valid.nodePath,binary)
+  assert.equal((await resolveNativeArtifactValidator(runtime,lock,releases)).reason,'not_configured')
+  for(const bad of [{...candidate.nativeArtifactValidator,receiptSha256:'0'.repeat(64)},{...candidate.nativeArtifactValidator,nodeSha256:'0'.repeat(64)},{...candidate.nativeArtifactValidator,nodeRelativePath:'../escape'}]) assert.equal((await resolveNativeArtifactValidator(runtime,{...lock,nativeArtifactValidator:bad},releases)).available,false)
+  await rm(binary); assert.equal((await resolveNativeArtifactValidator(runtime,candidate,releases)).available,false)
+  const outside=path.join(temp,'outside'); await mkdir(outside); await writeFile(path.join(outside,'node.exe'),'node fixture')
+  await rm(path.dirname(binary),{recursive:true}); try { await symlink(outside,path.dirname(binary),'junction') } catch (error) { if (error.code === 'EPERM') return; throw error }
+  assert.equal((await resolveNativeArtifactValidator(runtime,candidate,releases)).available,false)
+})
+
+test('explicit desktop build lock rejects relative, invalid and linked files', async t => {
+  const { loadDesktopBuildLock } = await import('../desktop-receipt.mjs')
+  const temp = await mkdtemp(path.join(os.tmpdir(),'tradeloom-lock-select-'))
+  t.after(() => rm(temp,{recursive:true,force:true}))
+  const file=path.join(temp,'lock.json'); await writeFile(file,JSON.stringify(lock))
+  assert.deepEqual(await loadDesktopBuildLock(file),lock)
+  await assert.rejects(loadDesktopBuildLock('relative.json'))
+  await assert.rejects(loadDesktopBuildLock(path.join(temp,'missing.json')))
+  await writeFile(file,'{}'); await assert.rejects(loadDesktopBuildLock(file),/格式无效/)
+  const foreign=path.join(temp,'foreign'); await mkdir(foreign); await writeFile(path.join(foreign,'lock.json'),JSON.stringify(lock))
+  const link=path.join(temp,'link'); try { await symlink(foreign,link,'junction') } catch(e) { if(e.code==='EPERM') return; throw e }
+  await assert.rejects(loadDesktopBuildLock(path.join(link,'lock.json')))
 })

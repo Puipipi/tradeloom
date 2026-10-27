@@ -26,3 +26,22 @@
 3. **容器响应与滚动：**分别在不同 host 宽高下验证各场景阈值、窄态提示/布局行为及菜单/面板滚动，不将宽高门槛误当窗口断点。
 
 本记录是静态源码与指定截图的对照；未运行应用或测试，未声称动画、点击行为或实机效果已验证。
+
+## UI 候选增量核对（2026-10-24）
+
+- **键盘分栏：**候选在 Dockview sash 上增加焦点与 separator 语义；只用公开 `groups`、`adjacentGroupInDirection`、`boundingBox` 和 `group.api.setSize`。真实 pinned Dockview 集成测试使用确定性几何夹具，检查箭头键调整 split、走既有布局保存/校验路径、无可靠邻组时不拦截按键，以及卸载恢复原 ARIA 属性。此证据不是实际 Electron 键鼠验收。
+- **原生会话标题：**release 0.2.1-rc.2 的 `ConversationRoot.module.css` 原始 header 最小高度 76px、标题区上内边距 10px、无 tabs 时仍约 50px；标题/crumb 为 14px、tabs 为 13px。候选仅作用于 `.tl-native-conversation` 下公开 `data-slot`、`data-conversation-header-leading`、`data-conversation-tabs` 锚点，保留原生 header、actions、lineage、utilities、corner 和 tabs；单行标题最小高度 34px，tabs 出现时允许自然扩展。真实 Dockview DOM 集成测试以稳定原生 DOM 结构夹具验证应用样式、token 映射及控件仍在；没有挂载 DSH release 的真实会话窗口，也未量测 Electron 盒模型。
+- **颜色与字体：**原生会话区域的 DSW alias 在 wrapper 范围映射到现有 `--tl-theme-*` palette；标题使用 `--tl-font-body`，tabs 使用 `--tl-font-compact`。浏览器对原生字体的最终渲染和参考图精确字号仍未实测，不据 source 值声称匹配参考图。
+- **主题缺失 alias 回归：**真实 `client.js` theme bridge 用例曾捕获 RED：空 alias 被隐藏 swatch 的继承文字色误读为有效背景（实值 `#dfe7f3`，预期中央 dark canvas `#0c1017`）；修正为缺失 alias 直接中央 fallback 后，该定向用例 GREEN（1/1）。
+- **脚本缓存：**`base.html` app.js 查询版本现为 `native-theme-palette-ui1`，与当前 19 色主题和 UI token bridge 对齐；README 说明了静态服务/CDN 缓存头仍需按实际部署核验。本轮未请求实际页面或检查浏览器缓存响应。
+- **默认场景：**`scenes.json` 的 profile 经 `dock-layout.js` 生成每 scene 推荐布局：center 为水平业务32/chat68，协作 scene 为上下60/40、上排75/25、下排50/50，business-lead scene 为水平业务72/chat28。profile 只选择默认生成路径，服务端每 scene 存档优先恢复；本轮未改默认或已保存布局。S088 的左侧指标+下方跨中右聊天布局与当前通用协作模板并非同一映射，不将该静帧强套到所有场景。
+- **模型标记：**顶部模型目录不是品牌图标：`client.scenes.js` 的 `providerBadgeLabel` 按 provider 名取大写首个 ASCII 字母/数字，非拉丁名取首个字符，空名回退“模”。该映射不读取 provider logo/icon 字段；检查的 pinned `ui-model-selection` 包也未发现可复用的 provider logo/icon 组件。故目前是自定义文字 fallback，不声称复刻参考图的品牌图标。
+
+本节定向集成检查通过 1/1；测试输出仍含 React `act(...)` 警告。前轮 64 格 HTML/CSS fixture 矩阵没有在本轮重跑。键盘、native header 的新增样式与交互未在实际 GUI 验收；原生独立参考字号和页面实时缓存行为仍待实机核验。
+
+### 导航与原生发送按钮窄核验（2026-10-24）
+
+- 用 pinned Playwright Core 1.61.1 + 本机 Chrome headless，直接提取候选 `client.js` / `client.scenes.js` 两个 style 模板，并在 700px、230px viewport 渲染多 scene 导航。700px 下 nav `offsetHeight/clientHeight=29/28px`、`scrollWidth/clientWidth=700/700px`；230px 下为 `29/28px`、`406/230px`，聚焦末尾 scene 后 `scrollLeft=176px`。两种宽度滚动条均未占高度（0px），按钮随 focus 可见。导航按钮 rect 为 y=31–57，nav 为 y=30–59，工具按钮 28×28px；修正后 scene tab 的 focus outline offset 为 -2px，边框在 nav 内。此验证确认原导航横滚不裁高度，唯一发现的 focus ring 裁切已在自有按钮规则中收紧；未另加 box reset 或滚动条规则。
+- pinned DSH `InputBar.module.css` 的 `.primary:hover:not(:disabled)` 使用 `--dsw-alias-button-info-hover`，按钮白色箭头由源码明确指定。wrapper 将 hover alias 指向同一 palette 的 `accentStrong`；当前 resolver 的实际颜色为浅色 `#356fc4`、深色 `#4d83dd`。headless CSS 实渲染得到白色图标对比度分别 4.97:1 与 3.75:1，均高于图形 3:1 门槛；这不是独立 DSH 窗口实测。
+- 定向套件命令：从 repo root 以 release 8 的 React 18.3.1、ReactDOM 18.3.1、jsdom 30.1.3 设置 `TRADELOOM_REACT_LIBRARY`、`TRADELOOM_REACT_SERVER_LIBRARY`、`TRADELOOM_DOM_MODULE` 后，运行 `node --test packages/tradeloom-shell/tests/shell.test.js packages/tradeloom-shell/tests/scenes.test.js packages/tradeloom-shell/tests/theme-bridge-dom.test.js packages/tradeloom-shell/tests/dockview-integration.test.js packages/tradeloom-shell/tests/dockview-pointer-dnd.test.js packages/tradeloom-shell/tests/intake-ui.test.js`。结果 95 tests：90 pass、0 fail、5 skip；stdout 有 32 条 React `act(...)` 警告。跳过项依次需要真实 Cordis context、composer slot anchor、完整 pinned Cordis Loader contract、compiled DSH tools library、pinned DSH source + app-boot/include libraries；不代表这些集成已验证。命令退出码 0。
+- 候选源码 SHA-256：`client.js` 为 `92A87FE6DAA8140BF744268B42D88CB6ED5CDBE84A40AB7672650F47AD4F294C`；`client.scenes.js` 为 `4F9D348F8AA75AFD0F38343461542F72A7DFE0790931D605C4AF570A77230D29`。此候选仍未提交、未同步、未部署；GUI 与真实 Electron 仍待主控验收。未实测独立参考精确字体，也不据 headless fixture 声称真实 DSH/Electron 窗口已通过。

@@ -20,12 +20,12 @@ async function runtime(t) {
   const base = process.env.TRADELOOM_DSH_PINNED_SOURCE
   if (!base) { t.skip('requires pinned compiled DSH runtime') ; return undefined }
   const importDsh = relative => import(pathToFileURL(resolve(base, relative)).href)
-  const [{ boot, initProfile, readProfilePatches }, { default: ConfigEditor }, { default: Include }] = await Promise.all([
+  const [{ boot, initProfile, readProfilePatches, loadProfileDirectory, createRuntimeResolution, PluginPackages }, { default: ConfigEditor }, { default: Include }] = await Promise.all([
     importDsh('packages/boot/app-boot/lib/index.js'),
     importDsh('packages/boot/config-editor/lib/index.js'),
     importDsh('vendor/include/lib/index.js'),
   ])
-  return { base, importDsh, boot, initProfile, readProfilePatches, ConfigEditor, Include }
+  return { base, importDsh, boot, initProfile, readProfilePatches, loadProfileDirectory, createRuntimeResolution, PluginPackages, ConfigEditor, Include }
 }
 
 function withTimeout(promise, ms, label) {
@@ -36,7 +36,7 @@ function withTimeout(promise, ms, label) {
   ]).finally(() => clearTimeout(timer))
 }
 
-async function ownedProfile(t, rt, { rows, builtins, links = [], prepareHost }) {
+async function ownedProfile(t, rt, { rows, builtins, links = [], copies = [], resolveSdk = false, prepareHost }) {
   const home = await mkdtemp(join(evidenceRoot, 'runtime-profile-'))
   const audit = await realpath(evidenceRoot)
   const safeHome = await realpath(home)
@@ -57,6 +57,12 @@ async function ownedProfile(t, rt, { rows, builtins, links = [], prepareHost }) 
     await mkdir(dirname(target), { recursive: true })
     await symlink(link.path, target, 'junction')
   }
+  for (const copy of copies) {
+    const target = join(profileDir, 'node_modules', ...copy.name.split('/'))
+    await mkdir(target, { recursive: true })
+    // Ordinary source copies inside the profile tree, never SDK links or an apply wrapper.
+    for (const file of ['package.json', 'tool-policy.js']) await writeFile(join(target, file), await readFile(join(copy.path, file)))
+  }
   await writeFile(join(home, 'package.json'), JSON.stringify({ name: 'isolated-agent-config-test' }) + '\n')
   await writeFile(join(bundle, 'package.json'), JSON.stringify({ name: 'test-bundle', version: '1.0.0', dsh: { bundle: { patch: 'cordis.patch.yml' } } }))
   await writeFile(join(bundle, 'cordis.patch.yml'), `${JSON.stringify([{ insert: rows }], null, 2)}\n`)
@@ -70,6 +76,12 @@ async function ownedProfile(t, rt, { rows, builtins, links = [], prepareHost }) 
     owner.provide('profileContext', profile)
     owner.provide('appReady', { onReady: listener => { listener(); return () => {} } })
     Object.assign(owner.loader.builtins, { include: rt.Include, editor: rt.ConfigEditor, ...builtins })
+    if (resolveSdk) {
+      const installAnchor = join(rt.base, 'apps/cli/package.json')
+      const actualProfile = rt.loadProfileDirectory('dsh', profileDir, installAnchor)
+      const resolution = await rt.createRuntimeResolution({ installAnchor, profile: actualProfile, home })
+      await owner.plugin(rt.PluginPackages, { resolution })
+    }
     await prepareHost?.(owner, { home, profile })
   })
   return { home, profile, ctx }
@@ -191,7 +203,7 @@ void server.connect(new StdioServerTransport()).catch(() => { process.exitCode =
 test('real AgentLoop Agents inherit preset-scoped guards and keep the prior generation alive', async t => {
   const rt = await runtime(t)
   if (!rt) return
-  const [{ Context }, { default: Loader }, { default: Group }, { default: AgentPresetRegistry }, testkit, { default: SkillRegistry }, skillFilesystem, { scopeOf }, { createScopedToolPolicy }] = await Promise.all([
+  const [{ Context }, { default: Loader }, { default: Group }, { default: AgentPresetRegistry }, testkit, { default: SkillRegistry }, skillFilesystem] = await Promise.all([
     rt.importDsh('vendor/cordis/lib/index.js'),
     rt.importDsh('vendor/loader/lib/index.js'),
     rt.importDsh('vendor/group/lib/index.js'),
@@ -199,8 +211,6 @@ test('real AgentLoop Agents inherit preset-scoped guards and keep the prior gene
     rt.importDsh('packages/test-support/agent-loop-testkit/lib/index.js'),
     rt.importDsh('packages/skill/skill/lib/index.js'),
     rt.importDsh('packages/skill/skill-filesystem/lib/index.js'),
-    rt.importDsh('packages/core/scope/lib/index.js'),
-    import('../tool-policy.js'),
   ])
   const ctx = new Context()
   t.after(async () => { await ctx.fiber.dispose() })
@@ -221,10 +231,18 @@ test('real AgentLoop Agents inherit preset-scoped guards and keep the prior gene
   await mkdir(join(newSkillDir, 'new-skill'), { recursive: true })
   await writeFile(join(oldSkillDir, 'old-skill', 'SKILL.md'), '---\nname: old-skill\ndescription: synthetic old generation skill\n---\nold')
   await writeFile(join(newSkillDir, 'new-skill', 'SKILL.md'), '---\nname: new-skill\ndescription: synthetic new generation skill\n---\nnew')
-  ctx.loader.builtins['tradeloom-policy'] = {
-    inject: ['tools'],
-    apply(owner, config) { return createScopedToolPolicy(owner, config, scopeOf) },
-  }
+  const policyHome = await mkdtemp(join(evidenceRoot, 'policy-generation-profile-'))
+  t.after(async () => { await rm(policyHome, { recursive: true, force: true }) })
+  const policyProfileDir = join(policyHome, 'profiles', 'policy-generation')
+  rt.initProfile(policyProfileDir, [])
+  const policyDir = join(policyProfileDir, 'plugins', 'tradeloom-shell')
+  await mkdir(policyDir, { recursive: true })
+  for (const file of ['package.json', 'tool-policy.js']) await writeFile(join(policyDir, file), await readFile(new URL(`../${file}`, import.meta.url)))
+  const policyUrl = pathToFileURL(join(policyDir, 'tool-policy.js')).href
+  const installAnchor = join(rt.base, 'apps/cli/package.json')
+  const resolution = await rt.createRuntimeResolution({ installAnchor, home: policyHome, profile: rt.loadProfileDirectory('dsh', policyProfileDir, installAnchor) })
+  ctx.baseUrl = pathToFileURL(policyProfileDir + '/').href
+  await ctx.plugin(rt.PluginPackages, { resolution })
   ctx.loader.builtins['skill-filesystem'] = skillFilesystem
   await ctx.plugin(AgentPresetRegistry, { default: 'task3-old' })
   const loop = await testkit.mountAgentLoopTestHarness(ctx)
@@ -240,11 +258,11 @@ test('real AgentLoop Agents inherit preset-scoped guards and keep the prior gene
     providerName: `task3-${role}-skills`, includeDefaultRoots: false, customSkillDirs: [root], watch: false,
   } })
   await presets.register({ id: 'task3-old', plugins: [
-    { id: 'policy', name: 'cordis:tradeloom-policy', config: { deniedTools: ['synthetic-protected'] } },
+    { id: 'policy', name: policyUrl, config: { deniedTools: ['synthetic-protected'] } },
     skillsRow(oldSkillDir, 'old'),
   ] })
   await presets.register({ id: 'task3-new', plugins: [
-    { id: 'policy', name: 'cordis:tradeloom-policy', config: { deniedTools: [] } },
+    { id: 'policy', name: policyUrl, config: { deniedTools: [] } },
     skillsRow(newSkillDir, 'new'),
   ] })
   const oldHandle = await ctx.agents.create({ sessionId: 'task3-old-agent', setup: async agentCtx => { await presets.mount(agentCtx, 'task3-old') } })
@@ -360,12 +378,11 @@ test('ConfigEditor updates a real preset for new Agents while the old Agent keep
     if (current && dirname(current) === audit) await rm(current, { recursive: true, force: true })
   })
   const policyUrl = pathToFileURL(fileURLToPath(new URL('../tool-policy.js', import.meta.url))).href
-  const scopeUrl = pathToFileURL(join(rt.base, 'packages', 'core', 'scope', 'lib', 'index.js')).href
   await writeFile(join(policyPackage, 'package.json'), JSON.stringify({
     name: '@tradeloom/dsh-business-shell', type: 'module',
     exports: { './tool-policy': './tool-policy.js' },
   }))
-  await writeFile(join(policyPackage, 'tool-policy.js'), `import { createScopedToolPolicy } from ${JSON.stringify(policyUrl)}\nimport { scopeOf } from ${JSON.stringify(scopeUrl)}\nexport const name='@tradeloom/dsh-business-shell/tool-policy'; export const inject=['tools']; export function apply(ctx,config){ return createScopedToolPolicy(ctx,config,scopeOf) }\n`)
+  await writeFile(join(policyPackage, 'tool-policy.js'), await readFile(new URL(policyUrl)))
   const { default: SkillRegistry } = await rt.importDsh('packages/skill/skill/lib/index.js')
   const { profile, ctx } = await ownedProfile(t, rt, {
     rows: [
@@ -375,12 +392,8 @@ test('ConfigEditor updates a real preset for new Agents while the old Agent keep
         { id: 'tradeloom-tool-policy', name: '@tradeloom/dsh-business-shell/tool-policy', config: { deniedTools: ['synthetic-protected'] } },
       ] } },
     ],
-    links: [
-      { name: '@deepseek-ai/dsh-agent-preset-registry', path: join(rt.base, 'packages', 'preset', 'agent-preset-registry') },
-      { name: '@deepseek-ai/dsh-agent-preset', path: join(rt.base, 'packages', 'preset', 'agent-preset') },
-      { name: '@deepseek-ai/dsh-skill-filesystem', path: join(rt.base, 'packages', 'skill', 'skill-filesystem') },
-      { name: '@tradeloom/dsh-business-shell', path: policyPackage },
-    ],
+    resolveSdk: true,
+    copies: [{ name: '@tradeloom/dsh-business-shell', path: policyPackage }],
     prepareHost: async (owner, { home }) => {
       owner.loader.builtins.group = Group
       await owner.plugin(SkillRegistry)

@@ -1,37 +1,43 @@
 # 织贸助手
 
-华为 ICT 大赛 · 第十一届 · 创新赛 · 赛题 2 参赛项目
+## 本机 desktop24 明确入口
+
+
+desktop24 已实际启动；中心真实模型回复、合成任务重启读回及一次真实 Native 工作流完成回执与文本读回均已验证。数据库已备份并仅应用 0012，0013 未应用；原生产物文件通路、手机和 ERP 仍待验收。
+在已准备的本机环境中，从仓库根目录运行 `powershell -File .\apps\tradeloom-launcher\desktop24.ps1`；停止使用同一脚本 `-Action stop`。需要既有 desktop24 runtime、独立 DataRoot、Python、PostgreSQL 和本机密码文件；模型由用户自行配置，非独立安装器。已有进程时不要重复启动。desktop16 使用历史入口和独立数据回退，勿覆盖 profile；下文旧默认示例为历史源码开发说明。
+
+华为 ICT 大赛 · 第十一届 · 创新赛 · 赛题 1 参赛项目
 
 **新克隆前请先看：** 仓库包含 TradeLoom 产品源码，但不包含 pinned DSH runtime、PostgreSQL 实例、Python 运行环境、provider API 配置或既有演示数据。源码开发需先按[运行时准备说明](docs/upgrade-harness.md)取得受支持的外部 runtime，并准备 Python 与 PostgreSQL；安装依赖或初始化服务不是 clone 的自动步骤。
 
 ### 本轮本地源码候选
 
-`codex/native-workflow-bridge` 分支当前源码检查点为 `c8b3cb5`。本地候选尚未合入或发布，且该分支当前未列在 `origin`；队友从共享 `main` 拉取不到这些候选功能。实现契约和源码验证范围见[商品资料应用契约](docs/plans/2026-10-24-intake-product-application-contract.md)、[原生工作流桥验证](docs/verification/2026-10-24-native-workflow-bridge.md)、[执行计划来源参考验证](docs/verification/2026-10-24-execution-plan-source-references.md)。记录中的合成验证不证明真实 Host、真实模型、GUI 或真实四文件导入已验收。
+历史记录：`codex/native-workflow-bridge` 分支当时的源码检查点为 `c8b3cb5`。本地候选尚未合入或发布，且该分支当前未列在 `origin`；队友从共享 `main` 拉取不到这些候选功能。实现契约和源码验证范围见[商品资料应用契约](docs/plans/2026-10-24-intake-product-application-contract.md)、[原生工作流桥验证](docs/verification/2026-10-24-native-workflow-bridge.md)、[执行计划来源参考验证](docs/verification/2026-10-24-execution-plan-source-references.md)。记录中的合成验证不证明真实 Host、真实模型、GUI 或真实四文件导入已验收。
 
-当前开发优先级是本地 source-mode。较早的本机启动记录涉及既有 candidate7/8 与已发布 UI bundle；不能据此说本轮 launcher/shell/UI 候选已经在运行中的应用里生效。普通 launcher 默认 runtime 仍为 `0.2.1-rc.2-tradeloom-desktop-2`；候选开发可显式指定已准备并带匹配 build receipt 的受管 runtime，示例见[快速开始](docs/quick-start.md)。source-mode 的既有模型/工作流边界及手机、安装版状态见下方说明与验证记录。
+以下为 desktop10 阶段的历史 source-mode 记录，非当前 desktop24 运行状态。较早的本机启动记录涉及既有 candidate7/8 与已发布 UI bundle；不能据此说本轮 launcher/shell/UI 候选已经在运行中的应用里生效。launcher 默认候选已切至 `0.2.1-rc.3-tradeloom-desktop-10`；候选已完成官方构建、Primary Runtime 组装、descriptor 和真实 receipt，但按用户要求未运行 smoke、未启动或做 GUI 验收；候选开发可显式指定已准备并带匹配 build receipt 的受管 runtime，示例见[快速开始](docs/quick-start.md)。source-mode 的既有模型/工作流边界及手机、安装版状态见下方说明与验证记录。
 
 快速入口：[快速开始](docs/quick-start.md) · [Agent 开发与接入](docs/agent-development.md) · [验收矩阵](docs/acceptance-matrix.md) · [工作报告](docs/work-report.md) · [2026-10-23 本地工作台验收](docs/verification/2026-10-23-workbench-local-activation.md)
 
 ## 通用源码开发
 
-启动前置条件：Windows、Node.js、专用 Python 环境（依赖见 `requirements-workbench.txt`）、PostgreSQL 17，以及按当前 patch lock/receipt 准备的 pinned DSH runtime。DSH 要求 Node `^22.19.0 || >=24.0.0` 和 pnpm `11.28.5`；本机隔离 Django 全量回归使用 Python 3.14.5，但 source launcher 不强制具体 Python 版本。runtime 位于仓库外；普通 PowerShell 包装脚本默认寻找 sibling `workspace/runtime/tradeloom-harness/releases/0.2.1-rc.2-tradeloom-desktop-2`。本机已验证的 candidate7 快捷方式不随仓库提供，也不能据此改写该默认候选。首次克隆、固定 runtime 准备和启动细节见[快速开始](docs/quick-start.md)及[运行时升级说明](docs/upgrade-harness.md)。
+启动前置条件：Windows、Node.js、专用 Python 环境（依赖见 `requirements-workbench.txt`）、PostgreSQL 17，以及按当前 patch lock/receipt 准备的 pinned DSH runtime。DSH 要求 Node `^22.19.0 || >=24.0.0` 和 pnpm `11.28.5`；本机隔离 Django 全量回归使用 Python 3.14.5，但 source launcher 不强制具体 Python 版本。runtime 位于仓库外；旧版示例记录的 desktop10 runtime 和未验证状态仅供历史参考。首次克隆、固定 runtime 准备和启动细节见[快速开始](docs/quick-start.md)及[运行时升级说明](docs/upgrade-harness.md)。
 
 准备好默认 runtime、专用 Python 与 PostgreSQL 后，在仓库根目录运行：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\start-postgres.ps1 -Port 55432
-powershell -ExecutionPolicy Bypass -File .\scripts\launch-tradeloom.ps1 -Mode desktop -DataRoot '<新建的绝对数据目录>'
+powershell -File .\scripts\start-postgres.ps1 -Port 55432
+powershell -File .\scripts\launch-tradeloom.ps1 -Mode desktop -DataRoot '<新建的绝对数据目录>'
 ```
 
 停止由该 launcher 管理的本地实例：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\stop-tradeloom.ps1 -DataRoot '<同一绝对数据目录>'
+powershell -File .\scripts\stop-tradeloom.ps1 -DataRoot '<同一绝对数据目录>'
 ```
 
 `DataRoot` 首次必须是空目录，启动器会创建所有权标记；后续启动必须继续使用同一目录。启动脚本会从当前活动物理网卡中选择 LAN 地址，多网卡时要求选择。Django 绑定 loopback `3090`，桌面 Host 使用所选私网地址的 `3088`，PostgreSQL 绑定 loopback `55432`。这些命令只管理本 launcher 实例。普通窗口 X 是隐藏窗口；要彻底退出桌面应用，请使用应用菜单。不要用本项目脚本关闭其他 DSH 实例。
 
-本机专用入口和 provider 配置属于各自机器的既有设置，不随仓库 clone 提供。模型仍通过应用原生 provider 设置路径配置；不要求登录 DeepSeek 官方账号。候选启动时 launcher 为 Django 与 Host 建立同次临时桥接配对；不要手工复制密钥或把密钥放进 `.env`、命令、文档或日志。手机与电脑连接同一 Wi-Fi 后，可使用 Host 的局域网地址和 `3088` 端口；Django `3090` 与 PostgreSQL `55432` 仍绑定 loopback。真实 GUI、手机、模型及 ERP 尚未由本轮候选验收；报价的单位、币种和利润口径待业务确认。
+本机专用入口和 provider 配置属于各自机器的既有设置，不随仓库 clone 提供。模型仍通过应用原生 provider 设置路径配置；不要求登录 DeepSeek 官方账号。候选启动时 launcher 为 Django 与 Host 建立同次临时桥接配对；不要手工复制密钥或把密钥放进 `.env`、命令、文档或日志。手机与电脑连接同一 Wi-Fi 后，可使用 Host 的局域网地址和 `3088` 端口；Django `3090` 与 PostgreSQL `55432` 仍绑定 loopback。当前 desktop24 已验证 GUI 和一次中心模型回复；手机及 ERP 尚未完成验收。报价的单位、币种和利润口径待业务确认。
 
 ERPNext 当前默认未配置。后端状态接口与只读查询在管理员显式配置服务端连接前不会访问外部 ERP；普通桌面用户无需安装 Linux、WSL、Docker 或 ERPNext。真实 ERPNext 部署与实体手机验收尚未完成。
 
@@ -85,7 +91,7 @@ GET /api/products/{id}/revisions
 
 当前规划与工作流角色使用明确标注的本地模拟规则；角色规则仍待业务访谈确认。Phase 2 Task 8–10 编排基线已完成并通过审查。`task14-15-files` 的真实文件生成、落盘 QA、5 类产物版本、交付审核、受控预览/下载与显式完成门禁已通过自动化验证及隔离 CUA。交付物中心可查看 HTML/Markdown 目录预览及每个已登记样品清单 CSV 版本的只读表格预览；CSV 预览沿用已登记路径、归属和 SHA 校验，不改变版本、审核或事件记录。Task13b-facts 已完成基础字段 apply；Task13b-image-selection 与 Task13b-missing-image 分别覆盖歧义候选选择和规范无图信号的人工补图，均完成显式整周期 apply、固定两角色恢复及真实文件生成/审核/完成。后者 QA 核对旧 Revision、Review 来源/回执和原图文件保持不变，下载、产物版本、磁盘文件与质量报告 SHA 对齐；TaskFile 保存来源元数据，本产品模型没有通用图片字节版本记录。其他图片/来源冲突、Task12 六类检测及 Phase 3 其余闭环仍未完成。Phase 4 交付生成中断接管与有界重试、Task 18 运行诊断子批次均已完成各自记录的实现验证；AgentArts 仍未配置/接入。
 
-当前基础样式链接使用固定发布参数 `?v=imgsel2` 使浏览器在 CSS 更新后重新取件；修改 `workbench/static/workbench/styles.css` 时需同步更新该参数。本地工作台不依赖 ManifestStorage，正式部署的静态文件存储策略另行评估。
+基础模板为 `workbench/static/workbench/styles.css` 和 `workbench/static/workbench/app.js` 使用固定查询版本 `business-iframe-layout1` 与 `native-theme-palette-ui1`；修改相应资源时需更新对应版本。嵌入模式会将静态路径改写到 DSH 同源别名并保留查询参数。本地工作台不依赖 ManifestStorage，也未在 Django 项目内为静态资源指定统一 `Cache-Control`；响应缓存行为由实际静态资源服务层决定，正式部署需按所用 Web 服务器或 CDN 配置核验。
 
 工作流审核候选由 `GET /api/workflow-tasks/{id}` 只读返回。`POST /api/workflow-tasks/{workflow_id}/reviews/{review_id}/submit` 接受 `review_key`、非空 JSON `answer` 对象和 `reviewer` 标签，校验候选保存的来源后生成 `submitted` 回执；提交本身不会批准、应用业务事实或恢复工作流。Task13b-facts 对完整当前周期提供单独显式 apply。歧义图片审核只接受精确 typed answer `{"type":"select_image_candidate","task_file_id":"..."}`；规范无图审核另提供 `POST /api/workflow-tasks/{workflow_id}/reviews/{review_id}/image` multipart 上传，字段为 `image/review_key/idempotency_key/reviewer`，每次上传只保存有来源证明的 WorkflowStep、TaskFile 和事件，不改 Product/Review，也不自动提交。操作者再以 `{"type":"provide_image","upload_step_id":"..."}` 提交独立回执；之后仍须明确 apply 完整审核周期。只读预览为 `GET /api/workflow-tasks/{workflow_id}/task-files/{task_file_id}/preview`，仅接受当前工作流已验证的候选或补图凭据。Apply 重新校验整批 Revision/TaskFile CAS，创建新 Revision 并恢复既有 Product→Delivery 两个 SubTask；人工选图/补图标记由后续 matcher 验证复用，证据失效时阻断而不回退到 SKU 匹配。其他图片/来源冲突、普通 note 和未知信号仍阻断 apply。`reviewer` 仍是未认证标签，企业规则和更多审核决策待访谈确认。
 
@@ -120,7 +126,7 @@ SHA256: b9424ee7bc60b52450ff910a3630225df32e633f3cb29c1d126d9299d59aea28
 启动 PostgreSQL 用户态实例：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\start-postgres.ps1 -Port 55432
+powershell -File .\scripts\start-postgres.ps1 -Port 55432
 ```
 
 脚本使用 SCRAM 本地密码，只监听 `127.0.0.1`，并确保 `tradeloom_dev`、`tradeloom_lab`、`tradeloom_test`、`tradeloom_lab_test` 存在。密码保存在用户目录，不进入项目或命令输出。
@@ -128,7 +134,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-postgres.ps1 -Port 5543
 启动 Django：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\start-workbench.ps1 -Port 8000
+powershell -File .\scripts\start-workbench.ps1 -Port 8000
 ```
 
 默认入口：工作台与 JSON API 为 <http://127.0.0.1:8000>；本地双 Agent 测试页为 <http://127.0.0.1:8010>。数据库变量见 `.env.example`，真实值只放本机环境或 ignored 本地文件。Django settings 不硬编码用户名或 PostgreSQL 安装路径。
@@ -263,7 +269,7 @@ tradeloom/
 │   ├── check_env.py                # 环境自检：字体 → PDF → CMYK，9 项逐条验
 │   └── fetch_fonts.ps1             # 拉 Noto Sans/Serif SC（TTF，OFL 可商用）
 ├── docs/
-│   ├── 00-赛题与目标.md             # 赛题 2 原文、评分对齐、交付物清单
+│   ├── 00-赛题与目标.md             # 赛题 1 原文、评分对齐、交付物清单
 │   ├── 01-业务基线.md               # 从一次真实访谈里拆出的全链路与痛点排序
 │   ├── 02-客户访谈问题表.md          # 下一轮访谈要问的问题（带优先级与「为什么问」）
 │   ├── 03-数据与素材清单.md          # 要企业提供的原始素材（决定 demo 能不能真跑）
@@ -297,7 +303,7 @@ cd tradeloom
 $printEnv = Join-Path $env:LOCALAPPDATA 'TradeLoom\print-env'
 python -m venv $printEnv
 & "$printEnv\Scripts\python.exe" -m pip install -r requirements.txt
-powershell -ExecutionPolicy Bypass -File scripts\fetch_fonts.ps1
+powershell -File scripts\fetch_fonts.ps1
 
 chcp 65001 > $null
 $env:PYTHONIOENCODING='utf-8'
@@ -319,3 +325,7 @@ TradeLoom is an agentic digital workforce for small export-oriented manufacturer
 - 想检查可选的印刷/PDF 环境 → [docs/04-环境搭建.md](docs/04-环境搭建.md)
 - 想看「为什么做这个」→ [docs/01-业务基线.md](docs/01-业务基线.md)
 - 想帮着补需求 → [docs/02-客户访谈问题表.md](docs/02-客户访谈问题表.md)
+
+### Desktop24 明确入口
+
+使用 `apps/tradeloom-launcher/desktop24.ps1` 启动，显式停止使用 `desktop24.ps1 -Action stop`。需要本机已准备的 desktop24 runtime、专用 DataRoot、Python/PG 和官方网卡候选；该入口不是独立安装器。模型由用户配置。旧 desktop16 入口和锁保留，回退依赖旧 runtime/profile、端口及授权条件；不要用旧 profile 覆盖新 profile。单 agent 原生执行及受保护运行记录读取已验；原生产物文件、手机和 ERP 通路仍待验收。

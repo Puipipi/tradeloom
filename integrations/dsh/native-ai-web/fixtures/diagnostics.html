@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>controlled diagnostics fixture</title>
+<aside>
+  <input type="search" aria-label="ARIA_LABEL_CANARY" value="SEARCH_VALUE_CANARY">
+  <button data-testid="private-side-button-canary" aria-label="ARIA_LABEL_CANARY">SIDE_TEXT_CANARY</button>
+  <button data-testid="to_login_button" aria-label="ARIA_LABEL_CANARY">LOGIN_TEXT_CANARY</button>
+</aside>
+<form data-testid="chat_composer">
+  <textarea data-testid="chat_input_input" aria-label="ARIA_LABEL_CANARY">PROMPT_TEXT_CANARY</textarea>
+  <input type="text" data-testid="chat_draft_input" aria-label="ARIA_LABEL_CANARY" value="INPUT_VALUE_CANARY">
+  <button type="button" data-testid="send_button" aria-label="Send">SEND_TEXT_CANARY</button>
+  <button type="button" data-testid="send_extra_control" aria-label="ARIA_LABEL_CANARY">BUTTON_TEXT_CANARY</button>
+</form>
+<article data-testid="message_row" data-message-id="PRIVATE_MESSAGE_ID_CANARY" data-turn-id="PRIVATE_TURN_ID_CANARY">
+  MESSAGE_TEXT_CANARY
+</article>
+<input type="hidden" value="HIDDEN_VALUE_CANARY">
+<script>document.cookie = 'fixture=COOKIE_CANARY; Path=/'</script>

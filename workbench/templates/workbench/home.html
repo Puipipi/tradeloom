@@ -1,14 +1,15 @@
 {% extends "workbench/base.html" %}
 {% load business_urls %}
-{% block page_eyebrow %}工作台 / 总览{% endblock %}
-{% block page_title %}首页{% endblock %}
+{% block stylesheets %}<link rel="stylesheet" href="{{ '/static/workbench/styles.css?v=business-ui-density9'|business_url }}">{% endblock %}
+{% block page_eyebrow %}外贸业务协作 / 总览{% endblock %}
+{% block page_title %}业务协作总览{% endblock %}
 {% block content %}
-<div class="page-stack">
+<div class="page-stack home-page">
   <section class="panel intro-panel">
     <div class="panel-heading">
       <div>
-        <h2>产品资料工作台</h2>
-        <p>先核对待确认批次，再进入产品资料补齐缺项。</p>
+        <h2>从来源核对到交付检查</h2>
+        <p>核对来源、确认要求、检查交付。</p>
       </div>
       <span class="tag demo-tag">本地演示数据</span>
     </div>
@@ -16,7 +17,7 @@
       <article class="stat-card">
         <span class="stat-label">批次</span>
         <strong class="stat-value mono" data-testid="stat-batches">{{ batch_count }}</strong>
-        <span class="stat-note">全部产品批次</span>
+        <span class="stat-note">当前任务批次</span>
       </article>
       <article class="stat-card">
         <span class="stat-label">产品</span>
@@ -34,19 +35,21 @@
         <span class="stat-note">已创建业务任务</span>
       </article>
     </div>
-    <p class="count-note"><span class="mono" data-testid="stat-actionable">{{ actionable_count }}</span> 个待确认批次资料齐全，可立即进入确认。</p>
-    <div class="button-row intro-actions">
-      <a class="button primary" href="{% business_path '/tasks/new' %}">新建任务</a>
-      <a class="button secondary" href="{% business_path '/' %}">查看任务列表</a>
+    {% if pending_count %}<progress class="business-confirmation-progress" value="{{ actionable_count }}" max="{{ pending_count }}" aria-label="待确认批次中资料齐全的比例">{{ actionable_count }} / {{ pending_count }}</progress>{% endif %}
+    <p class="count-note"><span class="mono" data-testid="stat-actionable">{{ actionable_count }}</span> 个待确认批次资料齐全，可打开批次人工确认。</p>
+    <div class="button-row intro-actions" aria-label="业务协作入口">
+      <a class="button primary" href="{% business_path '/artifacts' %}">核对来源与生产要求</a>
+      <a class="button secondary" href="{% business_path '/agent-center' %}">查看工作流</a>
+      <a class="button secondary" href="{% business_path '/artifacts' %}#deliverables">检查交付版本</a>
     </div>
-    <p class="timezone-note">时间均为上海时间（UTC+8）。</p>
+    <details class="home-business-explainer"><summary>业务说明与时间</summary><p>先核对来源与候选，再由人确认生产要求、查看物料与工序计划草稿，并在工作流中检查已登记交付。计划草稿不代表已排产或开始生产。</p><p class="timezone-note">时间均为上海时间（UTC+8）。</p></details>
   </section>
 
-  <section class="panel">
+  <section class="panel home-action-panel">
     <div class="panel-heading">
       <div>
-        <h2>可立即确认</h2>
-        <p>这些批次的产品资料没有缺项，可直接打开批次完成确认。</p>
+        <h2>可立即确认的产品资料</h2>
+        <p>资料齐全的批次可直接打开并由你确认。</p>
       </div>
       <span class="status-pill confirmed">{{ actionable_count }} 个可操作</span>
     </div>
@@ -63,9 +66,8 @@
       {% endfor %}
     </div>
     {% else %}
-    <div class="empty-state compact">
-      <h3>当前没有可立即确认的批次</h3>
-      <p>先补齐待确认批次的缺项，再回到这里确认。</p>
+    <div class="empty-state compact home-empty-inline" data-testid="actionable-empty">
+      <p>当前没有可立即确认的批次；先补齐待确认批次的资料缺项。</p>
     </div>
     {% endif %}
   </section>

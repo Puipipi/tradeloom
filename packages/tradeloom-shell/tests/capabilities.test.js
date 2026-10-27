@@ -276,3 +276,27 @@ test('method is GET-only and state failures return a safe code without exception
   assert.equal(failed.statusCode, 503)
   assert.deepEqual(JSON.parse(failed.body), { error: 'capability-state-unavailable' })
 })
+
+
+test('skill invocation projection preserves booleans and treats missing or malformed flags as unknown', async () => {
+  const live = { id: 's', ctx: {}, session: { id: 's', header: { cwd: '/synthetic-owned' } } }
+  const skills = [
+    { name: 'missing-policy' },
+    { name: 'partial-policy', invocation: { modelInvocable: true } },
+    { name: 'malformed-policy', invocation: { modelInvocable: 'false', userInvocable: 0 } },
+    { name: 'explicit-policy', invocation: { modelInvocable: false, userInvocable: true } },
+    { name: 'explicit-disabled', invocation: { modelInvocable: false, userInvocable: false } },
+  ]
+  const setup = context({ state: { roles: { product: { sessionId: 's', agentPreset: 'tradeloom-product' } } }, agent: live,
+    skills: { snapshot: async () => ({ skills, complete: true }) }, presets: { composedPreset: () => 'tradeloom-product' } })
+  const response = res()
+  await createAgentCapabilitiesHandler(setup.ctx, setup.dependencies)(req(), response)
+  assert.equal(response.statusCode, 200)
+  assert.deepEqual(JSON.parse(response.body).skills.items.map(item => item.invocation), [
+    { modelInvocable: null, userInvocable: null },
+    { modelInvocable: true, userInvocable: null },
+    { modelInvocable: null, userInvocable: null },
+    { modelInvocable: false, userInvocable: true },
+    { modelInvocable: false, userInvocable: false },
+  ])
+})

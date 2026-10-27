@@ -114,6 +114,8 @@ class WorkflowPagesTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'id="workflow-create-form"')
+        self.assertContains(response, '<details class="workflow-create-disclosure" id="workflow-create-disclosure">')
+        self.assertContains(response, '"#workflow-create-form"')
         self.assertContains(response, 'data-intent-preview-endpoint="/api/workflow-intent/preview"')
         self.assertContains(response, 'data-testid="intent-preview"')
         self.assertContains(response, 'name="batch_id"')
@@ -372,7 +374,7 @@ class WorkflowPagesTests(TestCase):
         self.assertContains(response, "执行模式会随预览确认一并绑定；原生 DSH 结果仍需服务端校验与既有人审。")
         self.assertContains(response, 'id="workflow-create-error"')
         self.assertContains(response, 'id="workflow-create-notice"')
-        self.assertContains(response, "app.js?v=native-workflow-bridge1")
+        self.assertContains(response, "app.js?v=business-font-scale1")
 
         with patch("workbench.agents.mock_runtime.MockAgentRuntime.run_subtask") as run:
             created = self.client.post(

@@ -1,0 +1,12 @@
+diff --git a/packages/client/ui-primitives/tests/use-anchored-position.client.spec.tsx b/packages/client/ui-primitives/tests/use-anchored-position.client.spec.tsx
+--- a/packages/client/ui-primitives/tests/use-anchored-position.client.spec.tsx
++++ b/packages/client/ui-primitives/tests/use-anchored-position.client.spec.tsx
+@@ -161,7 +161,7 @@
+     expect(panel.style.maxHeight).toBe(maxHeight+'px')
+   })
+   it('does not add a height constraint without opt-in',()=>{
+-    onTestFinished(()=>vi.restoreAllMocks())
++    onTestFinished(()=>{vi.restoreAllMocks()})
+     const view=render(<Host open />)
+     expect(view.getByTestId('panel').style.maxHeight).toBe('')
+   })

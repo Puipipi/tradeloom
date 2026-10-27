@@ -10,13 +10,13 @@ from pathlib import Path
 
 
 REPO = Path(__file__).resolve().parents[3]
-REFERENCE = Path(r"C:\Users\23825\Desktop\ICT\workspace\research\references\deepseek-harness")
+REFERENCE = Path(r"C:\Users\23825\Desktop\ICT\workspace\research\references\deepseek-harness-v0.2.1-rc.3-readonly")
 EVIDENCE = Path(r"C:\Users\23825\Desktop\ICT\workspace\testing\dsh-slot-patches")
 TEMP_ROOT = EVIDENCE / "temp-runtimes"
 POWERSHELL = shutil.which("pwsh")
 PREPARE = REPO / "scripts" / "dsh" / "prepare-runtime.ps1"
 CHECK = REPO / "scripts" / "dsh" / "check-upstream.ps1"
-EXPECTED_HEAD = "687f282e8625c6b8d11ff58211a90524be2e4317"
+EXPECTED_HEAD = "1f81c047fc48fa190a683e469daa699857e9afe8"
 EXPECTED_LICENSE = "EBB4F09972AEE8608BE255DEBAF78451A68E95C290F55C240DEC2ECFA16EA6BE"
 
 
@@ -91,8 +91,9 @@ class PatchLifecycleTests(unittest.TestCase):
         self.assertEqual(outcome["licenseSha256"], EXPECTED_LICENSE)
         self.assertIn("shell.top", (runtime / "packages/client/ui-layout/src/client/index.ts").read_text(encoding="utf-8"))
         self.assertIn("shell.top", (runtime / "packages/client/ui-layout/src/client/AppFrame.tsx").read_text(encoding="utf-8"))
-        self.assertIn("sidebar.agents", (runtime / "packages/client/ui-sidebar/src/client/index.ts").read_text(encoding="utf-8"))
-        self.assertIn("sidebar.agents", (runtime / "packages/client/ui-sidebar/src/client/SidebarRoot.tsx").read_text(encoding="utf-8"))
+        sidebar_contract = (runtime / "packages/client/ui-sidebar/src/client/contract/slots.ts").read_text(encoding="utf-8")
+        self.assertIn("'sidebar.panellist.actions'", sidebar_contract)
+        self.assertNotIn("sidebar.agents", sidebar_contract)
         desktop_manifest = json.loads((runtime / "apps/desktop/package.json").read_text(encoding="utf-8"))
         self.assertEqual(desktop_manifest.get("dshDesktopAppId"), "cn.tradeloom.workbench")
         reasoning_policy = (runtime / "packages/client/ui-chat/src/client/presentation-policy.ts").read_text(encoding="utf-8")
@@ -101,9 +102,6 @@ class PatchLifecycleTests(unittest.TestCase):
         self.assertIn("reasoningVisibility: 'hidden'", reasoning_policy)
         self.assertIn("if (hidden) return null", reasoning_row)
         self.assertIn("final answer visible", reasoning_test)
-        contract = (runtime / "packages/client/ui-sidebar/src/client/contract/slots.ts").read_text(encoding="utf-8")
-        self.assertIn("'sidebar.agents': { kind: 'single'; scope: 'root'; owner: SidebarSectionOwnerProps }", contract)
-        self.assertIn("| 'sidebar.agents'", contract)
         changed = subprocess.run(
             ["git", "-C", str(runtime), "diff", "--name-only"],
             text=True,
@@ -116,75 +114,16 @@ class PatchLifecycleTests(unittest.TestCase):
             capture_output=True,
             check=True,
         ).stdout.splitlines())
-        self.assertEqual(set(changed), {
-            ".tradeloom-runtime-owned",
-            "packages/client/ui-layout/src/client/index.ts",
-            "packages/client/ui-layout/src/client/AppFrame.tsx",
-            "packages/client/ui-sidebar/src/client/contract/slots.ts",
-            "packages/client/ui-sidebar/src/client/index.ts",
-            "packages/client/ui-sidebar/src/client/SidebarRoot.tsx",
-            "packages/client/ui-sidebar/tests/__snapshots__/sidebar-snapshot.client.spec.tsx.snap",
-            "packages/client/ui-sidebar/tests/sidebar-root.client.spec.tsx",
-            "packages/client/ui-chat/src/client/chat/ReasoningRow.tsx",
-            "packages/client/ui-chat/src/client/presentation-policy.ts",
-            "packages/client/ui-chat/tests/presentation-policy.client.spec.tsx",
-            "packages/client/ui-chat/tests/reasoning-row.client.spec.tsx",
-            "apps/desktop/scripts/electron-builder-config.mjs",
-            "apps/desktop/scripts/desktop-package-environment.mjs",
-            "apps/desktop/scripts/desktop-package-environment.d.mts",
-            "scripts/client-build-environment.ts",
-            "scripts/client-build-environment.client.spec.ts",
-            "apps/desktop/scripts/package-target.ts",
-            "apps/desktop/scripts/desktop-build-paths.mjs",
-            "apps/desktop/scripts/desktop-build-paths.d.mts",
-            "apps/desktop/scripts/smoke-packaged-runtime.ts",
-            "apps/desktop/package.json",
-            "apps/desktop/src/main.ts",
-            "apps/desktop/src/fatal-recovery.ts",
-            "apps/desktop/src/locale.ts",
-            "apps/desktop/renderer/assets/welcome-brand.svg",
-            "apps/desktop/resources/icon-windows.png",
-            "apps/desktop/resources/icon-windows.svg",
-            "apps/desktop/resources/tray-windows.ico",
-            "apps/desktop/installer/assets/brand.png",
-            "apps/desktop/installer/assets/brand-2x.png",
-            "apps/desktop/installer/assets/brand-dark.png",
-            "apps/desktop/installer/assets/brand-dark-2x.png",
-            "apps/desktop/installer/assets/uninstaller-sidebar.png",
-            "apps/desktop-host/src/index.ts",
-            "apps/desktop/src/web-document.ts",
-            "apps/desktop/tests/web-document.spec.ts",
-            "apps/desktop/tests/desktop-package-environment.spec.ts",
-            "apps/desktop/tests/desktop-build-paths.spec.ts",
-            "apps/desktop/tests/main-startup.spec.ts",
-            "apps/desktop/tests/fatal-recovery.spec.ts",
-            "apps/desktop/tests/expected/about-panel.json",
-            "apps/desktop/tests/expected/application-menu-en-US.json",
-            "apps/desktop/tests/expected/application-menu-zh-CN.json",
-            "apps/desktop/tests/expected/fatal-address-in-use-en.txt",
-            "apps/desktop/tests/expected/fatal-address-in-use-zh-CN.txt",
-            "apps/desktop/tests/expected/fatal-dialog-en.txt",
-            "apps/desktop/tests/expected/fatal-dialog-zh-CN.txt",
-            "apps/desktop/tests/expected/fatal-dialog-with-report-en.txt",
-            "apps/desktop/tests/expected/fatal-dialog-with-report-zh-CN.txt",
-            "apps/web/index.html",
-            "apps/web/public/manifest.webmanifest",
-            "apps/web/public/favicon.svg",
-            "apps/web/public/favicon-dark.svg",
-            "packages/client/ui-conversation/src/client/locales.ts",
-            "apps/desktop/tests/desktop-installer-include.spec.ts",
-            "apps/desktop/src/update-coordinator.ts",
+        lock = json.loads((REPO / "integrations" / "dsh" / "patches" / "patches.lock.json").read_text(encoding="utf-8"))
+        generated_patch_files = {
             "apps/desktop/src/websocket-authority.ts",
             "apps/desktop/tests/websocket-authority.spec.ts",
-            "packages/client/ui-settings-models/src/client/CustomProviderCard.tsx",
-            "packages/client/ui-settings-models/src/client/ProviderEditor.tsx",
-            "packages/client/ui-settings-models/src/client/locales.ts",
-            "packages/client/ui-settings-models/tests/provider-form.client.spec.tsx",
-            "packages/client/ui-workspace/src/client/stores.ts",
-            "packages/client/ui-workspace/tests/tree.client.spec.ts",
-            "packages/client/ui-workspace/tests/workspace-browser.client.spec.tsx",
-        })
-        lock = json.loads((REPO / "integrations" / "dsh" / "patches" / "patches.lock.json").read_text(encoding="utf-8"))
+            "apps/desktop/tests/desktop-installer-include.spec.ts",
+            "packages/client/ui-conversation/tests/secondary-window-owner-document.client.spec.tsx",
+            "packages/client/ui-primitives/src/owner-document.ts",
+            "packages/client/ui-primitives/tests/secondary-window.client.spec.tsx",
+        }
+        self.assertEqual(set(changed), {".tradeloom-runtime-owned", *lock["targetFiles"], *generated_patch_files})
         for relative_path, hashes in lock["targetFiles"].items():
             self.assertEqual(digest(runtime / relative_path).lower(), hashes["newSha256"], relative_path)
         checked = invoke(CHECK, "-RuntimePath", str(runtime))
@@ -326,16 +265,13 @@ class PatchLifecycleTests(unittest.TestCase):
             fixture = Path(raw) / "candidate-source"
             self.clone_reference(fixture)
             subprocess.run(["git", "-C", str(fixture), "switch", "-c", "dsh-conflict-fixture"], check=True, capture_output=True)
-            candidate_file = fixture / "packages/client/ui-sidebar/src/client/contract/slots.ts"
+            candidate_file = fixture / "packages/client/ui-layout/src/client/AppFrame.tsx"
             original = candidate_file.read_text(encoding="utf-8")
-            old = "'sidebar.panellist': { kind: 'list'; scope: 'root'; owner: SidebarPanelIconOwnerProps }"
-            old_comment = "* the sidebar owns the button and resolves its label from list metadata."
+            old = "return <div className={css.centerCol}>{props.children}</div>"
             self.assertEqual(original.count(old), 1)
-            self.assertEqual(original.count(old_comment), 1)
-            changed = original.replace(old, "'sidebar.panellist': { kind: 'single'; scope: 'root'; owner: SidebarPanelIconOwnerProps }")
-            changed = changed.replace(old_comment, "* a candidate slot contract has changed its owner surface.")
+            changed = original.replace(old, "return <div className={css.centerCol} data-candidate-conflict>{props.children}</div>")
             candidate_file.write_text(changed, encoding="utf-8")
-            subprocess.run(["git", "-C", str(fixture), "add", "packages/client/ui-sidebar/src/client/contract/slots.ts"], check=True)
+            subprocess.run(["git", "-C", str(fixture), "add", "packages/client/ui-layout/src/client/AppFrame.tsx"], check=True)
             subprocess.run(["git", "-C", str(fixture), "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-m", "conflict fixture"], check=True, capture_output=True)
             subprocess.run(["git", "-C", str(runtime), "fetch", str(fixture), "refs/heads/dsh-conflict-fixture:refs/heads/dsh-conflict-fixture"], check=True, capture_output=True)
             before = subprocess.run(["git", "-C", str(runtime), "status", "--porcelain"], text=True, capture_output=True, check=True).stdout
@@ -344,6 +280,138 @@ class PatchLifecycleTests(unittest.TestCase):
             self.assertEqual(result_json(proc)["status"], "candidate_conflict")
             after = subprocess.run(["git", "-C", str(runtime), "status", "--porcelain"], text=True, capture_output=True, check=True).stdout
             self.assertEqual(after, before)
+
+
+
+
+class MenuProspectivePatchTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.workspace = REPO.parent
+        cls.root = cls.workspace / 'workspace/testing/frontend-visual-fixes-20261025/batch46-menu-runtime-source/patch-set-27'
+        cls.lock = cls.root / 'patches.prospective.lock.json'
+        cls.order = cls.root / 'order.prospective.json'
+        cls.patch_root = REPO / 'integrations/dsh/patches'
+        TEMP_ROOT.mkdir(parents=True, exist_ok=True)
+
+    def args(self, lock=None, order=None, patch_root=None):
+        return ['-ProspectiveLockPath', str(lock or self.lock), '-PatchRoot', str(patch_root or self.patch_root), '-PatchOrder', str(order or self.order)]
+
+    def test_menu27_retains_all26_inputs_and_exact_source_contract(self):
+        old_root = self.root.parents[1] / 'batch16-native-preflight/v4-26'
+        old = json.loads((old_root / 'patches.prospective.lock.json').read_text())
+        new = json.loads(self.lock.read_text())
+        old_order = json.loads((old_root / 'order.prospective.json').read_text())
+        order = json.loads(self.order.read_text())
+        self.assertEqual(digest(self.lock).lower(), '0376bad0288ff90a944fd94b90596328a73cfe449ccc2faf1fe2682b50c51c2f')
+        self.assertEqual(digest(self.order).lower(), 'e20f845702006c17bf2bce647a62567230f418b3fd0ab1e51e8b5ca678a5384b')
+        self.assertEqual(new['upstream'], old['upstream'])
+        self.assertEqual(len(new['patches']), 27)
+        self.assertEqual(len(new['targetFiles']), 91)
+        self.assertEqual(order['order'][:-1], old_order['order'])
+        self.assertEqual(order['order'][-1], 'document-preview-zoom-menu-opaque.patch')
+        for key, value in old['patches'].items(): self.assertEqual(new['patches'][key], value)
+        for key, value in old['targetFiles'].items(): self.assertEqual(new['targetFiles'][key], value)
+        self.assertEqual(new['targetFiles']['packages/client/ui-sidebar-documentpreview/src/client/zoom/ZoomControls.module.css'], {
+            'baseSha256': 'b73e0fd34444dd0b4ff17e3d5ca595971f2c1c99180538e35a85dd8a33ce2acd',
+            'newSha256': 'b0f9c0df4982ee5a39442569f5dc77e00ab899cdd535611c9ba9e9bb6b35f91f'})
+
+    def test_menu27_correct_selector_reaches_existing_target_and_receipt_refusal(self):
+        runtime = self.workspace / 'workspace/runtime/tradeloom-harness/releases/0.2.1-rc.3-tradeloom-desktop-16'
+        receipt = runtime / '.tradeloom-desktop-build-receipt.json'
+        before = receipt.read_bytes()
+        result = invoke(PREPARE, '-ReferencePath', str(REFERENCE), '-RuntimePath', str(runtime), *self.args())
+        self.assertEqual(result.returncode, 20, result.stdout + result.stderr)
+        self.assertEqual(result_json(result)['status'], 'target_exists')
+        built = subprocess.run(['node', str(REPO/'scripts/dsh/build-candidate.mjs'), '--runtime', str(runtime),
+            '--prospective-lock-path', str(self.lock), '--patch-root', str(self.patch_root), '--patch-order', str(self.order)],
+            cwd=REPO, capture_output=True, text=True)
+        self.assertEqual(built.returncode, 1)
+        self.assertIn('candidate runtime 已有构建 receipt', built.stderr)
+        self.assertEqual(receipt.read_bytes(), before)
+        code = "import {usesInstalledPnpm} from './scripts/dsh/build-candidate.mjs';console.log(JSON.stringify([undefined,'v2-24','v3-25','v4-26','patch-set-27','foreign'].map(usesInstalledPnpm)))"
+        selected = subprocess.run(['node','--input-type=module','-e',code],cwd=REPO,capture_output=True,text=True,check=True)
+        self.assertEqual(json.loads(selected.stdout), [False,False,True,True,True,False])
+
+    def test_menu27_rejects_partial_or_foreign_exact_paths(self):
+        with tempfile.TemporaryDirectory(prefix='menu27-path-', dir=TEMP_ROOT) as raw:
+            target = Path(raw)/'never-created'
+            partial = invoke(PREPARE, '-ReferencePath', str(REFERENCE), '-RuntimePath', str(target), '-ProspectiveLockPath', str(self.lock))
+            self.assertEqual(result_json(partial)['status'], 'parameter_set_rejected')
+            self.assertEqual(partial.returncode, 21)
+            copied = Path(raw)/'copied.lock.json'
+            copied.write_bytes(self.lock.read_bytes())
+            foreign = invoke(PREPARE, '-ReferencePath', str(REFERENCE), '-RuntimePath', str(target), *self.args(lock=copied))
+            self.assertEqual(foreign.returncode, 21)
+            self.assertEqual(result_json(foreign)['status'], 'prospective_path_rejected')
+            self.assertFalse(target.exists())
+
+    def test_menu27_digest_patch_and_pin_rejections_use_only_isolated_input_copies(self):
+        # Exact script bytes in a private sibling layout exercise digest gates
+        # without ever mutating the approved frozen inputs or formal patches.
+        with tempfile.TemporaryDirectory(prefix='menu27-tamper-', dir=TEMP_ROOT) as raw:
+            ws = Path(raw)
+            repo = ws/'tradeloom'
+            script = repo/'scripts/dsh/prepare-runtime.ps1'
+            script.parent.mkdir(parents=True)
+            script.write_bytes(PREPARE.read_bytes())
+            lock_root = ws/'workspace/testing/frontend-visual-fixes-20261025/batch46-menu-runtime-source/patch-set-27'
+            lock_root.mkdir(parents=True)
+            lock = lock_root/self.lock.name
+            order = lock_root/self.order.name
+            patches = repo/'integrations/dsh/patches'
+            patches.mkdir(parents=True)
+            names = json.loads(self.lock.read_text())['patches']
+            for name in names: (patches/name).write_bytes((self.patch_root/name).read_bytes())
+            reference = ws/'workspace/research/references/deepseek-harness-v0.2.1-rc.3-readonly'
+            reference.mkdir(parents=True)
+            target = ws/'workspace/runtime/tradeloom-harness/releases/menu27-never-created'
+            for variant in ['lock', 'order', 'pin', 'patch']:
+                with self.subTest(variant=variant):
+                    lock.write_bytes(self.lock.read_bytes())
+                    order.write_bytes(self.order.read_bytes())
+                    patch = patches/'document-preview-zoom-menu-opaque.patch'
+                    patch.write_bytes((self.patch_root/patch.name).read_bytes())
+                    if variant == 'lock': lock.write_bytes(lock.read_bytes()+b' ')
+                    if variant == 'order': order.write_bytes(order.read_bytes()+b' ')
+                    if variant == 'pin':
+                        value=json.loads(lock.read_text());value['upstream']['commit']='0'*40;lock.write_text(json.dumps(value))
+                    if variant == 'patch': patch.write_bytes(patch.read_bytes()+b'\n')
+                    result=invoke(script,'-ReferencePath',str(reference),'-RuntimePath',str(target),*self.args(lock,order,patches))
+                    self.assertEqual(result.returncode,24,result.stdout+result.stderr)
+                    self.assertEqual(result_json(result)['status'], 'patch_hash_mismatch' if variant=='patch' else 'prospective_digest_rejected')
+                    self.assertFalse(target.exists())
+
+
+    def test_menu27_generated_count_is_exactly_ten_without_relaxing_extra_or_missing(self):
+        with tempfile.TemporaryDirectory(prefix='menu27-generated-', dir=TEMP_ROOT) as raw:
+            ws=Path(raw);repo=ws/'tradeloom';script=repo/'scripts/dsh/check-upstream.ps1'
+            script.parent.mkdir(parents=True);script.write_bytes(CHECK.read_bytes())
+            lock_root=ws/'workspace/testing/frontend-visual-fixes-20261025/batch46-menu-runtime-source/patch-set-27'
+            lock_root.mkdir(parents=True);lock=lock_root/self.lock.name;order=lock_root/self.order.name
+            lock.write_bytes(self.lock.read_bytes());order.write_bytes(self.order.read_bytes())
+            patches=repo/'integrations/dsh/patches';patches.mkdir(parents=True)
+            for name in json.loads(self.lock.read_text())['patches']:
+                (patches/name).write_bytes((self.patch_root/name).read_bytes())
+            target=ws/'workspace/runtime/tradeloom-harness/releases/not-created'
+            def check():
+                return invoke(script,'-RuntimePath',str(target),*self.args(lock,order,patches))
+            valid=check()
+            self.assertEqual(valid.returncode,20,valid.stdout+valid.stderr)
+            self.assertEqual(result_json(valid)['status'],'runtime_missing', 'correct 10 passed the early exact generated-set gate')
+            missing=patches/'native-startup-observation.patch';before=missing.read_bytes()
+            self.assertIn(b'new file mode ',before)
+            missing.write_bytes(before.replace(b'new file mode ',b'old file mode ',1))
+            rejected=check()
+            self.assertEqual(rejected.returncode,24)
+            self.assertEqual(result_json(rejected)['status'],'generated_target_set_rejected')
+            missing.write_bytes(before)
+            extra=patches/'document-preview-zoom-menu-opaque.patch'
+            extra.write_bytes(extra.read_bytes()+(chr(10)+'diff --git a/apps/desktop/src/menu-test-extra.ts b/apps/desktop/src/menu-test-extra.ts'+chr(10)+'new file mode 100644'+chr(10)).encode())
+            rejected=check()
+            self.assertEqual(rejected.returncode,24)
+            self.assertEqual(result_json(rejected)['status'],'generated_target_set_rejected')
+            self.assertFalse(target.exists())
 
 
 if __name__ == "__main__":

@@ -145,7 +145,10 @@ test('mobile link panel renders a local QR, keeps copy fallback, and ignores sta
   for (let pass = 0; pass < 2; pass++) await new Promise(resolve => setImmediate(resolve))
   assert.deepEqual(copiedLinks, [firstUrl], 'copy still receives the exact complete URL represented by the QR')
 
-  closePanel()
+  tree = clickMenuAction('连接手机')
+  assert.equal(find(tree, node => node.props?.role === 'dialog'), undefined,
+    'pressing the same navigation entry closes its visible panel')
+  assert.equal(requests.length, 1, 'closing does not mint another authorization link')
   tree = clickMenuAction('连接手机')
   assert.equal(find(tree, node => node.type === 'svg' && node.props?.['aria-label'] === '手机授权链接二维码'), undefined,
     'reopening clears a prior QR while the next link is loading')

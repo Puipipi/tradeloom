@@ -1,13 +1,16 @@
 import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { isIPv4 } from 'node:net'
-import { createStateStore, resolveOwnedHome, roleWorkspacePath, ROLE_IDS } from './state.js'
+import { createStateStore, getRoleBindingRevision, replaceRoleBinding, resolveOwnedHome, roleWorkspacePath, ROLE_IDS } from './state.js'
 import { publicRoleMetadata, ROLE_PRESETS } from './roles.js'
 import { normalizeSceneWorkbench, validateSceneConfig, validateSceneWorkbench } from './scene-layout.js'
 import { normalizeDockLayouts, validateDockLayouts } from './dock-layout.js'
-import { apply as applyBusinessProxy } from './proxy.js'
+import { apply as applyBusinessProxy, businessProxyEnabled } from './proxy.js'
 import { apply as applyBusinessPolicy } from './policy.js'
 import { AGENT_CAPABILITIES_ROUTE, createAgentCapabilitiesHandler } from './capabilities.js'
+import { WORKFLOW_ROUTE, createWorkflowHandler } from './workflow-tools.js'
+import { WORKFLOW_NATIVE_UI_ROUTE, createWorkflowNativeUiHandler } from './workflow-native-ui.js'
+import { NATIVE_ARTIFACT_COLLECTION, NATIVE_ARTIFACT_FILE, createNativeArtifactHandler } from './workflow-native-artifact-http.js'
 import { AGENT_CONFIGURATION_ROUTE, createAgentConfigurationHandler } from './agent-configuration.js'
 
 const ROUTE = '/tradeloom/session'
@@ -44,6 +47,44 @@ function deterministicSessionId(role) {
   return `tl-${createHash('sha256').update(`tradeloom:${role}`).digest('hex').slice(0, 28)}`
 }
 
+function roleBindingMetadata(role, binding, registry, bindingRevision) {
+  const archives = registry?.archivedSessionIds
+  return {
+    scope: 'role', roleId: role, sessionId: binding.sessionId,
+    workspaceId: binding.workspaceId ?? null,
+    bindingRevision,
+    archiveState: Array.isArray(archives)
+      ? archives.includes(binding.sessionId) ? 'archived' : 'unarchived'
+      : 'unknown',
+  }
+}
+
+async function ensureDurableRoleSession(ctx, sessionId, workspace, workspacePath, preset, requireLive = true) {
+  try {
+    const id = sessionId
+    const agent = typeof id === 'string' && id ? ctx.agents?.get(id) : undefined
+    const persistence = ctx.get?.('sessionPersistence')
+    const identity = persistence?.identity
+    const current = () => {
+      const attached = ctx.workspaceRegistry.get(workspace.id)
+      return (agent ? agent.id === id && agent.session?.id === id && ctx.agents.get(id) === agent : !requireLive && ctx.agents?.get(id) === undefined)
+        && identity !== undefined && identity !== null
+        && ctx.get?.('sessionPersistence')?.identity === identity
+        && (!agent || agent.ctx?.get?.('sessionPersistence')?.identity === identity)
+        && attached?.id === workspace.id && attached.path === workspacePath
+        && Array.isArray(attached.sessionIds) && attached.sessionIds.includes(id)
+    }
+    if (!current() || typeof persistence.flush !== 'function' || typeof persistence.stat !== 'function') throw new Error()
+    // Public service-wide durability barrier, including empty write handles.
+    await persistence.flush()
+    if (!current()) throw new Error()
+    const snapshot = await persistence.stat(id)
+    if (!current() || snapshot?.header?.id !== id || snapshot.header.cwd !== workspacePath
+      || snapshot.header.agentPreset !== preset) throw new Error()
+    return current
+  } catch { throw Object.assign(new Error('role_session_not_durable'), { code: 'role_session_not_durable' }) }
+}
+
 export function createSessionHandler(ctx, dependencies = {}) {
   const storeFactory = dependencies.createStateStore ?? createStateStore
   const getHome = dependencies.resolveOwnedHome ?? resolveOwnedHome
@@ -61,9 +102,13 @@ export function createSessionHandler(ctx, dependencies = {}) {
     try {
       await getHome()
       const store = await storeFactory()
-      const sessionId = await store.transact(async state => {
+      const binding = await store.transact(async state => {
         const existing = state.roles[input.role]
-        if (existing?.sessionId) return existing.sessionId
+        if (existing?.sessionId) return {
+          sessionId: existing.sessionId,
+          workspaceId: existing.workspaceId ?? null,
+          bindingRevision: getRoleBindingRevision(state, input.role),
+        }
         const workspacePath = await getWorkspacePath(input.role)
         let workspace = ctx.workspaceRegistry.list().find(item => item.path === workspacePath)
         if (workspace === undefined) workspace = await ctx.workspaceRegistry.create(workspacePath, `TradeLoom ${input.role}`)
@@ -73,14 +118,21 @@ export function createSessionHandler(ctx, dependencies = {}) {
           agentPreset: preset,
           sessionId: deterministicSessionId(input.role),
         })
-        state.roles[input.role] = { workspaceId: workspace.id, workspacePath, sessionId: created.sessionId, agentPreset: preset }
-        return created.sessionId
+        await ensureDurableRoleSession(ctx, created?.sessionId, workspace, workspacePath, preset)
+        const bindingRevision = replaceRoleBinding(state, input.role, {
+          workspaceId: workspace.id, workspacePath, sessionId: created.sessionId, agentPreset: preset,
+        })
+        return { sessionId: created.sessionId, workspaceId: workspace.id, bindingRevision }
       })
+      const sessionId = binding?.sessionId
       if (!sessionId) { json(res, 500, { error: 'session-not-created' }); return }
-      json(res, 200, { role: input.role, sessionId })
+      json(res, 200, {
+        role: input.role, sessionId,
+        binding: roleBindingMetadata(input.role, binding, ctx.workspaceRegistry, binding.bindingRevision),
+      })
     } catch (error) {
       ctx.logger?.error?.(`tradeloom-shell: session route failed: ${String(error)}`)
-      json(res, 503, { error: 'tradeloom-home-unavailable' })
+      json(res, 503, { error: 'tradeloom-home-unavailable', ...(error?.code === 'role_session_not_durable' ? { error_code: 'role_session_not_durable' } : {}) })
     }
   }
 }
@@ -107,6 +159,7 @@ async function observePendingSession(ctx, sessionId) {
     try {
       return { found: true, observation: {
         header: { id: observation?.header?.id, cwd: observation?.header?.cwd },
+        cursor: observation?.cursor,
         projections: { values: {
           agentPreset: observation?.projections?.values?.agentPreset,
           turnBoundary: observation?.projections?.values?.turnBoundary,
@@ -181,7 +234,12 @@ export function createNewSessionHandler(ctx, dependencies = {}) {
           const currentOperation = state.sessionCreateOperations[operationId]
           if (currentOperation) {
             if (currentOperation.fingerprint !== fingerprint) return { error: 'operation-id-conflict', status: 409 }
-            if (currentOperation.status === 'completed') return { completed: true, sessionId: currentOperation.sessionId }
+            if (currentOperation.status === 'completed') return {
+              completed: true,
+              sessionId: currentOperation.sessionId,
+              bindingRevision: currentOperation.bindingRevision
+                ?? (state.roles[role]?.sessionId === currentOperation.sessionId ? getRoleBindingRevision(state, role) : null),
+            }
             return { operation: currentOperation }
           }
           if (state.pendingSessionCreateByRole[role]) return { error: 'session-create-in-progress', status: 409 }
@@ -196,7 +254,10 @@ export function createNewSessionHandler(ctx, dependencies = {}) {
           return { operation }
         })
         if (reserved.error) return { status: reserved.status, body: { error: reserved.error, operationId } }
-        if (reserved.completed) return { status: 200, body: { role, sessionId: reserved.sessionId, operationId, replayed: true } }
+        if (reserved.completed) return { status: 200, body: {
+          role, sessionId: reserved.sessionId, operationId, replayed: true,
+          ...(typeof reserved.bindingRevision === 'string' ? { bindingRevision: reserved.bindingRevision } : {}),
+        } }
         let operation = reserved.operation
         if (operation.status === 'outcome_unknown' || operation.status === 'created_unbound') {
           return { status: 409, body: { error: 'session-create-outcome-unknown', operationId } }
@@ -221,6 +282,7 @@ export function createNewSessionHandler(ctx, dependencies = {}) {
           operation = { ...operation, workspaceId: workspace.id }
         }
 
+        let freshlyCreated = false
         let observed = await observePendingSession(ctx, operation.sessionId)
         if (observed.found) {
           if (!isReusablePendingObservation(observed.observation, operation, workspace, ctx.workspaceRegistry.archivedSessionIds)) {
@@ -263,6 +325,7 @@ export function createNewSessionHandler(ctx, dependencies = {}) {
             })
             return { status: 409, body: { error: 'session-create-outcome-unknown', operationId } }
           }
+          freshlyCreated = true
           workspace = ctx.workspaceRegistry.get(operation.workspaceId)
           if (!workspace) {
             await store.transact(state => {
@@ -281,10 +344,38 @@ export function createNewSessionHandler(ctx, dependencies = {}) {
           }
         }
 
+        let durabilityError, durabilityCheck
+        try { durabilityCheck = await ensureDurableRoleSession(ctx, operation.sessionId, workspace, operation.workspacePath, preset, freshlyCreated) }
+        catch (error) { durabilityError = error }
+        // Preserve known business conflicts ahead of a checkpoint error, even
+        // when a flush rejected while the previous role binding changed.
+        const conflict = await store.transact(state => {
+          const current = state.sessionCreateOperations[operationId]
+          if (current?.status === 'completed') return { completed: true, sessionId: current.sessionId, bindingRevision: current.bindingRevision }
+          if (!current) return { error: 'session-create-outcome-unknown' }
+          if (state.pendingSessionCreateByRole[role] !== operationId
+            || (state.roles[role]?.sessionId ?? null) !== normalized.expectedSessionId) {
+            current.status = 'created_unbound'
+            delete state.pendingSessionCreateByRole[role]
+            return { error: 'stale-session-binding' }
+          }
+          return null
+        })
+        if (conflict?.completed) return { status: 200, body: { role, sessionId: conflict.sessionId, operationId, replayed: true,
+          ...(typeof conflict.bindingRevision === 'string' ? { bindingRevision: conflict.bindingRevision } : {}) } }
+        if (conflict) return { status: 409, body: { error: conflict.error, operationId } }
+        workspace = ctx.workspaceRegistry.get(operation.workspaceId)
+        observed = await observePendingSession(ctx, operation.sessionId)
+        if (!observed.found || !isReusablePendingObservation(observed.observation, operation, workspace, ctx.workspaceRegistry.archivedSessionIds)) {
+          await store.transact(state => { const current = state.sessionCreateOperations[operationId]; if (current) current.status = 'outcome_unknown' })
+          return { status: 409, body: { error: 'session-create-outcome-unknown', operationId } }
+        }
+        if (durabilityError) throw durabilityError
+
         const result = await store.transact(state => {
           const current = state.sessionCreateOperations[operationId]
           if (!current || current.status === 'completed') return current?.status === 'completed'
-            ? { ok: true, replayed: true, sessionId: current.sessionId }
+            ? { ok: true, replayed: true, sessionId: current.sessionId, bindingRevision: current.bindingRevision }
             : { ok: false, error: 'session-create-outcome-unknown' }
           if (state.pendingSessionCreateByRole[role] !== operationId
             || (state.roles[role]?.sessionId ?? null) !== normalized.expectedSessionId) {
@@ -292,17 +383,36 @@ export function createNewSessionHandler(ctx, dependencies = {}) {
             delete state.pendingSessionCreateByRole[role]
             return { ok: false, error: 'stale-session-binding' }
           }
-          state.roles[role] = { workspaceId: workspace.id, workspacePath, sessionId: operation.sessionId, agentPreset: preset }
+          if (!isReusablePendingObservation(observed.observation, operation, ctx.workspaceRegistry.get(operation.workspaceId), ctx.workspaceRegistry.archivedSessionIds)) {
+            current.status = 'outcome_unknown'
+            return { ok: false, error: 'session-create-outcome-unknown' }
+          }
+          const live = ctx.agents?.get(operation.sessionId)
+          if (live && (!Number.isSafeInteger(observed.observation.cursor) || observed.observation.cursor < -1
+            || live.session?.seq !== observed.observation.cursor + 1)) {
+            current.status = 'outcome_unknown'
+            return { ok: false, error: 'session-create-outcome-unknown' }
+          }
+          if (!durabilityCheck()) throw Object.assign(new Error('role_session_not_durable'), { code: 'role_session_not_durable' })
+          const bindingRevision = replaceRoleBinding(state, role, {
+            workspaceId: workspace.id, workspacePath, sessionId: operation.sessionId, agentPreset: preset,
+          })
+          current.bindingRevision = bindingRevision
           current.status = 'completed'
           delete state.pendingSessionCreateByRole[role]
-          return { ok: true, replayed: false, sessionId: operation.sessionId }
+          return { ok: true, replayed: false, sessionId: operation.sessionId, bindingRevision }
         })
         return result.ok
-          ? { status: result.replayed ? 200 : 201, body: { role, sessionId: result.sessionId, operationId, ...(result.replayed ? { replayed: true } : {}) } }
+          ? { status: result.replayed ? 200 : 201, body: {
+            role, sessionId: result.sessionId, operationId,
+            ...(typeof result.bindingRevision === 'string' ? { bindingRevision: result.bindingRevision } : {}),
+            ...(result.replayed ? { replayed: true } : {}),
+          } }
           : { status: 409, body: { error: result.error, operationId } }
       } catch (error) {
         ctx.logger?.error?.('tradeloom-shell: new session route failed (session-create-unavailable)')
-        return { status: 503, body: { error: 'session-create-unavailable', operationId } }
+        return { status: 503, body: { error: 'session-create-unavailable', operationId,
+          ...(error?.code === 'role_session_not_durable' ? { error_code: 'role_session_not_durable' } : {}) } }
       }
     })()
     sessionCreateFlights.set(flightKey, { fingerprint, promise })
@@ -360,14 +470,25 @@ export function createProfileHandler(ctx, dependencies = {}) {
 
 export function createScenesHandler(ctx, dependencies = {}) {
   const readScenes = dependencies.readScenes ?? (() => readFile(new URL('./scenes.json', import.meta.url), 'utf8'))
+  const storeFactory = dependencies.createStateStore ?? createStateStore
   return async (req, res) => {
     const rejection = ctx.connection.requestRejection(req)
     if (rejection !== undefined) { res.statusCode = rejection; res.end(); return }
     if (req.method !== 'GET') { res.statusCode = 405; res.setHeader('allow', 'GET'); res.end(); return }
     try {
-      const scenes = validateSceneConfig(JSON.parse(await readScenes()))
+      const [sceneText, store] = await Promise.all([readScenes(), storeFactory()])
+      const scenes = validateSceneConfig(JSON.parse(sceneText))
+      const state = await store.read()
+      const sessionBindings = Object.fromEntries(ROLE_IDS.flatMap(role => {
+        const sessionId = state?.roles?.[role]?.sessionId
+        return typeof sessionId === 'string' && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(sessionId)
+          ? [[role, sessionId]] : []
+      }))
+      const sessionBindingMetadata = Object.fromEntries(Object.keys(sessionBindings).map(role => [
+        role, roleBindingMetadata(role, state.roles[role], ctx.workspaceRegistry, getRoleBindingRevision(state, role)),
+      ]))
       const businessOrigin = ctx.webServer.getOrigin()
-      json(res, 200, { ...scenes, businessOrigin, roles: publicRoleMetadata() })
+      json(res, 200, { ...scenes, businessOrigin, roles: publicRoleMetadata(), sessionBindings, sessionBindingMetadata })
     }
     catch (error) {
       ctx.logger?.error?.(`tradeloom-shell: scene config read failed: ${String(error)}`)
@@ -469,7 +590,8 @@ export function createMobileLinkHandler(ctx) {
 
     try {
       const { protocol, host, port } = ctx.webServer
-      if ((protocol !== 'http:' && protocol !== 'https:') || !privateIpv4(host) || Number(port) !== 3088) {
+      const configuredPort = process.env.TRADELOOM_DSH_BIND_PORT ?? '3088'
+      if (!/^[1-9][0-9]*$/.test(configuredPort) || Number(configuredPort) > 65535 || (protocol !== 'http:' && protocol !== 'https:') || !privateIpv4(host) || Number(port) !== Number(configuredPort)) {
         json(res, 503, { error: 'mobile-link-unavailable' })
         return
       }
@@ -483,10 +605,22 @@ export function createMobileLinkHandler(ctx) {
   }
 }
 
-export function apply(ctx) {
-  applyBusinessPolicy(ctx)
-  applyBusinessProxy(ctx)
+export function apply(ctx, config = {}) {
+  const enabled = businessProxyEnabled(config)
+  // Public lazy lookup does not make legacy Host/read routes depend on task
+  // admission. Missing authority never authorizes a native mutation.
+  const taskAuthority = () => ctx.get?.('nativeTaskAuthority')
+  applyBusinessPolicy(ctx, { taskAttribution: {
+    attributionFor: exec => taskAuthority()?.adapter.attributionFor(exec) ?? null,
+    scopesForChild: (parent, childId) => taskAuthority()?.adapter.scopesForChild(parent, childId),
+  } })
+  applyBusinessProxy(ctx, { businessProxyEnabled: enabled })
   ctx.effect(() => {
+    const artifact = createNativeArtifactHandler(ctx)
+    const disposeArtifacts = ctx.webServer.register({ kind: 'exact', path: NATIVE_ARTIFACT_COLLECTION, handler: artifact.handle })
+    const disposeArtifactFile = ctx.webServer.register({ kind: 'exact', path: NATIVE_ARTIFACT_FILE, handler: artifact.handle })
+    const disposeNativeWorkflow = ctx.webServer.register({ kind: 'exact', path: WORKFLOW_NATIVE_UI_ROUTE, handler: createWorkflowNativeUiHandler(ctx, { getTaskAuthority: taskAuthority }) })
+    const disposeWorkflow = ctx.webServer.register({ kind: 'exact', path: WORKFLOW_ROUTE, handler: createWorkflowHandler(ctx) })
     const disposeSession = ctx.webServer.register({ kind: 'exact', path: ROUTE, handler: createSessionHandler(ctx) })
     const disposeNewSession = ctx.webServer.register({ kind: 'exact', path: NEW_SESSION_ROUTE, handler: createNewSessionHandler(ctx) })
     const disposeProfile = ctx.webServer.register({ kind: 'exact', path: PROFILE_ROUTE, handler: createProfileHandler(ctx) })
@@ -496,7 +630,7 @@ export function apply(ctx) {
     const disposeDockLayouts = ctx.webServer.register({ kind: 'exact', path: DOCK_LAYOUTS_ROUTE, handler: createDockLayoutsHandler(ctx) })
     const disposeAgentCapabilities = ctx.webServer.register({ kind: 'exact', path: AGENT_CAPABILITIES_ROUTE, handler: createAgentCapabilitiesHandler(ctx) })
     const disposeAgentConfiguration = ctx.webServer.register({ kind: 'exact', path: AGENT_CONFIGURATION_ROUTE, handler: createAgentConfigurationHandler(ctx) })
-    return () => { disposeSession(); disposeNewSession(); disposeProfile(); disposeMobileLink(); disposeScenes(); disposeSceneLayouts(); disposeDockLayouts(); disposeAgentCapabilities(); disposeAgentConfiguration() }
+    return () => { artifact.dispose(); disposeArtifacts(); disposeArtifactFile(); disposeNativeWorkflow(); disposeWorkflow(); disposeSession(); disposeNewSession(); disposeProfile(); disposeMobileLink(); disposeScenes(); disposeSceneLayouts(); disposeDockLayouts(); disposeAgentCapabilities(); disposeAgentConfiguration() }
   }, 'tradeloom-shell: protected session and profile routes')
 }
 

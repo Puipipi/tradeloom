@@ -1,0 +1,226 @@
+diff --git a/apps/desktop/src/main.ts b/apps/desktop/src/main.ts
+index 80b8d08..3f26d40 100644
+--- a/apps/desktop/src/main.ts
++++ b/apps/desktop/src/main.ts
+@@ -1,5 +1,6 @@
+ import type { ProductEventMap, ProductEvent } from '@deepseek-ai/dsh-client-product-analytics/types'
+ import { WINDOWS_TITLEBAR_HEIGHT } from './windows-layout.ts'
++import { observeStartup, observeStartupWindow } from './startup-observation.ts'
+ /** Electron shell: desktop project ownership, custom protocol, windows, and lifecycle. */
+ 
+ import { readFile, writeFile } from 'node:fs/promises'
+@@ -509,12 +510,17 @@ async function main(): Promise<void> {
+     if (quitting || window === undefined || window.isDestroyed()) return Promise.resolve()
+     if (navigation?.window === window && navigation.url === url) return navigation.promise
+     const next = { window, url, promise: Promise.resolve() }
++    let navigationFailed = false
++    observeStartup('navigate', 'begin', { windowId: window.id })
+     next.promise = window.loadURL(url).catch((error: unknown) => {
++      navigationFailed = true
++      observeStartup('navigate', 'error', { windowId: window.id })
+       if (quitting || shuttingDown || window.isDestroyed() || navigation !== next
+         || (error instanceof Error && 'code' in error && error.code === 'ERR_ABORTED')) return
+       navigation = undefined
+       throw error
+     })
++    void next.promise.then(() => { observeStartup('navigate', navigationFailed ? 'skipped' : 'end', { windowId: window.id }) }, () => {})
+     navigation = next
+     return next.promise
+   }
+@@ -529,7 +535,9 @@ async function main(): Promise<void> {
+     return {
+       start: async () => {
+         const ready = await host.start()
++        observeStartup('authenticate', 'begin')
+         hostCookie = await authenticateWebHost(ready.url)
++        observeStartup('authenticate', 'end')
+         hostUrl = ready.url
+         if (ready.injections === undefined) throw new Error('Desktop Host did not provide boot injections')
+         injections = ready.injections
+@@ -1234,6 +1242,7 @@ async function main(): Promise<void> {
+     if (isQuitting() || recovery.active || window.isDestroyed()) return
+     if (activate) window.show()
+     else window.showInactive()
++    observeStartupWindow(window, () => BrowserWindow.getAllWindows().length)
+     enteredWorkspace = true
+     if (welcomeWindow !== undefined) {
+       welcomeWindow.close()
+@@ -1255,6 +1264,7 @@ async function main(): Promise<void> {
+     if (welcomeWindow !== undefined && !welcomeWindow.isDestroyed()) {
+       if (!welcomeWindow.isVisible()) void track('auth_page_view', {})
+       welcomeWindow.show()
++      observeStartupWindow(welcomeWindow, () => BrowserWindow.getAllWindows().length)
+       welcomeWindow.focus()
+       return Promise.resolve()
+     }
+@@ -1312,8 +1322,10 @@ async function main(): Promise<void> {
+     return openingWelcome
+   }
+   const openInitialWindow = async (): Promise<void> => {
++    observeStartup('initial-window', 'begin')
+     if (quitting || recovery.active) return
+     if (productWorkspace) {
++      observeStartup('initial-window-workspace', 'begin')
+       if (welcomeBackend === undefined) throw new Error('desktop welcome: backend unavailable')
+       const preference = await welcomeBackend.readLocalePreference()
+       if (isQuitting() || backend.state.phase !== 'ready') return
+@@ -1329,10 +1341,12 @@ async function main(): Promise<void> {
+     windowsLanguage = locale.id
+     refreshApplicationMenu()
+     if (!enteredWorkspace && needsWelcome({ loggedIn: state.loggedIn, hasApiKey: state.hasApiKey })) {
++      observeStartup('initial-window-welcome', 'begin')
+       // A later login must retain its own activation policy instead of replaying startup focus.
+       raiseAfterUpdate = false
+       await showWelcome()
+     } else {
++      observeStartup('initial-window-workspace', 'begin')
+       await enterWorkspace()
+     }
+   }
+diff --git a/apps/desktop/src/host-process.ts b/apps/desktop/src/host-process.ts
+index 948a88e..5ff708a 100644
+--- a/apps/desktop/src/host-process.ts
++++ b/apps/desktop/src/host-process.ts
+@@ -4,6 +4,7 @@ import { spawn, type ChildProcess } from 'node:child_process'
+ import { join } from 'node:path'
+ import type { PlatformSession } from '@deepseek-ai/dsh-deepseek-account'
+ import { desktopNodeEnvironment } from './node-environment.ts'
++import { observeStartup } from './startup-observation.ts'
+ 
+ interface ReadyEvent {
+   readonly type: 'ready'
+@@ -209,7 +210,10 @@ export class DesktopHostProcess {
+         child.kill('SIGTERM')
+         return
+       }
+-      if (message.type === 'ready') this.readyResolve({ url: message.url, injections: message.injections })
++      if (message.type === 'ready') {
++        observeStartup('host-ready-ipc', 'end')
++        this.readyResolve({ url: message.url, injections: message.injections })
++      }
+       else if (message.type === 'platform-session') this.onPlatformSession?.(message.session)
+       else if (message.type === 'shutdown-complete') {
+         if (this.stopping) this.shutdownCompleted = true
+@@ -225,6 +229,7 @@ export class DesktopHostProcess {
+     child.once('error', (error) => { this.fail(error) })
+     this.exitPromise = new Promise<void>((resolve) => {
+       child.once('close', (code) => {
++        observeStartup('host-close', 'end', { exitCode: code })
+         const suffix = this.stderr.trim() === '' ? '' : `: ${this.stderr.trim()}`
+         if (code !== 0 && code !== null) this.fail(new Error(`dsh desktop host exited with ${String(code)}${suffix}`))
+         else this.fail(new Error(`dsh desktop host stopped${suffix}`))
+diff --git a/apps/desktop/src/backend-controller.ts b/apps/desktop/src/backend-controller.ts
+index 3e85b86..2604cc6 100644
+--- a/apps/desktop/src/backend-controller.ts
++++ b/apps/desktop/src/backend-controller.ts
+@@ -1,6 +1,7 @@
+ /** Owns one backend startup and its quiescent teardown independently of windows. */
+ 
+ import { desktopErrorState } from './startup-error.ts'
++import { observeStartup } from './startup-observation.ts'
+ 
+ /** Backend availability presented by the desktop window. */
+ export type DesktopBackendState =
+@@ -65,6 +66,7 @@ export class DesktopBackendController<Host extends DesktopBackendHost> {
+     const previous = this.attempt
+     const attempt: Attempt<Host> = { cancelled: false, ...(previous?.cleanup === undefined ? {} : { cleanup: previous.cleanup }) }
+     this.attempt = attempt
++    observeStartup('backend-start', 'begin')
+     this.update({ phase: 'starting' })
+     const pending = Promise.resolve().then(async () => {
+       try {
+@@ -82,6 +84,7 @@ export class DesktopBackendController<Host extends DesktopBackendHost> {
+         // stop() can cancel this attempt while the child starts.
+         // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+         if (!attempt.cancelled) this.update({ phase: 'ready' })
++        observeStartup('backend-start', attempt.cancelled ? 'skipped' : 'end')
+       } catch (error) {
+         const cancelled = attempt.cancelled
+         attempt.cancelled = true
+@@ -150,6 +153,7 @@ export class DesktopBackendController<Host extends DesktopBackendHost> {
+   private update(state: DesktopBackendState): void {
+     if (this.closed) return
+     this.current = state
++    observeStartup('backend-state', state.phase)
+     try { this.publish(state) } catch (error) {
+       console.error('desktop backend state listener failed', error)
+     }
+diff --git a/apps/desktop/src/welcome-window.ts b/apps/desktop/src/welcome-window.ts
+index 61fda9e..8fe7b7f 100644
+--- a/apps/desktop/src/welcome-window.ts
++++ b/apps/desktop/src/welcome-window.ts
+@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
+ import { app, BrowserWindow, ipcMain, type BrowserWindowConstructorOptions, type IpcMainInvokeEvent } from 'electron'
+ import type { DesktopLocale } from './locale.ts'
+ import { WELCOME_IPC, type WelcomeOperations } from './welcome-api.ts'
++import { observeStartupWindow } from './startup-observation.ts'
+ 
+ /**
+  * Resolve the fixed-size welcome window's native material and controls.
+@@ -126,6 +127,7 @@ export async function openWelcomeWindow(locale: DesktopLocale, operations: Welco
+   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Another window can replace ownership during loadFile.
+   if (active && !window.isDestroyed()) {
+     window.show()
++    observeStartupWindow(window, () => BrowserWindow.getAllWindows().length)
+     void operations.analytics?.('auth_page_view', {})
+   }
+   return window
+diff --git a/apps/desktop/src/startup-observation.ts b/apps/desktop/src/startup-observation.ts
+new file mode 100644
+--- /dev/null
++++ b/apps/desktop/src/startup-observation.ts
+@@ -0,0 +1,54 @@
++/** Optional local startup spans. Observation must never decide application control flow. */
++import { appendFileSync } from 'node:fs'
++import { isAbsolute } from 'node:path'
++
++const STAGES = ['backend-start', 'backend-state', 'host-ready-ipc', 'host-close', 'authenticate',
++  'initial-window', 'initial-window-workspace', 'initial-window-welcome', 'navigate', 'window-show'] as const
++const STATUSES = ['begin', 'end', 'error', 'starting', 'ready', 'skipped'] as const
++type Stage = typeof STAGES[number]
++type Status = typeof STATUSES[number]
++interface WindowFields {
++  windowId?: number
++  windowCount?: number
++  visible?: boolean
++  minimized?: boolean
++  destroyed?: boolean
++  exitCode?: number | null
++}
++
++/** A missing or non-local absolute path disables the sink; write errors stay on the observation side. */
++export function createStartupObservation(path?: string,
++  append: (path: string, content: string) => void = (file, content) => { appendFileSync(file, content, { mode: 0o600, flag: 'a' }) },
++): (stage: Stage, status: Status, fields?: WindowFields) => void {
++  const enabled = typeof path === 'string' && isAbsolute(path) && !/^[\\/]{2}/u.test(path)
++  return (stage, status, fields = {}) => {
++    if (!enabled || !STAGES.includes(stage) || !STATUSES.includes(status)) return
++    try {
++      const safe: Record<string, number | boolean | null> = {}
++      for (const key of ['windowId', 'windowCount'] as const) {
++        const value = fields[key]
++        if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) safe[key] = value
++      }
++      for (const key of ['visible', 'minimized', 'destroyed'] as const) {
++        if (typeof fields[key] === 'boolean') safe[key] = fields[key]
++      }
++      if (fields.exitCode === null || (typeof fields.exitCode === 'number' && Number.isSafeInteger(fields.exitCode))) safe.exitCode = fields.exitCode
++      append(path, `${JSON.stringify({ stage, pid: process.pid, time: new Date().toISOString(), status, ...safe })}\n`)
++    } catch { /* The original startup result or exception retains ownership. */ }
++  }
++}
++
++export const observeStartup = createStartupObservation(process.env.DSH_DESKTOP_STARTUP_LOG_PATH)
++
++/** Reading window metadata is also a side observation and cannot throw into show(). */
++export function observeStartupWindow(window: {
++  readonly id: number
++  isVisible(): boolean
++  isMinimized(): boolean
++  isDestroyed(): boolean
++}, count: () => number): void {
++  try {
++    observeStartup('window-show', 'end', { windowId: window.id, windowCount: count(),
++      visible: window.isVisible(), minimized: window.isMinimized(), destroyed: window.isDestroyed() })
++  } catch { /* Window ownership and lifecycle remain with the caller. */ }
++}

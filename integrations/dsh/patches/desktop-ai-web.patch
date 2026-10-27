@@ -1,0 +1,390 @@
+diff --git a/apps/desktop/src/browser-guests.ts b/apps/desktop/src/browser-guests.ts
+--- a/apps/desktop/src/browser-guests.ts
++++ b/apps/desktop/src/browser-guests.ts
+@@ -1,8 +1,10 @@
+ /** Main-process ownership and fixed isolation policy for Sidebar webview guests. */
+ import { randomUUID } from 'node:crypto'
+-import { app, session, type BrowserWindow, type Session, type WebContents } from 'electron'
++import { app, session, BrowserWindow, dialog, Menu, shell, type Session, type WebContents } from 'electron'
++import { stat, writeFile } from 'node:fs/promises'
++import { basename } from 'node:path'
+ import type { DesktopBrowserLeaseId, DesktopBrowserOpenRequest, DesktopBrowserReservation } from '@deepseek-ai/dsh-client-ui-sidebar-browser/types'
+-import { DESKTOP_IPC } from './ipc.ts'
++import { DESKTOP_IPC, type DesktopAiWebState, type DesktopAiWebFileResult } from './ipc.ts'
+ 
+ interface GuestLease {
+   readonly owner: WebContents
+@@ -168,3 +170,219 @@
+       && (url.hostname === host.hostname || ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname))
+   }
+ }
++
++/** Persistent remote website window, isolated from product documents and personal DSH. */
++export class DesktopAiWebWindows {
++  private window: BrowserWindow | undefined
++  private owner: BrowserWindow | undefined
++  private phase: DesktopAiWebState['phase'] = 'closed'
++  private failure: DesktopAiWebState['error'] = null
++  private busy = false
++  private configured = false
++  private readonly partition = 'persist:tradeloom-ai-web-deepseek-v1'
++
++  /** @param hostUrl - authenticated application endpoint, never accessible to the website. */
++  constructor(private readonly hostUrl: () => string | undefined) {}
++
++  /** Accept only the fixed website provider; the renderer cannot provide URLs or paths. */
++  private validate(request: unknown): void {
++    if (request === null || typeof request !== 'object' || Array.isArray(request)
++      || Object.keys(request).join(',') !== 'provider'
++      || Reflect.get(request, 'provider') !== 'deepseek') throw new Error('ai web: invalid provider request')
++  }
++
++  /** Return non-secret window state without opening or focusing it. */
++  status(request: unknown): DesktopAiWebState {
++    this.validate(request)
++    const window = this.liveWindow()
++    return {
++      provider: 'deepseek', available: true, open: window !== undefined,
++      visible: window?.isVisible() ?? false,
++      phase: window === undefined ? 'closed' : this.phase,
++      error: window === undefined ? null : this.failure,
++      persistentSession: true,
++      origin: window !== undefined && this.allowedNavigation(window.webContents.getURL())
++        ? new URL(window.webContents.getURL()).origin : null,
++    }
++  }
++
++  /** Toggle the fixed real webpage; closing its window does not erase the isolated login. */
++  toggle(owner: BrowserWindow, request: unknown): DesktopAiWebState {
++    this.validate(request)
++    if (owner.isDestroyed()) throw new Error('ai web: owner closed')
++    const previous = this.liveWindow()
++    if (previous !== undefined) {
++      if (this.owner !== owner) throw new Error('ai web: window belongs to another owner')
++      if (previous.isVisible() && !previous.isMinimized()) previous.hide()
++      else { if (previous.isMinimized()) previous.restore(); previous.show(); previous.focus() }
++      return this.status(request)
++    }
++    const browserSession = session.fromPartition(this.partition)
++    if (!this.configured) {
++      this.configureSession(browserSession)
++      this.configured = true
++    }
++    const window = new BrowserWindow({
++      title: 'DeepSeek 网页 · 织贸助手', width: 1100, height: 780,
++      minWidth: 420, minHeight: 360, show: false,
++      frame: true, minimizable: true, maximizable: true, closable: true, resizable: true,
++      webPreferences: {
++        session: browserSession, sandbox: true, contextIsolation: true,
++        nodeIntegration: false, nodeIntegrationInWorker: false, nodeIntegrationInSubFrames: false,
++        webviewTag: false, webSecurity: true, allowRunningInsecureContent: false,
++        navigateOnDragDrop: false, plugins: false,
++      },
++    })
++    this.window = window
++    this.owner = owner
++    this.phase = 'loading'
++    this.failure = null
++    const owned = (): boolean => this.window === window && !window.isDestroyed()
++    const ownerClosed = (): void => { if (owned()) window.destroy() }
++    owner.once('closed', ownerClosed)
++    window.once('closed', () => {
++      owner.removeListener('closed', ownerClosed)
++      if (this.window === window) { this.window = undefined; this.owner = undefined; this.phase = 'closed'; this.failure = null }
++    })
++    window.webContents.on('did-start-loading', () => { if (owned()) { this.phase = 'loading'; this.failure = null } })
++    window.webContents.on('did-finish-load', () => { if (owned()) { this.phase = 'ready'; this.failure = null } })
++    window.webContents.on('did-fail-load', (_event, code, _description, _url, mainFrame) => {
++      if (owned() && mainFrame && code !== -3) { this.phase = 'error'; this.failure = 'page_load_failed' }
++    })
++    window.webContents.on('render-process-gone', () => {
++      if (owned()) { this.phase = 'error'; this.failure = 'page_process_stopped' }
++    })
++    window.webContents.on('will-frame-navigate', (event) => {
++      if (event.isMainFrame && !this.allowedNavigation(event.url)) event.preventDefault()
++    })
++    window.webContents.on('will-redirect', (event, url, _inPlace, mainFrame) => {
++      if (mainFrame && !this.allowedNavigation(url)) event.preventDefault()
++    })
++    window.webContents.on('will-attach-webview', event => { event.preventDefault() })
++    window.webContents.setWindowOpenHandler(({ url }) => {
++      if (this.allowedExternal(url)) void shell.openExternal(url).catch(() => {})
++      return { action: 'deny' }
++    })
++    window.setMenu(Menu.buildFromTemplate([
++      { label: '文件', submenu: [
++        { label: '上传文件到网页…', click: () => { void this.menuAction(() => this.upload(owner, { provider: 'deepseek' })) } },
++        { label: '保存可见网页文字…', click: () => { void this.menuAction(() => this.saveText(owner, { provider: 'deepseek' })) } },
++        { type: 'separator' }, { role: 'close' },
++      ] },
++      { role: 'editMenu' },
++      { label: '网页', submenu: [
++        { label: '刷新', click: () => { if (owned()) window.webContents.reload() } },
++        { label: '在浏览器打开', click: () => { void shell.openExternal('https://chat.deepseek.com/').catch(() => {}) } },
++      ] },
++    ]))
++    void window.loadURL('https://chat.deepseek.com/').catch(() => {
++      if (owned()) { this.phase = 'error'; this.failure = 'page_load_failed' }
++    })
++    window.show()
++    return this.status(request)
++  }
++
++  /** Let the user pick one local file; deliver it to a uniquely identified website upload input. */
++  async upload(owner: BrowserWindow, request: unknown): Promise<DesktopAiWebFileResult> {
++    const window = this.requireWindow(owner, request)
++    if (this.busy) throw new Error('ai web: file operation busy')
++    this.busy = true
++    try {
++      const choice = await dialog.showOpenDialog(window, { title: '上传文件到 DeepSeek 网页', properties: ['openFile'] })
++      if (choice.canceled || choice.filePaths.length !== 1) return { cancelled: true }
++      this.requireSameWindow(window)
++      const path = choice.filePaths[0]!
++      const info = await stat(path)
++      if (!info.isFile() || info.size > 20 * 1024 * 1024) throw new Error('ai web: select one file no larger than 20 MiB')
++      const debuggerApi = window.webContents.debugger
++      if (debuggerApi.isAttached()) throw new Error('ai web: website debugger busy')
++      debuggerApi.attach('1.3')
++      try {
++        const document = await debuggerApi.sendCommand('DOM.getDocument', { depth: -1, pierce: true }) as { root: { nodeId: number } }
++        const inputs = await debuggerApi.sendCommand('DOM.querySelectorAll', { nodeId: document.root.nodeId, selector: 'input[type="file"]' }) as { nodeIds: number[] }
++        if (inputs.nodeIds.length !== 1) throw new Error('ai web: website upload control unavailable; log in and open the website upload control')
++        this.requireSameWindow(window)
++        await debuggerApi.sendCommand('DOM.setFileInputFiles', { nodeId: inputs.nodeIds[0], files: [path] })
++      } finally { if (debuggerApi.isAttached()) debuggerApi.detach() }
++      return { cancelled: false, name: basename(path), bytes: info.size, delivered: true, websiteConfirmed: false }
++    } finally { this.busy = false }
++  }
++
++  /** Save visible page text through a native dialog; never read input values or expose paths to the webpage. */
++  async saveText(owner: BrowserWindow, request: unknown): Promise<DesktopAiWebFileResult> {
++    const window = this.requireWindow(owner, request)
++    if (this.busy) throw new Error('ai web: file operation busy')
++    this.busy = true
++    try {
++      const text: unknown = await window.webContents.executeJavaScript('document.body.innerText', false)
++      if (typeof text !== 'string' || Buffer.byteLength(text, 'utf8') > 2 * 1024 * 1024) throw new Error('ai web: visible text exceeds 2 MiB')
++      const choice = await dialog.showSaveDialog(window, { title: '保存可见网页文字', defaultPath: 'DeepSeek网页文字.txt', filters: [{ name: '文本', extensions: ['txt'] }] })
++      if (choice.canceled || choice.filePath === undefined) return { cancelled: true }
++      this.requireSameWindow(window)
++      await writeFile(choice.filePath, text, 'utf8')
++      return { cancelled: false, name: basename(choice.filePath), bytes: Buffer.byteLength(text, 'utf8'), saved: true }
++    } finally { this.busy = false }
++  }
++
++  private async menuAction(action: () => Promise<unknown>): Promise<void> {
++    try { await action() }
++    catch (error) {
++      const window = this.liveWindow()
++      if (window !== undefined) await dialog.showMessageBox(window, {
++        type: 'info', title: 'DeepSeek 网页文件操作',
++        message: error instanceof Error ? error.message : '网页文件操作未完成',
++      })
++    }
++  }
++
++  private liveWindow(): BrowserWindow | undefined {
++    return this.window !== undefined && !this.window.isDestroyed() ? this.window : undefined
++  }
++
++  private requireWindow(owner: BrowserWindow, request: unknown): BrowserWindow {
++    this.validate(request)
++    const window = this.liveWindow()
++    if (window === undefined || this.owner !== owner || owner.isDestroyed()) throw new Error('ai web: open the owned webpage first')
++    this.requireSameWindow(window)
++    return window
++  }
++
++  private requireSameWindow(window: BrowserWindow): void {
++    if (this.liveWindow() !== window || new URL(window.webContents.getURL()).origin !== 'https://chat.deepseek.com') throw new Error('ai web: website is not ready')
++  }
++
++  private allowedNavigation(value: string): boolean {
++    if (!URL.canParse(value)) return false
++    const url = new URL(value)
++    return url.protocol === 'https:' && url.username === '' && url.password === '' && url.port === ''
++      && (url.hostname === 'deepseek.com' || url.hostname.endsWith('.deepseek.com'))
++  }
++
++  private allowedExternal(value: string): boolean {
++    if (!URL.canParse(value)) return false
++    const url = new URL(value)
++    return url.protocol === 'https:' && url.username === '' && url.password === '' && !this.applicationHost(url)
++  }
++
++  private applicationHost(url: URL): boolean {
++    if (['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) return true
++    const host = this.hostUrl()
++    return host !== undefined && url.hostname === new URL(host).hostname
++  }
++
++  private configureSession(browserSession: Session): void {
++    browserSession.setPermissionRequestHandler((_contents, _permission, callback) => { callback(false) })
++    browserSession.setPermissionCheckHandler(() => false)
++    browserSession.setDevicePermissionHandler(() => false)
++    browserSession.setDisplayMediaRequestHandler((_request, callback) => { callback({}) })
++    browserSession.webRequest.onBeforeRequest((details, callback) => {
++      const url = new URL(details.url)
++      callback({ cancel: url.username !== '' || url.password !== '' || this.applicationHost(url)
++        || !['https:', 'wss:', 'about:', 'data:', 'blob:'].includes(url.protocol) })
++    })
++    browserSession.on('will-download', (event, item, contents) => {
++      if (contents === undefined || contents !== this.liveWindow()?.webContents) { event.preventDefault(); return }
++      item.setSaveDialogOptions({ title: '保存 DeepSeek 网页下载', defaultPath: basename(item.getFilename()) })
++    })
++  }
++}
+diff --git a/apps/desktop/src/ipc.ts b/apps/desktop/src/ipc.ts
+--- a/apps/desktop/src/ipc.ts
++++ b/apps/desktop/src/ipc.ts
+@@ -17,6 +17,10 @@
+   onboardingActive: 'dsh-desktop:onboarding-active',
+   onboardingApiKey: 'dsh-desktop:onboarding-api-key',
+   bootFailed: 'dsh-desktop:boot-failed',
++  aiWebToggle: 'tradeloom:ai-web-toggle',
++  aiWebStatus: 'tradeloom:ai-web-status',
++  aiWebUpload: 'tradeloom:ai-web-upload',
++  aiWebSaveText: 'tradeloom:ai-web-save-text',
+   browserAcquire: 'dsh-desktop:browser-acquire',
+   browserRelease: 'dsh-desktop:browser-release',
+   panePopoutUrl: 'dsh-desktop:pane-popout-url',
+@@ -69,9 +73,40 @@
+   readonly failure?: DesktopUpdateFailureKind
+ }
+ 
++/** Fixed real website entry; no arbitrary URL, credentials or local path is accepted. */
++export interface DesktopAiWebRequest { readonly provider: 'deepseek' }
++
++/** Non-secret state of the independently owned persistent webpage window. */
++export interface DesktopAiWebState {
++  readonly provider: 'deepseek'
++  readonly available: true
++  readonly open: boolean
++  readonly visible: boolean
++  readonly phase: 'closed' | 'loading' | 'ready' | 'error'
++  readonly error: 'page_load_failed' | 'page_process_stopped' | null
++  readonly persistentSession: true
++  readonly origin: string | null
++}
++
++/** File dialog result; delivery is not evidence the remote website parsed a file. */
++export interface DesktopAiWebFileResult {
++  readonly cancelled: boolean
++  readonly name?: string
++  readonly bytes?: number
++  readonly delivered?: true
++  readonly websiteConfirmed?: false
++  readonly saved?: true
++}
++
+ /** Product documents cannot supply update versions, package URLs, or installation authorization. */
+ export interface DshDesktopProductApi {
+   readonly protocolVersion: 1
++  readonly aiWeb: {
++    toggle(request: DesktopAiWebRequest): Promise<DesktopAiWebState>
++    status(request: DesktopAiWebRequest): Promise<DesktopAiWebState>
++    upload(request: DesktopAiWebRequest): Promise<DesktopAiWebFileResult>
++    saveText(request: DesktopAiWebRequest): Promise<DesktopAiWebFileResult>
++  }
+   readonly browser: DesktopBrowserBridge
+   readonly panePopout: { getUrl(): Promise<string> }
+   readonly keyboard: DesktopKeyboardApi
+diff --git a/apps/desktop/src/preload-app.ts b/apps/desktop/src/preload-app.ts
+--- a/apps/desktop/src/preload-app.ts
++++ b/apps/desktop/src/preload-app.ts
+@@ -13,6 +13,12 @@
+ function createProductApi(): DshDesktopProductApi {
+   return {
+     protocolVersion: 1,
++    aiWeb: {
++      toggle: request => ipcRenderer.invoke(DESKTOP_IPC.aiWebToggle, request) as ReturnType<DshDesktopProductApi['aiWeb']['toggle']>,
++      status: request => ipcRenderer.invoke(DESKTOP_IPC.aiWebStatus, request) as ReturnType<DshDesktopProductApi['aiWeb']['status']>,
++      upload: request => ipcRenderer.invoke(DESKTOP_IPC.aiWebUpload, request) as ReturnType<DshDesktopProductApi['aiWeb']['upload']>,
++      saveText: request => ipcRenderer.invoke(DESKTOP_IPC.aiWebSaveText, request) as ReturnType<DshDesktopProductApi['aiWeb']['saveText']>,
++    },
+     browser: createDesktopBrowserBridge(),
+     panePopout: { getUrl: () => ipcRenderer.invoke(DESKTOP_IPC.panePopoutUrl) as Promise<string> },
+     deviceInfo: () => ipcRenderer.invoke(DESKTOP_IPC.deviceInfo) as Promise<string>,
+diff --git a/apps/desktop/src/main.ts b/apps/desktop/src/main.ts
+--- a/apps/desktop/src/main.ts
++++ b/apps/desktop/src/main.ts
+@@ -61,7 +61,7 @@
+ import { readDesktopSettings } from './settings.ts'
+ import { DesktopUpdateDialog, type UpdateDialogOptions } from './update-dialog.ts'
+ import { readDesktopRuntime } from './runtime-tree.ts'
+-import { DesktopBrowserGuests } from './browser-guests.ts'
++import { DesktopBrowserGuests, DesktopAiWebWindows } from './browser-guests.ts'
+ import { installDesktopShortcuts } from './keyboard.ts'
+ import { DesktopUpdateOverlays } from './update-overlay.ts'
+ import { DesktopQuitConfirmation } from './quit-confirmation.ts'
+@@ -478,6 +478,7 @@
+   let hostUrl: string | undefined
+   let hostCookie: string | undefined
+   const browserGuests = new DesktopBrowserGuests(() => hostUrl)
++  const aiWebWindows = new DesktopAiWebWindows(() => hostUrl)
+   let injections: readonly unknown[] = []
+   let welcomeBackend: DesktopWelcomeBackend | undefined
+   let reportedLaunch = false
+@@ -792,6 +793,23 @@
+ 
+   registerDesktopPanePopoutUrlHandler(ipcMain, DESKTOP_IPC.panePopoutUrl, desktopPanePopoutTickets, assertProductSender)
+ 
++  ipcMain.handle(DESKTOP_IPC.aiWebToggle, (event, request: unknown) => {
++    assertProductSender(event)
++    return aiWebWindows.toggle(mainWindow!, request)
++  })
++  ipcMain.handle(DESKTOP_IPC.aiWebStatus, (event, request: unknown) => {
++    assertProductSender(event)
++    return aiWebWindows.status(request)
++  })
++  ipcMain.handle(DESKTOP_IPC.aiWebUpload, (event, request: unknown) => {
++    assertProductSender(event)
++    return aiWebWindows.upload(mainWindow!, request)
++  })
++  ipcMain.handle(DESKTOP_IPC.aiWebSaveText, (event, request: unknown) => {
++    assertProductSender(event)
++    return aiWebWindows.saveText(mainWindow!, request)
++  })
++
+   ipcMain.handle(DESKTOP_IPC.browserAcquire, (event, workspace: unknown) => {
+     assertProductSender(event)
+     return browserGuests.acquire(event.sender, workspace)
+diff --git a/apps/desktop/tests/main-startup.spec.ts b/apps/desktop/tests/main-startup.spec.ts
+--- a/apps/desktop/tests/main-startup.spec.ts
++++ b/apps/desktop/tests/main-startup.spec.ts
+@@ -13,7 +13,7 @@
+ import { DesktopUpdatePreparationError } from '../src/update-error.ts'
+ import { writeCrashReport } from '../src/crash-report.ts'
+ 
+-type InvokeEvent = { sender?: unknown; senderFrame: { url: string } }
++type InvokeEvent = { sender?: unknown; senderFrame: { url: string } | null }
+ type InvokeHandler = (event: InvokeEvent, ...args: unknown[]) => unknown
+ 
+ vi.mock('../src/web-document.ts', async importOriginal => ({
+@@ -916,6 +916,26 @@
+     }
+   })
+ 
++  it('isolates real AI webpage IPC to the owned application top frame', async () => {
++    await readyForUpdate()
++    const sender = harness.windows[0]!.webContents
++    const owned = { sender, senderFrame: sender.mainFrame }
++    const request = { provider: 'deepseek' }
++    for (const channel of [DESKTOP_IPC.aiWebToggle, DESKTOP_IPC.aiWebStatus, DESKTOP_IPC.aiWebUpload, DESKTOP_IPC.aiWebSaveText]) {
++      const handler = harness.handlers.get(channel)!
++      expect(handler).toBeDefined()
++      for (const event of [
++        { sender: {}, senderFrame: sender.mainFrame },
++        { sender, senderFrame: { url: sender.mainFrame.url } },
++        { sender, senderFrame: null },
++      ]) expect(() => handler(event, request)).toThrow(/unowned renderer|without a sender frame/)
++      await expect(Promise.resolve().then(() => handler(owned, { provider: 'deepseek', url: 'https://example.com' }))).rejects.toThrow('invalid provider')
++    }
++    expect(harness.handlers.get(DESKTOP_IPC.aiWebStatus)!(owned, request)).toMatchObject({
++      provider: 'deepseek', open: false, visible: false, phase: 'closed', persistentSession: true,
++    })
++  })
++
+   it('accepts product IPC only from the current application top frame in the owned main window', async () => {
+     await readyForUpdate()
+     const sender = harness.windows[0]!.webContents

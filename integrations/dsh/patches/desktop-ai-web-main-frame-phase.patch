@@ -1,0 +1,18 @@
+diff --git a/apps/desktop/src/browser-guests.ts b/apps/desktop/src/browser-guests.ts
+--- a/apps/desktop/src/browser-guests.ts
++++ b/apps/desktop/src/browser-guests.ts
+@@ -244,8 +244,12 @@
+       owner.removeListener('closed', ownerClosed)
+       if (this.window === window) { this.window = undefined; this.owner = undefined; this.phase = 'closed'; this.failure = null }
+     })
+-    window.webContents.on('did-start-loading', () => { if (owned()) { this.phase = 'loading'; this.failure = null } })
+-    window.webContents.on('did-finish-load', () => { if (owned()) { this.phase = 'ready'; this.failure = null } })
++    window.webContents.on('did-start-navigation', (_event, _url, inPlace, mainFrame) => {
++      if (owned() && mainFrame && !inPlace) { this.phase = 'loading'; this.failure = null }
++    })
++    window.webContents.on('did-frame-finish-load', (_event, mainFrame) => {
++      if (owned() && mainFrame) { this.phase = 'ready'; this.failure = null }
++    })
+     window.webContents.on('did-fail-load', (_event, code, _description, _url, mainFrame) => {
+       if (owned() && mainFrame && code !== -3) { this.phase = 'error'; this.failure = 'page_load_failed' }
+     })

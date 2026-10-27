@@ -8650,7 +8650,7 @@ diff --git a/apps/desktop/package.json b/apps/desktop/package.json
    "name": "@deepseek-ai/dsh-desktop",
 +  "dshDesktopAppId": "cn.tradeloom.workbench",
    "description": "Electron desktop shell for a bundled dsh runtime and external plugins",
-   "version": "0.2.1-rc.2",
+   "version": "0.2.1-rc.3",
    "private": true,
 diff --git a/scripts/client-build-environment.client.spec.ts b/scripts/client-build-environment.client.spec.ts
 index 3c89262..3ca5bed 100644

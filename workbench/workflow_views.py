@@ -18,6 +18,7 @@ from .delivery.service import (
     list_workflow_deliverables,
 )
 from .views import (
+    ARTIFACT_TYPE_LABELS,
     AGENT_ROLE_LABELS,
     STATUS_LABELS,
     STEP_LABELS,
@@ -100,6 +101,90 @@ FACT_FIELD_LABELS = {
     "english_name": "英文名称（人工填写）",
 }
 PRODUCT_COLUMN_FIELDS = frozenset(FACT_FIELD_LABELS) - {"english_name"}
+
+GRAPH_REF_KEYS = (
+    "batch_id",
+    "product_id",
+    "product_ids",
+    "all_product_ids",
+    "revision_id",
+    "revision_ids",
+    "product_revision_ids",
+    "all_revision_ids",
+    "confirmed_revision_ids",
+    "task_file_ids",
+    "subtask_id",
+    "subtask_ids",
+    "scope",
+)
+
+
+def _graph_refs(value: Any, allowed_keys: tuple[str, ...] = GRAPH_REF_KEYS) -> dict[str, Any]:
+    """Project reference-only identifiers; never pass arbitrary persisted JSON to the graph."""
+    if not isinstance(value, dict):
+        return {}
+    projected = {}
+    for key in allowed_keys:
+        item = value.get(key)
+        if key == "scope":
+            if item == "full_batch":
+                projected[key] = item
+            continue
+        if isinstance(item, str) and len(item) <= 240:
+            projected[key] = item
+        elif isinstance(item, list):
+            projected[key] = [part for part in item if isinstance(part, str) and len(part) <= 240][:200]
+    return projected
+
+
+def _graph_schema(value: Any) -> dict[str, Any]:
+    """Keep structural schema facts while excluding examples, defaults, and runtime values."""
+    if not isinstance(value, dict):
+        return {}
+    projected: dict[str, Any] = {}
+    for key in ("type", "format", "minItems", "maxItems", "minLength", "maxLength", "minimum", "maximum"):
+        item = value.get(key)
+        if isinstance(item, (str, int, float)) and not isinstance(item, bool):
+            projected[key] = item
+    required = value.get("required")
+    if isinstance(required, list):
+        projected["required"] = [item for item in required if isinstance(item, str)][:200]
+    properties = value.get("properties")
+    if isinstance(properties, dict):
+        projected["properties"] = {
+            key: _graph_schema(item)
+            for key, item in list(properties.items())[:200]
+            if isinstance(key, str) and len(key) <= 120 and isinstance(item, dict)
+        }
+    items = value.get("items")
+    if isinstance(items, dict):
+        projected["items"] = _graph_schema(items)
+    additional = value.get("additionalProperties")
+    if isinstance(additional, bool):
+        projected["additionalProperties"] = additional
+    elif isinstance(additional, dict):
+        projected["additionalProperties"] = _graph_schema(additional)
+    return projected
+
+
+def _graph_result_summary(value: Any) -> dict[str, Any]:
+    """Expose only small, stable outcome fields on a graph node."""
+    result = value.get("result") if isinstance(value, dict) else None
+    if not isinstance(result, dict):
+        return {}
+    projected = {}
+    for key in ("status", "data_readiness", "quality_scope"):
+        item = result.get(key)
+        if isinstance(item, str) and len(item) <= 80:
+            projected[key] = item
+    generated = result.get("artifacts_generated")
+    if isinstance(generated, bool):
+        projected["artifacts_generated"] = generated
+    for key in ("products", "checks"):
+        item = result.get(key)
+        if isinstance(item, list):
+            projected[f"{key}_count"] = len(item)
+    return projected
 
 
 def _reference_rows(value: Any) -> list[dict[str, str]]:
@@ -645,6 +730,110 @@ def workflow_detail(request, workflow_id: str):
         and data["unresolved_review_count"] == 0
     )
     deliverables = list_workflow_deliverables(workflow.id)
+    for artifact in deliverables["artifacts"]:
+        artifact["status_label"] = _label(STATUS_LABELS, artifact.get("status"))
+        for version in artifact["versions"]:
+            version["status_label"] = _label(STATUS_LABELS, version.get("status"))
+
+    # The graph gets a purpose-built DTO. Persisted JSON fields can contain
+    # user data, execution output, or private extensions, so they are never
+    # passed through wholesale to client-side node inspectors.
+    workflow_graph_plan = []
+    for index, item in enumerate(plan.get("subtasks", []) if isinstance(plan.get("subtasks"), list) else []):
+        if not isinstance(item, dict):
+            continue
+        workflow_graph_plan.append({
+            "key": item.get("key") if isinstance(item.get("key"), str) else "",
+            "agent_role": item.get("agent_role") if isinstance(item.get("agent_role"), str) else "",
+            "role_label": item.get("role_label") if isinstance(item.get("role_label"), str) else "",
+            "order": item.get("order") if isinstance(item.get("order"), int) else index + 1,
+            "depends_on": [value for value in item.get("depends_on", []) if isinstance(value, str)] if isinstance(item.get("depends_on"), list) else [],
+            "required_fields": [value for value in item.get("required_fields", []) if isinstance(value, str)] if isinstance(item.get("required_fields"), list) else [],
+            "input_schema": _graph_schema(item.get("input_schema")),
+            "output_schema": _graph_schema(item.get("output_schema")),
+            "input_refs": _graph_refs(item.get("input_refs")),
+        })
+    workflow_graph_subtasks = []
+    for subtask in data["subtasks"]:
+        safe_output = _graph_result_summary(subtask.get("output_refs"))
+        workflow_graph_subtasks.append({
+            "id": subtask["id"],
+            "agent_role": subtask["agent_role"],
+            "role_label": subtask["role_label"],
+            "status": subtask["status"],
+            "status_label": subtask["status_label"],
+            "depends_on": [value for value in subtask["depends_on"] if isinstance(value, str)],
+            "input_refs": _graph_refs(subtask.get("input_refs")),
+            "output_refs": {"result": safe_output} if safe_output else {},
+        })
+    workflow_graph_steps = []
+    for step in data["steps"]:
+        input_refs = step.get("input_refs") if isinstance(step.get("input_refs"), dict) else {}
+        output_refs = step.get("output_refs") if isinstance(step.get("output_refs"), dict) else {}
+        workflow_graph_steps.append({
+            "id": step["id"],
+            "step_key": step["step_key"],
+            "step_label": step["step_label"],
+            "status": step["status"],
+            "status_label": step["status_label"],
+            "attempt": step["attempt"],
+            "input_refs": _graph_refs(input_refs, ("subtask_id", "review_ids")),
+            "output_refs": _graph_refs(output_refs, ("artifact_version_ids", "review_ids")),
+        })
+
+    # The graph receives only the persisted review references needed to draw
+    # provenance edges. Editable review answers remain in the existing forms.
+    workflow_graph_reviews = []
+    for review in data["reviews"]:
+        metadata = source_conflict_by_id.get(review["id"])
+        metadata = metadata if isinstance(metadata, dict) else {}
+        subtask_id = metadata.get("subtask_id") if isinstance(metadata.get("subtask_id"), str) else ""
+        origin_step_id = metadata.get("origin_step_id") if isinstance(metadata.get("origin_step_id"), str) else ""
+        raw_result_ref = metadata.get("result_ref")
+        expected_result_ref = (
+            f"workflow_step:{origin_step_id}:output_refs.result_snapshot"
+            if origin_step_id
+            else f"subtask:{subtask_id}:output_refs.result" if subtask_id else ""
+        )
+        workflow_graph_reviews.append({
+            "id": review["id"],
+            "item_ref": review["item_ref"],
+            "question": review["question"],
+            "options": review["options_display"],
+            "status": review["status"],
+            "status_label": review["status_label"],
+            "source_refs": _graph_refs(review.get("source_refs"), ("product_id", "revision_id")),
+            "subtask_id": subtask_id,
+            "origin_step_id": origin_step_id,
+            "result_ref": expected_result_ref if raw_result_ref == expected_result_ref else "",
+            "ui_kind": review["ui_kind"],
+            "ui_supported": review["ui_supported"],
+            "ui_applied": review["ui_applied"],
+        })
+    workflow_graph_artifacts = []
+    for artifact in deliverables["artifacts"]:
+        workflow_graph_artifacts.append({
+            "id": artifact["id"],
+            "artifact_type": artifact["artifact_type"],
+            "current_version": artifact["current_version"],
+            "status": artifact["status"],
+            "status_label": artifact["status_label"],
+            "versions": [
+                {
+                    "id": version["id"],
+                    "version": version["version"],
+                    "status": version["status"],
+                    "status_label": version["status_label"],
+                    "sha256": version["sha256"],
+                    "preview_url": version["preview_url"],
+                    "download_url": version["download_url"],
+                }
+                for version in artifact["versions"]
+            ],
+            "artifact_type_label": ARTIFACT_TYPE_LABELS.get(
+                artifact.get("artifact_type"), artifact.get("artifact_type", "交付文件")
+            ),
+        })
 
     return render(
         request,
@@ -680,5 +869,10 @@ def workflow_detail(request, workflow_id: str):
             review_available=review_available,
             complete_available=workflow.status == "running" and workflow.current_step == "complete_workflow",
             deliverables=deliverables,
+            workflow_graph_reviews=workflow_graph_reviews,
+            workflow_graph_artifacts=workflow_graph_artifacts,
+            workflow_graph_plan=workflow_graph_plan,
+            workflow_graph_subtasks=workflow_graph_subtasks,
+            workflow_graph_steps=workflow_graph_steps,
         ),
     )

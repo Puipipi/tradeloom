@@ -63,6 +63,25 @@ async function nextRuntimeFixture(fx, name = 'runtime-next') {
   return { runtime, runtimeBundle: path.join(runtime, 'node_modules', ...packageName.split('/')) }
 }
 
+async function desktopMigrationFixture(t) {
+  const fx = await fixture(t)
+  const previousProfile = fx.profileDir
+  const previousRecord = path.join(fx.home, 'tradeloom-launcher-tradeloom.json')
+  const profileDir = path.join(fx.home, 'profiles', 'desktop')
+  const profileBundle = path.join(profileDir, 'node_modules', ...packageName.split('/'))
+  await rm(previousProfile, { recursive: true, force: true })
+  await rm(previousRecord, { force: true })
+  await mkdir(profileDir, { recursive: true })
+  await writeFile(path.join(profileDir, 'package.json'), JSON.stringify({ dsh: { profile: { bundles: profileBundles } } }) + '\n')
+  await mkdir(path.dirname(profileBundle), { recursive: true })
+  await cp(fx.source, profileBundle, { recursive: true })
+  await writeFile(path.join(profileDir, 'sessions.json'), 'desktop-session-sentinel')
+  await writeFile(path.join(fx.home, 'tradeloom-launcher-desktop.json'), JSON.stringify({
+    schema: 1, runtime: await realpath(fx.runtime), packageName, bundleHash: fx.oldHash, profile: 'desktop',
+  }, null, 2) + '\n')
+  return { ...fx, profileDir, profileBundle, recordPath: path.join(fx.home, 'tradeloom-launcher-desktop.json') }
+}
+
 test('explicit sync recovers a source bundle change and leaves profile/session/runtime receipt data intact', async t => {
   const fx = await fixture(t)
   await writeFile(path.join(fx.source, 'roles.js'), 'export const version = "new"\n')
@@ -200,6 +219,71 @@ test('explicit runtime migration accepts a destination already at the current so
   assert.equal(await hashTree(next.runtimeBundle, ['package.json', 'roles.js']), result.bundleHash)
 })
 
+test('desktop migration updates only bundle copies and runtime record while preserving session state', async t => {
+  const fx = await desktopMigrationFixture(t)
+  const next = await nextRuntimeFixture(fx)
+  await writeFile(path.join(fx.source, 'roles.js'), 'export const version = "candidate9"\n')
+  const beforeProfileManifest = await readFile(path.join(fx.profileDir, 'package.json'), 'utf8')
+  const result = await syncDevBundleExclusive({
+    runtimePath: next.runtime, previousRuntimePath: fx.runtime, home: fx.home, mode: 'desktop', source: fx.source,
+    validateRuntime: fx.validateRuntime, validatePreviousRuntime: fx.validateRuntime,
+    expectedPreviousBundleHash: fx.oldHash, transactionId: 'desktop-rc2-migration',
+  })
+  const currentHash = await hashTree(fx.source, ['package.json', 'roles.js'])
+  assert.equal(result.bundleHash, currentHash)
+  assert.equal(await hashTree(next.runtimeBundle, ['package.json', 'roles.js']), currentHash)
+  assert.equal(await hashTree(fx.profileBundle, ['package.json', 'roles.js']), currentHash)
+  assert.equal(await readFile(path.join(fx.runtimeBundle, 'roles.js'), 'utf8'), 'export const version = "old"\n')
+  const record = JSON.parse(await readFile(fx.recordPath, 'utf8'))
+  assert.equal(record.runtime, await realpath(next.runtime))
+  assert.equal(record.bundleHash, currentHash)
+  assert.equal(await readFile(path.join(fx.profileDir, 'sessions.json'), 'utf8'), 'desktop-session-sentinel')
+  assert.equal(await readFile(path.join(fx.profileDir, 'package.json'), 'utf8'), beforeProfileManifest)
+  assert.equal(await readFile(path.join(fx.runtime, '.tradeloom-desktop-build-receipt.json'), 'utf8'), 'receipt-sentinel')
+  await assert.rejects(lstat(path.join(fx.home, 'tradeloom-launcher-tradeloom.json')), { code: 'ENOENT' })
+})
+
+test('desktop migration rejects a previous runtime not bound by the desktop record', async t => {
+  const fx = await desktopMigrationFixture(t)
+  const next = await nextRuntimeFixture(fx)
+  const unrelated = path.join(fx.root, 'unrelated-runtime')
+  await mkdir(unrelated)
+  await assert.rejects(syncDevBundle({
+    runtimePath: next.runtime, previousRuntimePath: unrelated, home: fx.home, mode: 'desktop', source: fx.source,
+    validateRuntime: fx.validateRuntime, validatePreviousRuntime: fx.validateRuntime,
+    expectedPreviousBundleHash: fx.oldHash, transactionId: 'desktop-wrong-previous',
+  }), /记录与所选自有 profile 不匹配/)
+  await assert.rejects(lstat(next.runtimeBundle), { code: 'ENOENT' })
+})
+
+test('desktop migration refuses a profile record outside the fixed prior bundle hash', async t => {
+  const fx = await desktopMigrationFixture(t)
+  const next = await nextRuntimeFixture(fx)
+  await assert.rejects(syncDevBundle({
+    runtimePath: next.runtime, previousRuntimePath: fx.runtime, home: fx.home, mode: 'desktop', source: fx.source,
+    validateRuntime: fx.validateRuntime, validatePreviousRuntime: fx.validateRuntime,
+    expectedPreviousBundleHash: '0'.repeat(64), transactionId: 'desktop-wrong-bundle-hash',
+  }), /不属于已知先前 bundle/)
+  await assert.rejects(lstat(next.runtimeBundle), { code: 'ENOENT' })
+})
+
+test('desktop migration restores old bindings after a failed record commit', async t => {
+  const fx = await desktopMigrationFixture(t)
+  const next = await nextRuntimeFixture(fx)
+  const beforeRecord = await readFile(fx.recordPath, 'utf8')
+  const beforeProfile = await readFile(path.join(fx.profileBundle, 'roles.js'), 'utf8')
+  await assert.rejects(syncDevBundle({
+    runtimePath: next.runtime, previousRuntimePath: fx.runtime, home: fx.home, mode: 'desktop', source: fx.source,
+    validateRuntime: fx.validateRuntime, validatePreviousRuntime: fx.validateRuntime,
+    expectedPreviousBundleHash: fx.oldHash, transactionId: 'desktop-rollback',
+    beforeRecordCommit: () => { throw new Error('injected desktop migration commit failure') },
+  }), /injected desktop migration commit failure/)
+  await assert.rejects(lstat(next.runtimeBundle), { code: 'ENOENT' })
+  assert.equal(await readFile(fx.recordPath, 'utf8'), beforeRecord)
+  assert.equal(await readFile(path.join(fx.profileBundle, 'roles.js'), 'utf8'), beforeProfile)
+  assert.equal(await readFile(path.join(fx.runtimeBundle, 'roles.js'), 'utf8'), 'export const version = "old"\n')
+})
+
 test('failed record commit restores both bundle copies and the original launcher record', async t => {
   const fx = await fixture(t)
   await writeFile(path.join(fx.source, 'roles.js'), 'export const version = "new"\n')
@@ -229,4 +313,28 @@ test('sync refuses an unrecognized destination hash', async t => {
   await assert.rejects(syncDevBundle({ runtimePath: fx.runtime, home: fx.home, mode: 'web', source: fx.source, validateRuntime: fx.validateRuntime, transactionId: 'unknown' }), /拒绝覆盖/)
   assert.equal(await readFile(path.join(fx.runtimeBundle, 'roles.js'), 'utf8'), 'unexpected\n')
   assert.equal(await readFile(path.join(fx.profileBundle, 'roles.js'), 'utf8'), 'export const version = "old"\n')
+})
+
+test('sync refreshes client entry revision for lazy chunk changes without changing entry bytes', async t => {
+  const fx = await fixture(t)
+  const files = ['package.json', 'roles.js', 'client.js', 'client.workflow.js']
+  for (const dir of [fx.source, fx.runtimeBundle, fx.profileBundle]) {
+    await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: packageName, files: files.slice(1) }))
+    await writeFile(path.join(dir, 'client.js'), 'entry-sentinel')
+    await writeFile(path.join(dir, 'client.workflow.js'), 'old-chunk')
+    const { utimes } = await import('node:fs/promises')
+    await utimes(path.join(dir, 'client.js'), new Date('2000-01-01'), new Date('2000-01-01'))
+  }
+  const oldHash = await hashTree(fx.source, files)
+  const recordPath = path.join(fx.home, 'tradeloom-launcher-tradeloom.json')
+  const record = JSON.parse(await readFile(recordPath, 'utf8'))
+  await writeFile(recordPath, JSON.stringify({ ...record, bundleHash: oldHash }))
+  await writeFile(path.join(fx.source, 'client.workflow.js'), 'new-chunk')
+  await syncDevBundle({ runtimePath: fx.runtime, home: fx.home, source: fx.source, validateRuntime: fx.validateRuntime })
+  for (const dir of [fx.runtimeBundle, fx.profileBundle]) {
+    assert.equal(await readFile(path.join(dir, 'client.js'), 'utf8'), 'entry-sentinel')
+    assert.equal(await readFile(path.join(dir, 'client.workflow.js'), 'utf8'), 'new-chunk')
+    assert.ok((await lstat(path.join(dir, 'client.js'))).mtimeMs > Date.parse('2020-01-01'))
+    assert.equal(await hashTree(dir, files), await hashTree(fx.source, files))
+  }
 })

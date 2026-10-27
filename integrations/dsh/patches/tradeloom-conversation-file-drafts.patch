@@ -1,0 +1,113 @@
+--- a/packages/client/ui-conversation/src/client/service.ts
++++ b/packages/client/ui-conversation/src/client/service.ts
+@@ -68,6 +68,8 @@
+    * @returns completion of the page pull.
+    */
+   loadOlder(): Promise<void>
++  /** Register files as draft attachments in the caller's Session input. Never submits them. */
++  addDraftFiles(files: readonly File[]): boolean
+ }
+ 
+ /** Create one browser-only image draft descriptor; only its id enters input state. */
+@@ -316,6 +318,26 @@
+       this.beginFileUpload(sessionId, attachment)
+       return attachment
+     })
++  }
++
++  /**
++   * Add browser files to the caller Session's existing input draft. This is
++   * the scoped equivalent of Composer's native intake path: uploads remain
++   * service-owned, busy phases reject the whole batch, and nothing is sent.
++   * @param files - complete files resolved by an authorized caller.
++   * @returns false when the Session is unavailable or its composer is busy.
++   */
++  addDraftFiles(files: readonly File[]): boolean {
++    const sessionId = this.scopeId('addDraftFiles')
++    if (files.length === 0) return true
++    if (this.requireSessions().binding(sessionId) === undefined) return false
++    const input = this.input.for(this.ctx)
++    const phase = input.state.getSnapshot().phase
++    if (phase === 'adjudicating' || phase === 'submitting') return false
++    const drafts = this.createDrafts(sessionId, files)
++    if (input.addAttachments(drafts.map(draft => draft.id))) return true
++    this.releaseDraftAttachments(drafts)
++    return false
+   }
+ 
+   /**
+--- a/packages/client/ui-conversation/tests/service-orchestration.client.spec.ts
++++ b/packages/client/ui-conversation/tests/service-orchestration.client.spec.ts
+@@ -159,6 +159,50 @@
+       revoked.mockRestore()
+     }
+     await b.runtime.dispose()
++  })
++
++  it('registers imported files only in the addressed Session draft and uses the normal upload path', async () => {
++    const b = await bench()
++    const secondSessionId = 's2' as SessionId
++    await b.runtime.sessions.add({ id: secondSessionId, session: {} })
++    const secondReference = b.runtime.sessions.retain(secondSessionId)
++    await secondReference.ready
++    const session = b.runtime.sessions.binding('s1')!.session
++    const uploadFile = vi.fn((_data: Blob | Uint8Array, name?: string) => Promise.resolve({
++      ok: true as const,
++      value: { receiptId: 'imported-receipt' as never, file: { attachmentId: 'sha256:imported' as never, name: name ?? 'source.xlsx', bytes: 4 } },
++    }))
++    ;(session as { uploadFile?: unknown }).uploadFile = uploadFile
++    const file = new File([Uint8Array.of(1, 2, 3, 4)], 'source.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
++    const created = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:blocked-import')
++    const revoked = vi.spyOn(URL, 'revokeObjectURL').mockReturnValue(undefined)
++    try {
++      expect(b.scoped.addDraftFiles([file])).toBe(true)
++      const firstInput = b.root.input.for(b.runtime.sessions.scope('s1')!).state.getSnapshot()
++      const secondScope = b.runtime.sessions.scope(secondSessionId)!
++      const secondInput = b.root.input.for(secondScope)
++      expect(firstInput.attachmentIds).toHaveLength(1)
++      expect(secondInput.state.getSnapshot().attachmentIds).toEqual([])
++      const [draft] = b.root.resolveDraftAttachments(firstInput.attachmentIds)
++      expect(draft).toMatchObject({ kind: 'file', file })
++      await vi.waitFor(() => expect(b.root.fileUploads.getSnapshot()[draft!.id]?.status).toBe('ready'))
++      expect(uploadFile).toHaveBeenCalledOnce()
++      expect(uploadFile.mock.calls[0]?.[0]).toBe(file)
++      expect(b.prompt).not.toHaveBeenCalled()
++      const addAttachments = vi.spyOn(secondInput, 'addAttachments').mockReturnValue(false)
++      const blocked = new File([Uint8Array.of(1)], 'blocked.png', { type: 'image/png' })
++      const secondConversation = secondScope.get('conversation') as ConversationController
++      expect(secondConversation.addDraftFiles([blocked])).toBe(false)
++      expect(addAttachments).toHaveBeenCalledOnce()
++      expect(secondInput.state.getSnapshot().attachmentIds).toEqual([])
++      expect(revoked).toHaveBeenCalledWith('blob:blocked-import')
++      expect(b.prompt).not.toHaveBeenCalled()
++    } finally {
++      created.mockRestore()
++      revoked.mockRestore()
++      secondReference.release()
++      await b.runtime.dispose()
++    }
+   })
+ 
+   it('classifies image MIME drafts as images and every other file as an uploading file draft', async () => {
+--- a/packages/client/ui-conversation/README.md
++++ b/packages/client/ui-conversation/README.md
+@@ -75,6 +75,8 @@
+ While the root-scoped `conversation.session.header.views.actions` list has registrations, a **More conversation views** button with a tooltip follows the View tabs in the tab row. It opens a menu whose rows are that list's registrations. Each receives `entries` (Views outside the header in registration order with `id`, `label`, `pinned`, and `active`; Chat is never listed), `onOpen(id)`, which selects the View in this Session, `onPinnedChange(id, pinned)`, and `onDismiss()`, which closes the menu. The header keeps an in-memory list of unpinned View ids shared by every Session; the tab bar omits unpinned Views and places registered Chat first so it always remains outside More. Plugin reload resets pin choices, and legacy localStorage values are ignored. The tab bar's visibility counts available Views, not pinned ones, so the bar and More stay while every other View is unpinned. Unpinning the active View hides its tab immediately without changing the selected content. More lists only Views outside the header and identifies the current View through `active`. The header reads its available row width, reserves 48px for More and padding, and estimates 120px per tab. Remaining Views keep registration order in More. A single ResizeObserver watches the tab row so window resizing and sidebar expansion update the split; active selection does not change the order. The observer disconnects when the row is removed. If ResizeObserver is unavailable, the initial width calculation still applies without subsequent observation. The More button highlights and names the active View in its tooltip when that View is folded. Individual tabs are not measured. At least one preferred tab remains outside, and long labels truncate with a full-name tooltip. Unregistered View ids remain in the in-memory pin list until plugin reload.
+ 
+ The composer registers the File command action and owns its label, availability, and native file-dialog callback. Menu availability and invocation both consult the mounted composer's current attachment-intake policy. Unmounting or locking the composer disables that action; disposing the plugin removes its registration. The callback binding stays inside the input module.
++
++`IConversation.addDraftFiles(files)` is available only through a Session-scoped Conversation service. It registers browser-owned File objects in that Session's composer draft, starts the existing background upload for generic files, and refuses a locked/busy input without sending. The caller retains responsibility for identifying and authorizing the source file; the service does not accept URLs or fetch remote resources.
+ 
+ `SessionInputShell` owns one Lexical editor per Session through its private [DraftEditorRuntime](src/client/input/editor/runtime.ts), while retaining submission, attachment selection, and recovery decisions. [DraftEditor](src/client/input/editor/DraftEditor.tsx) renders the borrowed editor; InputBar retains its Hooks and refs and installs DOM behavior through [view-binding](src/client/input/editor/view-binding.ts). Editor-facing types live in [draft-editor.ts](src/client/contract/draft-editor.ts), with shared input and submission types in [input.ts](src/client/contract/input.ts). Background editor updates retain the draft selection without changing the document selection or reclaiming focus from another control; explicit Composer focus restores its selection. This separation does not support simultaneous editable roots for one Session; [the two-stage isolation proposal](../../../.agents/notes/proposed/architecture/2026-09-14-composer-model-and-draft-editor.md) defines the remaining work.
+ 
+--- a/packages/client/ui-conversation/README.zh.md
++++ b/packages/client/ui-conversation/README.zh.md
+@@ -75,6 +75,8 @@
+ root 作用域的 `conversation.session.header.views.actions` list 有注册项时，标签行中的 View 标签之后显示带提示框的**更多会话视图**按钮。它打开的菜单以该 list 的注册项为菜单行。每个注册项接收 `entries`（按注册顺序的头部之外的 View，含 `id`、`label`、`pinned` 与 `active`；不含 Chat）、在本 Session 选择 View 的 `onOpen(id)`、`onPinnedChange(id, pinned)`，以及关闭菜单的 `onDismiss()`。头部在内存中保存所有 Session 共用的已收起 View id 列表；标签栏不显示已收起的 View，并将已注册的 Chat 放在首位，确保它始终留在更多菜单外。插件重新加载时 Pin 选择重置，不读取旧 localStorage 值。标签栏是否显示按可用 View 计算，不按已固定的 View 计算，因此其他 View 全部收起时，标签栏和“更多”仍然显示。收起当前激活的 View 会立即隐藏其标签，但不会切走其内容。更多菜单仅包含头部之外的 View，通过 `active` 标识当前 View。头部读取当前行可用宽度，为更多按钮与内边距预留 48px，每个标签估算 120px，其余 View 按注册顺序进入更多。单个 ResizeObserver 观察标签行，使窗口缩放和侧栏展开能够更新分组；当前选中项变化不改变顺序。标签行移除时断开观察。如果环境没有 ResizeObserver，仍按初始宽度计算，但不继续观察。当前 View 收起时，更多按钮高亮并在提示框中显示其名称。不逐项测量标签。至少保留一个优先展示的外部标签，长标题截断并通过提示框提供全名。未注册 View 的 id 保留在内存 Pin 列表中，直到插件重新加载。
+ 
+ 输入框注册「文件」命令动作，负责其标题、可用性和原生文件选择器回调。菜单可用性与实际调用都读取已挂载输入框当前的附件接收策略。输入框卸载或锁定后该动作不可用，插件 dispose（资源释放）时移除注册。回调绑定留在输入模块内部。
++
++`IConversation.addDraftFiles(files)` 仅能通过 Session 作用域的 Conversation service 调用。它会把浏览器拥有的 File 对象注册到该 Session 的输入草稿，并为普通文件启动现有后台上传；输入忙碌或锁定时拒绝整批操作，不会发送。调用方负责识别并授权来源文件；该方法不接受 URL，也不会自行获取远程资源。
+ 
+ `SessionInputShell` 通过私有 [DraftEditorRuntime](src/client/input/editor/runtime.ts) 为每个 Session 持有一个 Lexical editor，同时保留提交、附件选择和恢复决策。[DraftEditor](src/client/input/editor/DraftEditor.tsx) 呈现借用的 editor；InputBar 保留钩子与 refs，并通过 [view-binding](src/client/input/editor/view-binding.ts) 安装 DOM 行为。编辑器类型位于 [draft-editor.ts](src/client/contract/draft-editor.ts)，共享输入和提交类型位于 [input.ts](src/client/contract/input.ts)。编辑器后台更新会保留草稿选区，不修改文档选区或从其他控件夺回焦点；显式聚焦 Composer 时恢复其选区。这一拆分不支持同一 Session 同时挂载多个可编辑 root；[两阶段隔离提案](../../../.agents/notes/proposed/architecture/2026-09-14-composer-model-and-draft-editor.zh.md) 定义剩余工作。
+ 

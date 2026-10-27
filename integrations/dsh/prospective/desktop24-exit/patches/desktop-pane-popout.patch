@@ -1,0 +1,507 @@
+diff --git a/apps/desktop/src/ipc.ts b/apps/desktop/src/ipc.ts
+index fc19021..fcbeefa 100644
+--- a/apps/desktop/src/ipc.ts
++++ b/apps/desktop/src/ipc.ts
+@@ -19,6 +19,7 @@ export const DESKTOP_IPC = {
+   bootFailed: 'dsh-desktop:boot-failed',
+   browserAcquire: 'dsh-desktop:browser-acquire',
+   browserRelease: 'dsh-desktop:browser-release',
++  panePopoutUrl: 'dsh-desktop:pane-popout-url',
+   browserOpenRequested: 'dsh-desktop:browser-open-requested',
+   directoryPick: 'dsh-desktop:directory-pick',
+   deviceInfo: 'dsh-desktop:device-info',
+@@ -72,6 +73,7 @@ export interface DesktopUpdatePresentation {
+ export interface DshDesktopProductApi {
+   readonly protocolVersion: 1
+   readonly browser: DesktopBrowserBridge
++  readonly panePopout: { getUrl(): Promise<string> }
+   readonly keyboard: DesktopKeyboardApi
+   readonly shortcuts: DesktopShortcutsApi
+   /**
+diff --git a/apps/desktop/src/main.ts b/apps/desktop/src/main.ts
+index b547576..622c1a3 100644
+--- a/apps/desktop/src/main.ts
++++ b/apps/desktop/src/main.ts
+@@ -36,7 +36,11 @@ import { claimDesktopSingleInstance } from './single-instance.ts'
+ import { desktopUpdateChannel } from './update-channel.ts'
+ import { DesktopUpdateCoordinator } from './update-coordinator.ts'
+ import { DesktopCommandManager } from './command-management.ts'
+-import { serveWebDocument, authenticateWebHost, forwardWebRequest } from './web-document.ts'
++import {
++  DESKTOP_PANE_POPOUT_PATH, createDesktopPanePopoutTicketStore, desktopPanePopoutNavigation,
++  registerDesktopPanePopoutUrlHandler, serveDesktopPanePopoutDocument,
++  serveWebDocument, authenticateWebHost, forwardWebRequest,
++} from './web-document.ts'
+ import { desktopWebSocketRequestHeaders } from './websocket-authority.ts'
+ import { DesktopFatalRecovery, restartBackendInPlaceWithShutdownGuard } from './fatal-recovery.ts'
+ import { pruneCrashReports, RendererConsoleTail, writeCrashReport, type CrashReportSource } from './crash-report.ts'
+@@ -45,6 +49,7 @@ import { WELCOME_IPC, needsWelcome, type WelcomeNotice } from './welcome-api.ts'
+ import { connectDesktopWelcome, type DesktopWelcomeBackend } from './welcome-backend.ts'
+ import { DesktopUpdateJournal } from './update-journal.ts'
+ import { DesktopUpdatePreparationError } from './update-error.ts'
++
+ import { DesktopUpdateSchedule, resolveDesktopUpdateScheduleConfig } from './update-schedule.ts'
+ import { desktopUpdateErrorSummary, presentDesktopUpdate } from './update-presentation.ts'
+ import { desktopErrorState } from './startup-error.ts'
+@@ -63,6 +68,8 @@ import { DesktopQuitConfirmation } from './quit-confirmation.ts'
+ import { DesktopTray } from './tray.ts'
+ import { DesktopBackgroundNotice } from './background-notice.ts'
+ 
++const desktopPanePopoutTickets = createDesktopPanePopoutTicketStore()
++
+ let focusPrimaryWindow = (): void => {}
+ let stopForRecovery = async (): Promise<void> => {}
+ let restartBackendInPlaceForRecovery = async (): Promise<void> => {
+@@ -250,8 +257,63 @@ function createWindow(preload: string, show = false, primary = false): BrowserWi
+       devTools: true,
+     },
+   })
+-  window.webContents.setWindowOpenHandler(({ url }) => {
+-    if (['http:', 'https:'].includes(new URL(url).protocol)) void shell.openExternal(url)
++  if (primary) {
++    window.webContents.on('did-create-window', (childWindow, details) => {
++      if (!desktopPanePopoutTickets.confirmCreatedChild(window.webContents, details.url)) {
++        childWindow.close()
++        return
++      }
++      childWindow.setMenu(null)
++      childWindow.webContents.setWindowOpenHandler(({ url }) => {
++        let destination: URL | undefined
++        try { destination = new URL(url) } catch (error) {
++          if (!(error instanceof TypeError)) throw error
++        }
++        if (destination && ['http:', 'https:'].includes(destination.protocol)) void shell.openExternal(url)
++        return { action: 'deny' }
++      })
++      const guardChildMainFrame = (event: Electron.Event<Electron.WebContentsWillFrameNavigateEventParams>): void => {
++        if (!event.isMainFrame) return
++        const decision = desktopPanePopoutNavigation(event.url, event.isMainFrame)
++        if (decision === 'allow') return
++        event.preventDefault()
++        if (decision === 'external') void shell.openExternal(event.url)
++      }
++      childWindow.webContents.on('will-frame-navigate', guardChildMainFrame)
++      childWindow.webContents.on('will-redirect', guardChildMainFrame)
++    })
++  }
++  window.webContents.setWindowOpenHandler((details) => {
++    let destination: URL | undefined
++    try { destination = new URL(details.url) } catch (error) {
++      if (!(error instanceof TypeError)) throw error
++    }
++    if (destination && ['http:', 'https:'].includes(destination.protocol)) void shell.openExternal(details.url)
++    if (primary && desktopPanePopoutTickets.authorizeOpen(window.webContents, details.url)) {
++      return {
++        action: 'allow',
++        // Electron closes this independent native window with its opener by default.
++        outlivesOpener: false,
++        // Preserve window.open's geometry features while matching the primary window's security settings.
++        overrideBrowserWindowOptions: {
++          frame: true,
++          minimizable: true,
++          maximizable: true,
++          closable: true,
++          resizable: true,
++          skipTaskbar: false,
++          webPreferences: {
++            preload,
++            nodeIntegration: false,
++            contextIsolation: true,
++            sandbox: true,
++            webSecurity: true,
++            webviewTag: primary,
++            devTools: true,
++          },
++        },
++      }
++    }
+     return { action: 'deny' }
+   })
+   if (process.platform === 'darwin' || process.platform === 'win32') {
+@@ -323,6 +385,7 @@ function createWindow(preload: string, show = false, primary = false): BrowserWi
+       if (['http:', 'https:'].includes(destination.protocol)) void shell.openExternal(url)
+     }
+   })
++  if (primary) { const popoutOwner = window.webContents; window.once('closed', () => { desktopPanePopoutTickets.clearOwner(popoutOwner) }) }
+   return window
+ }
+ 
+@@ -692,6 +755,7 @@ async function main(): Promise<void> {
+     // Shell-owned documents live in the application bundle and never pass through the Host.
+     if (url.hostname === 'shell') return serveWebDocument(request, join(app.getAppPath(), 'renderer'))
+     if (url.hostname === 'app') {
++      if (url.pathname === DESKTOP_PANE_POPOUT_PATH) return serveDesktopPanePopoutDocument(request)
+       if (url.pathname === '/' || url.pathname === '/index.html' || url.pathname.startsWith('/assets/')
+         || ['/favicon.svg', '/manifest.webmanifest'].includes(url.pathname)) {
+         return serveWebDocument(request, join(resources.dsh, 'node_modules', '@deepseek-ai', 'dsh-web-frontend', 'dist'))
+@@ -726,6 +790,8 @@ async function main(): Promise<void> {
+     reportFatal(new Error(message), 'web-boot')
+   })
+ 
++  registerDesktopPanePopoutUrlHandler(ipcMain, DESKTOP_IPC.panePopoutUrl, desktopPanePopoutTickets, assertProductSender)
++
+   ipcMain.handle(DESKTOP_IPC.browserAcquire, (event, workspace: unknown) => {
+     assertProductSender(event)
+     return browserGuests.acquire(event.sender, workspace)
+diff --git a/apps/desktop/src/preload-app.ts b/apps/desktop/src/preload-app.ts
+index f590b8b..a8c4908 100644
+--- a/apps/desktop/src/preload-app.ts
++++ b/apps/desktop/src/preload-app.ts
+@@ -14,6 +14,7 @@ function createProductApi(): DshDesktopProductApi {
+   return {
+     protocolVersion: 1,
+     browser: createDesktopBrowserBridge(),
++    panePopout: { getUrl: () => ipcRenderer.invoke(DESKTOP_IPC.panePopoutUrl) as Promise<string> },
+     deviceInfo: () => ipcRenderer.invoke(DESKTOP_IPC.deviceInfo) as Promise<string>,
+     keyboard: {
+       closeWindow: revision => ipcRenderer.invoke(DESKTOP_IPC.shortcutsCloseWindow, revision) as Promise<void>,
+diff --git a/apps/desktop/src/web-document.ts b/apps/desktop/src/web-document.ts
+index 524e492..ca2d904 100644
+--- a/apps/desktop/src/web-document.ts
++++ b/apps/desktop/src/web-document.ts
+@@ -1,4 +1,5 @@
+ /** Local Web document and authenticated HTTP forwarding for the application window. */
++import { randomBytes } from 'node:crypto'
+ import { readFile } from 'node:fs/promises'
+ import { extname, resolve, sep } from 'node:path'
+ 
+@@ -9,6 +10,124 @@ const MIME: Readonly<Record<string, string>> = {
+ }
+ const BOOT = '<script>globalThis.__DSH_BOOT_READY__ = Promise.withResolvers()</script>'
+ 
++/** Exact inert document used as Dockview's same-origin desktop pane popout target. */
++export const DESKTOP_PANE_POPOUT_PATH = '/desktop-pane-popout.html'
++const DESKTOP_PANE_POPOUT_URL = `dsh-app://app${DESKTOP_PANE_POPOUT_PATH}`
++const DESKTOP_PANE_POPOUT_TICKET = /^[A-Za-z0-9_-]{43}$/u
++const DESKTOP_PANE_POPOUT_HTML = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>织贸助手</title></head><body></body></html>'
++const DESKTOP_PANE_POPOUT_CSP = "default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; frame-src 'self'; media-src 'self' data: blob:"
++
++/** Parse the one-use ticket URL without exposing or logging the ticket elsewhere. */
++export function parseDesktopPanePopoutUrl(value: string): string | undefined {
++  try {
++    const url = new URL(value)
++    if (url.protocol !== 'dsh-app:' || url.hostname !== 'app' || url.port !== ''
++      || url.username !== '' || url.password !== '' || url.pathname !== DESKTOP_PANE_POPOUT_PATH
++      || url.hash !== '') return undefined
++    const entries = [...url.searchParams.entries()]
++    if (entries.length !== 1 || entries[0]?.[0] !== 'ticket') return undefined
++    const ticket = entries[0][1]
++    if (!DESKTOP_PANE_POPOUT_TICKET.test(ticket) || url.href !== `${DESKTOP_PANE_POPOUT_URL}?ticket=${ticket}`) return undefined
++    return ticket
++  } catch { return undefined }
++}
++
++export function isDesktopPanePopoutDocumentUrl(value: string): boolean {
++  return parseDesktopPanePopoutUrl(value) !== undefined
++}
++
++/** Strip an ephemeral ticket before persisting a Dockview layout. */
++export function canonicalDesktopPanePopoutUrl(value: string): string {
++  return isDesktopPanePopoutDocumentUrl(value) ? DESKTOP_PANE_POPOUT_URL : value
++}
++
++/** Short-lived, owner-bound tickets; the ticket is consumed by authorizeOpen, then its allow record is correlated once to Electron did-create-window. */
++export function createDesktopPanePopoutTicketStore(options: { now?: () => number; ttlMs?: number } = {}) {
++  const now = options.now ?? Date.now
++  const ttlMs = options.ttlMs ?? 15_000
++  const issued = new Map<string, { owner: object; expiresAt: number }>()
++  const approved = new Map<string, { owner: object; expiresAt: number }>()
++  const purgeExpired = (): void => {
++    const time = now()
++    for (const tickets of [issued, approved]) {
++      for (const [ticket, entry] of tickets) if (time >= entry.expiresAt) tickets.delete(ticket)
++    }
++  }
++  return {
++    issue(owner: object): string {
++      purgeExpired()
++      const ticket = randomBytes(32).toString('base64url')
++      issued.set(ticket, { owner, expiresAt: now() + ttlMs })
++      return `${DESKTOP_PANE_POPOUT_URL}?ticket=${ticket}`
++    },
++    authorizeOpen(owner: object, value: string): boolean {
++      purgeExpired()
++      const ticket = parseDesktopPanePopoutUrl(value)
++      if (ticket === undefined) return false
++      const entry = issued.get(ticket)
++      if (entry === undefined || entry.owner !== owner) return false
++      issued.delete(ticket)
++      approved.set(ticket, entry)
++      return true
++    },
++    confirmCreatedChild(owner: object, value: string): boolean {
++      purgeExpired()
++      const ticket = parseDesktopPanePopoutUrl(value)
++      if (ticket === undefined) return false
++      const entry = approved.get(ticket)
++      if (entry === undefined || entry.owner !== owner) return false
++      approved.delete(ticket)
++      return true
++    },
++    clearOwner(owner: object): void {
++      for (const tickets of [issued, approved]) {
++        for (const [ticket, entry] of tickets) if (entry.owner === owner) tickets.delete(ticket)
++      }
++    },
++  }
++}
++
++/** Register the narrow pane-popout URL IPC while keeping primary-frame authorization at the caller. */
++export function registerDesktopPanePopoutUrlHandler<T extends { sender: object }>(
++  ipcMain: { handle(channel: string, listener: (event: T) => string): void },
++  channel: string,
++  tickets: ReturnType<typeof createDesktopPanePopoutTicketStore>,
++  assertTrustedPrimaryFrame: (event: T) => void,
++): void {
++  ipcMain.handle(channel, event => {
++    assertTrustedPrimaryFrame(event)
++    return tickets.issue(event.sender)
++  })
++}
++
++/** Classify navigations from a constrained popout; only its ticketed blank page may be top-level. */
++export function desktopPanePopoutNavigation(urlValue: string, isMainFrame: boolean): 'allow' | 'external' | 'deny' {
++  try {
++    const url = new URL(urlValue)
++    if (!isMainFrame) return url.protocol === 'dsh-app:' && url.hostname === 'app' && url.port === ''
++      && url.username === '' && url.password === '' ? 'allow' : 'deny'
++    if (url.protocol === 'http:' || url.protocol === 'https:') return 'external'
++    return isDesktopPanePopoutDocumentUrl(urlValue) ? 'allow' : 'deny'
++  } catch { return 'deny' }
++}
++
++/** Serve the empty same-origin document after the opener has consumed its one-use ticket. */
++export function serveDesktopPanePopoutDocument(request: Request): Response {
++  if (!['GET', 'HEAD'].includes(request.method)) return new Response(null, { status: 405 })
++  let url: URL
++  try { url = new URL(request.url) } catch { return new Response(null, { status: 400 }) }
++  if (url.protocol !== 'dsh-app:' || url.hostname !== 'app' || url.port !== ''
++    || url.username !== '' || url.password !== '' || !isDesktopPanePopoutDocumentUrl(request.url)) return new Response(null, { status: 404 })
++  return new Response(request.method === 'HEAD' ? null : DESKTOP_PANE_POPOUT_HTML, {
++    headers: {
++      'content-type': 'text/html; charset=utf-8',
++      'content-security-policy': DESKTOP_PANE_POPOUT_CSP,
++      'cache-control': 'no-store',
++      'x-content-type-options': 'nosniff',
++    },
++  })
++}
++
+ /**
+  * Read an application-owned static asset; the index waits for asynchronous Host injections.
+  * @param request - Local application request.
+diff --git a/apps/desktop/tests/main-startup.spec.ts b/apps/desktop/tests/main-startup.spec.ts
+index 9c781d1..c14407f 100644
+--- a/apps/desktop/tests/main-startup.spec.ts
++++ b/apps/desktop/tests/main-startup.spec.ts
+@@ -16,7 +16,11 @@ import { writeCrashReport } from '../src/crash-report.ts'
+ type InvokeEvent = { sender?: unknown; senderFrame: { url: string } }
+ type InvokeHandler = (event: InvokeEvent, ...args: unknown[]) => unknown
+ 
+-vi.mock('../src/web-document.ts', () => ({ authenticateWebHost: async () => 'test-cookie', serveWebDocument: vi.fn(), forwardWebRequest: vi.fn() }))
++vi.mock('../src/web-document.ts', async importOriginal => ({
++  ...await importOriginal<typeof import('../src/web-document.ts')>(),
++  authenticateWebHost: async () => 'test-cookie', serveWebDocument: vi.fn(),
++  serveDesktopPanePopoutDocument: vi.fn(), forwardWebRequest: vi.fn(),
++}))
+ // Report persistence has its own unit tests; here it resolves within microtasks so the fatal
+ // dialog never outlives the test that triggered it.
+ vi.mock('../src/crash-report.ts', async importOriginal => ({
+@@ -915,7 +919,7 @@ describe('desktop main startup', () => {
+   it('accepts product IPC only from the current application top frame in the owned main window', async () => {
+     await readyForUpdate()
+     const sender = harness.windows[0]!.webContents
+-    for (const channel of [DESKTOP_IPC.updatesStatus, DESKTOP_IPC.deviceInfo]) {
++    for (const channel of [DESKTOP_IPC.updatesStatus, DESKTOP_IPC.deviceInfo, DESKTOP_IPC.panePopoutUrl]) {
+       const handler = harness.handlers.get(channel)!
+       expect(() => handler({ sender, senderFrame: sender.mainFrame })).not.toThrow()
+       for (const event of [
+@@ -954,14 +958,18 @@ describe('desktop main startup', () => {
+   })
+ 
+   it('serves packaged shell documents instead of rejecting the shell origin', async () => {
+-    const { serveWebDocument } = await import('../src/web-document.ts')
++    const { serveDesktopPanePopoutDocument, serveWebDocument } = await import('../src/web-document.ts')
+     vi.mocked(serveWebDocument).mockResolvedValue(new Response('shell document'))
++    vi.mocked(serveDesktopPanePopoutDocument).mockReturnValue(new Response('blank popout'))
+     await import('../src/main.ts')
+     await harness.preparing.promise
+     const handler = harness.protocolHandle.mock.calls[0]![1]
+     const request = new Request('dsh-app://shell/update-dialog.html')
+     expect(await (await handler(request)).text()).toBe('shell document')
+     expect(serveWebDocument).toHaveBeenCalledWith(request, join('desktop-test-app', 'renderer'))
++    const popoutRequest = new Request(`dsh-app://app/desktop-pane-popout.html?ticket=${'A'.repeat(43)}`)
++    expect(await (await handler(popoutRequest)).text()).toBe('blank popout')
++    expect(serveDesktopPanePopoutDocument).toHaveBeenCalledWith(popoutRequest)
+     expect((await handler(new Request('dsh-app://foreign/index.html'))).status).toBe(404)
+   })
+ 
+@@ -1268,11 +1276,61 @@ describe('desktop main startup', () => {
+     await readyForUpdate()
+     const window = harness.windows[0]!
+     const openWindow = window.webContents.setWindowOpenHandler.mock.calls[0]![0] as
+-      (details: { url: string }) => { action: string }
++      (details: { url: string; referrer: { url: string } }) => {
++        action: string; outlivesOpener?: boolean; overrideBrowserWindowOptions?: { parent?: unknown; webPreferences?: Record<string, unknown> }
++      }
+     const source = 'https://example.com/source?q=reference'
+-    expect(openWindow({ url: source })).toEqual({ action: 'deny' })
++    expect(openWindow({ url: source, referrer: { url: 'dsh-app://app/' } })).toEqual({ action: 'deny' })
+     expect(harness.openExternal).toHaveBeenCalledWith(source)
+     harness.openExternal.mockClear()
++    const ticketHandler = harness.handlers.get(DESKTOP_IPC.panePopoutUrl)!
++    const ticketUrl = await ticketHandler({ sender: window.webContents, senderFrame: window.webContents.mainFrame }) as string
++    expect(ticketUrl).toMatch(/^dsh-app:\/\/app\/desktop-pane-popout\.html\?ticket=[A-Za-z0-9_-]{43}$/u)
++    const popout = openWindow({ url: ticketUrl, referrer: { url: '' } })
++    expect(popout.action).toBe('allow')
++    expect(openWindow({ url: ticketUrl, referrer: { url: '' } }).action).toBe('deny')
++    expect(openWindow({ url: ticketUrl + '&ticket=' + 'A'.repeat(43), referrer: { url: '' } }).action).toBe('deny')
++    expect(popout.outlivesOpener).toBe(false)
++    expect(popout.overrideBrowserWindowOptions).not.toHaveProperty('parent')
++    expect(popout.overrideBrowserWindowOptions).toMatchObject({
++      frame: true, minimizable: true, maximizable: true, closable: true, resizable: true, skipTaskbar: false,
++    })
++    expect(popout.overrideBrowserWindowOptions?.webPreferences).toMatchObject({
++      nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, webviewTag: true,
++    })
++    expect(openWindow({ url: 'dsh-app://app/desktop-pane-popout.html?ticket=short', referrer: { url: '' } }).action).toBe('deny')
++    expect(openWindow({ url: 'dsh-app://app/desktop-pane-popout.html', referrer: { url: 'https://example.com/' } }).action).toBe('deny')
++    expect(harness.openExternal).not.toHaveBeenCalled()
++    const child = new harness.FakeWindow({ show: true })
++    const primaryMenu = vi.spyOn(window, 'setMenu')
++    const childMenu = vi.spyOn(child, 'setMenu')
++    window.webContents.emit('did-create-window', child, { url: ticketUrl })
++    expect(childMenu).toHaveBeenCalledExactlyOnceWith(null)
++    expect(primaryMenu).not.toHaveBeenCalled()
++    const childOpen = child.webContents.setWindowOpenHandler.mock.calls[0]![0] as (details: { url: string }) => { action: string }
++    expect(childOpen({ url: 'https://example.com/child-link' })).toEqual({ action: 'deny' })
++    expect(childOpen({ url: 'dsh-app://app/desktop-pane-popout.html' })).toEqual({ action: 'deny' })
++    expect(harness.openExternal).toHaveBeenCalledWith('https://example.com/child-link')
++    harness.openExternal.mockClear()
++    const childExternal = { url: 'https://example.com/child-nav', isMainFrame: true, preventDefault: vi.fn() }
++    child.webContents.emit('will-frame-navigate', childExternal)
++    expect(childExternal.preventDefault).toHaveBeenCalledOnce()
++    expect(harness.openExternal).toHaveBeenCalledWith(childExternal.url)
++    harness.openExternal.mockClear()
++    const childInternalMain = { url: ticketUrl, isMainFrame: true, preventDefault: vi.fn() }
++    child.webContents.emit('will-frame-navigate', childInternalMain)
++    expect(childInternalMain.preventDefault).not.toHaveBeenCalled()
++    const childIframe = { url: 'dsh-app://app/business/artifacts', isMainFrame: false, preventDefault: vi.fn() }
++    child.webContents.emit('will-frame-navigate', childIframe)
++    expect(childIframe.preventDefault).not.toHaveBeenCalled()
++    const childBadRedirect = { url: 'dsh-app://app/business/artifacts', isMainFrame: true, preventDefault: vi.fn() }
++    child.webContents.emit('will-redirect', childBadRedirect)
++    expect(childBadRedirect.preventDefault).toHaveBeenCalledOnce()
++    const rejectedChild = new harness.FakeWindow({ show: true })
++    const rejectedMenu = vi.spyOn(rejectedChild, 'setMenu')
++    window.webContents.emit('did-create-window', rejectedChild, { url: 'https://example.com/' })
++    expect(rejectedChild.destroyed).toBe(true)
++    expect(rejectedMenu).not.toHaveBeenCalled()
+     const external = { preventDefault: vi.fn() }
+     window.webContents.emit('will-navigate', external, 'https://example.com/document')
+     expect(external.preventDefault).toHaveBeenCalledOnce()
+diff --git a/apps/desktop/tests/web-document.spec.ts b/apps/desktop/tests/web-document.spec.ts
+index 6e3faef..3562fc9 100644
+--- a/apps/desktop/tests/web-document.spec.ts
++++ b/apps/desktop/tests/web-document.spec.ts
+@@ -2,7 +2,11 @@ import { afterEach, expect, it, vi } from 'vitest'
+ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
+ import { tmpdir } from 'node:os'
+ import { join } from 'node:path'
+-import { authenticateWebHost, forwardWebRequest, serveWebDocument } from '../src/web-document.ts'
++import {
++  authenticateWebHost, canonicalDesktopPanePopoutUrl, createDesktopPanePopoutTicketStore,
++  desktopPanePopoutNavigation, forwardWebRequest, isDesktopPanePopoutDocumentUrl,
++  parseDesktopPanePopoutUrl, registerDesktopPanePopoutUrlHandler, serveDesktopPanePopoutDocument, serveWebDocument,
++} from '../src/web-document.ts'
+ 
+ const roots: string[] = []
+ afterEach(async () => {
+@@ -27,6 +31,87 @@ it('serves the Web entry and assets without starting or contacting a Host', asyn
+   expect((await serveWebDocument(new Request('dsh-app://app/missing.js'), root)).status).toBe(404)
+ })
+ 
++it('serves only the inert same-origin desktop pane popout document with a valid ticket-shaped query', async () => {
++  const ticket = 'A'.repeat(43)
++  const request = new Request(`dsh-app://app/desktop-pane-popout.html?ticket=${ticket}`)
++  const response = serveDesktopPanePopoutDocument(request)
++  expect(response.status).toBe(200)
++  expect(response.headers.get('content-type')).toBe('text/html; charset=utf-8')
++  expect(response.headers.get('cache-control')).toBe('no-store')
++  expect(response.headers.get('content-security-policy')).toContain("default-src 'none'")
++  expect(await response.text()).toContain('<title>\u7ec7\u8d38\u52a9\u624b</title>')
++  expect(await serveDesktopPanePopoutDocument(new Request(`dsh-app://app/desktop-pane-popout.html?ticket=${ticket}`, { method: 'HEAD' })).text()).toBe('')
++  expect(serveDesktopPanePopoutDocument(new Request(`dsh-app://app/desktop-pane-popout.html?ticket=${ticket}`, { method: 'POST' })).status).toBe(405)
++  for (const url of [
++    'dsh-app://app/desktop-pane-popout.html',
++    `dsh-app://app/desktop-pane-popout.html?ticket=${ticket}&ticket=${ticket}`,
++    `dsh-app://app/desktop-pane-popout.html?ticket=${ticket}&x=1`,
++    'dsh-app://user@app/desktop-pane-popout.html?ticket=' + ticket,
++    'dsh-app://app:1234/desktop-pane-popout.html?ticket=' + ticket,
++    'dsh-app://app/desktop-pane-popout.html/extra?ticket=' + ticket,
++    'dsh-app://shell/desktop-pane-popout.html?ticket=' + ticket,
++    'https://app/desktop-pane-popout.html?ticket=' + ticket,
++  ]) expect(serveDesktopPanePopoutDocument({ method: 'GET', url } as Request).status).toBe(404)
++})
++
++it('issues short-lived owner-scoped tickets, consumes on open, and correlates the created child once', () => {
++  let time = 100
++  const store = createDesktopPanePopoutTicketStore({ now: () => time, ttlMs: 50 })
++  const owner = {}
++  const otherOwner = {}
++  const url = store.issue(owner)
++  expect(parseDesktopPanePopoutUrl(url)).toMatch(/^[A-Za-z0-9_-]{43}$/u)
++  expect(isDesktopPanePopoutDocumentUrl(url)).toBe(true)
++  expect(canonicalDesktopPanePopoutUrl(url)).toBe('dsh-app://app/desktop-pane-popout.html')
++  expect(store.authorizeOpen(otherOwner, url)).toBe(false)
++  expect(store.authorizeOpen(owner, url + '&ticket=' + 'B'.repeat(43))).toBe(false)
++  expect(store.authorizeOpen(owner, 'dsh-app://app/desktop-pane-popout.html')).toBe(false)
++  expect(store.authorizeOpen(owner, url)).toBe(true)
++  expect(store.authorizeOpen(owner, url)).toBe(false)
++  expect(store.confirmCreatedChild(otherOwner, url)).toBe(false)
++  expect(store.confirmCreatedChild(owner, url)).toBe(true)
++  expect(store.confirmCreatedChild(owner, url)).toBe(false)
++
++  const expiringUrl = store.issue(owner)
++  time += 50
++  expect(store.authorizeOpen(owner, expiringUrl)).toBe(false)
++  expect(parseDesktopPanePopoutUrl('dsh-app://app/desktop-pane-popout.html?ticket=short')).toBeUndefined()
++  expect(parseDesktopPanePopoutUrl('dsh-app://other/desktop-pane-popout.html?ticket=' + 'C'.repeat(43))).toBeUndefined()
++  expect(canonicalDesktopPanePopoutUrl('dsh-app://app/desktop-pane-popout.html?ticket=short')).toBe('dsh-app://app/desktop-pane-popout.html?ticket=short')
++})
++
++it('registers ticket issuance through the caller trusted-primary-frame gate', () => {
++  const owner = {}
++  const store = createDesktopPanePopoutTicketStore()
++  const handle = vi.fn()
++  const ipcMain = { handle }
++  const assertTrustedPrimaryFrame = vi.fn((event: { sender: object }) => {
++    if (event.sender !== owner) throw new Error('untrusted sender')
++  })
++  registerDesktopPanePopoutUrlHandler(ipcMain, 'dsh-desktop:pane-popout-url', store, assertTrustedPrimaryFrame)
++
++  expect(handle).toHaveBeenCalledOnce()
++  const [channel, listener] = handle.mock.calls[0] as [string, (event: { sender: object }) => string]
++  expect(channel).toBe('dsh-desktop:pane-popout-url')
++  const url = listener({ sender: owner })
++  expect(parseDesktopPanePopoutUrl(url)).toMatch(/^[A-Za-z0-9_-]{43}$/u)
++  expect(assertTrustedPrimaryFrame).toHaveBeenCalledWith({ sender: owner })
++  expect(() => listener({ sender: {} })).toThrow('untrusted sender')
++})
++
++it('restricts popout document top-level navigation while keeping app iframe navigation available', () => {
++  const blank = `dsh-app://app/desktop-pane-popout.html?ticket=${'D'.repeat(43)}`
++  expect(desktopPanePopoutNavigation(blank, true)).toBe('allow')
++  expect(desktopPanePopoutNavigation('dsh-app://app/business/artifacts', false)).toBe('allow')
++  expect(desktopPanePopoutNavigation('https://example.com/frame', false)).toBe('deny')
++  expect(desktopPanePopoutNavigation('https://example.com/path', true)).toBe('external')
++  for (const url of [
++    'dsh-app://app/business/artifacts', 'dsh-app://app/desktop-pane-popout.html',
++    'dsh-app://app/desktop-pane-popout.html?ticket=short', 'dsh-app://other/desktop-pane-popout.html?ticket=' + 'D'.repeat(43),
++    'file:///tmp/page.html', 'javascript:alert(1)',
++  ]) expect(desktopPanePopoutNavigation(url, true)).toBe('deny')
++})
++
+ it('requires the Host authentication exchange and retains only its cookie value', async () => {
+   const fetch = vi.fn().mockResolvedValueOnce(new Response(null, { status: 303, headers: { 'set-cookie': 'session=owned; HttpOnly; SameSite=Strict' } }))
+     .mockResolvedValueOnce(new Response('unauthorized', { status: 401 }))

@@ -46,3 +46,5 @@ powershell -ExecutionPolicy Bypass -File .\scripts\launch-tradeloom.ps1 -Mode de
 ```
 
 启动脚本使用它当前配置的默认 source runtime；只有默认路径正是上面同步所用的同一份已准备版本时才执行。若二者不一致，应使用现有开发环境中已验证的 source-mode 启动配置明确选用同一 runtime；本说明不提供对安装版资源或默认候选已验收的保证。
+
+便携 packaged schema 2 入口可显式同时传入 `--tradeloom-host-port`、`--tradeloom-django-port`、`--tradeloom-postgres-port`；必须为互异的 1–65535 整数，未传时保持 3088/3090/55432。新 owned 数据库按包内 schema 初始化；现用数据库不因此迁移。已有 owned PostgreSQL 复用时必须核验数据目录、PID、端口及监听归属。

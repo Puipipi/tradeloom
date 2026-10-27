@@ -3,11 +3,26 @@
   if (!root) return;
 
   const schemas = JSON.parse(document.getElementById("intake-field-schemas")?.textContent || "{}");
-  const csrf = document.querySelector('meta[name="csrf-token"]')?.content || "";
+  const csrfMeta = document.querySelector('meta[name="csrf-token"]')?.content || "";
+  function currentCsrfToken() {
+    let cookieText = "";
+    try { cookieText = document.cookie; } catch { /* unavailable in this document context */ }
+    const cookie = cookieText.split(";").map(part => part.trim()).find(part => part.startsWith("csrftoken="));
+    if (!cookie) return csrfMeta;
+    const value = cookie.slice("csrftoken=".length);
+    try { return decodeURIComponent(value); } catch { return value; }
+  }
   const businessUrl = globalThis.TradeLoomBusiness?.businessUrl || (value => value);
-  const by = selector => root.querySelector(selector);
+  const by = selector => document.querySelector(selector);
   const taskTabs = [...root.querySelectorAll("[data-intake-task-tab]")];
   const taskPanels = [...root.querySelectorAll("[data-intake-task-panel]")];
+  const fileBrowser = document.querySelector("[data-file-browser]");
+  const fileListPane = document.querySelector("[data-file-list-pane]");
+  const filePreviewPane = document.querySelector("[data-file-preview-pane]");
+  const filePreviewHost = document.querySelector("[data-file-source-preview]");
+  const sourcePreview = root.querySelector(".intake-main-preview");
+  const sourcePreviewParent = sourcePreview?.parentNode;
+  const sourcePreviewNext = sourcePreview?.nextSibling;
   let activeTask = "sources";
   function selectIntakeTask(task, focus = false) {
     if (!taskTabs.some(tab => tab.dataset.intakeTaskTab === task)) return false;
@@ -34,7 +49,53 @@
       selectIntakeTask(taskTabs[nextIndex].dataset.intakeTaskTab, true);
     });
   }
-  selectIntakeTask(activeTask);
+  function syncPanelFromHash() {
+    const requestedPanel = window.location.hash.slice(1);
+    const browserMode = ["files", "preview", "deliverables"].includes(requestedPanel) ? requestedPanel : "";
+    if (browserMode) document.documentElement.dataset.businessBrowserMode = browserMode;
+    else delete document.documentElement.dataset.businessBrowserMode;
+    if (fileBrowser) {
+      fileBrowser.hidden = !browserMode;
+      root.hidden = Boolean(browserMode);
+      const deliverables = document.querySelector("[data-deliverables-section]");
+      if (deliverables) deliverables.hidden = Boolean(browserMode) || requestedPanel === "sources" || taskTabs.some(tab => tab.dataset.intakeTaskTab === requestedPanel);
+      if (fileBrowser) fileBrowser.dataset.browserMode = browserMode;
+      if (fileListPane) fileListPane.hidden = browserMode === "preview";
+      if (filePreviewPane) filePreviewPane.hidden = browserMode === "files";
+      if (sourcePreview && filePreviewHost && sourcePreviewParent) {
+        if (browserMode && sourcePreview.parentNode !== filePreviewHost) filePreviewHost.append(sourcePreview);
+        else if (!browserMode && sourcePreview.parentNode !== sourcePreviewParent) {
+          sourcePreviewParent.insertBefore(sourcePreview, sourcePreviewNext?.parentNode === sourcePreviewParent ? sourcePreviewNext : null);
+        }
+        if (!browserMode) sourcePreview.hidden = false;
+      }
+    }
+    if (taskTabs.some(tab => tab.dataset.intakeTaskTab === requestedPanel)) {
+      selectIntakeTask(requestedPanel);
+    } else if (requestedPanel === "sources") {
+      selectIntakeTask("sources");
+    }
+    const target = !browserMode && requestedPanel === "sources"
+      ? document.getElementById("source-intake")
+      : null;
+    if (target) {
+      const scrollToTarget = () => {
+        const scroller = document.scrollingElement || document.documentElement;
+        const top = scroller.scrollTop + target.getBoundingClientRect().top;
+        if (typeof scroller.scrollTo === "function") scroller.scrollTo({ top });
+        else scroller.scrollTop = top;
+      };
+      if (window.requestAnimationFrame) window.requestAnimationFrame(scrollToTarget);
+      else scrollToTarget();
+    }
+  }
+  syncPanelFromHash();
+  window.addEventListener("hashchange", syncPanelFromHash);
+  function announceSourcePreview(sourceId, phase, message = "") {
+    window.dispatchEvent(new CustomEvent("tradeloom:source-preview-state", {
+      detail: { sourceId, phase, message },
+    }));
+  }
   function notifyExecutionPlan(phase, overrides = {}) {
     const revision = viewedRevision || currentRequirement?.revision || null;
     root.dispatchEvent(new CustomEvent("tradeloom:requirement-context", { detail: {
@@ -145,6 +206,7 @@
   };
   let sources = [];
   let selectedSourceId = "";
+  let pendingExternalSourceId = "";
   let previewId = "";
   let previewData = null;
   let currentMappingId = "";
@@ -185,10 +247,11 @@
   }
 
   async function request(url, options = {}) {
+    const csrfToken = currentCsrfToken();
     const response = await fetch(businessUrl(url), {
       credentials: "same-origin",
       ...options,
-      headers: { "X-CSRFToken": csrf, ...(options.headers || {}) },
+      headers: { "X-CSRFToken": csrfToken, ...(options.headers || {}) },
     });
     const type = response.headers.get("content-type") || "";
     const body = type.includes("application/json") ? await response.json() : null;
@@ -244,6 +307,11 @@
       const body = await request(root.dataset.sourcesUrl);
       sources = body.sources || [];
       renderSources();
+      if (pendingExternalSourceId && sources.some(source => source.id === pendingExternalSourceId)) {
+        const sourceId = pendingExternalSourceId;
+        pendingExternalSourceId = "";
+        openSource(sourceId);
+      }
     } catch (error) {
       list.textContent = error.message;
     } finally {
@@ -532,6 +600,7 @@
     setMessage(by("[data-intake-mapping-message]"), "");
     const status = by("[data-intake-preview-status]");
     status.textContent = "正在解析来源…";
+    announceSourcePreview(sourceId, "loading", status.textContent);
     const button = by("[data-intake-load-window]");
     button.disabled = true;
     try {
@@ -544,16 +613,26 @@
       const detail = await request(previewUrl(previewId));
       if (generation !== sourceGeneration || selectedSourceId !== sourceId || previewId !== body.preview.id) return;
       previewData = detail;
+      window.dispatchEvent(new CustomEvent("tradeloom:source-images", { detail: { sourceId, images: detail.images || [] } }));
       enablePreviewControls(detail.sheets || []);
       if (detail.sheets?.length) await loadWindow();
       else status.textContent = "此来源没有可预览的工作表。";
+      announceSourcePreview(sourceId, detail.sheets?.length ? "ready" : "empty", status.textContent);
       if (generation === sourceGeneration && selectedSourceId === sourceId) populateTypeOptions();
     } catch (error) {
       if (generation !== sourceGeneration || selectedSourceId !== sourceId) return;
       status.textContent = error.message;
       by("[data-testid='intake-preview-grid']").textContent = "请先刷新来源列表；若解析失败，原件仍会保留。";
+      announceSourcePreview(sourceId, "error", status.textContent);
     }
   }
+
+  window.addEventListener("tradeloom:file-selection", event => {
+    const detail = event.detail;
+    if (!detail || detail.kind !== "source" || typeof detail.id !== "string" || !detail.id || detail.id.length > 128) return;
+    if (sources.some(source => source.id === detail.id)) openSource(detail.id);
+    else pendingExternalSourceId = detail.id;
+  });
 
   function populateTypeOptions() {
     const select = by("[data-intake-candidate-type]");

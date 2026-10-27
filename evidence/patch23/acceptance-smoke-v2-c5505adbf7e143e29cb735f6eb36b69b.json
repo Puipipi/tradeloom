@@ -1,0 +1,57 @@
+{
+  "phase": "synthetic",
+  "checks": [
+    "closed status does not open a window",
+    "unknown providers and arbitrary URL arguments rejected",
+    "fixed website origin loaded",
+    "sandbox and context isolation on, Node and webview off, no privileged preload",
+    "remote has no product API or Node",
+    "late subframe load does not leave main document loading",
+    "same-document navigation keeps main document ready",
+    "actual main navigation enters loading",
+    "actual main navigation finishes ready",
+    "real change event, FileReader text, FileList, filename and byte size match input",
+    "upload receipt does not claim website parsing",
+    "visible text saved without input values",
+    "website download writes exact bytes",
+    "foreign owner cannot toggle webpage",
+    "toggle reuses one owned window",
+    "owner closure destroys webpage"
+  ],
+  "runId": "c5505adbf7e143e29cb735f6eb36b",
+  "sourceSha256": "39460E2C7011F2580EC5F1F5372F7D2C1AAA298CCDE0F0E4933E7C9B8540915C",
+  "upload": {
+    "cancelled": false,
+    "name": "public-upload.txt",
+    "bytes": 36,
+    "delivered": true,
+    "websiteConfirmed": false
+  },
+  "uploadCdp": {
+    "fileInputSelector": "input[type=\"file\"]",
+    "managerReportedDelivered": true,
+    "websiteConfirmed": false
+  },
+  "uploadProbe": {
+    "inputEventCount": 1,
+    "changeEventCount": 1,
+    "fileInputCount": 1,
+    "fileListLength": 1,
+    "fileName": "public-upload.txt",
+    "fileSize": 36,
+    "fileType": "text/plain",
+    "readState": "resolved",
+    "hasWindowFileResult": true,
+    "fileTextMatchesInput": true,
+    "fileSizeMatchesBytes": true,
+    "fileNameMatchesInput": true,
+    "readyState": "complete"
+  },
+  "uploadFailureClass": null,
+  "save": {
+    "cancelled": false,
+    "name": "public-visible.txt",
+    "bytes": 62,
+    "saved": true
+  }
+}

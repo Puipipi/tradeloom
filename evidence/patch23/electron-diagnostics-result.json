@@ -1,0 +1,9 @@
+{
+  "checks": [
+    "menu reports exported path only",
+    "diagnostic action does not show/focus window",
+    "export is in fixed app-owned directory",
+    "export JSON contains no sensitive canary"
+  ],
+  "error": "AssertionError [ERR_ASSERTION]: standalone textarea is reported, draft/generation unknown\n    at check (C:\\Users\\23825\\AppData\\Local\\TradeLoom\\dev-tools\\ai-web-host-20261025\\diagnostics-fixture.cjs:20:38)\n    at C:\\Users\\23825\\AppData\\Local\\TradeLoom\\dev-tools\\ai-web-host-20261025\\diagnostics-fixture.cjs:66:3"
+}

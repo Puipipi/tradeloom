@@ -25,6 +25,23 @@ async function fixtureHome(t) {
   return { home, env: { DSH_HOME: home, TRADELOOM_DSH_APP_HOME: home } }
 }
 
+// Offline persistence/Agent facade for the role-creation checkpoint, not Host proof.
+function durableRoleCreation(ctx) {
+  const agents = new Map()
+  const persistence = { identity: Symbol('test-persistence'), async flush() {}, async stat(id) { return { header: agents.get(id).session.header } } }
+  ctx.get = () => persistence
+  ctx.agents = { get: id => agents.get(id) }
+  ctx.workspaceRegistry.get = id => ctx.workspaceRegistry.list().find(row => row.id === id)
+  const create = ctx.sessionController.create.bind(ctx.sessionController)
+  ctx.sessionController.create = async input => {
+    const result = await create(input), workspace = ctx.workspaceRegistry.get(input.workspaceId)
+    workspace.sessionIds ??= []; workspace.sessionIds.push(result.sessionId)
+    agents.set(result.sessionId, { id: result.sessionId, session: { id: result.sessionId,
+      header: { id: result.sessionId, cwd: workspace.path, agentPreset: input.agentPreset } }, ctx: { get: () => persistence } })
+    return result
+  }
+}
+
 test('package allowlist includes every relative host import required at runtime', async () => {
   const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
   const hostSource = await readFile(new URL('../host.js', import.meta.url), 'utf8')
@@ -186,6 +203,10 @@ test('business iframe theme bridge sends only the current enum to owned same-ori
   const documentListeners = new Map()
   const sent = []
   const frames = []
+  const queuedFrames = []
+  let deferFrames = false
+  const rootThemeVariables = {}
+  const body = { appendChild() {} }
   const frameSrc = '/business/home'
   const frame = {
     src: frameSrc,
@@ -194,17 +215,50 @@ test('business iframe theme bridge sends only the current enum to owned same-ori
   }
   const document = {
     querySelectorAll(selector) { return selector === 'iframe[data-tradeloom-business-frame]' ? frames : [] },
+    querySelector() { return null }, body, createElement() { return { style: {}, remove() {} } },
+    documentElement: { style: { setProperty(name, value) { rootThemeVariables[name] = value } } },
     addEventListener(name, listener) { documentListeners.set(name, listener) },
     removeEventListener(name) { documentListeners.delete(name) },
   }
+  let computedScheme = 'dark'
+  const aliasColors = {
+    light: {
+      '--dsw-alias-bg-base': 'rgb(244, 247, 251)', '--dsw-alias-bg-layer-1': 'rgb(255, 255, 255)',
+      '--dsw-alias-bg-layer-2': 'rgb(233, 238, 246)', '--dsw-alias-border-l1': 'rgba(32, 43, 58, 0.12)',
+      '--dsw-alias-label-primary': 'rgb(32, 43, 58)', '--dsw-alias-label-secondary': 'rgb(104, 119, 140)',
+      '--dsw-alias-brand-primary': 'rgb(53, 111, 196)',
+    },
+    dark: {
+      '--dsw-alias-bg-base': 'rgb(12, 16, 23)', '--dsw-alias-bg-layer-1': 'rgb(19, 25, 37)',
+      '--dsw-alias-bg-layer-2': 'rgb(23, 31, 44)', '--dsw-alias-border-l1': 'rgba(255, 255, 255, 0.08)',
+      '--dsw-alias-label-primary': 'rgb(223, 231, 243)', '--dsw-alias-label-secondary': 'rgb(139, 151, 171)',
+      '--dsw-alias-brand-primary': 'rgb(77, 131, 221)',
+    },
+  }
+  const darkAliasColors = aliasColors.dark
+  aliasColors.dark = {}
+  let computedStyleAvailable = false
   const window = {
     document, location: { origin: 'http://localhost:3088' },
+    getComputedStyle(element) {
+      if (!computedStyleAvailable) return null
+      if (element === body) return { getPropertyValue(name) { return aliasColors[computedScheme][name] ?? '' } }
+      return { color: 'rgb(223, 231, 243)', getPropertyValue() { return '' } }
+    },
+    requestAnimationFrame(callback) { if (deferFrames) queuedFrames.push(callback); else callback() },
     addEventListener(name, listener) { messageListeners.set(name, listener) },
     removeEventListener(name) { messageListeners.delete(name) },
     __ModuleLoader__: { load(value) { entryRegistration = value } },
   }
   runInNewContext(entrySource, { window, URL, URLSearchParams })
   const React = { createElement: (type, props, ...children) => ({ type, props, children }) }
+  const sceneSource = await readFile(new URL('../client.scenes.js', import.meta.url), 'utf8')
+  let sceneRegistration
+  runInNewContext(sceneSource, { window: { __ModuleLoader__: { load(value) { sceneRegistration = value } } } })
+  const sceneContract = sceneRegistration.factory(() => React)
+  let sharedUiTokens
+  const sceneStyleSnapshots = []
+  const scenePaletteSnapshots = []
   const clientRequire = name => {
     if (name === 'react') return React
     if (name === 'react-dom') return { createPortal: child => child }
@@ -212,16 +266,32 @@ test('business iframe theme bridge sends only the current enum to owned same-ori
   }
   clientRequire.async = async name => {
     assert.equal(name, './client.scenes.js')
-    return { register() {}, SceneTabs() {}, ModelDirectoryRail() {} }
+    return { register(ctx, _origin, _roles, _palette, uiTokens) {
+      sharedUiTokens = uiTokens
+      // Match the real chunk's listener ordering and inline style builder: the
+      // shell registers first, then this listener observes the shared tokens.
+      ctx.on('theme/change', () => {
+        sceneStyleSnapshots.push(sceneContract.workbenchUiStyles(sharedUiTokens))
+        scenePaletteSnapshots.push(_palette())
+      })
+    }, SceneTabs() {}, ModelDirectoryRail() {} }
   }
   const plugin = entryRegistration.factory(clientRequire)
   const slots = { inject(_name, register) { register() }, register() { return () => {} } }
   const effects = []
-  await plugin.apply({ slots, layout: { selectPanel() {} }, uiWorkspace: {}, theme: {
-    getTheme: () => ({ active: { colorScheme: 'dark' } }),
-  }, on(name, listener) {
-    themeListeners.set(name, listener)
-    return () => themeListeners.delete(name)
+  let fontSize = 14
+  const theme = {
+    getTheme: () => ({ active: { colorScheme: 'dark' }, fontSizes: { text: fontSize, code: 11, terminal: 13 } }),
+    setFontSize(role, value) {
+      assert.equal(role, 'text')
+      fontSize = value
+      for (const listener of themeListeners.get('theme/change') ?? []) listener({ active: { colorScheme: 'dark' }, fontSizes: { text: fontSize, code: 11, terminal: 13 } })
+    },
+  }
+  await plugin.apply({ slots, layout: { selectPanel() {} }, uiWorkspace: {}, theme, on(name, listener) {
+    if (!themeListeners.has(name)) themeListeners.set(name, new Set())
+    themeListeners.get(name).add(listener)
+    return () => themeListeners.get(name)?.delete(listener)
   },
   effect(callback) { effects.push(callback) } })
 
@@ -230,14 +300,56 @@ test('business iframe theme bridge sends only the current enum to owned same-ori
   messageListeners.get('message')({
     source: frame.contentWindow, origin: 'http://localhost:3088', data: { type: 'tradeloom:theme:request' },
   })
-  const darkMessage = sent[0]?.data
+  const initialMessage = sent[0]?.data
+  assert.equal(initialMessage.colorScheme, 'dark')
+  assert.equal(initialMessage.palette.canvas, '#0c0e14', 'missing early aliases use the approved near-black reference canvas palette')
+  assert.ok(Object.values(initialMessage.palette).every(color => /^#[0-9a-f]{6}$/i.test(color)), 'early theme values never leave undefined color variables')
+  assert.equal(rootThemeVariables['--tl-theme-canvas'], '#0c0e14', 'the reference canvas reaches shell portals before computed DSH aliases are available')
+  assert.equal(rootThemeVariables['--tl-font-body'], '14px', 'shell portals use the persisted native default body size')
+  computedStyleAvailable = true
+  aliasColors.dark = {}
+  messageListeners.get('message')({
+    source: frame.contentWindow, origin: 'http://localhost:3088', data: { type: 'tradeloom:theme:request' },
+  })
+  const missingAliasesMessage = sent.at(-1)?.data
+  assert.equal(missingAliasesMessage.palette.canvas, '#0c0e14', 'dark theme stays on the reference palette when CSS aliases are absent')
+  assert.equal(missingAliasesMessage.palette.accent, '#6b9bf5', 'the dark reference palette uses blue selection emphasis')
+  assert.ok(Object.values(missingAliasesMessage.palette).every(color => /^#[0-9a-f]{6}$/i.test(color)))
+  aliasColors.dark = darkAliasColors
+  const originalAccentAlias = darkAliasColors['--dsw-alias-brand-primary']
+  darkAliasColors['--dsw-alias-brand-primary'] = 'rgb(50% 0% 100%)'
+  messageListeners.get('message')({
+    source: frame.contentWindow, origin: 'http://localhost:3088', data: { type: 'tradeloom:theme:request' },
+  })
+  const percentageMessage = sent.at(-1)?.data
+  assert.equal(percentageMessage.palette.accent, '#8000ff', 'dark mode honors the same native theme aliases as light mode')
+  assert.ok(Object.values(percentageMessage.palette).every(color => /^#[0-9a-f]{6}$/i.test(color)), 'dark reference tokens always resolve to valid colors')
+  assert.equal(rootThemeVariables['--tl-theme-accent-soft'], percentageMessage.palette.accentSoft, 'the shell root uses the exact canonical accent-soft value sent to the iframe')
+  assert.equal(rootThemeVariables['--tl-shell-accent-soft'], percentageMessage.palette.accentSoft, 'portal styling inherits that same accent-soft value')
+  darkAliasColors['--dsw-alias-brand-primary'] = originalAccentAlias
+  messageListeners.get('message')({
+    source: frame.contentWindow, origin: 'http://localhost:3088', data: { type: 'tradeloom:theme:request' },
+  })
+  const darkMessage = sent.at(-1)?.data
   assert.equal(darkMessage.type, 'tradeloom:theme')
   assert.equal(darkMessage.colorScheme, 'dark')
-  assert.deepEqual(Object.keys(darkMessage.palette).sort(), ['accent', 'border', 'canvas', 'header', 'muted', 'panel', 'teal', 'text'])
+  assert.deepEqual(Object.keys(darkMessage.palette).sort(), ['accent', 'accentSoft', 'accentStrong', 'border', 'buttonInk', 'canvas', 'danger', 'dangerBackground', 'dangerBorder', 'header', 'muted', 'panel', 'success', 'successBackground', 'teal', 'text', 'warning', 'warningBackground', 'warningBorder'])
   assert.equal(darkMessage.palette.canvas, '#0c1017')
   assert.equal(darkMessage.palette.panel, '#131925')
   assert.equal(darkMessage.palette.header, '#171f2c')
-  assert.equal(sent[0].origin, 'http://localhost:3088')
+  assert.equal(darkMessage.palette.border, '#262b36')
+  assert.equal(darkMessage.palette.accent, '#4d83dd')
+  assert.equal(darkMessage.palette.teal, '#74cec6', 'floating emphasis keeps its semantic token instead of inheriting selected blue')
+  assert.equal(rootThemeVariables['--tl-theme-accent-soft'], darkMessage.palette.accentSoft)
+  assert.equal(rootThemeVariables['--tl-shell-accent-soft'], darkMessage.palette.accentSoft)
+  const scenesSource = await readFile(new URL('../client.scenes.js', import.meta.url), 'utf8')
+  assert.doesNotMatch(entrySource, /--tl-shell-accent-soft:\s*color-mix/)
+  assert.doesNotMatch(scenesSource, /--tl-shell-accent-soft:\s*color-mix/)
+  assert.deepEqual(JSON.parse(JSON.stringify(darkMessage.ui)), {
+    fontFamily: '"Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif', fontBody: 14, fontCompact: 12, lineHeight: 1.45,
+    topRowHeight: 48, navHeight: 38, modelControl: 31, sceneTabHeight: 28, dockTabHeight: 28, controlHeight: 28, toolbarHeight: 30, iconSize: 15, cornerRadius: 8,
+  })
+  assert.equal(sent.at(-1).origin, 'http://localhost:3088')
   documentListeners.get('load')({ target: frame })
   assert.equal(sent.at(-1).data.colorScheme, 'dark')
   assert.equal(sent.at(-1).origin, 'http://localhost:3088')
@@ -247,10 +359,68 @@ test('business iframe theme bridge sends only the current enum to owned same-ori
   messageListeners.get('message')({
     source: frame.contentWindow, origin: 'http://localhost:3088', data: { type: 'tradeloom:theme:request', token: 'ignored' },
   })
-  assert.equal(sent.length, 2, 'foreign origins and unexpected request fields are ignored')
-  themeListeners.get('theme/change')({ active: { colorScheme: 'light' } })
+  assert.equal(sent.length, 5, 'foreign origins and unexpected request fields are ignored')
+  deferFrames = true
+  theme.setFontSize('text', 16)
+  assert.equal(sceneStyleSnapshots.at(-1)['--tl-font-body'], '16px', 'the scene listener sees the updated inline body token before the queued palette frame')
+  assert.equal(sceneStyleSnapshots.at(-1)['--tl-font-compact'], '14px', 'the scene listener sees the updated compact token before repaint')
+  assert.equal(sceneStyleSnapshots.at(-1)['--tl-dock-tab-height'], '32px', 'dock tab inline geometry is generated from the latest size')
+  assert.equal(sceneStyleSnapshots.at(-1)['--tl-control-height'], '32px', 'toolbar/composer controls get the latest inline geometry')
+  assert.equal(sceneStyleSnapshots.at(-1)['--tl-ui-scale'], String(16 / 14), 'composer density uses the newly selected local scale before RAF')
+  assert.equal(sceneStyleSnapshots.at(-1)['--tl-space-3'], '9px', 'local panel and composer spacing follows the new scale')
+  theme.setFontSize('text', 14)
+  assert.equal(sceneStyleSnapshots.at(-1)['--tl-font-body'], '14px', 'resetting before RAF flush updates workbench body styles immediately')
+  assert.equal(sceneStyleSnapshots.at(-1)['--tl-font-compact'], '12px')
+  assert.equal(sceneStyleSnapshots.at(-1)['--tl-dock-tab-height'], '28px')
+  assert.equal(sceneStyleSnapshots.at(-1)['--tl-control-height'], '28px')
+  assert.equal(sceneStyleSnapshots.at(-1)['--tl-ui-scale'], '1', 'reset returns local density to reference size synchronously')
+  assert.equal(sceneStyleSnapshots.at(-1)['--tl-space-3'], '8px')
+  assert.match(sceneSource, /--dv-tab-font-size:\s*var\(--tl-font-compact\)/, 'Dockview tabs inherit the latest local compact token')
+  assert.match(sceneSource, /\.tl-native-conversation\s*\{[^}]*--dsh-content-font-size:\s*var\(--tl-font-body\)/s,
+    'native chat body inherits the current workbench body token')
+  assert.match(sceneSource, /\.tl-native-conversation \{ container-type: size; \}/,
+    'native short-pane density queries resolve against the actual embedded pane')
+  for (const callback of queuedFrames.splice(0)) callback()
+  deferFrames = false
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(rootThemeVariables['--tl-font-body'], '14px', 'the deferred root palette refresh does not restore a stale 16px value')
+  assert.equal(sent.at(-1).data.ui.fontBody, 14, 'iframe bridge receives the latest size after queued frames flush')
+  theme.setFontSize('text', 16)
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(rootThemeVariables['--tl-font-body'], '16px', 'a persisted native font preference updates shell typography')
+  assert.equal(sent.at(-1).data.ui.fontBody, 16, 'the same theme change updates business iframe font tokens')
+  assert.equal(sent.at(-1).data.ui.fontCompact, 14, 'the iframe compact token follows the selected native text size')
+  assert.equal(sent.at(-1).data.ui.controlHeight, 32, 'the 16px size also scales control geometry from the 14px baseline')
+  assert.equal(sent.at(-1).data.ui.iconSize, 17, 'icons scale with the same interface density')
+  assert.equal(sent.at(-1).data.ui.topRowHeight, 55, 'navigation geometry scales without changing layout proportions')
+  assert.equal(rootThemeVariables['--tl-space-3'], '9px', 'shell spacing scales alongside button and icon geometry')
+  assert.equal(rootThemeVariables['--tl-ui-scale'], '1.1428571428571428', 'the shell exposes the same scale to scoped density rules')
+  theme.setFontSize('text', 10)
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(sent.at(-1).data.ui.fontBody, 10)
+  assert.equal(sent.at(-1).data.ui.controlHeight, 20, 'minimum native size produces compact but valid controls')
+  assert.equal(sent.at(-1).data.ui.iconSize, 11)
+  assert.equal(sent.at(-1).data.ui.cornerRadius, 6)
+  theme.setFontSize('text', 22)
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(sent.at(-1).data.ui.fontBody, 22)
+  assert.equal(sent.at(-1).data.ui.controlHeight, 44, 'maximum native size expands controls')
+  assert.equal(sent.at(-1).data.ui.iconSize, 24)
+  assert.equal(sent.at(-1).data.ui.topRowHeight, 75)
+  theme.setFontSize('text', 16)
+  await new Promise(resolve => setImmediate(resolve))
+  computedScheme = 'light'
+  deferFrames = true
+  for (const listener of themeListeners.get('theme/change') ?? []) listener({ active: { colorScheme: 'light' } })
+  assert.equal(scenePaletteSnapshots.at(-1).canvas, '#f4f7fb',
+    'the synchronous popout listener must resolve the new palette before the deferred root refresh')
+  for (const callback of queuedFrames.splice(0)) callback()
+  deferFrames = false
+  await new Promise(resolve => setImmediate(resolve))
   assert.equal(sent.at(-1).data.colorScheme, 'light')
   assert.equal(sent.at(-1).data.palette.canvas, '#f4f7fb')
+  assert.equal(sent.at(-1).data.palette.teal, '#177d78', 'light floating emphasis comes from the same canonical palette')
+  assert.equal(sent.at(-1).data.ui.fontBody, 16, 'color-scheme changes preserve the persisted text size')
   assert.equal(sent.at(-1).origin, 'http://localhost:3088')
   assert.strictEqual(frames[0], frame)
   assert.strictEqual(frame.contentWindow, originalFrameWindow)
@@ -312,7 +482,7 @@ test('pinned Cordis Loader unwrap keeps all business plugin namespaces and injec
     ['../proxy.js', '@tradeloom/dsh-business-shell/proxy', ['connection', 'webServer']],
     ['../policy.js', '@tradeloom/dsh-business-shell/policy', ['tools', 'agents']],
     ['../profile-tool.js', '@tradeloom/dsh-business-shell/profile', ['tools']],
-    ['../business-tools.js', '@tradeloom/dsh-business-shell/business-tools', ['tools', 'webServer']],
+    ['../business-tools.js', '@tradeloom/dsh-business-shell/business-tools', ['tools', 'webServer', 'agents']],
     ['../step-policy.js', '@tradeloom/dsh-business-shell/step-policy', []],
   ]
   for (const [specifier, expectedName, expectedInject] of plugins) {
@@ -361,6 +531,7 @@ test('authorized role route creates one mapped native session and reuses it afte
     },
     sessionController: { async create(input) { calls.push(input); return { sessionId: input.sessionId } } },
   }
+  durableRoleCreation(ctx)
   const deps = {
     createStateStore: () => createStateStore({ env }),
     resolveOwnedHome: () => resolveOwnedHome(env),
@@ -420,7 +591,7 @@ async function newSessionFixture(t, options = {}) {
       async observeSession(sessionId) {
         const saved = observations.get(sessionId)
         if (!saved) throw Object.assign(new Error('not found'), { code: 'SESSION_QUERY_SESSION_NOT_FOUND' })
-        return { ...saved, [Symbol.dispose]() {} }
+        return { ...saved, cursor: saved.cursor ?? (saved.events ?? []).length - 1, [Symbol.dispose]() {} }
       },
     },
     sessionController: {
@@ -436,6 +607,19 @@ async function newSessionFixture(t, options = {}) {
         return { sessionId: input.sessionId, agentPreset: input.agentPreset }
       },
     },
+  }
+  const agents = new Map()
+  const persistence = { identity: Symbol('offline-new-session-persistence'), async flush() {}, async stat(id) {
+    const observed = observations.get(id)
+    return observed ? { header: { ...observed.header, agentPreset: observed.projections.values.agentPreset } } : undefined
+  } }
+  ctx.get = () => persistence
+  ctx.agents = { get: id => agents.get(id) }
+  const create = ctx.sessionController.create.bind(ctx.sessionController)
+  ctx.sessionController.create = async input => {
+    const result = await create(input)
+    agents.set(result.sessionId, { id: result.sessionId, session: { id: result.sessionId, seq: (observations.get(result.sessionId)?.events ?? []).length }, ctx: { get: () => persistence } })
+    return result
   }
   const handler = hostExports.createNewSessionHandler(ctx, {
     createStateStore: () => store,
@@ -798,14 +982,21 @@ test('protected dock layout API persists v2 separately and preserves the first v
   assert.equal(dock.version, 2)
   assert.equal(dock.scenes.center.migration.status, 'default_upgrade')
   assert.deepEqual(dock.scenes.center.legacyV1Snapshot, old)
-  assert.deepEqual(dock.scenes.center.dockview.grid.root.data[0].data.views, ['business-main', 'auxiliary', 'reference'])
+  const centerRoot = dock.scenes.center.dockview.grid.root
+  assert.equal(centerRoot.type, 'branch')
+  assert.equal(centerRoot.data.length, 2, 'the upgraded workbench recommendation contains top and bottom rows')
+  assert.deepEqual(centerRoot.data.map(row => row.size), [60, 40])
+  assert.deepEqual(centerRoot.data.map(row => row.data.map(column => [column.size, column.data.views])), [
+    [[75, ['business-main']], [25, ['files']]],
+    [[40, ['preview']], [60, ['native-chat']]],
+  ], 'the upgraded default matches the four-panel DSH reference without discarding its v1 snapshot')
 
   const savedDock = structuredClone(dock)
-  savedDock.scenes.center.dockview.activeGroup = '2'
+  savedDock.scenes.center.dockview.activeGroup = 'topb'
   const savedResponse = response()
   await dockHandler(request('PUT', savedDock), savedResponse)
   assert.equal(savedResponse.statusCode, 200)
-  assert.equal(JSON.parse(savedResponse.body).scenes.center.dockview.activeGroup, '2')
+  assert.equal(JSON.parse(savedResponse.body).scenes.center.dockview.activeGroup, 'topb')
 
   const v1Get = response()
   await v1Handler(request('GET'), v1Get)
@@ -817,7 +1008,7 @@ test('protected dock layout API persists v2 separately and preserves the first v
   const reopened = await createStateStore({ env })
   const state = await reopened.read()
   assert.equal(state.sceneWorkbench.layouts.center.panels['business-main'].visible, false)
-  assert.equal(state.dockLayouts.scenes.center.dockview.activeGroup, '2')
+  assert.equal(state.dockLayouts.scenes.center.dockview.activeGroup, 'topb')
   assert.deepEqual(state.dockLayouts.scenes.center.legacyV1Snapshot, old)
 })
 
@@ -841,7 +1032,7 @@ test('dock layout API authorizes before reading state and rejects unknown serial
   const rejected = response()
   await handler(request('PUT', invalid), rejected)
   assert.equal(rejected.statusCode, 400)
-  assert.deepEqual(Object.keys((await store.read()).dockLayouts.scenes.center.dockview.panels).sort(), ['auxiliary', 'business-main', 'native-chat', 'reference'])
+  assert.deepEqual(Object.keys((await store.read()).dockLayouts.scenes.center.dockview.panels).sort(), ['business-main', 'files', 'native-chat', 'preview'])
 
   const oversizedRequest = Readable.from([Buffer.from(JSON.stringify({ version: 2, scenes: {}, padding: 'x'.repeat(130 * 1024) }))])
   oversizedRequest.method = 'PUT'
@@ -849,7 +1040,7 @@ test('dock layout API authorizes before reading state and rejects unknown serial
   const tooLarge = response()
   await handler(oversizedRequest, tooLarge)
   assert.equal(tooLarge.statusCode, 413)
-  assert.deepEqual(Object.keys((await store.read()).dockLayouts.scenes.center.dockview.panels).sort(), ['auxiliary', 'business-main', 'native-chat', 'reference'])
+  assert.deepEqual(Object.keys((await store.read()).dockLayouts.scenes.center.dockview.panels).sort(), ['business-main', 'files', 'native-chat', 'preview'])
 })
 
 test('scene layout API rejects unauthorized requests before reading app state', async () => {
@@ -874,6 +1065,7 @@ test('concurrent role opens through separate store instances create one workspac
     },
     sessionController: { async create(input) { calls.push(input); return { sessionId: input.sessionId } } },
   }
+  durableRoleCreation(ctx)
   const dependencies = { createStateStore: () => createStateStore({ env }), resolveOwnedHome: () => resolveOwnedHome(env), roleWorkspacePath: role => roleWorkspacePath(role, env) }
   const handlers = [createSessionHandler(ctx, dependencies), createSessionHandler(ctx, dependencies)]
   const responses = await Promise.all(handlers.map(handler => { const res = response(); return handler(request('POST', { role: 'product' }), res).then(() => JSON.parse(res.body)) }))

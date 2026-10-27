@@ -1,0 +1,22 @@
+{
+  "phase": "synthetic",
+  "checks": [
+    "closed status does not open a window",
+    "unknown providers and arbitrary URL arguments rejected",
+    "fixed website origin loaded",
+    "sandbox and context isolation on, Node and webview off, no privileged preload",
+    "remote has no product API or Node",
+    "late subframe load does not leave main document loading",
+    "same-document navigation keeps main document ready",
+    "actual main navigation enters loading",
+    "actual main navigation finishes ready"
+  ],
+  "upload": {
+    "cancelled": false,
+    "name": "public-upload.txt",
+    "bytes": 36,
+    "delivered": true,
+    "websiteConfirmed": false
+  },
+  "error": "TypeError: Cannot read properties of undefined (reading 'text')\n    at C:\\Users\\23825\\AppData\\Local\\TradeLoom\\dev-tools\\ai-web-host-20261025\\acceptance.cjs:85:71"
+}

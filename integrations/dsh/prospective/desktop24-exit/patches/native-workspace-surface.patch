@@ -1,0 +1,579 @@
+diff --git a/packages/client/ui-sidebar-right/src/client/contract/slots.ts b/packages/client/ui-sidebar-right/src/client/contract/slots.ts
+--- a/packages/client/ui-sidebar-right/src/client/contract/slots.ts
++++ b/packages/client/ui-sidebar-right/src/client/contract/slots.ts
+@@ -27,12 +27,35 @@
+ // lookup chain consults after this namespace misses.
+ import type {} from '@deepseek-ai/dsh-client-locale/client'
+ import type { PaneId, TabId, TabRecord } from '@deepseek-ai/dsh-client-ui-dockkit'
+-import type { SlotHookFactory } from '@deepseek-ai/dsh-client-ui-slots'
++import type { SlotHookFactory, SlotSpec } from '@deepseek-ai/dsh-client-ui-slots'
++import type { createSidebarRightStore } from '../stores.ts'
++import type { EmbeddedSidebarInput, EmbeddedSidebarInjected } from '../embedded.tsx'
++import type { DockSurfaceInput } from '../shell/SidebarRight.tsx'
+ import type { TabHookContext } from '../tab-info.ts'
+ import type { SidebarRightKey } from '../locales.ts'
+ import type { SidebarRightNavigationParams, SidebarRightResourceParams, SidebarRightTabParamsFor } from './params.ts'
+ 
+ declare module '@deepseek-ai/dsh-client-ui-slots' {
++  interface SlotFactoryMap {
++    /** A pane-local native resource surface under an existing SessionProvider. */
++    'sidebar.surface': {
++      scope: 'session'
++      props: EmbeddedSidebarInput
++      store: ReturnType<typeof createSidebarRightStore>
++      locale: 'sidebarRight'
++      inject: EmbeddedSidebarInjected
++    }
++    /** Shared native dock body; sole declarer of tab bodies, titles and menu entries. */
++    'sidebar.dock.content': {
++      scope: 'session'
++      props: { readonly panel: DockSurfaceInput }
++      children: {
++        'sidebar.right.pane.tab': SlotSpec<SlotMap['sidebar.right.pane.tab']>
++        'sidebar.right.pane.tab.title': SlotSpec<SlotMap['sidebar.right.pane.tab.title']>
++        'sidebar.right.tab.menu.item': SlotSpec<SlotMap['sidebar.right.tab.menu.item']>
++      }
++    }
++  }
+   interface LocaleNamespaceMap {
+     /** Right-Sidebar chrome, docking-kit vocabulary, and guide copy. */
+     sidebarRight: SidebarRightKey
+diff --git a/packages/client/ui-sidebar-right/src/client/embedded-owner.ts b/packages/client/ui-sidebar-right/src/client/embedded-owner.ts
+new file mode 100644
+--- /dev/null
++++ b/packages/client/ui-sidebar-right/src/client/embedded-owner.ts
+@@ -0,0 +1,120 @@
++/** Native owner for one embedded Factory occurrence, independent of the main right column. */
++import type { SessionId } from '@deepseek-ai/dsh-session/types'
++import type { PaneId, TabId, TabRecord } from '@deepseek-ai/dsh-client-ui-dockkit'
++import type { SidebarRightTabRegistry } from './tab-registry.ts'
++import type { PinResource, TabOccurrence } from './tab-domain.ts'
++import {
++  createSidebarRightController, type SidebarRightController, type SidebarRightHost,
++  type SidebarRightSurfaceStore, type SidebarRightOpenResourceOptions, type SidebarRightOpenTabOptions,
++} from './service.ts'
++
++/**
++ * Owns navigation and resource lifetimes for exactly one renderer-created store.
++ * The enclosing SessionProvider owns its SessionReference; this owner never
++ * changes the global Session selection or releases the caller's reference.
++ */
++export class EmbeddedSidebarOwner {
++  readonly controller: SidebarRightController
++  private readonly releaseStore: () => void
++  private readonly forget: () => void
++  private readonly show: (sessionId: SessionId | undefined) => void
++  private readonly measureStore: (fits: (paneId: PaneId) => boolean) => void
++  private mounts = 0
++  private revision = 0
++  private disposed = false
++
++  /** The framework supplies the real Session id and its occurrence-exclusive store. */
++  constructor(
++    readonly sessionId: SessionId,
++    store: SidebarRightSurfaceStore,
++    tabs: SidebarRightTabRegistry,
++    pin: PinResource,
++    host: SidebarRightHost,
++    private readonly onDispose?: () => void,
++  ) {
++    const surface = createSidebarRightController(tabs, pin, host)
++    this.controller = surface.controller
++    // Adoption belongs inside this native owner, never in the workbench shell.
++    this.releaseStore = surface.adopt(sessionId, store)
++    this.forget = () => { surface.forget(sessionId) }
++    this.show = surface.show
++    this.measureStore = fits => { surface.measure(sessionId, fits) }
++    surface.show(sessionId)
++  }
++
++  /**
++   * Retain one committed Factory root. A synchronous effect replay reuses this
++   * owner; an actual final unmount aborts its occurrences at the next microtask.
++   */
++  retain(): () => void {
++    this.assertLive()
++    this.mounts += 1
++    this.revision += 1
++    let held = true
++    return () => {
++      if (!held) return
++      held = false
++      this.mounts -= 1
++      const revision = ++this.revision
++      queueMicrotask(() => {
++        if (this.mounts === 0 && this.revision === revision) this.dispose()
++      })
++    }
++  }
++
++  /** A kept-mounted body holds its native owner, not the caller's SessionReference. */
++  readonly retainTab = (_tabId: TabId, signal: AbortSignal): (() => void) => {
++    if (signal.aborted) return () => {}
++    const releaseOwner = this.retain()
++    let held = true
++    const release = (): void => {
++      if (!held) return
++      held = false
++      signal.removeEventListener('abort', release)
++      releaseOwner()
++    }
++    signal.addEventListener('abort', release, { once: true })
++    return release
++  }
++
++  /** Open a page in this occurrence, without consulting the main right column. */
++  openTab(kind: string, options?: SidebarRightOpenTabOptions): void {
++    this.assertLive()
++    this.controller.openTabIn(this.sessionId, kind, options)
++  }
++
++  /** Open a resource using this occurrence's real Session workspace. */
++  openResource(address: string, options?: SidebarRightOpenResourceOptions): void {
++    this.assertLive()
++    this.controller.openResourceIn(this.sessionId, address, options)
++  }
++
++  /** Return an existing lifetime, never synthesize a tab record or a pin. */
++  occurrence(tab: Pick<TabRecord, 'id'>): TabOccurrence {
++    this.assertLive()
++    return this.controller.tabDomain.occurrence(this.sessionId, tab)
++  }
++
++  /** Record only this occurrence's measured room for splitting. */
++  measure(fits: (paneId: PaneId) => boolean): void {
++    this.assertLive()
++    this.measureStore(fits)
++  }
++
++  /** End this surface once; other surfaces and the borrowed Session are untouched. */
++  dispose(): void {
++    if (this.disposed) return
++    this.disposed = true
++    this.revision += 1
++    this.show(undefined)
++    // Stop reconciliation before abort handlers can publish cleanup writes.
++    this.releaseStore()
++    this.controller.tabDomain.dispose()
++    this.forget()
++    this.onDispose?.()
++  }
++
++  private assertLive(): void {
++    if (this.disposed) throw new Error('Embedded surface is disposed')
++  }
++}
+diff --git a/packages/client/ui-sidebar-right/src/client/embedded.tsx b/packages/client/ui-sidebar-right/src/client/embedded.tsx
+new file mode 100644
+--- /dev/null
++++ b/packages/client/ui-sidebar-right/src/client/embedded.tsx
+@@ -0,0 +1,128 @@
++/** Public session-scoped Factory for a pane-local native file/document surface. */
++import { useCallback, useEffect, useLayoutEffect } from 'react'
++import type { ReactNode } from 'react'
++import { flushSync } from 'react-dom'
++import type { Context } from '@deepseek-ai/cordis'
++import type { SessionId } from '@deepseek-ai/dsh-session/types'
++import { randomUUID } from '@deepseek-ai/dsh-util-crypto'
++import type { BoundActions, FactoryComponentPropsOf } from '@deepseek-ai/dsh-client-ui-slots'
++import type { HalvesFit, PaneId, TabId } from '@deepseek-ai/dsh-client-ui-dockkit'
++import { createSidebarRightStore } from './stores.ts'
++import { defaultSeed } from './contract/seed.ts'
++import type { SidebarRightTabRegistry } from './tab-registry.ts'
++import { tabInfoFactory } from './tab-info.ts'
++import { EmbeddedSidebarOwner } from './embedded-owner.ts'
++import { SidebarDockSurface, SidebarDockContent, type SidebarRightInjected } from './shell/SidebarRight.tsx'
++
++/** Geometry and window controls belong to the enclosing workbench pane. */
++export interface EmbeddedSidebarInput {
++  readonly ownerId: string
++  readonly active?: boolean
++  readonly initialKind?: string
++}
++
++/** Only the native owner assembles these navigation and lifetime faces. */
++export interface EmbeddedSidebarInjected extends Pick<SidebarRightInjected, 'hooks' | 'keyedHooks' | 'occurrence'> {
++  readonly surfaceOwner: EmbeddedSidebarOwner
++  readonly mountSurface: () => () => void
++  readonly setSurfaceRoot: (node: HTMLDivElement | null) => void
++}
++
++/** Find a pane only inside this Factory root, even if another root shows the same Session. */
++function focusPane(root: HTMLElement, paneId: PaneId): void {
++  const pane = [...root.querySelectorAll<HTMLElement>('[data-dockkit-pane], [data-dockkit-float]')]
++    .find(node => (node.dataset.dockkitPane ?? node.dataset.dockkitFloat) === paneId)
++  if (pane !== undefined && pane.getBoundingClientRect().width > 0) pane.focus({ preventScroll: true })
++}
++
++/** SessionProvider and the renderer supply the true Session generation and store occurrence. */
++export function EmbeddedSidebarSurface(props: FactoryComponentPropsOf<'sidebar.surface'>): ReactNode {
++  const {
++    sessionId, ownerId, active = true, initialKind = 'files', useStore, actions, t,
++    renderFactorySlot, useTabTypes, useTabNavigation, useShortcuts, occurrence,
++    surfaceOwner, mountSurface, setSurfaceRoot,
++  } = props
++  const surface = useStore(state => state.bySession[sessionId])
++  const types = useTabTypes(value => value)
++  const shortcuts = useShortcuts(value => value)
++  useLayoutEffect(mountSurface, [mountSurface])
++  useEffect(() => {
++    if (surface === undefined && types.some(type => type.kind === initialKind)) surfaceOwner.openTab(initialKind)
++  }, [initialKind, surface, surfaceOwner, types])
++  const reportRoom = useCallback((fits: ReadonlyMap<PaneId, HalvesFit>): void => {
++    surfaceOwner.measure(paneId => fits.get(paneId)?.row !== false)
++  }, [surfaceOwner])
++  return <div ref={setSurfaceRoot} data-sidebar-surface-owner={ownerId} data-sidebar-right-session={sessionId}
++    style={{ height: '100%', minHeight: 0, minWidth: 0, position: 'relative' }}>
++    {surface === undefined ? <p role="status">{t('tab.unavailable')}</p> : <SidebarDockSurface
++      sessionId={sessionId} surface={surface} actions={actions} t={t} renderFactorySlot={renderFactorySlot}
++      useStore={useStore} useTabTypes={useTabTypes} useTabNavigation={useTabNavigation} occurrence={occurrence}
++      openTab={(kind, options) => { surfaceOwner.openTab(kind, options) }}
++      closeTab={tabId => { surfaceOwner.controller.closeIn(sessionId, tabId) }}
++      splitPane={paneId => { surfaceOwner.controller.split(paneId) }}
++      fullscreen={false} autoFullscreen={false} reportRoom={reportRoom}
++      active={active} retainTab={surfaceOwner.retainTab} shortcuts={shortcuts} chrome={null}
++    />}
++  </div>
++}
++
++/** Register the Factory over occurrence-exclusive stores; the main right column stays independent. */
++export function registerEmbeddedSidebar(ctx: Context, tabs: SidebarRightTabRegistry): () => void {
++  // The original rightbar calls this same Factory. Children must have one declarer.
++  const disposeContent = ctx.slots.registerFactory({
++    name: 'sidebar.dock.content', scope: 'session',
++    children: {
++      'sidebar.right.pane.tab': { kind: 'keyed', scope: 'session', inject: { hooks: { tabInfo: tabInfoFactory } } },
++      'sidebar.right.pane.tab.title': { kind: 'keyed', scope: 'session', inject: { hooks: { tabInfo: tabInfoFactory } } },
++      'sidebar.right.tab.menu.item': { kind: 'list', scope: 'session' },
++    },
++  }, SidebarDockContent)
++  type Handle = ReturnType<typeof createSidebarRightStore>
++  interface Face { owner: EmbeddedSidebarOwner; setRoot: (node: HTMLDivElement | null) => void }
++  const faces = new WeakMap<BoundActions<Handle>, Face>()
++  const mounted = new Set<EmbeddedSidebarOwner>()
++  const createStore = (): Handle => {
++    const handle = createSidebarRightStore(() => defaultSeed(tabs), { persistLayout: false, idNamespace: `surface-${randomUUID()}` })
++    return { ...handle, create(scopeKey) {
++      if (scopeKey === undefined) throw new Error('Embedded surface requires a SessionProvider')
++      const instance = handle.create(scopeKey), sessionId = scopeKey as SessionId
++      let root: HTMLDivElement | null = null
++      const owner = new EmbeddedSidebarOwner(sessionId, instance, tabs, (address, signal) => {
++        ctx.resources.pin(address, signal)
++      }, {
++        autoFullscreen: () => false,
++        openWithFocus: (_id, open) => {
++          if (root === null || !root.contains(root.ownerDocument.activeElement)) { open(); return }
++          let pane: PaneId | undefined
++          flushSync(() => { pane = open() })
++          if (pane !== undefined) focusPane(root, pane)
++        },
++        closeWithFocus: (_id, paneId, close) => {
++          const retain = root !== null && root.contains(root.ownerDocument.activeElement)
++          flushSync(close)
++          if (retain && root !== null) focusPane(root, paneId)
++        },
++      }, () => { mounted.delete(owner) })
++      const face: Face = { owner, setRoot: node => { root = node } }
++      faces.set(instance.actions, face)
++      return instance
++    } }
++  }
++  const dispose = ctx.slots.registerFactory({
++    name: 'sidebar.surface', scope: 'session', locale: 'sidebarRight', store: createStore,
++    inject: (sessionId, actions): EmbeddedSidebarInjected => {
++      const face = faces.get(actions)
++      if (face === undefined || face.owner.sessionId !== sessionId) throw new Error('Embedded surface store binding is unavailable')
++      const owner = face.owner
++      return {
++        surfaceOwner: owner,
++        mountSurface: () => { mounted.add(owner); return owner.retain() },
++        setSurfaceRoot: face.setRoot,
++        occurrence: tab => owner.occurrence(tab),
++        hooks: { shortcuts: ctx.shortcuts.catalog, tabTypes: { subscribe: listener => tabs.subscribe(listener), getSnapshot: () => tabs.entries() } },
++        keyedHooks: { tabNavigation: key => owner.occurrence({ id: key as TabId }).navigation },
++      }
++    },
++  }, EmbeddedSidebarSurface)
++  return () => { dispose(); for (const owner of mounted) owner.dispose(); mounted.clear(); disposeContent() }
++}
+diff --git a/packages/client/ui-sidebar-right/src/client/index.ts b/packages/client/ui-sidebar-right/src/client/index.ts
+--- a/packages/client/ui-sidebar-right/src/client/index.ts
++++ b/packages/client/ui-sidebar-right/src/client/index.ts
+@@ -45,9 +45,12 @@
+ import { en, zh } from './locales.ts'
+ import { GUIDE_ID, guideDefinition } from './tabs/guide/definition.ts'
+ import { createGuidePins } from './tabs/guide/guide-pins.ts'
+-import { guideTabInfoFactory, tabInfoFactory } from './tab-info.ts'
++import { guideTabInfoFactory } from './tab-info.ts'
+ import type { TabId } from '@deepseek-ai/dsh-client-ui-dockkit'
+ import { defaultSeed } from './contract/seed.ts'
++import { registerEmbeddedSidebar } from './embedded.tsx'
++
++export type { EmbeddedSidebarInput } from './embedded.tsx'
+ 
+ export type { SidebarRightTarget } from './focus.ts'
+ export type { RightbarSeatProps, SidebarRightInjected, SidebarRightPresentation } from './shell/SidebarRight.tsx'
+@@ -215,11 +218,7 @@
+       yield ctx.slots.register({
+         name: 'rightbar.session',
+         locale: NS,
+-        children: {
+-          'sidebar.right.pane.tab': { kind: 'keyed', scope: 'session', inject: { hooks: { tabInfo: tabInfoFactory } } },
+-          'sidebar.right.pane.tab.title': { kind: 'keyed', scope: 'session', inject: { hooks: { tabInfo: tabInfoFactory } } },
+-          'sidebar.right.tab.menu.item': { kind: 'list', scope: 'session' },
+-        },
++        // Keyed tab seats belong to the shared sidebar.dock.content Factory.
+         store,
+         inject: (sessionId): SidebarRightInjected => ({
+           ...injected,
+@@ -287,4 +286,8 @@
+       adoptions.clear()
+     }
+   }, 'ui-sidebar-right: seats and shipped tab type')
++  // Publish the original services and tab seats before a reusable Factory
++  // declares those same extension children and wakes their waiting plugins.
++  const disposeEmbedded = registerEmbeddedSidebar(ctx, tabs)
++  ctx.effect(() => disposeEmbedded, 'ui-sidebar-right: embedded Factory lifetime')
+ }
+diff --git a/packages/client/ui-sidebar-right/src/client/shell/SidebarRight.tsx b/packages/client/ui-sidebar-right/src/client/shell/SidebarRight.tsx
+--- a/packages/client/ui-sidebar-right/src/client/shell/SidebarRight.tsx
++++ b/packages/client/ui-sidebar-right/src/client/shell/SidebarRight.tsx
+@@ -32,7 +32,7 @@
+ import type { ShortcutCatalogEntry } from '@deepseek-ai/dsh-client-shortcuts/client'
+ import { IconPanelLeftOutlineRegular, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
+ import type {
+-  HostObservable, InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore,
++  HostObservable, InjectFace, PropsLocale, PropsRenderFactories, PropsRenderSlots, PropsRuntime, PropsStore, FactoryComponentPropsOf,
+ } from '@deepseek-ai/dsh-client-ui-slots'
+ import type {} from '../contract/slots.ts'
+ import type { DockIntents, DockMode, FloatRect, TabId, TabRecord, TabRenderer } from '@deepseek-ai/dsh-client-ui-dockkit'
+@@ -117,18 +117,18 @@
+ /** The column seat's props: session scope, so the session arrives as a standard prop. */
+ export type RightbarSeatProps =
+   & PropsRuntime<'rightbar.session'>
+-  & Children
++  & PropsRenderFactories
+   & Store
+   & PropsLocale<'sidebarRight'>
+   & InjectFace<SidebarRightInjected>
+ 
+ /** Everything the panel needs, already bound to one session. */
+-interface PanelProps {
++export interface PanelProps {
+   readonly sessionId: SessionId
+   readonly surface: SurfaceState
+   readonly actions: Store['actions']
+   readonly t: RightbarSeatProps['t']
+-  readonly renderSlot: Children['renderSlot']
++  readonly renderFactorySlot: PropsRenderFactories['renderFactorySlot']
+   readonly openTab: SidebarRightInjected['openTab']
+   readonly closeTab: SidebarRightInjected['closeTab']
+   readonly splitPane: SidebarRightInjected['splitPane']
+@@ -181,7 +181,7 @@
+ }
+ 
+ /** One tab's slot dispatch: which seat, and what to render when no type registered. */
+-interface TabSlotProps extends Pick<PanelProps, 'renderSlot' | 'occurrence' | 'useTabTypes' | 'useTabNavigation' | 'useStore' | 'fullscreen' | 'active' | 'retainTab' | 'shortcuts'> {
++interface TabSlotProps extends Pick<DockPanelProps, 'renderSlot' | 'occurrence' | 'useTabTypes' | 'useTabNavigation' | 'useStore' | 'fullscreen' | 'active' | 'retainTab' | 'shortcuts'> {
+   readonly tab: TabRecord
+   readonly seat: 'sidebar.right.pane.tab' | 'sidebar.right.pane.tab.title'
+   readonly fallback: ReactNode
+@@ -221,7 +221,7 @@
+  * carry a tab whose type shipped in a plugin that is no longer mounted. Saying so
+  * is better than an empty pane.
+  */
+-function bodiesFor(panel: PanelProps): TabRenderer {
++function bodiesFor(panel: DockPanelProps): TabRenderer {
+   const { t, ...rest } = panel
+   // Slot dispatch selects a type; the record key separates bodies of that type.
+   return tab => (
+@@ -236,7 +236,7 @@
+ }
+ 
+ /** Dispatch a tab's title to its registered type; without one the chip shows the title captured at open time. */
+-function titlesFor(panel: PanelProps): TabRenderer {
++function titlesFor(panel: DockPanelProps): TabRenderer {
+   return tab => <TabSlot key={tab.id} {...panel} tab={tab} seat="sidebar.right.pane.tab.title" fallback={tab.title} />
+ }
+ 
+@@ -300,9 +300,8 @@
+  * anchored to the frame's right edge and slid off it while collapsed.
+  */
+ function SidebarPanel(panel: PanelProps & { width: number; panelRef: RefObject<HTMLDivElement> }): ReactNode {
+-  const { sessionId, surface, actions, t, renderSlot, openTab, width, reportRoom, fullscreen, panelRef } = panel
++  const { sessionId, surface, width, fullscreen, panelRef } = panel
+   const { expanded } = surface.layout
+-  const types = panel.useTabTypes(value => value)
+   return (
+     <div
+       ref={panelRef}
+@@ -316,6 +315,30 @@
+       aria-hidden={(!expanded && surface.layout.floats.length === 0) || undefined}
+     >
+       <div className={css.panelBody}>
++        <SidebarDockSurface {...panel} chrome={<PanelChrome
++          sessionId={sessionId} fullscreen={fullscreen} actions={panel.actions} t={panel.t}
++          shortcuts={panel.shortcuts} toggleFullscreen={panel.toggleFullscreen}
++        />} />
++      </div>
++    </div>
++  )
++}
++
++/** Reuse the native docking surface inside a caller-owned pane without column presentation. */
++export type DockSurfaceInput = Omit<PanelProps, 'toggleFullscreen' | 'renderFactorySlot'> & { readonly chrome: ReactNode }
++type DockPanelProps = DockSurfaceInput & Pick<Children, 'renderSlot'>
++
++export function SidebarDockSurface(panel: DockSurfaceInput & PropsRenderFactories): ReactNode {
++  const { renderFactorySlot, ...input } = panel
++  return renderFactorySlot('sidebar.dock.content', { panel: input })
++}
++
++/** One declaration owns native keyed extension seats for both main and embedded surfaces. */
++export function SidebarDockContent({ panel: input, renderSlot }: FactoryComponentPropsOf<'sidebar.dock.content'>): ReactNode {
++  const panel: DockPanelProps = { ...input, renderSlot }
++  const { sessionId, surface, actions, t, openTab, reportRoom } = panel
++  const types = panel.useTabTypes(value => value)
++  return (
+         <DockLayout
+           state={surface.layout}
+           canSplit={canSplit(surface.layout) && dockPaneIds(surface.layout).length < 2}
+@@ -331,14 +354,9 @@
+           keepMounted={tab => types.find(type => type.kind === tab.kind)?.keepMounted === true}
+           renderTabMenuItems={(tab, dismiss) =>
+             renderSlot('sidebar.right.tab.menu.item', { tab, dismiss })}
+-          chrome={<PanelChrome
+-            sessionId={sessionId} fullscreen={fullscreen} actions={actions} t={t}
+-            shortcuts={panel.shortcuts} toggleFullscreen={panel.toggleFullscreen}
+-          />}
++          chrome={panel.chrome}
+           onRoom={reportRoom}
+         />
+-      </div>
+-    </div>
+   )
+ }
+ 
+@@ -350,7 +368,7 @@
+  * measured and the automatic fullscreen rule of its frame width.
+  */
+ export function RightbarSeat({
+-  sessionId, width, viewportWidth, canShow, useStore, actions, t, renderSlot, syncPresentation, measureRoom, reportAutoFullscreen,
++  sessionId, width, viewportWidth, canShow, useStore, actions, t, renderFactorySlot, syncPresentation, measureRoom, reportAutoFullscreen,
+   openTab, closeTab, useTabTypes, useTabNavigation, occurrence, retainTab, active, useShortcuts, splitPane, toggleFullscreen,
+ }: RightbarSeatProps): ReactNode {
+   // One store instance per session, so this map holds this session's surface.
+@@ -416,7 +434,7 @@
+ 
+   if (surface === undefined) return null
+   const panel: PanelProps = {
+-    sessionId, actions, t, renderSlot, surface, openTab, closeTab, useTabTypes, useTabNavigation, useStore, occurrence,
++    sessionId, actions, t, renderFactorySlot, surface, openTab, closeTab, useTabTypes, useTabNavigation, useStore, occurrence,
+     fullscreen, autoFullscreen, reportRoom, active, retainTab, shortcuts, splitPane, toggleFullscreen,
+   }
+   return <SidebarPanel {...panel} width={width} panelRef={panelRef} />
+diff --git a/packages/client/ui-sidebar-right/src/client/stores.ts b/packages/client/ui-sidebar-right/src/client/stores.ts
+--- a/packages/client/ui-sidebar-right/src/client/stores.ts
++++ b/packages/client/ui-sidebar-right/src/client/stores.ts
+@@ -44,6 +44,8 @@
+   readonly history: History
+   /** How many ids this surface has minted; carried so replay stays reproducible. */
+   readonly minted: number
++  /** Non-persistent Factory occurrence identity; never changes the real Session id. */
++  readonly idNamespace?: string
+ }
+ 
+ /**
+@@ -96,13 +98,13 @@
+ }
+ 
+ /** A mint that counts, so the surface can carry its position forward. */
+-function counting(from: number): { mint: Mint; used: () => number } {
++function counting(from: number, idNamespace?: string): { mint: Mint; used: () => number } {
+   let counter = from
+   // The mint is where a string becomes a branded id: the prefix names the kind,
+   // the counter keeps every id of this surface unique.
+   const mint = ((prefix: string): string => {
+     counter += 1
+-    return `${prefix}${counter}`
++    return idNamespace === undefined ? `${prefix}${counter}` : `${prefix}-${idNamespace}-${counter}`
+   }) as Mint
+   return { mint, used: () => counter }
+ }
+@@ -114,12 +116,13 @@
+  * for, and an open into a fresh surface shows only what it opened.
+  * @returns the initial surface.
+  */
+-export function createSurface(): SurfaceState {
+-  const counter = counting(0)
++export function createSurface(idNamespace?: string): SurfaceState {
++  const counter = counting(0, idNamespace)
+   return {
+     layout: createInitialState({ next: counter.mint }),
+     history: EMPTY_HISTORY,
+     minted: counter.used(),
++    ...(idNamespace === undefined ? {} : { idNamespace }),
+   }
+ }
+ 
+@@ -187,7 +190,7 @@
+  * @returns the next surface, or the same one when the intent changes nothing.
+  */
+ function advance(surface: SurfaceState, plan: SurfacePlan, seed: () => SidebarRightSeed): SurfaceState {
+-  const counter = counting(surface.minted)
++  const counter = counting(surface.minted, surface.idNamespace)
+   const makeTab = (id: TabId): TabRecord => seedRecord(id, seed)
+   const planned = plan(surface.layout, counter.mint, makeTab)
+   if (planned.length === 0) return surface
+@@ -198,7 +201,7 @@
+   const after = replay(surface.layout, planned)
+   const settled = planSettle(after, counter.mint, after.expanded ? makeTab : undefined)
+   const stepped = record(surface.history, surface.layout, [...planned, ...settled])
+-  return { layout: stepped.state, history: stepped.history, minted: counter.used() }
++  return { ...surface, layout: stepped.state, history: stepped.history, minted: counter.used() }
+ }
+ 
+ /**
+@@ -207,13 +210,14 @@
+  * A session with no surface yet gets its initial one even when the intent
+  * changes nothing: materializing is itself the change.
+  */
+-function seat(
++function seatSurface(
+   state: SidebarRightState,
+   sessionId: string,
+   next: (surface: SurfaceState) => SurfaceState,
++  idNamespace?: string,
+ ): Record<string, SurfaceState> {
+   const existing = state.bySession[sessionId]
+-  const updated = next(existing ?? createSurface())
++  const updated = next(existing ?? createSurface(idNamespace))
+   return updated === existing ? state.bySession : { ...state.bySession, [sessionId]: updated }
+ }
+ 
+@@ -262,11 +266,16 @@
+  * expansion of an empty column needs one, which can be long after the store was
+  * built and in a language the user has since changed to.
+  * @param seed - the registered default page, read at each mint.
++ * @param options - embedded occurrences can leave the main Sidebar's persistence untouched.
+  * @returns the handle (spec, type, identity, and factory in one).
+  */
+ export function createSidebarRightStore(
+   seed: () => SidebarRightSeed,
++  options: { readonly persistLayout?: true; readonly idNamespace?: never }
++    | { readonly persistLayout: false; readonly idNamespace?: string } = {},
+ ): EngineStoreHandle<SidebarRightState, SidebarRightActions> {
++  const seat = (state: SidebarRightState, sessionId: string, next: (surface: SurfaceState) => SurfaceState) =>
++    seatSurface(state, sessionId, next, options.idNamespace)
+   const handle = defineStore<SidebarRightState, SidebarRightActions>({
+     init: (): SidebarRightState => ({ bySession: {} }),
+     actions: {
+@@ -426,7 +435,7 @@
+   })
+   return { ...handle, create(scopeKey) {
+     const instance = handle.create(scopeKey)
+-    if (scopeKey === undefined) return instance
++    if (scopeKey === undefined || options.persistLayout === false) return instance
+     const saved = readSidebarLayout(scopeKey)
+     if (saved !== undefined) instance.store.set({ bySession: { [scopeKey]: saved } })
+     instance.subscribe(() => {

@@ -1,19 +1,26 @@
 {% extends "workbench/base.html" %}
 {% load business_urls %}
-{% block page_eyebrow %}Agent / 编排状态{% endblock %}
-{% block page_title %}Agent 中心{% endblock %}
+{% block stylesheets %}<link rel="stylesheet" href="{{ '/static/workbench/styles.css?v=business-ui-density8'|business_url }}">{% endblock %}
+{% block page_eyebrow %}工作流 / 业务计划{% endblock %}
+{% block page_title %}工作流{% endblock %}
 {% block content %}
-<div class="page-stack">
+<div class="page-stack agent-center-page">
+  <nav class="workflow-page-navigation" aria-label="工作流导航">
+    <a class="button secondary small" href="#workflow-list-heading">已保存计划</a>
+    <a class="button secondary small" href="#workflow-create-form">创建计划</a>
+    <a class="button secondary small" href="{% business_path '/runs' %}">运行记录</a>
+  </nav>
+  <p class="muted-text">选择已保存计划查看节点图、当前步骤与人工确认；文件和助手保留在独立面板中。</p>
   <section class="panel workflow-create-panel">
-    <div class="panel-heading">
-      <div>
-        <h2>创建业务计划</h2>
-        <p>先解析目标与只读资料来源，再确认保存计划和执行模式。确认后只保存计划并排队，尚未运行子任务。</p>
-      </div>
-      <span class="tag demo-tag">通用工作流</span>
-    </div>
-    {% if batch_options %}
-    <form id="workflow-create-form" class="workflow-form" data-workflow-create-endpoint="{% business_path '/api/workflow-tasks' %}" data-intent-preview-endpoint="{% business_path '/api/workflow-intent/preview' %}">
+    <details class="workflow-create-disclosure" id="workflow-create-disclosure">
+      <summary class="workflow-create-summary">
+        <span><strong>创建业务计划</strong><small>解析并确认后保存计划；不会立即运行子任务。</small></span>
+        <span class="button secondary small" aria-hidden="true">展开表单</span>
+      </summary>
+      <div class="workflow-create-body">
+        {% if batch_options %}
+        <p class="muted-text workflow-create-explainer">先解析目标与只读资料来源，再确认保存计划和执行模式。确认后只保存计划并排队，尚未运行子任务。</p>
+        <form id="workflow-create-form" class="workflow-form" data-workflow-create-endpoint="{% business_path '/api/workflow-tasks' %}" data-intent-preview-endpoint="{% business_path '/api/workflow-intent/preview' %}">
       <div class="workflow-form-grid">
         <div class="field">
           <label for="workflow-batch">产品批次</label>
@@ -51,20 +58,21 @@
       <p id="workflow-create-notice" class="muted-text" role="status" aria-live="polite" hidden></p>
       <button id="workflow-load-agent-proposal" class="button secondary" type="button" hidden>保留旧草稿并载入 Agent 提案</button>
       <p id="workflow-create-error" class="form-error" role="alert" aria-live="polite" hidden></p>
-    </form>
-    {% else %}
-    <div class="empty-state compact">
-      <h3>还没有可选产品批次</h3>
-      <p>先导入产品资料，再回来创建业务计划。</p>
-      <a class="button secondary" href="{% business_path '/tasks/new' %}">前往导入任务</a>
-    </div>
-    {% endif %}
+        </form>
+        {% else %}
+        <div class="empty-state compact">
+          <p>还没有可选产品批次。先导入产品资料，再回来创建业务计划。</p>
+          <a class="button secondary" href="{% business_path '/tasks/new' %}">前往导入任务</a>
+        </div>
+        {% endif %}
+      </div>
+    </details>
   </section>
 
   <section class="panel">
     <div class="panel-heading">
       <div>
-        <h2>业务 Agent 状态</h2>
+        <h2>工作流概览</h2>
         <p>这里查看已保存的业务任务、角色分工和人审状态；不会触发任务执行。</p>
       </div>
       <span class="tag demo-tag mono">{{ planning_mode }}</span>
@@ -91,15 +99,15 @@
   <div class="state-grid">
     <section class="panel state-card">
       <div class="panel-heading">
-        <div><h2>业务任务</h2><p>已保存的业务任务与当前步骤。</p></div>
+        <div><h2 id="workflow-list-heading">已保存计划</h2><p>已保存的业务任务与当前步骤。</p></div>
         <span class="mono count-badge">{{ workflow_count }}</span>
       </div>
       {% if workflow_tasks %}
       <div class="compact-list">
         {% for workflow in workflow_tasks %}
         <article class="compact-row">
-          <strong><a href="{{ workflow.detail_url|business_url }}">{{ workflow.batch.title }}</a></strong>
-          <span>{{ workflow.task_type_label }} · {{ workflow.status_label }}</span>
+          <strong><a href="{{ workflow.detail_url|business_url }}#workflow-plan">{{ workflow.batch.title }}</a></strong>
+          <span>{{ workflow.task_type_label }} · <span class="status-pill {{ workflow.status }}">{{ workflow.status_label }}</span></span>
           <span class="muted-text">{{ workflow.current_step_label }}</span>
           {% if workflow.execution_summary %}<span class="muted-text">{{ workflow.execution_summary }}</span>{% endif %}
           {% if workflow.error_summary %}<span class="muted-text">错误：{{ workflow.error_summary }}</span>{% endif %}
@@ -122,7 +130,7 @@
         {% for subtask in subtasks %}
         <article class="compact-row">
           <strong><a href="{{ subtask.detail_url|business_url }}">{{ subtask.agent_role_label }}</a></strong>
-          <span>{{ subtask.status_label }} · 已用错误重试 {{ subtask.retry_count }}</span>
+          <span><span class="status-pill {{ subtask.status }}">{{ subtask.status_label }}</span> · 已用错误重试 {{ subtask.retry_count }}</span>
           <span class="muted-text">{{ subtask.task.batch.title }} · {{ subtask.source_summary }}</span>
           <span class="muted-text">{{ subtask.result_summary }}</span>
           {% if subtask.error_summary %}<span class="muted-text">错误：{{ subtask.error_summary }}</span>{% endif %}
@@ -145,7 +153,7 @@
         {% for review in workflow_reviews %}
         <article class="compact-row">
           <strong class="mono"><a href="{{ review.workflow_url|business_url }}">{{ review.item_ref }}</a></strong>
-          <span>{% if review.status == "pending" %}待填写{% else %}已提交待核验{% endif %}</span>
+          <span class="status-pill {% if review.status == 'pending' %}waiting_human{% else %}needs_review{% endif %}">{% if review.status == "pending" %}待填写{% else %}已提交待核验{% endif %}</span>
           <span class="muted-text">{{ review.task.batch.title }}</span>
         </article>
         {% endfor %}
@@ -165,4 +173,20 @@
     <a class="button secondary" href="{% business_path '/agents' %}">查看 Agent 能力</a>
   </section>
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+  (() => {
+    const disclosure = document.getElementById("workflow-create-disclosure");
+    const form = document.getElementById("workflow-create-form");
+    if (!disclosure || !form) return;
+    const openForAnchor = () => {
+      if (window.location.hash !== "#workflow-create-form") return;
+      disclosure.open = true;
+      form.querySelector("select, input, textarea, button")?.focus({ preventScroll: true });
+    };
+    openForAnchor();
+    window.addEventListener("hashchange", openForAnchor);
+  })();
+</script>
 {% endblock %}

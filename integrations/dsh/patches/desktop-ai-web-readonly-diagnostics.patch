@@ -1,0 +1,578 @@
+diff --git a/apps/desktop/src/browser-guests.ts b/apps/desktop/src/browser-guests.ts
+--- a/apps/desktop/src/browser-guests.ts
++++ b/apps/desktop/src/browser-guests.ts
+@@ -1,10 +1,11 @@
+ /** Main-process ownership and fixed isolation policy for Sidebar webview guests. */
+ import { randomUUID } from 'node:crypto'
+ import { app, session, BrowserWindow, dialog, Menu, shell, type Session, type WebContents } from 'electron'
+-import { stat, writeFile } from 'node:fs/promises'
+-import { basename } from 'node:path'
++import { mkdir, stat, writeFile } from 'node:fs/promises'
++import { basename, join } from 'node:path'
+ import type { DesktopBrowserLeaseId, DesktopBrowserOpenRequest, DesktopBrowserReservation } from '@deepseek-ai/dsh-client-ui-sidebar-browser/types'
+ import { DESKTOP_IPC, type DesktopAiWebState, type DesktopAiWebFileResult, type DesktopAiWebProvider } from './ipc.ts'
++import { diagnoseNativeAiWebPage, NativeAiWebDiagnosticError, type NativeAiWebDiagnosticProvider } from './ai-web-diagnostics.ts'
+ 
+ interface GuestLease {
+   readonly owner: WebContents
+@@ -295,6 +296,7 @@
+       { role: 'editMenu' },
+       { label: '网页', submenu: [
+         { label: '刷新', click: () => { if (owned()) window.webContents.reload() } },
++        { label: '导出无内容站点诊断', click: () => { void this.exportDiagnosticsMenu(owner) } },
+         { label: '在浏览器打开', click: () => { void shell.openExternal(this.site.url).catch(() => {}) } },
+       ] },
+     ]))
+@@ -348,6 +350,49 @@
+     } finally { this.busy = false }
+   }
+ 
++  /** Read only the already-owned fixed-origin page; never activates its window. */
++  async diagnostics(owner: BrowserWindow, request: unknown) {
++    const window = this.requireWindow(owner, request)
++    const provider = this.site.provider as NativeAiWebDiagnosticProvider
++    return diagnoseNativeAiWebPage({
++      isDestroyed: () => owner.isDestroyed() || window.isDestroyed() || window.webContents.isDestroyed(),
++      getURL: () => window.webContents.getURL(),
++      get mainFrame() {
++        const frame = window.webContents.mainFrame
++        return { processId: frame.processId, routingId: frame.routingId, url: frame.url }
++      },
++      executeJavaScriptInIsolatedWorld: (worldId, scripts, userGesture) =>
++        window.webContents.executeJavaScriptInIsolatedWorld(worldId, scripts, userGesture),
++    }, provider)
++  }
++
++  private async exportDiagnosticsMenu(owner: BrowserWindow): Promise<void> {
++    const current = this.liveWindow()
++    if (current === undefined || current.isDestroyed()) return
++    try {
++      const result = await this.diagnostics(owner, { provider: this.site.provider })
++      if (owner.isDestroyed() || current.isDestroyed() || this.liveWindow() !== current) {
++        throw new NativeAiWebDiagnosticError('window-destroyed')
++      }
++      const directory = join(app.getPath('userData'), 'site-diagnostics')
++      await mkdir(directory, { recursive: true })
++      const name = `${result.provider}-${new Date().toISOString().replace(/[:.]/g, '-')}-${randomUUID()}.json`
++      const outputPath = join(directory, name)
++      const json = `${JSON.stringify(result, null, 2)}\n`
++      if (Buffer.byteLength(json, 'utf8') > 8_192) throw new NativeAiWebDiagnosticError('result-too-large')
++      await writeFile(outputPath, json, { encoding: 'utf8', flag: 'wx' })
++      if (!owner.isDestroyed()) await dialog.showMessageBox(owner, {
++        type: 'info', title: `${this.site.label} 网页诊断`, message: '无内容站点诊断已导出', detail: outputPath,
++      })
++    } catch (error) {
++      if (owner.isDestroyed()) return
++      const code = error instanceof NativeAiWebDiagnosticError ? error.code : 'diagnostic-failed'
++      await dialog.showMessageBox(owner, {
++        type: 'info', title: `${this.site.label} 网页诊断`, message: `诊断未完成（${code}）`,
++      })
++    }
++  }
++
+   private async menuAction(action: () => Promise<unknown>): Promise<void> {
+     try { await action() }
+     catch (error) {
+@@ -439,4 +484,5 @@
+   status(request: unknown): DesktopAiWebState { return this.siteWindow(request).status(request) }
+   upload(owner: BrowserWindow, request: unknown): Promise<DesktopAiWebFileResult> { return this.siteWindow(request).upload(owner, request) }
+   saveText(owner: BrowserWindow, request: unknown): Promise<DesktopAiWebFileResult> { return this.siteWindow(request).saveText(owner, request) }
+-}
++  diagnostics(owner: BrowserWindow, request: unknown) { return this.siteWindow(request).diagnostics(owner, request) }
++}
+diff --git a/apps/desktop/src/ai-web-diagnostics.ts b/apps/desktop/src/ai-web-diagnostics.ts
+new file mode 100644
+--- /dev/null
++++ b/apps/desktop/src/ai-web-diagnostics.ts
+@@ -0,0 +1,359 @@
++/** Read-only, fixed-code DOM diagnostics for a native-owned AI web window. */
++
++export type NativeAiWebDiagnosticProvider = 'deepseek' | 'doubao'
++export type DiagnosticBoolean = boolean | 'unknown'
++
++export type NativeAiWebDiagnosticErrorCode =
++  | 'invalid-provider' | 'window-destroyed' | 'unsupported-origin'
++  | 'document-changed' | 'diagnostic-failed' | 'result-too-large'
++  | 'diagnostic-timeout'
++
++const ORIGINS: Readonly<Record<NativeAiWebDiagnosticProvider, string>> = {
++  deepseek: 'https://chat.deepseek.com',
++  doubao: 'https://www.doubao.com',
++}
++
++const SAFE_TAGS = new Set(['article', 'button', 'div', 'form', 'input', 'li', 'section', 'span', 'textarea'])
++const SAFE_ROLES = new Set(['alert', 'button', 'combobox', 'dialog', 'group', 'listitem', 'option', 'searchbox', 'status', 'textbox'])
++const SAFE_ACTION_LABELS = new Set([
++  'Send', 'Send message', 'Stop generating', 'Log in', 'Login', 'Sign in', 'Sign up', 'Upload file',
++  '发送', '发送消息', '停止生成', '登录', '注册', '上传文件',
++])
++const MESSAGE_IDENTITY_ATTRIBUTES = [
++  'data-message-id', 'data-turn-id', 'data-message-key', 'data-turn', 'data-id',
++] as const
++const MAX_OUTPUT_CHARS = 8_192
++const MAX_CANDIDATES = 32
++const DIAGNOSTIC_WORLD_ID = 0x544c
++
++export class NativeAiWebDiagnosticError extends Error {
++  readonly code: NativeAiWebDiagnosticErrorCode
++  constructor(code: NativeAiWebDiagnosticErrorCode) {
++    super(code)
++    this.name = 'NativeAiWebDiagnosticError'
++    this.code = code
++  }
++}
++
++export interface NativeAiWebDiagnosticCandidate {
++  readonly kind: 'input' | 'button'
++  readonly tag: string
++  readonly role?: string
++  readonly testId?: string
++  readonly hasTestId?: true
++  readonly ariaLabel?: string
++  readonly hasLabel?: true
++}
++
++export interface NativeAiWebDiagnosticResult {
++  readonly provider: NativeAiWebDiagnosticProvider
++  readonly origin: string
++  readonly documentStable: true
++  readonly inputPresent: DiagnosticBoolean
++  readonly loginRequired: DiagnosticBoolean
++  readonly draftState: 'unknown'
++  readonly generationState: 'unknown'
++  readonly candidateListComplete: boolean
++  readonly candidates: readonly NativeAiWebDiagnosticCandidate[]
++  readonly messageIdentityAttributes: readonly { readonly name: typeof MESSAGE_IDENTITY_ATTRIBUTES[number]; readonly present: DiagnosticBoolean }[]
++}
++
++interface DiagnosticFrame {
++  readonly processId: number
++  readonly routingId: number
++  readonly url: string
++}
++
++/** The minimal read-only WebContents surface used by this helper. */
++export interface NativeAiWebDiagnosticContents {
++  /** Must include both WebContents destruction and its owning BrowserWindow destruction. */
++  isDestroyed(): boolean
++  getURL(): string
++  readonly mainFrame: DiagnosticFrame
++  executeJavaScriptInIsolatedWorld(worldId: number, scripts: { code: string }[], userGesture?: boolean): Promise<unknown>
++}
++
++interface RawCandidate {
++  readonly kind: unknown
++  readonly tag: unknown
++  readonly role?: unknown
++  readonly testId?: unknown
++  readonly hasTestId?: unknown
++  readonly ariaLabel?: unknown
++  readonly hasLabel?: unknown
++}
++
++interface RawDiagnostic {
++  readonly schema: unknown
++  readonly origin: unknown
++  readonly documentStable: unknown
++  readonly inputPresent: unknown
++  readonly loginRequired: unknown
++  readonly candidateListComplete: unknown
++  readonly candidates: unknown
++  readonly messageIdentityAttributes: unknown
++}
++
++function diagnosticFailure(code: NativeAiWebDiagnosticErrorCode): never {
++  throw new NativeAiWebDiagnosticError(code)
++}
++
++function readIdentity(
++  contents: NativeAiWebDiagnosticContents,
++  expectedOrigin: string,
++  originMismatch: 'unsupported-origin' | 'document-changed',
++): { readonly href: string; readonly frame: DiagnosticFrame } {
++  try { if (contents.isDestroyed()) diagnosticFailure('window-destroyed') }
++  catch (error) {
++    if (error instanceof NativeAiWebDiagnosticError) throw error
++    diagnosticFailure('diagnostic-failed')
++  }
++  try {
++    const href = contents.getURL()
++    const url = new URL(href)
++    const frame = contents.mainFrame
++    const frameUrl = new URL(frame.url)
++    if (url.origin !== expectedOrigin || url.protocol !== 'https:' || url.username || url.password || url.port
++      || frameUrl.origin !== expectedOrigin || !Number.isSafeInteger(frame.processId) || !Number.isSafeInteger(frame.routingId)) {
++      diagnosticFailure(originMismatch)
++    }
++    return { href, frame: { processId: frame.processId, routingId: frame.routingId, url: frame.url } }
++  } catch (error) {
++    if (error instanceof NativeAiWebDiagnosticError) throw error
++    diagnosticFailure('diagnostic-failed')
++  }
++}
++
++function sameDocument(
++  before: { readonly href: string; readonly frame: DiagnosticFrame },
++  after: { readonly href: string; readonly frame: DiagnosticFrame },
++): boolean {
++  return before.href === after.href
++    && before.frame.processId === after.frame.processId
++    && before.frame.routingId === after.frame.routingId
++    && before.frame.url === after.frame.url
++}
++
++function isStableTestId(value: unknown): value is string {
++  return typeof value === 'string' && value.length > 0 && value.length <= 80
++    && !/\d/.test(value) && /^[a-z][a-z0-9]*(?:[_-][a-z][a-z0-9]*)*$/.test(value)
++}
++
++function projectCandidate(raw: RawCandidate): NativeAiWebDiagnosticCandidate {
++  if ((raw.kind !== 'input' && raw.kind !== 'button') || typeof raw.tag !== 'string' || !SAFE_TAGS.has(raw.tag)) {
++    diagnosticFailure('diagnostic-failed')
++  }
++  const projected: {
++    kind: 'input' | 'button'; tag: string; role?: string; testId?: string; hasTestId?: true; ariaLabel?: string; hasLabel?: true
++  } = { kind: raw.kind, tag: raw.tag }
++  if (typeof raw.role === 'string' && SAFE_ROLES.has(raw.role)) projected.role = raw.role
++  if (isStableTestId(raw.testId)) projected.testId = raw.testId
++  else if (raw.hasTestId === true) projected.hasTestId = true
++  if (typeof raw.ariaLabel === 'string' && SAFE_ACTION_LABELS.has(raw.ariaLabel)) projected.ariaLabel = raw.ariaLabel
++  else if (raw.hasLabel === true) projected.hasLabel = true
++  return projected
++}
++
++function buildFixedProbe(provider: NativeAiWebDiagnosticProvider): string {
++  const expectedOrigin = ORIGINS[provider]
++  return `(() => {
++    'use strict';
++    const expectedOrigin = ${JSON.stringify(expectedOrigin)};
++    const docBefore = document;
++    const winBefore = window;
++    const hrefBefore = location.href;
++    const originBefore = location.origin;
++    if (originBefore !== expectedOrigin || !docBefore.body) return { schema: 1, origin: originBefore, documentStable: false };
++
++    const allowedTags = new Set(['article','button','div','form','input','li','section','span','textarea']);
++    const allowedRoles = new Set(['alert','button','combobox','dialog','group','listitem','option','searchbox','status','textbox']);
++    const allowedLabels = new Set(['Send','Send message','Stop generating','Log in','Login','Sign in','Sign up','Upload file','发送','发送消息','停止生成','登录','注册','上传文件']);
++    const identityNames = ['data-message-id','data-turn-id','data-message-key','data-turn','data-id'];
++    const safeTestId = value => typeof value === 'string' && value.length > 0 && value.length <= 80
++      && !/\\d/.test(value) && /^[a-z][a-z0-9]*(?:[_-][a-z][a-z0-9]*)*$/.test(value);
++    const metadata = element => {
++      const tag = element.tagName.toLowerCase();
++      const rawRole = element.getAttribute('role');
++      const rawTestId = element.getAttribute('data-testid');
++      const rawLabel = element.getAttribute('aria-label');
++      const item = { tag };
++      if (rawRole && allowedRoles.has(rawRole)) item.role = rawRole;
++      if (safeTestId(rawTestId)) item.testId = rawTestId;
++      else if (rawTestId !== null) item.hasTestId = true;
++      if (rawLabel && allowedLabels.has(rawLabel)) item.ariaLabel = rawLabel;
++      else if (rawLabel !== null) item.hasLabel = true;
++      return item;
++    };
++    const nearestComposerRoot = element => {
++      let current = element.parentElement;
++      for (let depth = 0; current && depth < 7; depth++, current = current.parentElement) {
++        const tag = current.tagName.toLowerCase();
++        const testId = current.getAttribute('data-testid');
++        if (tag === 'form' || (safeTestId(testId) && /(?:composer|chat[_-]input)[_-]?(?:container|wrapper|area|form)?$/.test(testId))) return current;
++      }
++      return null;
++    };
++    const isInputCandidate = element => {
++      const tag = element.tagName.toLowerCase();
++      if (tag === 'textarea') return true;
++      if (tag === 'input') return ['text',''].includes((element.getAttribute('type') || '').toLowerCase());
++      return element.getAttribute('contenteditable') === 'true' || element.getAttribute('role') === 'textbox';
++    };
++
++    const inputs = [];
++    const roots = new Set();
++    let candidateScanComplete = true;
++    const knownDoubaoInput = ${provider === 'doubao' ? 'docBefore.querySelector("textarea[data-testid=\\\"chat_input_input\\\"]")' : 'null'};
++    const addInput = (element, root) => {
++      if (!inputs.some(item => item.element === element) && inputs.length < ${MAX_CANDIDATES}) {
++        inputs.push({ element, root });
++        if (root) roots.add(root);
++      }
++    };
++    if (knownDoubaoInput) addInput(knownDoubaoInput, nearestComposerRoot(knownDoubaoInput));
++    // Inspect only explicit form boundaries containing a multiline or
++    // contenteditable composer candidate. Ordinary sidebar search inputs are
++    // outside this scope and never have their attributes read or returned.
++    let formCount = 0;
++    for (const form of docBefore.querySelectorAll('form')) {
++      if (++formCount > 64) { candidateScanComplete = false; break; }
++      const scopedInputs = form.querySelectorAll('textarea,[contenteditable="true"],[role="textbox"]');
++      if (!scopedInputs.length) continue;
++      const walker = docBefore.createTreeWalker(form, NodeFilter.SHOW_ELEMENT);
++      let current = form;
++      let visited = 0;
++      while (current && visited < 256 && inputs.length < ${MAX_CANDIDATES}) {
++        visited++;
++        if (isInputCandidate(current)) addInput(current, form);
++        current = walker.nextNode();
++      }
++      if (current !== null || inputs.length >= ${MAX_CANDIDATES}) candidateScanComplete = false;
++    }
++    // A standalone textarea is a safe input candidate even without a trusted
++    // composer root. In that case roots stays empty, so no nearby buttons are
++    // inspected and button candidates remain unknown.
++    const uncollectedTextareas = Array.from(docBefore.querySelectorAll('textarea'))
++      .filter(textarea => !inputs.some(item => item.element === textarea));
++    if (uncollectedTextareas.length === 1) {
++      const standalone = uncollectedTextareas[0];
++      addInput(standalone, nearestComposerRoot(standalone));
++    } else if (uncollectedTextareas.length > 1) candidateScanComplete = false;
++
++    const identityPresent = new Set();
++    const messageWalker = docBefore.createTreeWalker(docBefore.body, NodeFilter.SHOW_ELEMENT);
++    let current = docBefore.body;
++    let visited = 0;
++    while (current && visited < 3000) {
++      visited++;
++      const tag = current.tagName.toLowerCase();
++      const role = current.getAttribute('role');
++      const testId = current.getAttribute('data-testid');
++      const messageLike = tag === 'article' || role === 'article' || role === 'listitem'
++        || (safeTestId(testId) && /(?:message|turn|answer)/.test(testId));
++      if (messageLike) for (const name of identityNames) if (current.hasAttribute(name)) identityPresent.add(name);
++      current = messageWalker.nextNode();
++    }
++    const messageScanComplete = current === null;
++
++    const candidates = [];
++    for (const item of inputs.slice(0, ${MAX_CANDIDATES})) {
++      const value = metadata(item.element);
++      if (allowedTags.has(value.tag)) candidates.push({ kind: 'input', ...value });
++    }
++    for (const root of roots) {
++      const buttonWalker = docBefore.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
++      let buttonNode = root;
++      let buttonVisits = 0;
++      while (buttonNode && buttonVisits < 256 && candidates.length < ${MAX_CANDIDATES}) {
++        buttonVisits++;
++        const role = buttonNode.getAttribute('role');
++        if (buttonNode.tagName.toLowerCase() === 'button' || role === 'button') {
++          const value = metadata(buttonNode);
++          if (allowedTags.has(value.tag)) candidates.push({ kind: 'button', ...value });
++        }
++        buttonNode = buttonWalker.nextNode();
++      }
++      if (buttonNode !== null) candidateScanComplete = false;
++      if (candidates.length >= ${MAX_CANDIDATES}) break;
++    }
++
++    const doubaoLoginRequired = ${provider === 'doubao' ? 'docBefore.querySelector("[data-testid=\\\"to_login_button\\\"]") !== null' : 'false'};
++    const documentStable = document === docBefore && window === winBefore
++      && location.href === hrefBefore && location.origin === originBefore;
++    return {
++      schema: 1,
++      origin: originBefore,
++      documentStable,
++      inputPresent: inputs.length ? true : 'unknown',
++      loginRequired: doubaoLoginRequired ? true : 'unknown',
++      candidateListComplete: candidateScanComplete && candidates.length < ${MAX_CANDIDATES},
++      candidates,
++      messageIdentityAttributes: identityNames.map(name => ({
++        name,
++        present: identityPresent.has(name) ? true : messageScanComplete ? false : 'unknown',
++      })),
++    };
++  })()`
++}
++
++function projectDiagnostic(raw: unknown, provider: NativeAiWebDiagnosticProvider): NativeAiWebDiagnosticResult {
++  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) diagnosticFailure('diagnostic-failed')
++  const value = raw as RawDiagnostic
++  if (value.schema !== 1 || value.origin !== ORIGINS[provider] || value.documentStable !== true) diagnosticFailure('document-changed')
++  if (value.inputPresent !== true && value.inputPresent !== 'unknown') diagnosticFailure('diagnostic-failed')
++  if (value.loginRequired !== true && value.loginRequired !== false && value.loginRequired !== 'unknown') diagnosticFailure('diagnostic-failed')
++  if (typeof value.candidateListComplete !== 'boolean') diagnosticFailure('diagnostic-failed')
++  if (!Array.isArray(value.candidates) || value.candidates.length > MAX_CANDIDATES) diagnosticFailure('diagnostic-failed')
++  const candidates = value.candidates.map(item => projectCandidate(item as RawCandidate))
++  if (!Array.isArray(value.messageIdentityAttributes) || value.messageIdentityAttributes.length !== MESSAGE_IDENTITY_ATTRIBUTES.length) {
++    diagnosticFailure('diagnostic-failed')
++  }
++  const byName = new Map(value.messageIdentityAttributes.map((item: unknown) => {
++    if (!item || typeof item !== 'object' || Array.isArray(item)) diagnosticFailure('diagnostic-failed')
++    const row = item as { name?: unknown; present?: unknown }
++    if (typeof row.name !== 'string' || !MESSAGE_IDENTITY_ATTRIBUTES.includes(row.name as typeof MESSAGE_IDENTITY_ATTRIBUTES[number])
++      || (typeof row.present !== 'boolean' && row.present !== 'unknown')) diagnosticFailure('diagnostic-failed')
++    return [row.name, row.present] as const
++  }))
++  if (byName.size !== MESSAGE_IDENTITY_ATTRIBUTES.length) diagnosticFailure('diagnostic-failed')
++  const result: NativeAiWebDiagnosticResult = {
++    provider,
++    origin: ORIGINS[provider],
++    documentStable: true,
++    inputPresent: value.inputPresent,
++    loginRequired: value.loginRequired,
++    draftState: 'unknown',
++    generationState: 'unknown',
++    candidateListComplete: value.candidateListComplete,
++    candidates,
++    messageIdentityAttributes: MESSAGE_IDENTITY_ATTRIBUTES.map(name => ({ name, present: byName.get(name)! })),
++  }
++  if (JSON.stringify(result).length > MAX_OUTPUT_CHARS) diagnosticFailure('result-too-large')
++  return result
++}
++
++/** Run one built-in read-only probe against a native-owned, fixed-origin WebContents. */
++export async function diagnoseNativeAiWebPage(
++  contents: NativeAiWebDiagnosticContents,
++  provider: NativeAiWebDiagnosticProvider,
++): Promise<NativeAiWebDiagnosticResult> {
++  if (provider !== 'deepseek' && provider !== 'doubao') diagnosticFailure('invalid-provider')
++  const expectedOrigin = ORIGINS[provider]
++  const before = readIdentity(contents, expectedOrigin, 'unsupported-origin')
++  let raw: unknown
++  let timer: ReturnType<typeof setTimeout> | undefined
++  try {
++    raw = await Promise.race([
++      contents.executeJavaScriptInIsolatedWorld(DIAGNOSTIC_WORLD_ID, [{ code: buildFixedProbe(provider) }], false),
++      new Promise<never>((_resolve, reject) => {
++        timer = setTimeout(() => reject(new NativeAiWebDiagnosticError('diagnostic-timeout')), 5_000)
++      }),
++    ])
++  } catch (error) {
++    if (error instanceof NativeAiWebDiagnosticError && error.code === 'diagnostic-timeout') throw error
++    diagnosticFailure('diagnostic-failed')
++  } finally { if (timer !== undefined) clearTimeout(timer) }
++  const after = readIdentity(contents, expectedOrigin, 'document-changed')
++  if (!sameDocument(before, after)) diagnosticFailure('document-changed')
++  return projectDiagnostic(raw, provider)
++}
+diff --git a/apps/desktop/tests/ai-web-diagnostics-electron.fixture.cjs b/apps/desktop/tests/ai-web-diagnostics-electron.fixture.cjs
+new file mode 100644
+--- /dev/null
++++ b/apps/desktop/tests/ai-web-diagnostics-electron.fixture.cjs
+@@ -0,0 +1,100 @@
++const assert = require('node:assert/strict');
++const fs = require('node:fs/promises');
++const path = require('node:path');
++const { randomUUID } = require('node:crypto');
++const { app, BrowserWindow, dialog, Menu, session } = require('electron');
++const candidateRoot = path.resolve(__dirname, '../../..');
++const runId = randomUUID();
++const { DesktopAiWebWindows } = require(path.join(candidateRoot, 'browser-guests.cjs'));
++const { diagnoseNativeAiWebPage, NativeAiWebDiagnosticError } = require(path.join(candidateRoot, 'ai-web-diagnostics.cjs'));
++const userData = path.join(candidateRoot, 'diagnostics-private-user-data-' + runId);
++const resultPath = path.join(candidateRoot, 'patch23-diagnostics-result-' + runId + '.json');
++app.setPath('userData', userData);
++const canary = 'PATCH23_PRIVATE_CANARY_7c24';
++let showCount = 0;
++let focusCount = 0;
++let builtMenu;
++const originalBuildMenu = Menu.buildFromTemplate;
++Menu.buildFromTemplate = function (template, options) { builtMenu = originalBuildMenu.call(this, template, options); return builtMenu; };
++const originalShow = BrowserWindow.prototype.show;
++const originalFocus = BrowserWindow.prototype.focus;
++BrowserWindow.prototype.show = function () { showCount++; };
++BrowserWindow.prototype.focus = function () { focusCount++; };
++const results = { runId, checks: [] };
++const check = (name, ok) => { assert.ok(ok, name); results.checks.push(name); };
++const wait = (promise, ms = 8000) => Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error('fixture timeout')), ms))]);
++const waitFor = async (predicate, ms = 8000) => wait((async () => { while (!predicate()) await new Promise(resolve => setTimeout(resolve, 20)); })(), ms);
++
++app.whenReady().then(async () => {
++  const browserSession = session.fromPartition('persist:tradeloom-ai-web-deepseek-v1');
++  await browserSession.protocol.handle('https', request => {
++    const url = new URL(request.url);
++    if (url.hostname !== 'chat.deepseek.com') return new Response('blocked fixture host', { status: 404 });
++    return new Response(`<!doctype html><html><body>
++      <article data-message-id="${canary}" data-turn-id="${canary}">${canary}</article>
++      <textarea aria-label="${canary}" data-testid="chat_composer"></textarea>
++      <button aria-label="${canary}">${canary}</button>
++      <button id="sidebar-action" data-testid="history_search">history</button>
++      <form><textarea data-testid="inside_form"></textarea><button aria-label="Send">send</button></form>
++      <script>document.cookie='diagnostic_canary=${canary}; path=/'; localStorage.setItem('diagnostic_canary','${canary}');</script>
++    </body></html>`, { headers: { 'content-type': 'text/html' } });
++  });
++  const owner = new BrowserWindow({ show: false });
++  const manager = new DesktopAiWebWindows(() => undefined);
++  const request = { provider: 'deepseek' };
++  manager.toggle(owner, request);
++  const page = BrowserWindow.getAllWindows().find(window => window !== owner);
++  assert.ok(page);
++  if (page.webContents.isLoading()) await wait(new Promise(resolve => {
++    page.webContents.once('did-finish-load', resolve);
++    page.webContents.once('did-fail-load', (_event, code) => resolve(code));
++  }), 12000);
++  const beforeShow = showCount;
++  const beforeFocus = focusCount;
++  let message;
++  const oldMessage = dialog.showMessageBox;
++  dialog.showMessageBox = async (_window, options) => { message = options; return { response: 0 }; };
++  const menu = builtMenu;
++  const item = menu?.items.find(entry => entry.label === '网页')?.submenu?.items.find(entry => entry.label === '导出无内容站点诊断');
++  assert.ok(item, 'fixed Web menu export action exists');
++  item.click();
++  await waitFor(() => Boolean(message));
++  check('menu reports exported path only', message.message === '无内容站点诊断已导出' && typeof message.detail === 'string');
++  check('diagnostic action does not show/focus window', showCount === beforeShow && focusCount === beforeFocus);
++  const outPath = message.detail;
++  check('export is in fixed app-owned directory', outPath.startsWith(path.join(userData, 'site-diagnostics') + path.sep));
++  const jsonText = await fs.readFile(outPath, 'utf8');
++  check('export JSON contains no sensitive canary', !jsonText.includes(canary));
++  const json = JSON.parse(jsonText);
++  check('standalone textarea is reported, draft/generation unknown', json.inputPresent === true && json.candidates.some(item => item.kind === 'input' && item.testId === 'chat_composer') && json.draftState === 'unknown' && json.generationState === 'unknown');
++  check('only button inside a trusted composer root is returned', json.candidates.filter(item => item.kind === 'button').length === 1 && json.candidates.find(item => item.kind === 'button').ariaLabel === 'Send');
++  check('sensitive message values are only presence metadata', json.messageIdentityAttributes.some(item => item.name === 'data-message-id' && item.present === true));
++
++  const fake = (href, run) => ({
++    isDestroyed: () => false,
++    getURL: () => href.value,
++    get mainFrame() { return { processId: 2, routingId: 3, url: href.value }; },
++    executeJavaScriptInIsolatedWorld: run,
++  });
++  await assert.rejects(diagnoseNativeAiWebPage(fake({ value: 'https://evil.example/' }, async () => null), 'deepseek'), error => error.code === 'unsupported-origin');
++  results.checks.push('unsupported origin rejected with safe code');
++  const moved = { value: 'https://chat.deepseek.com/' };
++  await assert.rejects(diagnoseNativeAiWebPage(fake(moved, async () => { moved.value += 'changed'; return null; }), 'deepseek'), error => error.code === 'document-changed');
++  results.checks.push('navigation during probe rejected with safe code');
++  const closed = fake({ value: 'https://chat.deepseek.com/' }, async () => null);
++  closed.isDestroyed = () => true;
++  await assert.rejects(diagnoseNativeAiWebPage(closed, 'deepseek'), error => error.code === 'window-destroyed');
++  results.checks.push('destroyed owner rejected with safe code');
++  await assert.rejects(diagnoseNativeAiWebPage(fake({ value: 'https://chat.deepseek.com/' }, () => new Promise(() => {})), 'deepseek'), error => error.code === 'diagnostic-timeout');
++  results.checks.push('hung page probe fails within five-second deadline');
++  dialog.showMessageBox = oldMessage;
++  owner.destroy();
++  check('owner destruction closes its owned page', page.isDestroyed());
++  results.ok = true;
++  await fs.writeFile(resultPath, JSON.stringify(results, null, 2));
++  app.exit(0);
++}).catch(async error => {
++  results.error = error?.stack || String(error);
++  await fs.writeFile(resultPath, JSON.stringify(results, null, 2));
++  app.exit(1);
++});
+diff --git a/apps/desktop/tests/build-ai-web-diagnostics-fixture.cjs b/apps/desktop/tests/build-ai-web-diagnostics-fixture.cjs
+new file mode 100644
+--- /dev/null
++++ b/apps/desktop/tests/build-ai-web-diagnostics-fixture.cjs
+@@ -0,0 +1,22 @@
++const fs = require('node:fs');
++const path = require('node:path');
++const { spawnSync } = require('node:child_process');
++const root = process.env.TRADELOOM_CANDIDATE;
++if (typeof root !== 'string' || !path.isAbsolute(root)) throw new Error('candidate root unavailable');
++if (typeof process.env.TRADELOOM_TS !== 'string') throw new Error('TypeScript runtime unavailable');
++const ts = require(process.env.TRADELOOM_TS);
++const checkSyntax = (filename, label) => {
++  const result = spawnSync(process.execPath, ['--check', filename], { stdio: 'ignore' });
++  if (result.error || result.status !== 0) throw new Error(`syntax check failed: ${label}`);
++};
++checkSyntax(path.join(root, 'apps/desktop/tests/ai-web-diagnostics-electron.fixture.cjs'), 'Electron fixture');
++const generated = [];
++for (const name of ['ipc', 'ai-web-diagnostics', 'browser-guests']) {
++  const source = fs.readFileSync(`${root}/apps/desktop/src/${name}.ts`, 'utf8');
++  const output = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 }, reportDiagnostics: true });
++  if (output.diagnostics?.length) throw new Error(`transpile failed: ${name}`);
++  const outputPath = path.join(root, `${name}.cjs`);
++  fs.writeFileSync(outputPath, output.outputText.replaceAll('./ipc.ts', './ipc.cjs').replaceAll('./ai-web-diagnostics.ts', './ai-web-diagnostics.cjs'));
++  generated.push([outputPath, name]);
++}
++for (const [filename, label] of generated) checkSyntax(filename, `generated ${label}`);

@@ -6,7 +6,7 @@ const ethernet = { name: '以太网', interfaceDescription: 'Realtek PCIe GbE Fa
   status: 'Up', hardwareInterface: true, addresses: [{ addressFamily: 'IPv4', address: '192.168.20.7' }] }
 
 test('PowerShell singleton/object and multi-adapter JSON payloads resolve through physical adapter metadata', () => {
-  assert.equal(DEFAULT_RUNTIME_CANDIDATE, '0.2.1-rc.2-tradeloom-desktop-2')
+  assert.equal(DEFAULT_RUNTIME_CANDIDATE, '0.2.1-rc.3-tradeloom-desktop-16')
   const singletonJson = JSON.stringify(ethernet)
   assert.equal(choosePayloadAddress(JSON.parse(singletonJson), '192.168.20.7'), '192.168.20.7')
   const two = [ethernet, { ...ethernet, name: 'Wi-Fi', kind: 'wifi', addresses: [{ addressFamily: 'IPv4', address: '10.1.2.3' }] }]

@@ -6,7 +6,12 @@ export const name = '@tradeloom/dsh-business-shell/business-tools'
 export const inject = ['tools', 'webServer', 'agents']
 
 const DJANGO_HOST = '127.0.0.1'
-const DJANGO_PORT = 3090
+function djangoPort() {
+  const raw = process.env.TRADELOOM_DJANGO_PORT
+  if (raw === undefined) return 3090
+  if (!/^[1-9][0-9]*$/.test(raw) || Number(raw) > 65535) throw new TypeError('invalid Django port')
+  return Number(raw)
+}
 const CSRF_PATH = '/'
 const MAX_RESPONSE_BYTES = 1024 * 1024
 const REQUEST_TIMEOUT_MS = 30_000
@@ -108,26 +113,32 @@ function failure(code) {
   return { ok: false, data: '', requires_human_confirmation: false, business_ui_url: '', error_code: code }
 }
 
-function authority(webServer) {
+export function trustedBusinessAuthority(webServer) {
   const { protocol, host, port } = webServer ?? {}
+  const configuredPort = process.env.TRADELOOM_DSH_BIND_PORT ?? '3088'
+  if (!/^[1-9][0-9]*$/.test(configuredPort) || Number(configuredPort) > 65535) throw new Error('TradeLoom trusted business port is unavailable')
   const octets = typeof host === 'string' && isIPv4(host) ? host.split('.').map(Number) : []
   const privateLanAddress = octets[0] === 10
     || (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31)
     || (octets[0] === 192 && octets[1] === 168)
-  if (protocol !== 'http:' || !privateLanAddress || Number(port) !== 3088) {
+  if (protocol !== 'http:' || !privateLanAddress || Number(port) !== Number(configuredPort)) {
     throw new Error('TradeLoom trusted business authority is unavailable')
   }
   const origin = webServer.getOrigin?.()
   const parsed = typeof origin === 'string' ? new URL(origin) : undefined
-  if (!parsed || parsed.origin !== origin || parsed.protocol !== protocol || parsed.hostname !== host
-    || parsed.port !== '3088' || parsed.pathname !== '/' || parsed.search || parsed.hash
+  const canonicalOrigin = `http://${host}${configuredPort === '80' ? '' : ':' + configuredPort}`
+  const acceptedOrigin = origin === canonicalOrigin || (configuredPort === '80' && origin === `http://${host}:80`)
+  if (!parsed || !acceptedOrigin || parsed.origin !== canonicalOrigin || parsed.protocol !== protocol || parsed.hostname !== host
+    || Number(parsed.port || 80) !== Number(configuredPort) || parsed.pathname !== '/' || parsed.search || parsed.hash
     || parsed.username || parsed.password) {
     throw new Error('TradeLoom trusted business origin is unavailable')
   }
-  return { host, origin: parsed.origin, hostHeader: `${host}:3088` }
+  return { host, origin: parsed.origin, hostHeader: parsed.host }
 }
 
-function requestJson({ path, method, body, authority: trusted, port = DJANGO_PORT, request = http.request, cookie = '', csrfToken = '', nativeBridgeKey, signal, timeoutMs = REQUEST_TIMEOUT_MS }) {
+const authority = trustedBusinessAuthority
+
+export function requestBusinessJson({ path, method, body, authority: trusted, port = djangoPort(), request = http.request, cookie = '', csrfToken = '', nativeBridgeKey, signal, timeoutMs = REQUEST_TIMEOUT_MS, maxResponseBytes = MAX_RESPONSE_BYTES }) {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
       const error = new Error('Tool request was cancelled')
@@ -168,7 +179,7 @@ function requestJson({ path, method, body, authority: trusted, port = DJANGO_POR
       let size = 0
       response.on('data', chunk => {
         size += chunk.byteLength
-        if (size > MAX_RESPONSE_BYTES) {
+        if (size > maxResponseBytes) {
           upstream.destroy(new Error('Django response exceeded the tool limit'))
           return
         }
@@ -191,6 +202,8 @@ function requestJson({ path, method, body, authority: trusted, port = DJANGO_POR
   })
 }
 
+const requestJson = requestBusinessJson
+
 function csrfCookie(setCookies) {
   const cookies = Array.isArray(setCookies) ? setCookies : [setCookies]
   const value = cookies.find(item => typeof item === 'string' && /^csrftoken=[^;]+(?:;|$)/i.test(item))
@@ -210,7 +223,8 @@ async function djangoRequest(ctx, toolName, exec, path, method = 'GET', body, de
   if (needsNativeBridge && !/^[a-f0-9]{64}$/.test(nativeBridgeKey ?? '')) return failure('native_bridge_unavailable')
 
   let trusted
-  try { trusted = authority(ctx.webServer) } catch { return failure('business_authority_unavailable') }
+  try { trusted = dependencies.authorityResolver ? dependencies.authorityResolver(ctx.webServer) : authority(ctx.webServer) }
+  catch { return failure('business_authority_unavailable') }
 
   try {
     let csrf = { cookie: '', token: '' }
@@ -219,7 +233,7 @@ async function djangoRequest(ctx, toolName, exec, path, method = 'GET', body, de
         path: CSRF_PATH,
         method: 'GET',
         authority: trusted,
-        port: dependencies.port ?? DJANGO_PORT,
+        port: dependencies.port ?? djangoPort(),
         request: dependencies.request ?? http.request,
         signal: exec.signal,
         timeoutMs: dependencies.timeoutMs,
@@ -233,7 +247,7 @@ async function djangoRequest(ctx, toolName, exec, path, method = 'GET', body, de
       method,
       body,
       authority: trusted,
-      port: dependencies.port ?? DJANGO_PORT,
+      port: dependencies.port ?? djangoPort(),
       request: dependencies.request ?? http.request,
       signal: exec.signal,
       timeoutMs: dependencies.timeoutMs,

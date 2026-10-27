@@ -4,7 +4,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import os from 'node:os'
 import path from 'node:path'
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
-import { bootstrapInstalledDesktop, DATA_ROOT_MARKER, DATA_ROOT_MARKER_CONTENT, digestInventory, pythonRunArgs, runCommandFile, runControllerFile, validateInstalledManifest } from '../installed-bootstrap.mjs'
+import { bootstrapInstalledDesktop, parsePackagedPortFlags, DATA_ROOT_MARKER, DATA_ROOT_MARKER_CONTENT, digestInventory, pythonRunArgs, runCommandFile, runControllerFile, validateInstalledManifest } from '../installed-bootstrap.mjs'
 import { getDefaultPaths, OWNED_MARKER, OWNED_MARKER_CONTENT } from '../core.mjs'
 
 const hash = value => createHash('sha256').update(value).digest('hex')
@@ -137,6 +137,7 @@ async function fixture(t) {
 function runtimeDeps(state) {
   const networkAdapters = [{ name: 'Wi-Fi', kind: 'wifi', status: 'Up', hardwareInterface: true, addresses: [{ addressFamily: 'IPv4', address: '192.168.8.20' }] }]
   return {
+    listenerOwner: async (port, pid) => port === 55432 && pid === 12345,
     createNativeBridgeKey: () => 'e'.repeat(64),
     getDefaultPaths: env => getDefaultPaths(env),
     readNetworkAdapters: async () => networkAdapters,
@@ -192,6 +193,7 @@ function runtimeDeps(state) {
     startOwnedChild: (_command, args, options) => {
       const spec = JSON.parse(args.at(-1))
       state.events.push('django:' + spec.args[0])
+      state.djangoEnv = options.env
       state.djangoBridgeKey = options.env.TRADELOOM_NATIVE_BRIDGE_KEY
       state.djangoArgs = args
       state.djangoLogPath = options.logPath
@@ -199,7 +201,7 @@ function runtimeDeps(state) {
       return { spawned: Promise.resolve(), exited: new Promise(() => {}), stop: async () => { state.events.push('django:stop') } }
     },
     installQuitHandler: async stop => { state.quit = stop },
-    connect: async (_host, port) => port === 3090 ? true : state.pgActive,
+    connect: async (_host, port) => port === (state.djangoPort ?? 3090) ? true : state.pgActive,
     delay: async () => {},
     waitForDesktopReady: async () => { state.events.push('dsh:ready') },
     importMain: async () => { state.events.push('main:import') },
@@ -401,6 +403,7 @@ test('packaged bootstrap reuses its existing owned cluster and preserves existin
   await writeFile(path.join(f.privateData, 'postgres', 'password'), 'stable-local-password\n')
   await writeFile(path.join(data, 'PG_VERSION'), '17\n')
   await writeFile(path.join(data, 'fixture-user-data'), 'preserve')
+  await writeFile(path.join(data, 'postmaster.pid'), `12345\n${data}\n0\n55432\n`)
   const state = { events: [], ports: [], pgActive: true, databaseExists: true, migrationCode: 0, password: 'stable-local-password', dataRoot: f.privateData }
   const startup = await bootstrapInstalledDesktop({ env: { LOCALAPPDATA: path.join(f.root, 'local'), TRADELOOM_DATA_ROOT: f.privateData }, processEnv: {},
     appPath: f.appPath, resourcesPath: f.resourcesPath, platform: 'win32', deps: runtimeDeps(state) })
@@ -472,4 +475,75 @@ test('installed bootstrap accepts only packaged schema 2 and verifies main modul
   const state = { events: [], ports: [], pgActive: false, databaseExists: false, migrationCode: 0, password: 'secret', dataRoot: f.privateData }
   await assert.rejects(bootstrapInstalledDesktop({ env: { LOCALAPPDATA: path.join(f.root, 'local') }, processEnv: {}, appPath: f.appPath,
     resourcesPath: f.resourcesPath, platform: 'win32', deps: runtimeDeps(state) }), /SHA256 不匹配/)
+})
+
+test('packaged bootstrap rejects invalid or partial port tuples before touching resources', async () => {
+  for (const ports of [{ host: 3088 }, { host: 1, django: 1, postgres: 2 }, { host: true, django: 2, postgres: 3 }, { host: 0, django: 2, postgres: 3 }]) {
+    await assert.rejects(bootstrapInstalledDesktop({ ports, platform: 'win32', deps: {} }), /port/i)
+  }
+})
+
+
+test('packaged port flags require all unique valid values', () => {
+  assert.deepEqual(parsePackagedPortFlags([]), {host:3088,django:3090,postgres:55432})
+  assert.deepEqual(parsePackagedPortFlags(['--tradeloom-host-port','43088','--tradeloom-django-port','43090','--tradeloom-postgres-port','45432']), {host:43088,django:43090,postgres:45432})
+  for (const args of [['--tradeloom-host-port','1'],['--tradeloom-host-port','1','--tradeloom-host-port','2'],['--tradeloom-host-port','1','--tradeloom-django-port','1','--tradeloom-postgres-port','2']]) assert.throws(() => parsePackagedPortFlags(args), /port/i)
+})
+
+test('owned postgres mismatched port is rejected before any database connection', async t => {
+  const f = await fixture(t), data = path.join(f.privateData,'postgres','data')
+  await mkdir(data,{recursive:true})
+  await writeFile(path.join(f.privateData,'.tradeloom-data-root-owned'),'tradeloom-app-data-v1\n')
+  await writeFile(path.join(f.privateData,'postgres','.tradeloom-postgres-owned'),'tradeloom-postgres-data-v1\n')
+  await writeFile(path.join(f.privateData,'postgres','password'),'local-only\n')
+  await writeFile(path.join(data,'PG_VERSION'),'17\n')
+  await writeFile(path.join(data,'postmaster.pid'),`12345\n${data}\n0\n55433\n`)
+  const state={events:[],ports:[],pgActive:true,databaseExists:true,password:'local-only',dataRoot:f.privateData}
+  await assert.rejects(bootstrapInstalledDesktop({env:{LOCALAPPDATA:path.join(f.root,'local'),TRADELOOM_DATA_ROOT:f.privateData},processEnv:{},appPath:f.appPath,resourcesPath:f.resourcesPath,platform:'win32',deps:runtimeDeps(state)}),/identity mismatch/)
+  assert.ok(!state.events.includes('database-check')); assert.ok(!state.events.includes('pgctl:stop'))
+})
+
+
+test('packaged custom tuple reaches host, Django and owned PostgreSQL', async t => {
+  const f=await fixture(t), state={events:[],ports:[],pgActive:false,databaseExists:false,migrationCode:0,password:'local-only',dataRoot:f.privateData,djangoPort:43090}, processEnv={}
+  const ports={host:43088,django:43090,postgres:45432}
+  const startup=await bootstrapInstalledDesktop({ports,env:{LOCALAPPDATA:path.join(f.root,'local'),TRADELOOM_DATA_ROOT:f.privateData},processEnv,appPath:f.appPath,resourcesPath:f.resourcesPath,platform:'win32',deps:runtimeDeps(state)})
+  await startup.ready
+  assert.equal(processEnv.TRADELOOM_DSH_BIND_PORT,'43088'); assert.equal(processEnv.TRADELOOM_DJANGO_PORT,'43090')
+  assert.ok(state.ports.some(([host,port])=>host==='127.0.0.1' && port===45432))
+  assert.ok(state.helperBridgeKeys.some(item=>item.command==='psql.exe' && item.args.includes('45432')))
+  assert.ok(JSON.parse(state.djangoArgs.at(-1)).args.includes('127.0.0.1:43090'))
+  assert.equal(state.djangoEnv.TRADELOOM_DB_PORT,'45432'); assert.equal(state.djangoEnv.TRADELOOM_DSH_CSRF_TRUSTED_ORIGINS,'http://192.168.8.20:43088')
+  await startup.stop()
+})
+
+
+test('owned postgres rejects data path and listener PID mismatches without stopping services', async t => {
+  for (const mismatch of ['data','listener']) {
+    const f=await fixture(t), data=path.join(f.privateData,'postgres','data')
+    await mkdir(data,{recursive:true}); await writeFile(path.join(f.privateData,'.tradeloom-data-root-owned'),'tradeloom-app-data-v1\n')
+    await writeFile(path.join(f.privateData,'postgres','.tradeloom-postgres-owned'),'tradeloom-postgres-data-v1\n'); await writeFile(path.join(f.privateData,'postgres','password'),'local-only\n')
+    await writeFile(path.join(data,'PG_VERSION'),'17\n'); await writeFile(path.join(data,'postmaster.pid'),`12345\n${mismatch === 'data' ? f.root : data}\n0\n55432\n`)
+    const state={events:[],ports:[],pgActive:true,databaseExists:true,password:'local-only',dataRoot:f.privateData}; const deps=runtimeDeps(state)
+    if(mismatch === 'listener') deps.listenerOwner=async()=>false
+    await assert.rejects(bootstrapInstalledDesktop({env:{LOCALAPPDATA:path.join(f.root,'local'),TRADELOOM_DATA_ROOT:f.privateData},processEnv:{},appPath:f.appPath,resourcesPath:f.resourcesPath,platform:'win32',deps}),/identity mismatch/)
+    assert.ok(!state.events.includes('database-check')); assert.ok(!state.events.includes('pgctl:stop'))
+  }
+})
+
+
+test('owned postgres rejects a non-file identity without connecting or stopping', async t => {
+  const f=await fixture(t), data=path.join(f.privateData,'postgres','data'); await mkdir(path.join(data,'postmaster.pid'),{recursive:true})
+  await writeFile(path.join(f.privateData,'.tradeloom-data-root-owned'),'tradeloom-app-data-v1\n'); await writeFile(path.join(f.privateData,'postgres','.tradeloom-postgres-owned'),'tradeloom-postgres-data-v1\n')
+  await writeFile(path.join(f.privateData,'postgres','password'),'local-only\n'); await writeFile(path.join(data,'PG_VERSION'),'17\n')
+  const state={events:[],ports:[],pgActive:true,databaseExists:true,password:'local-only',dataRoot:f.privateData}
+  await assert.rejects(bootstrapInstalledDesktop({env:{LOCALAPPDATA:path.join(f.root,'local'),TRADELOOM_DATA_ROOT:f.privateData},processEnv:{},appPath:f.appPath,resourcesPath:f.resourcesPath,platform:'win32',deps:runtimeDeps(state)}),/identity file invalid/)
+  assert.ok(!state.events.includes('database-check')); assert.ok(!state.events.includes('pgctl:stop'))
+})
+
+
+test('packaged Host port 80 uses canonical CSRF origin', async t => {
+ const f=await fixture(t), state={events:[],ports:[],pgActive:false,databaseExists:false,migrationCode:0,password:'local-only',dataRoot:f.privateData,djangoPort:43090}
+ const startup=await bootstrapInstalledDesktop({ports:{host:80,django:43090,postgres:45432},env:{LOCALAPPDATA:path.join(f.root,'local'),TRADELOOM_DATA_ROOT:f.privateData},processEnv:{},appPath:f.appPath,resourcesPath:f.resourcesPath,platform:'win32',deps:runtimeDeps(state)})
+ await startup.ready; assert.equal(state.djangoEnv.TRADELOOM_DSH_CSRF_TRUSTED_ORIGINS,'http://192.168.8.20'); await startup.stop()
 })

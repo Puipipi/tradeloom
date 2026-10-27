@@ -1,8 +1,19 @@
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
+import { PassThrough } from 'node:stream'
 import { createServer, request as httpRequest } from 'node:http'
 import test from 'node:test'
 import { apply, createBusinessProxyHandler, BUSINESS_PROXY_ROUTES } from '../proxy.js'
+
+test('task multipart without content length reaches Django as a complete bounded body', () => {
+  const req = new PassThrough(); Object.assign(req, { method: 'POST', url: '/business-api/tasks', headers: { 'content-type': 'multipart/form-data; boundary=fixture' }, socket: {} })
+  const res = new EventEmitter(); Object.assign(res, { headersSent: false, destroyed: false, setHeader() {}, end() {} })
+  const body = Buffer.from('--fixture\r\nContent-Disposition: form-data; name="products_csv"; filename="test.csv"\r\n\r\nsku,name\r\n--fixture--\r\n')
+  let forwarded, forwardedBody; const handler = createBusinessProxyHandler({ connection: { requestRejection: () => undefined } }, 'business-api', { request(options) { forwarded = options; const up = new PassThrough(); up.on('data', chunk => { forwardedBody = chunk }); return up } })
+  handler(req,res); req.end(body)
+  assert.equal(forwarded, undefined, 'must wait for full multipart body before contacting Django')
+  return new Promise(resolve => req.on('end', () => { assert.equal(forwarded.headers['content-length'], String(body.length)); assert.deepEqual(forwardedBody, body); resolve() }))
+})
 
 function send(server, options, body = '') {
   return new Promise((resolve, reject) => {

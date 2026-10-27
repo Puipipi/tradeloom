@@ -10,7 +10,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../
 const workspaceRoot = process.env.TRADELOOM_TEST_WORKSPACE_ROOT
   ? path.resolve(process.env.TRADELOOM_TEST_WORKSPACE_ROOT)
   : path.resolve(repoRoot, '../workspace')
-const upstream = path.join(workspaceRoot, 'research/references/deepseek-harness')
+const upstream = path.join(workspaceRoot, 'research/references/deepseek-harness-v0.2.1-rc.3-readonly')
 const patchFile = path.join(repoRoot, 'integrations/dsh/patches/desktop-identity.patch')
 const targets = [
   'apps/desktop/scripts/electron-builder-config.mjs',

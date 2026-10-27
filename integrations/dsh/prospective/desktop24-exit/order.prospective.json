@@ -1,0 +1,67 @@
+{
+  "baselineCount": 20,
+  "count": 33,
+  "order": [
+    "ui-layout-shell-top.patch",
+    "reasoning-hidden.patch",
+    "desktop-identity.patch",
+    "desktop-host-lan.patch",
+    "desktop-business-csrf.patch",
+    "desktop-managed-update.patch",
+    "desktop-websocket-authority.patch",
+    "native-provider-ui-fix.patch",
+    "desktop-startup-account-free.patch",
+    "desktop-branding.patch",
+    "desktop-fatal-restart-in-place.patch",
+    "desktop-workspace-default-flat.patch",
+    "primary-runtime-windows-namespaced-python.patch",
+    "tradeloom-conversation-file-drafts.patch",
+    "question-composer-density.patch",
+    "owner-document-popout.patch",
+    "desktop-pane-popout.patch",
+    "composer-pane-density.patch",
+    "conversation-header-factory.patch",
+    "desktop-ai-web.patch",
+    "desktop-ai-web-main-frame-phase.patch",
+    "desktop-ai-web-multisite-state.patch",
+    "desktop-ai-web-readonly-diagnostics.patch",
+    "reasoning-native-policy-restore.patch",
+    "desktop-ai-web-diagnostics-tsconfig.patch",
+    "native-startup-observation.patch",
+    "document-preview-zoom-menu-opaque.patch",
+    "native-workspace-surface.patch",
+    "native-command-execution-policy-preserve.patch",
+    "native-stat-dialog-anchor-fit.patch",
+    "native-file-applications-broken-handler.patch",
+    "native-image-lightbox-focus.patch",
+    "native-anchor-test-cleanup-void.patch"
+  ],
+  "excluded": [
+    "obsolete-diagnostics-v1-45E3",
+    "O06",
+    "O07",
+    "O12"
+  ],
+  "frozen": [
+    {
+      "name": "desktop-ai-web-main-frame-phase.patch",
+      "expected": "21d96538957ae4f6ad81828389bc09b762af7c11f3ceee716f55c324436b2f25"
+    },
+    {
+      "name": "desktop-ai-web-multisite-state.patch",
+      "expected": "858dbaed145acb6f124989597a980f641cc9592d3f007c2740d1181c96091088"
+    },
+    {
+      "name": "desktop-ai-web-readonly-diagnostics.patch",
+      "expected": "2a3efe8e01c040696c72f2f27908c1deac8b77cb6d7584498c420fbfff5c0ab7"
+    },
+    {
+      "name": "reasoning-native-policy-restore.patch",
+      "expected": "d64fd283e1005a94d4a760cee6334e311cb242115c57e9b05d901906c70fa824"
+    },
+    {
+      "name": "native-startup-observation.patch",
+      "expected": "3e09981c79c82d4a67630aaf715e75c866769ef71ca2004ddfafa0b0c4176ef9"
+    }
+  ]
+}

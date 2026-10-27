@@ -1,0 +1,15 @@
+{
+  "currentVersion": "v2",
+  "currentDelivery": "23-delivery-v2.json",
+  "currentPatch": "../../integrations/dsh/patches/desktop-ai-web-readonly-diagnostics.patch",
+  "currentPatchSHA256": "2A3EFE8E01C040696C72F2F27908C1DEAC8B77CB6D7584498C420FBFFF5C0AB7",
+  "obsoleteVersions": [
+    {
+      "status": "obsolete",
+      "patch": "desktop-ai-web-readonly-diagnostics-v1-45E3-obsolete.patch",
+      "delivery": "23-delivery-v1-45E3-obsolete.json",
+      "version": "v1",
+      "patchSHA256": "45E35CC6935E8E21E1DDC8FC13DC38C8987E6E476F25142AE1700890FEC6431B"
+    }
+  ]
+}

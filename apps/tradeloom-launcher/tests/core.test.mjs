@@ -7,7 +7,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import {
-  assertPortsAvailable, buildChildEnvironment, buildDesktopChildEnvironment, buildNativeBridgeChildEnvironment, chooseAddress, ensureOwnedDirectory, ensureOwnedHome,
+  assertPortsAvailable, buildChildEnvironment, buildDjangoChildEnvironment, buildDesktopChildEnvironment, buildNativeBridgeChildEnvironment, chooseAddress, ensureOwnedDirectory, ensureOwnedHome,
   createNativeBridgeKey, isPrivateIPv4, launcherPipeName, networkCandidates, startOwnedChild, startTransaction,
   reserveNamedPipe, serveStopRequest,
 } from '../core.mjs'
@@ -397,4 +397,13 @@ test('requestStop preserves the existing missing-instance connection error', asy
   const dataRoot = await mkdtemp(path.join(os.tmpdir(), 'tradeloom-stop-no-server-'))
   t.after(() => removeSyntheticRoot(dataRoot, 'tradeloom-stop-no-server-'))
   await assert.rejects(coreModule.requestStop(path.join(dataRoot, 'harness-home')), /未找到由本启动器管理的运行实例/)
+})
+
+test('native artifact node configuration never leaks from parent environment', () => {
+ const paths={home:'h',agentsHome:'a',appData:'a',localAppData:'l',xdgCache:'c',xdgConfig:'c',xdgData:'d',dataRoot:'r'}
+ const value=buildDjangoChildEnvironment({TRADELOOM_ARTIFACT_NODE:'fake',TRADELOOM_ARTIFACT_NODE_SHA256:'fake'},paths)
+ assert.equal(Object.hasOwn(value,'TRADELOOM_ARTIFACT_NODE'),false)
+ assert.equal(Object.hasOwn(value,'TRADELOOM_ARTIFACT_NODE_SHA256'),false)
+ const trusted=buildDjangoChildEnvironment({TRADELOOM_ARTIFACT_NODE:'fake',TRADELOOM_ARTIFACT_NODE_SHA256:'fake'},paths,{TRADELOOM_ARTIFACT_NODE:'verified',TRADELOOM_ARTIFACT_NODE_SHA256:'a'.repeat(64)})
+ assert.equal(trusted.TRADELOOM_ARTIFACT_NODE,'verified'); assert.equal(trusted.TRADELOOM_ARTIFACT_NODE_SHA256,'a'.repeat(64))
 })

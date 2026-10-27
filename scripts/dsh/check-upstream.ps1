@@ -1,7 +1,10 @@
 [CmdletBinding()]
 param(
   [Parameter(Mandatory = $true)][string]$RuntimePath,
-  [Parameter()][string]$CandidateRef
+  [Parameter()][string]$CandidateRef,
+  [Parameter()][string]$ProspectiveLockPath,
+  [Parameter()][Alias('PatchRoot')][string]$PatchRootOverride,
+  [Parameter()][Alias('PatchOrder')][string]$PatchOrderPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -12,15 +15,11 @@ $workspaceRoot = Split-Path -Parent $repoRoot
 $runtimeRoot = [IO.Path]::GetFullPath((Join-Path $workspaceRoot 'workspace\runtime\tradeloom-harness'))
 $releaseRoot = Join-Path $runtimeRoot 'releases'
 $testRoot = [IO.Path]::GetFullPath((Join-Path $workspaceRoot 'workspace\testing\dsh-slot-patches\temp-runtimes'))
-$patchNames = @('ui-layout-shell-top.patch', 'ui-sidebar-agents.patch', 'reasoning-hidden.patch', 'desktop-identity.patch', 'desktop-host-lan.patch', 'desktop-business-csrf.patch', 'desktop-managed-update.patch', 'desktop-websocket-authority.patch', 'native-provider-ui-fix.patch', 'desktop-startup-account-free.patch', 'desktop-branding.patch', 'desktop-fatal-restart-in-place.patch', 'desktop-workspace-default-flat.patch')
+$defaultPatchNames = @('ui-layout-shell-top.patch', 'reasoning-hidden.patch', 'desktop-identity.patch', 'desktop-host-lan.patch', 'desktop-business-csrf.patch', 'desktop-managed-update.patch', 'desktop-websocket-authority.patch', 'native-provider-ui-fix.patch', 'desktop-startup-account-free.patch', 'desktop-branding.patch', 'desktop-fatal-restart-in-place.patch', 'desktop-workspace-default-flat.patch', 'primary-runtime-windows-namespaced-python.patch', 'tradeloom-conversation-file-drafts.patch', 'question-composer-density.patch', 'owner-document-popout.patch', 'desktop-pane-popout.patch', 'composer-pane-density.patch', 'conversation-header-factory.patch', 'desktop-ai-web.patch')
+$patchNames = $defaultPatchNames
 $patchedFiles = @(
   'packages/client/ui-layout/src/client/index.ts',
   'packages/client/ui-layout/src/client/AppFrame.tsx',
-  'packages/client/ui-sidebar/src/client/contract/slots.ts',
-  'packages/client/ui-sidebar/src/client/index.ts',
-  'packages/client/ui-sidebar/src/client/SidebarRoot.tsx',
-  'packages/client/ui-sidebar/tests/__snapshots__/sidebar-snapshot.client.spec.tsx.snap',
-  'packages/client/ui-sidebar/tests/sidebar-root.client.spec.tsx',
   'packages/client/ui-chat/src/client/chat/ReasoningRow.tsx',
   'packages/client/ui-chat/src/client/presentation-policy.ts',
   'packages/client/ui-chat/tests/presentation-policy.client.spec.tsx',
@@ -63,6 +62,9 @@ $patchedFiles = @(
   'apps/desktop/tests/expected/fatal-dialog-zh-CN.txt',
   'apps/desktop/tests/expected/fatal-dialog-with-report-en.txt',
   'apps/desktop/tests/expected/fatal-dialog-with-report-zh-CN.txt',
+  'apps/desktop/src/browser-guests.ts',
+  'apps/desktop/src/ipc.ts',
+  'apps/desktop/src/preload-app.ts',
   'apps/web/index.html',
   'apps/web/public/manifest.webmanifest',
   'apps/web/public/favicon.svg',
@@ -75,9 +77,34 @@ $patchedFiles = @(
   'packages/client/ui-settings-models/tests/provider-form.client.spec.tsx',
   'packages/client/ui-workspace/src/client/stores.ts',
   'packages/client/ui-workspace/tests/tree.client.spec.ts',
-  'packages/client/ui-workspace/tests/workspace-browser.client.spec.tsx'
+  'packages/client/ui-workspace/tests/workspace-browser.client.spec.tsx',
+  'packages/client/ui-conversation/src/client/service.ts',
+  'packages/client/ui-conversation/tests/service-orchestration.client.spec.ts',
+  'packages/client/ui-conversation/README.md',
+  'packages/client/ui-conversation/README.zh.md',
+  'packages/client/ui-attachment/src/client/ComposerAttachments.tsx',
+  'packages/client/ui-attachment/src/client/drop-events.ts',
+  'packages/client/ui-attachment/tests/composer-attachments.client.spec.tsx',
+  'packages/client/ui-conversation/src/client/contract/slots.ts',
+  'packages/client/ui-conversation/src/client/apply.ts',
+  'packages/client/ui-conversation/src/client/skeleton/ConversationHeader.tsx',
+  'packages/client/ui-conversation/tests/apply-wiring.client.spec.tsx',
+  'packages/client/ui-conversation/src/client/input/editor/ComposerContentEditable.tsx',
+  'packages/client/ui-conversation/src/client/input/editor/view-binding.ts',
+  'packages/client/ui-conversation/src/client/skeleton/InputBar.tsx',
+  'packages/client/ui-primitives/src/HoverCard.tsx',
+  'packages/client/ui-primitives/src/HoverCardGroup.tsx',
+  'packages/client/ui-primitives/src/Menu.tsx',
+  'packages/client/ui-primitives/src/MenuSurface.tsx',
+  'packages/client/ui-primitives/src/Tooltip.tsx',
+  'packages/client/ui-primitives/src/useDismissOnOutsidePointer.ts',
+  'packages/client/ui-user-questions/src/client/QuestionComposer.module.css',
+  'packages/client/ui-primitives/src/Button.module.css',
+  'packages/client/ui-conversation/src/client/skeleton/ConversationRoot.module.css',
+  'packages/client/ui-conversation/src/client/skeleton/InputBar.module.css',
+  'scripts/primary-runtime/prepare.ts'
 )
-$generatedPatchFiles = @('apps/desktop/src/websocket-authority.ts', 'apps/desktop/tests/websocket-authority.spec.ts', 'apps/desktop/tests/desktop-installer-include.spec.ts')
+$generatedPatchFiles = @('apps/desktop/src/websocket-authority.ts', 'apps/desktop/tests/websocket-authority.spec.ts', 'apps/desktop/tests/desktop-installer-include.spec.ts', 'packages/client/ui-conversation/tests/secondary-window-owner-document.client.spec.tsx', 'packages/client/ui-primitives/src/owner-document.ts', 'packages/client/ui-primitives/tests/secondary-window.client.spec.tsx')
 
 function Resolve-CanonicalPath([string]$Path) {
   $full = [IO.Path]::GetFullPath($Path)
@@ -117,6 +144,117 @@ function Invoke-Git([string]$WorkingDirectory, [string[]]$Arguments) {
   $code = $LASTEXITCODE
   if ($code -ne 0) { throw "git $($Arguments -join ' ') failed ($code): $($output -join ' ')" }
   return (($output | ForEach-Object { [string]$_ }) -join "`n").Trim()
+}
+
+function Test-SafeRelativeTarget([string]$RelativePath) {
+  if ([string]::IsNullOrWhiteSpace($RelativePath) -or [IO.Path]::IsPathRooted($RelativePath) -or
+    $RelativePath.Contains([char]92) -or $RelativePath.Contains([char]58)) { return $false }
+  foreach ($segment in $RelativePath.Split('/')) {
+    if ($segment -in @('', '.', '..') -or $segment.EndsWith('.') -or $segment.EndsWith(' ') -or
+      $segment -match '^(?i:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?$' -or
+      $segment -match '[<>:"|?*\x00-\x1f]') { return $false }
+  }
+  return $true
+}
+
+$overrideKeys = @('ProspectiveLockPath', 'PatchRootOverride', 'PatchOrderPath')
+$suppliedOverrideKeys = @($overrideKeys | Where-Object { $PSBoundParameters.ContainsKey($_) })
+$overrideCount = $suppliedOverrideKeys.Count
+if ($overrideCount -ne 0 -and ($overrideCount -ne 3 -or
+  [string]::IsNullOrWhiteSpace($ProspectiveLockPath) -or
+  [string]::IsNullOrWhiteSpace($PatchRootOverride) -or
+  [string]::IsNullOrWhiteSpace($PatchOrderPath))) {
+  Write-Result @{ status = 'parameter_set_rejected'; message = 'ProspectiveLockPath、PatchRootOverride 与 PatchOrderPath 必须全省略或同时提供。'; targetMutated = $false } 21
+}
+$prospectiveLockMode = $overrideCount -eq 3
+if ($prospectiveLockMode) {
+  if (-not [IO.Path]::IsPathRooted($ProspectiveLockPath) -or -not [IO.Path]::IsPathRooted($PatchRootOverride) -or
+    -not [IO.Path]::IsPathRooted($PatchOrderPath)) {
+    Write-Result @{ status = 'prospective_path_rejected'; message = 'All prospective input paths must be absolute.'; targetMutated = $false } 21
+  }
+  $patchRoot = [IO.Path]::GetFullPath($PatchRootOverride)
+  $lockPath = [IO.Path]::GetFullPath($ProspectiveLockPath)
+  $patchOrderPathCanonical = [IO.Path]::GetFullPath($PatchOrderPath)
+  $approvedPatchRoot = [IO.Path]::GetFullPath((Join-Path $repoRoot 'integrations\dsh\patches'))
+  $approvedProspectiveSets = @(
+    @{ root = [IO.Path]::GetFullPath((Join-Path $workspaceRoot 'workspace\testing\frontend-visual-fixes-20261025\batch16-native-preflight\v2-24')); lockSha256 = '1f4834f8a84bfb733b967916cfd5fb5492afdeafae9d36bc737913b50bb6ee51'; orderSha256 = '783cc93af8aaaaa514f18a9017b5c5405ad0c1197addabe850c4609fe35cdda1' },
+    @{ root = [IO.Path]::GetFullPath((Join-Path $workspaceRoot 'workspace\testing\frontend-visual-fixes-20261025\batch16-native-preflight\v3-25')); lockSha256 = '31c63c81bd4bf3adae868e0d6e173bf36b5c4c54e288f424c3dfd693bfab65bf'; orderSha256 = '4555a7185ef1b08b7584974c1e27879df5ec0db2789848ba9e017aa58933cadd' },
+    @{ root = [IO.Path]::GetFullPath((Join-Path $workspaceRoot 'workspace\testing\frontend-visual-fixes-20261025\batch16-native-preflight\v4-26')); lockSha256 = '5e9e6180601e2b6231ce1c28aac02d17632fed6aad5a39094ec6af783cbc94c2'; orderSha256 = '3d880cebc6689e43c6ab596a441634affb156090efba6c420f76518217abeac4' },
+    @{ root = [IO.Path]::GetFullPath((Join-Path $workspaceRoot 'workspace\testing\frontend-visual-fixes-20261025\batch46-menu-runtime-source\patch-set-27')); lockSha256 = '0376bad0288ff90a944fd94b90596328a73cfe449ccc2faf1fe2682b50c51c2f'; orderSha256 = 'e20f845702006c17bf2bce647a62567230f418b3fd0ab1e51e8b5ca678a5384b' },
+    @{ root = [IO.Path]::GetFullPath((Join-Path $workspaceRoot 'workspace\testing\frontend-visual-fixes-20261025\batch66-native-runtime28\patch-set-28')); lockSha256 = '710c76095935fcc1844d29870cd201f1cf098f262f0ef30da6ab9aa5d242520c'; orderSha256 = '86585366b268fc7f2f8fa5589e36e7f73c7f9460affc9b14f0b745c8b04401db' },
+    @{ root = [IO.Path]::GetFullPath((Join-Path $workspaceRoot 'workspace\testing\native-file-applications-policy-20261027\patch-set-29')); lockSha256 = 'f7c1e3a8cd79729695f48090daae03bfa929ee2477e0711cb635d3ba31932eb4'; orderSha256 = '8ed49e1ad1988da93f507377fbc5f8ad02ca15fad47282829480424cb589bd05' },
+    @{ root = [IO.Path]::GetFullPath((Join-Path $workspaceRoot 'workspace\testing\native-file-applications-policy-20261027\patch-set-32')); lockSha256 = 'fbf76ea942fd87debcf89ff7e27fa559d86cdd0b90232663ab38e1558c81a9cb'; orderSha256 = 'e3ec3d709d902991f5fccf53435d8ed1bc4b83b0f573cb0c2b0dba1a317243ff' },
+    @{ root = [IO.Path]::GetFullPath((Join-Path $workspaceRoot 'workspace\testing\native-file-applications-policy-20261027\patch-set-33')); lockSha256 = '19cde34c354166c17f8997acba20c76452ae2d1c9fd7c5b96118ed486b6ac874'; orderSha256 = 'a465752afb9ee874e98f3e0123bfa01ed36bae9041124e2fd9acbe995f0c565c' },
+    @{ root = [IO.Path]::GetFullPath((Join-Path $workspaceRoot 'workspace\testing\desktop24-exit-fix-build-20261027\patch-set-33-exit')); lockSha256 = '848409e5579e83d3760e07b0975f5a2dae3d4b09b4b856eedd0a64a383b2c94c'; orderSha256 = 'a465752afb9ee874e98f3e0123bfa01ed36bae9041124e2fd9acbe995f0c565c' },
+    @{ root = [IO.Path]::GetFullPath((Join-Path $repoRoot 'integrations\dsh\prospective\desktop24-exit')); lockSha256 = '848409e5579e83d3760e07b0975f5a2dae3d4b09b4b856eedd0a64a383b2c94c'; orderSha256 = 'a465752afb9ee874e98f3e0123bfa01ed36bae9041124e2fd9acbe995f0c565c' }
+  )
+  $selectedProspectiveSet = $null
+  foreach ($candidateSet in $approvedProspectiveSets) {
+    if ($lockPath.Equals((Join-Path $candidateSet.root 'patches.prospective.lock.json'), [StringComparison]::OrdinalIgnoreCase) -and
+      $patchOrderPathCanonical.Equals((Join-Path $candidateSet.root 'order.prospective.json'), [StringComparison]::OrdinalIgnoreCase)) {
+      $selectedProspectiveSet = $candidateSet
+      break
+    }
+  }
+  $approvedForSet = if ($null -ne $selectedProspectiveSet -and $selectedProspectiveSet.root.Equals([IO.Path]::GetFullPath((Join-Path $repoRoot 'integrations\dsh\prospective\desktop24-exit')), [StringComparison]::OrdinalIgnoreCase)) { Join-Path $selectedProspectiveSet.root 'patches' } else { $approvedPatchRoot }
+  if (-not $patchRoot.Equals($approvedForSet, [StringComparison]::OrdinalIgnoreCase) -or
+    $null -eq $selectedProspectiveSet -or
+    -not (Test-NoReparseAncestors $patchRoot) -or -not (Test-NoReparseAncestors $lockPath) -or
+    -not (Test-NoReparseAncestors $patchOrderPathCanonical)) {
+    Write-Result @{ status = 'prospective_path_rejected'; message = 'Prospective inputs must be the approved lock/order and repository patch root with ordinary path ancestors.'; targetMutated = $false } 21
+  }
+  if (-not (Test-Path -LiteralPath $lockPath -PathType Leaf) -or -not (Test-Path -LiteralPath $patchOrderPathCanonical -PathType Leaf)) {
+    Write-Result @{ status = 'prospective_input_missing'; targetMutated = $false } 24
+  }
+  if ((Get-FileHash -LiteralPath $lockPath -Algorithm SHA256).Hash.ToLowerInvariant() -ne $selectedProspectiveSet.lockSha256 -or
+    (Get-FileHash -LiteralPath $patchOrderPathCanonical -Algorithm SHA256).Hash.ToLowerInvariant() -ne $selectedProspectiveSet.orderSha256) {
+    Write-Result @{ status = 'prospective_digest_rejected'; targetMutated = $false } 24
+  }
+  try {
+    $lock = Get-Content -LiteralPath $lockPath -Raw | ConvertFrom-Json
+    $orderDocument = Get-Content -LiteralPath $patchOrderPathCanonical -Raw | ConvertFrom-Json
+    $patchNames = @($orderDocument.order | ForEach-Object { [string]$_ })
+  } catch {
+    Write-Result @{ status = 'prospective_input_invalid'; targetMutated = $false } 24
+  }
+  $lockedPatchNames = @($lock.patches.PSObject.Properties.Name)
+  if ($patchNames.Count -eq 0 -or $patchNames.Count -ne $lockedPatchNames.Count -or
+    @($patchNames | Select-Object -Unique).Count -ne $patchNames.Count -or
+    @($patchNames | Where-Object { $_ -notmatch '^[A-Za-z0-9._-]+\.patch$' }).Count -gt 0 -or
+    @($lockedPatchNames | Where-Object { $_ -notin $patchNames }).Count -gt 0 -or
+    @($patchNames | Where-Object { $_ -notin $lockedPatchNames }).Count -gt 0) {
+    Write-Result @{ status = 'prospective_order_rejected'; targetMutated = $false } 24
+  }
+  if ($lock.upstream.commit -ne '1f81c047fc48fa190a683e469daa699857e9afe8' -or
+    $lock.upstream.licenseSha256 -ne 'EBB4F09972AEE8608BE255DEBAF78451A68E95C290F55C240DEC2ECFA16EA6BE') {
+    Write-Result @{ status = 'prospective_source_rejected'; targetMutated = $false } 22
+  }
+  $patchedFiles = @($lock.targetFiles.PSObject.Properties.Name)
+  foreach ($relativePath in $patchedFiles) {
+    if (-not (Test-SafeRelativeTarget ([string]$relativePath))) {
+      Write-Result @{ status = 'unsafe_target_path'; file = $relativePath; targetMutated = $false } 24
+    }
+  }
+  $generatedPatchFiles = @()
+  foreach ($name in $patchNames) {
+    $patchContent = [IO.File]::ReadAllText((Join-Path $patchRoot $name))
+    foreach ($section in [regex]::Split($patchContent, '(?m)(?=^diff --git )')) {
+      if ($section -match '(?m)^diff --git a/\S+ b/(\S+)\r?$') {
+        $addedTarget = $Matches[1]
+        if ($section -match '(?m)^new file mode ') { $generatedPatchFiles += $addedTarget }
+      }
+    }
+  }
+  $generatedPatchFiles = @($generatedPatchFiles | Select-Object -Unique)
+  $expectedGeneratedPatchCount = if ((Split-Path -Leaf $selectedProspectiveSet.root) -in @('patch-set-28', 'patch-set-29', 'patch-set-32', 'patch-set-33', 'patch-set-33-exit', 'desktop24-exit')) { 12 } elseif ((Split-Path -Leaf $selectedProspectiveSet.root) -in @('v4-26', 'patch-set-27')) { 10 } else { 9 }
+  if ($generatedPatchFiles.Count -ne $expectedGeneratedPatchCount) {
+    Write-Result @{ status = 'generated_target_set_rejected'; targetMutated = $false } 24
+  }
+  if (@($generatedPatchFiles | Where-Object { -not (Test-SafeRelativeTarget ([string]$_)) -or $_ -in $patchedFiles }).Count -gt 0) {
+    Write-Result @{ status = 'generated_target_rejected'; targetMutated = $false } 24
+  }
+} else {
+  $patchOrderPathCanonical = $null
 }
 
 function Test-PatchSet([string]$SourceDirectory, [bool]$Reverse, [bool]$ValidatePinnedTargets = $true) {
@@ -227,6 +365,10 @@ if (-not (Test-Path -LiteralPath $runtime -PathType Container) -or -not (Test-Pa
 }
 if (-not (Test-Path -LiteralPath $lockPath)) { Write-Result @{ status = 'lock_missing'; lockPath = $lockPath } 24 }
 $lock = Get-Content -LiteralPath $lockPath -Raw | ConvertFrom-Json
+if (-not $prospectiveLockMode -and (@($lock.patches.PSObject.Properties.Name | Where-Object { $_ -notin $patchNames }).Count -gt 0 -or
+  @($patchNames | Where-Object { $_ -notin @($lock.patches.PSObject.Properties.Name) }).Count -gt 0)) {
+  Write-Result @{ status = 'default_order_mismatch'; targetMutated = $false } 24
+}
 foreach ($name in $patchNames) {
   $patch = Join-Path $patchRoot $name
   if (-not (Test-Path -LiteralPath $patch)) { Write-Result @{ status = 'patch_missing'; patch = $name } 24 }

@@ -1,0 +1,1409 @@
+{
+  "provenance": "Real native service/journal snapshots; synthetic Host/CAS and child lifecycle; no native child, model or HTTP server.",
+  "completed": [
+    {
+      "expectedRevision": 0,
+      "snapshot": {
+        "journalSchema": "tradeloom.native-run-journal/v1",
+        "id": "1149f408-8f07-4d2a-4c12-5872fdb00a3c",
+        "workflowId": "workflow",
+        "title": "Workflow",
+        "executionMode": "native_dsh",
+        "status": "running",
+        "revision": 1,
+        "startedAt": "2026-10-26T11:53:43.856Z",
+        "finishedAt": null,
+        "document": {
+          "confirmed": true,
+          "description": "",
+          "edges": [],
+          "id": "workflow",
+          "nodes": [
+            {
+              "agent": "product",
+              "id": "task",
+              "instruction": "Stored task",
+              "kind": "agent",
+              "model": null,
+              "position": {
+                "x": 40,
+                "y": 40
+              },
+              "title": "Task"
+            }
+          ],
+          "source": "manual",
+          "title": "Workflow",
+          "version": 1
+        },
+        "nodes": {
+          "task": {
+            "status": "pending",
+            "output": "",
+            "error": "",
+            "attempt": 0,
+            "attemptState": "none",
+            "requestId": null,
+            "toolCallId": null,
+            "childId": null,
+            "nativeRunId": null,
+            "artifacts": [],
+            "artifactSource": "unknown"
+          }
+        },
+        "requestId": "submit:1149f4088f074d2a4c125872fdb00a3c6abf82181ba029486fcae7aeaf5f0d9d",
+        "parentAgentId": "center-parent",
+        "sessionId": "center-session",
+        "bindingRevision": "7",
+        "definitionRevision": "sha256:1a3f8e7717f3cb97edffb99f18467239f629da021421656f31a9643f2502c2f5",
+        "events": [
+          {
+            "sequence": 1,
+            "type": "run-created",
+            "at": "2026-10-26T11:53:43.856Z",
+            "requestId": "submit:1149f4088f074d2a4c125872fdb00a3c6abf82181ba029486fcae7aeaf5f0d9d",
+            "workflowRunId": "1149f408-8f07-4d2a-4c12-5872fdb00a3c",
+            "nodeId": null,
+            "attempt": null,
+            "bindingRevision": "7",
+            "definitionRevision": "sha256:1a3f8e7717f3cb97edffb99f18467239f629da021421656f31a9643f2502c2f5",
+            "parentAgentId": "center-parent",
+            "sessionId": "center-session",
+            "toolCallId": null,
+            "childId": null,
+            "nativeRunId": null,
+            "source": "native-run-journal",
+            "artifacts": [],
+            "artifactSource": "unknown"
+          }
+        ]
+      }
+    },
+    {
+      "expectedRevision": 1,
+      "snapshot": {
+        "journalSchema": "tradeloom.native-run-journal/v1",
+        "id": "1149f408-8f07-4d2a-4c12-5872fdb00a3c",
+        "workflowId": "workflow",
+        "title": "Workflow",
+        "executionMode": "native_dsh",
+        "status": "running",
+        "revision": 2,
+        "startedAt": "2026-10-26T11:53:43.856Z",
+        "finishedAt": null,
+        "document": {
+          "confirmed": true,
+          "description": "",
+          "edges": [],
+          "id": "workflow",
+          "nodes": [
+            {
+              "agent": "product",
+              "id": "task",
+              "instruction": "Stored task",
+              "kind": "agent",
+              "model": null,
+              "position": {
+                "x": 40,
+                "y": 40
+              },
+              "title": "Task"
+            }
+          ],
+          "source": "manual",
+          "title": "Workflow",
+          "version": 1
+        },
+        "nodes": {
+          "task": {
+            "status": "running",
+            "output": "",
+            "error": "",
+            "attempt": 1,
+            "attemptState": "started",
+            "requestId": "attempt:d67418a2-6bef-48b4-8fac-6c16015c17b3",
+            "toolCallId": null,
+            "childId": null,
+            "nativeRunId": null,
+            "artifacts": [],
+            "artifactSource": "unknown"
+          }
+        },
+        "requestId": "submit:1149f4088f074d2a4c125872fdb00a3c6abf82181ba029486fcae7aeaf5f0d9d",
+        "parentAgentId": "center-parent",
+        "sessionId": "center-session",
+        "bindingRevision": "7",
+        "definitionRevision": "sha256:1a3f8e7717f3cb97edffb99f18467239f629da021421656f31a9643f2502c2f5",
+        "events": [
+          {
+            "sequence": 1,
+            "type": "run-created",
+            "at": "2026-10-26T11:53:43.856Z",
+            "requestId": "submit:1149f4088f074d2a4c125872fdb00a3c6abf82181ba029486fcae7aeaf5f0d9d",
+            "workflowRunId": "1149f408-8f07-4d2a-4c12-5872fdb00a3c",
+            "nodeId": null,
+            "attempt": null,
+            "bindingRevision": "7",
+            "definitionRevision": "sha256:1a3f8e7717f3cb97edffb99f18467239f629da021421656f31a9643f2502c2f5",
+            "parentAgentId": "center-parent",
+            "sessionId": "center-session",
+            "toolCallId": null,
+            "childId": null,
+            "nativeRunId": null,
+            "source": "native-run-journal",
+            "artifacts": [],
+            "artifactSource": "unknown"
+          },
+          {
+            "sequence": 2,
+            "type": "attempt-started",
+            "at": "2026-10-26T11:53:43.857Z",
+            "requestId": "attempt:d67418a2-6bef-48b4-8fac-6c16015c17b3",
+            "workflowRunId": "1149f408-8f07-4d2a-4c12-5872fdb00a3c",
+            "nodeId": "task",
+            "attempt": 1,
+            "bindingRevision": "7",
+            "definitionRevision": "sha256:1a3f8e7717f3cb97edffb99f18467239f629da021421656f31a9643f2502c2f5",
+            "parentAgentId": "center-parent",
+            "sessionId": "center-session",
+            "toolCallId": null,
+            "childId": null,
+            "nativeRunId": null,
+            "source": "native-executor",
+            "status": "running",
+            "artifacts": [],
+            "artifactSource": "unknown"
+          }
+        ]
+      }
+    },
+    {
+      "expectedRevision": 2,
+      "snapshot": {
+        "journalSchema": "tradeloom.native-run-journal/v1",
+        "id": "1149f408-8f07-4d2a-4c12-5872fdb00a3c",
+        "workflowId": "workflow",
+        "title": "Workflow",
+        "executionMode": "native_dsh",
+        "status": "running",
+        "revision": 3,
+        "startedAt": "2026-10-26T11:53:43.856Z",
+        "finishedAt": null,
+        "document": {
+          "confirmed": true,
+          "description": "",
+          "edges": [],
+          "id": "workflow",
+          "nodes": [
+            {
+              "agent": "product",
+              "id": "task",
+              "instruction": "Stored task",
+              "kind": "agent",
+              "model": null,
+              "position": {
+                "x": 40,
+                "y": 40
+              },
+              "title": "Task"
+            }
+          ],
+          "source": "manual",
+          "title": "Workflow",
+          "version": 1
+        },
+        "nodes": {
+          "task": {
+            "status": "running",
+            "output": "",
+            "error": "",
+            "attempt": 1,
+            "attemptState": "acknowledged",
+            "requestId": "attempt:d67418a2-6bef-48b4-8fac-6c16015c17b3",
+            "toolCallId": "256ceec8-d822-4a34-9819-52d3c4dc58ac",
+            "childId": "child",
+            "nativeRunId": "native-run",
+            "artifacts": [],
+            "artifactSource": "unknown"
+          }
+        },
+        "requestId": "submit:1149f4088f074d2a4c125872fdb00a3c6abf82181ba029486fcae7aeaf5f0d9d",
+        "parentAgentId": "center-parent",
+        "sessionId": "center-session",
+        "bindingRevision": "7",
+        "definitionRevision": "sha256:1a3f8e7717f3cb97edffb99f18467239f629da021421656f31a9643f2502c2f5",
+        "events": [
+          {
+            "sequence": 1,
+            "type": "run-created",
+            "at": "2026-10-26T11:53:43.856Z",
+            "requestId": "submit:1149f4088f074d2a4c125872fdb00a3c6abf82181ba029486fcae7aeaf5f0d9d",
+            "workflowRunId": "1149f408-8f07-4d2a-4c12-5872fdb00a3c",
+            "nodeId": null,
+            "attempt": null,
+            "bindingRevision": "7",
+            "definitionRevision": "sha256:1a3f8e7717f3cb97edffb99f18467239f629da021421656f31a9643f2502c2f5",
+            "parentAgentId": "center-parent",
+            "sessionId": "center-session",
+            "toolCallId": null,
+            "childId": null,
+            "nativeRunId": null,
+            "source": "native-run-journal",
+            "artifacts": [],
+            "artifactSource": "unknown"
+          },
+          {
+            "sequence": 2,
+            "type": "attempt-started",
+            "at": "2026-10-26T11:53:43.857Z",
+            "requestId": "attempt:d67418a2-6bef-48b4-8fac-6c16015c17b3",
+            "workflowRunId": "1149f408-8f07-4d2a-4c12-5872fdb00a3c",
+            "nodeId": "task",
+            "attempt": 1,
+            "bindingRevision": "7",
+            "definitionRevision": "sha256:1a3f8e7717f3cb97edffb99f18467239f629da021421656f31a9643f2502c2f5",
+            "parentAgentId": "center-parent",
+            "sessionId": "center-session",
+            "toolCallId": null,
+            "childId": null,
+            "nativeRunId": null,
+            "source": "native-executor",
+            "status": "running",
+            "artifacts": [],
+            "artifactSource": "unknown"
+          },
+          {
+            "sequence": 3,
+            "type": "child-ack",
+            "at": "2026-10-26T11:53:43.858Z",
+            "requestId": "attempt:d67418a2-6bef-48b4-8fac-6c16015c17b3",
+            "workflowRunId": "1149f408-8f07-4d2a-4c12-5872fdb00a3c",
+            "nodeId": "task",
+            "attempt": 1,
+            "bindingRevision": "7",
+            "definitionRevision": "sha256:1a3f8e7717f3cb97edffb99f18467239f629da021421656f31a9643f2502c2f5",
+            "parentAgentId": "center-parent",
+            "sessionId": "center-session",
+            "toolCallId": "256ceec8-d822-4a34-9819-52d3c4dc58ac",
+            "childId": "child",
+            "nativeRunId": "native-run",
+            "source": "tool-runtime",
+            "artifacts": [],
+            "artifactSource": "unknown"
+          }
+        ]
+      }
+    },
+    {
+      "expectedRevision": 3,
+      "snapshot": {
+        "journalSchema": "tradeloom.native-run-journal/v1",
+        "id": "1149f408-8f07-4d2a-4c12-5872fdb00a3c",
+        "workflowId": "workflow",
+        "title": "Workflow",
+        "executionMode": "native_dsh",
+        "status": "done",
+        "revision": 4,
+        "startedAt": "2026-10-26T11:53:43.856Z",
+        "finishedAt": "2026-10-26T11:53:43.859Z",
+        "document": {
+          "confirmed": true,
+          "description": "",
+          "edges": [],
+          "id": "workflow",
+          "nodes": [
+            {
+              "agent": "product",
+              "id": "task",
+              "instruction": "Stored task",
+              "kind": "agent",
+              "model": null,
+              "position": {
+                "x": 40,
+                "y": 40
+              },
+              "title": "Task"
+            }
+          ],
+          "source": "manual",
+          "title": "Workflow",
+          "version": 1
+        },
+        "nodes": {
+          "task": {
+            "status": "done",
+            "output": [
+              {
+                "type": "text",
+                "text": "done"
+              }
+            ],
+            "error": "",
+            "attempt": 1,
+            "attemptState": "terminal",
+            "requestId": "attempt:d67418a2-6bef-48b4-8fac-6c16015c17b3",
+            "toolCallId": "256ceec8-d822-4a34-9819-52d3c4dc58ac",
+            "childId": "child",
+            "nativeRunId": "native-run",
+            "artifacts": [],
+            "artifactSource": "unknown"
+          }
+        },
+        "requestId": "submit:1149f4088f074d2a4c125872fdb00a3c6abf82181ba029486fcae7aeaf5f0d9d",
+        "parentAgentId": "center-parent",
+        "sessionId": "center-session",
+        "bindingRevision": "7",
+        "definitionRevision": "sha256:1a3f8e7717f3cb97edffb99f18467239f629da021421656f31a9643f2502c2f5",
+        "events": [
+          {
+            "sequence": 1,
+            "type": "run-created",
+            "at": "2026-10-26T11:53:43.856Z",
+            "requestId": "submit:1149f4088f074d2a4c125872fdb00a3c6abf82181ba029486fcae7aeaf5f0d9d",
+            "workflowRunId": "1149f408-8f07-4d2a-4c12-5872fdb00a3c",
+            "nodeId": null,
+            "attempt": null,
+            "bindingRevision": "7",
+            "definitionRevision": "sha256:1a3f8e7717f3cb97edffb99f18467239f629da021421656f31a9643f2502c2f5",
+            "parentAgentId": "center-parent",
+            "sessionId": "center-session",
+            "toolCallId": null,
+            "childId": null,
+            "nativeRunId": null,
+            "source": "native-run-journal",
+            "artifacts": [],
+            "artifactSource": "unknown"
+          },
+          {
+            "sequence": 2,
+            "type": "attempt-started",
+            "at": "2026-10-26T11:53:43.857Z",
+            "requestId": "attempt:d67418a2-6bef-48b4-8fac-6c16015c17b3",
+            "workflowRunId": "1149f408-8f07-4d2a-4c12-5872fdb00a3c",
+            "nodeId": "task",
+            "attempt": 1,
+            "bindingRevision": "7",
+            "definitionRevision": "sha256:1a3f8e7717f3cb97edffb99f18467239f629da021421656f31a9643f2502c2f5",
+            "parentAgentId": "center-parent",
+            "sessionId": "center-session",
+            "toolCallId": null,
+            "childId": null,
+            "nativeRunId": null,
+            "source": "native-executor",
+            "status": "running",
+            "artifacts": [],
+            "artifactSource": "unknown"
+          },
+          {
+            "sequence": 3,
+            "type": "child-ack",
+            "at": "2026-10-26T11:53:43.858Z",
+            "requestId": "attempt:d67418a2-6bef-48b4-8fac-6c16015c17b3",
+            "workflowRunId": "1149f408-8f07-4d2a-4c12-5872fdb00a3c",
+            "nodeId": "task",
+            "attempt": 1,
+            "bindingRevision": "7",
+            "definitionRevision": "sha256:1a3f8e7717f3cb97edffb99f18467239f629da021421656f31a9643f2502c2f5",
+            "parentAgentId": "center-parent",
+            "sessionId": "center-session",
+            "toolCallId": "256ceec8-d822-4a34-9819-52d3c4dc58ac",
+            "childId": "child",
+            "nativeRunId": "native-run",
+            "source": "tool-runtime",
+            "artifacts": [],
+            "artifactSource": "unknown"
+          },
+          {
+            "sequence": 4,
+            "type": "node-terminal",
+            "at": "2026-10-26T11:53:43.859Z",
+            "requestId": "attempt:d67418a2-6bef-48b4-8fac-6c16015c17b3",
+            "workflowRunId": "1149f408-8f07-4d2a-4c12-5872fdb00a3c",
+            "nodeId": "task",
+            "attempt": 1,
+            "bindingRevision": "7",
+            "definitionRevision": "sha256:1a3f8e7717f3cb97edffb99f18467239f629da021421656f31a9643f2502c2f5",
+            "parentAgentId": "center-parent",
+            "sessionId": "center-session",
+            "toolCallId": "256ceec8-d822-4a34-9819-52d3c4dc58ac",
+            "childId": "child",
+            "nativeRunId": "native-run",
+            "source": "subagent/end",
+            "status": "done",
+            "stopReason": "completed",
+            "errorCategory": null,
+            "output": [
+              {
+                "type": "text",
+                "text": "done"
+              }
+            ],
+            "artifacts": [],
+            "artifactSource": "unknown"
+          }
+        ]
+      }
+    }
+  ],
+  "recovery": [
+    {
+      "expectedRevision": 0,
+      "snapshot": {
+        "journalSchema": "tradeloom.native-run-journal/v1",
+        "id": "474bdbe7-2f26-d459-5400-c35844a29d76",
+        "workflowId": "workflow",
+        "title": "Workflow",
+        "executionMode": "native_dsh",
+        "status": "running",
+        "revision": 1,
+        "startedAt": "2026-10-26T11:53:43.859Z",
+        "finishedAt": null,
+        "document": {
+          "confirmed": true,
+          "description": "",
+          "edges": [],
+          "id": "workflow",
+          "nodes": [
+            {
+              "agent": "product",
+              "id": "task",
+              "instruction": "Stored task",
+              "kind": "agent",
+              "model": null,
+              "position": {
+                "x": 40,
+                "y": 40
+              },
+              "title": "Task"
+            }
+          ],
+          "source": "manual",
+          "title": "Workflow",
+          "version": 1
+        },
+        "nodes": {
+          "task": {
+            "status": "pending",
+            "output": "",
+            "error": "",
+            "attempt": 0,
+            "attemptState": "none",
+            "requestId": null,
+            "toolCallId": null,
+            "childId": null,
+            "nativeRunId": null,
+            "artifacts": [],
+            "artifactSource": "unknown"
+          }
+        },
+        "requestId": "submit:474bdbe72f26d4595400c35844a29d769174e3d4bf0ea4e478dcf645f9879c9f",
+        "parentAgentId": "center-parent",
+        "sessionId": "center-session",
+        "bindingRevision": "7",
+        "definitionRevision": "sha256:1a3f8e7717f3cb97edffb99f18467239f629da021421656f31a9643f2502c2f5",
+        "events": [
+          {
+            "sequence": 1,
+            "type": "run-created",
+            "at": "2026-10-26T11:53:43.859Z",
+            "requestId": "submit:474bdbe72f26d4595400c35844a29d769174e3d4bf0ea4e478dcf645f9879c9f",
+            "workflowRunId": "474bdbe7-2f26-d459-5400-c35844a29d76",
+            "nodeId": null,
+            "attempt": null,
+            "bindingRevision": "7",
+            "definitionRevision": "sha256:1a3f8e7717f3cb97edffb99f18467239f629da021421656f31a9643f2502c2f5",
+            "parentAgentId": "center-parent",
+            "sessionId": "center-session",
+            "toolCallId": null,
+            "childId": null,
+            "nativeRunId": null,
+            "source": "native-run-journal",
+            "artifacts": [],
+            "artifactSource": "unknown"
+          }
+        ]
+      }
+    },
+    {
+      "expectedRevision": 1,
+      "snapshot": {
+        "journalSchema": "tradeloom.native-run-journal/v1",
+        "id": "474bdbe7-2f26-d459-5400-c35844a29d76",
+        "workflowId": "workflow",
+        "title": "Workflow",
+        "executionMode": "native_dsh",
+        "status": "running",
+        "revision": 2,
+        "startedAt": "2026-10-26T11:53:43.859Z",
+        "finishedAt": null,
+        "document": {
+          "confirmed": true,
+          "description": "",
+          "edges": [],
+          "id": "workflow",
+          "nodes": [
+            {
+              "agent": "product",
+              "id": "task",
+              "instruction": "Stored task",
+              "kind": "agent",
+              "model": null,
+              "position": {
+                "x": 40,
+                "y": 40
+              },
+              "title": "Task"
+            }
+          ],
+          "source": "manual",
+          "title": "Workflow",
+          "version": 1
+        },
+        "nodes": {
+          "task": {
+            "status": "running",
+            "output": "",
+            "error": "",
+            "attempt": 1,
+            "attemptState": "started",
+            "requestId": "attempt:f17e006f-e9d6-4a2e-aa2d-77afa0ff67b4",
+            "toolCallId": null,
+            "childId": null,
+            "nativeRunId": null,
+            "artifacts": [],
+            "artifactSource": "unknown"
+          }
+        },
+        "requestId": "submit:474bdbe72f26d4595400c35844a29d769174e3d4bf0ea4e478dcf645f9879c9f",
+        "parentAgentId": "center-parent",
+        "sessionId": "center-session",
+        "bindingRevision": "7",
+        "definitionRevision": "sha256:1a3f8e7717f3cb97edffb99f18467239f629da021421656f31a9643f2502c2f5",
+        "events": [
+          {
+            "sequence": 1,
+            "type": "run-created",
+            "at": "2026-10-26T11:53:43.859Z",
+            "requestId": "submit:474bdbe72f26d4595400c35844a29d769174e3d4bf0ea4e478dcf645f9879c9f",
+            "workflowRunId": "474bdbe7-2f26-d459-5400-c35844a29d76",
+            "nodeId": null,
+            "attempt": null,
+            "bindingRevision": "7",
+            "definitionRevision": "sha256:1a3f8e7717f3cb97edffb99f18467239f629da021421656f31a9643f2502c2f5",
+            "parentAgentId": "center-parent",
+            "sessionId": "center-session",
+            "toolCallId": null,
+            "childId": null,
+            "nativeRunId": null,
+            "source": "native-run-journal",
+            "artifacts": [],
+            "artifactSource": "unknown"
+          },
+          {
+            "sequence": 2,
+            "type": "attempt-started",
+            "at": "2026-10-26T11:53:43.860Z",
+            "requestId": "attempt:f17e006f-e9d6-4a2e-aa2d-77afa0ff67b4",
+            "workflowRunId": "474bdbe7-2f26-d459-5400-c35844a29d76",
+            "nodeId": "task",
+            "attempt": 1,
+            "bindingRevision": "7",
+            "definitionRevision": "sha256:1a3f8e7717f3cb97edffb99f18467239f629da021421656f31a9643f2502c2f5",
+            "parentAgentId": "center-parent",
+            "sessionId": "center-session",
+            "toolCallId": null,
+            "childId": null,
+            "nativeRunId": null,
+            "source": "native-executor",
+            "status": "running",
+            "artifacts": [],
+            "artifactSource": "unknown"
+          }
+        ]
+      }
+    },
+    {
+      "expectedRevision": 2,
+      "snapshot": {
+        "journalSchema": "tradeloom.native-run-journal/v1",
+        "id": "474bdbe7-2f26-d459-5400-c35844a29d76",
+        "workflowId": "workflow",
+        "title": "Workflow",
+        "executionMode": "native_dsh",
+        "status": "running",
+        "revision": 3,
+        "startedAt": "2026-10-26T11:53:43.859Z",
+        "finishedAt": null,
+        "document": {
+          "confirmed": true,
+          "description": "",
+          "edges": [],
+          "id": "workflow",
+          "nodes": [
+            {
+              "agent": "product",
+              "id": "task",
+              "instruction": "Stored task",
+              "kind": "agent",
+              "model": null,
+              "position": {
+                "x": 40,
+                "y": 40
+              },
+              "title": "Task"
+            }
+          ],
+          "source": "manual",
+          "title": "Workflow",
+          "version": 1
+        },
+        "nodes": {
+          "task": {
+            "status": "running",
+            "output": "",
+            "error": "",
+            "attempt": 1,
+            "attemptState": "acknowledged",
+            "requestId": "attempt:f17e006f-e9d6-4a2e-aa2d-77afa0ff67b4",
+            "toolCallId": "2878ad59-ba51-4184-85e5-9dfe99c4e4e0",
+            "childId": "child",
+            "nativeRunId": "native-run",
+            "artifacts": [],
+            "artifactSource": "unknown"
+          }
+        },
+        "requestId": "submit:474bdbe72f26d4595400c35844a29d769174e3d4bf0ea4e478dcf645f9879c9f",
+        "parentAgentId": "center-parent",
+        "sessionId": "center-session",
+        "bindingRevision": "7",
+        "definitionRevision": "sha256:1a3f8e7717f3cb97edffb99f18467239f629da021421656f31a9643f2502c2f5",
+        "events": [
+          {
+            "sequence": 1,
+            "type": "run-created",
+            "at": "2026-10-26T11:53:43.859Z",
+            "requestId": "submit:474bdbe72f26d4595400c35844a29d769174e3d4bf0ea4e478dcf645f9879c9f",
+            "workflowRunId": "474bdbe7-2f26-d459-5400-c35844a29d76",
+            "nodeId": null,
+            "attempt": null,
+            "bindingRevision": "7",
+            "definitionRevision": "sha256:1a3f8e7717f3cb97edffb99f18467239f629da021421656f31a9643f2502c2f5",
+            "parentAgentId": "center-parent",
+            "sessionId": "center-session",
+            "toolCallId": null,
+            "childId": null,
+            "nativeRunId": null,
+            "source": "native-run-journal",
+            "artifacts": [],
+            "artifactSource": "unknown"
+          },
+          {
+            "sequence": 2,
+            "type": "attempt-started",
+            "at": "2026-10-26T11:53:43.860Z",
+            "requestId": "attempt:f17e006f-e9d6-4a2e-aa2d-77afa0ff67b4",
+            "workflowRunId": "474bdbe7-2f26-d459-5400-c35844a29d76",
+            "nodeId": "task",
+            "attempt": 1,
+            "bindingRevision": "7",
+            "definitionRevision": "sha256:1a3f8e7717f3cb97edffb99f18467239f629da021421656f31a9643f2502c2f5",
+            "parentAgentId": "center-parent",
+            "sessionId": "center-session",
+            "toolCallId": null,
+            "childId": null,
+            "nativeRunId": null,
+            "source": "native-executor",
+            "status": "running",
+            "artifacts": [],
+            "artifactSource": "unknown"
+          },
+          {
+            "sequence": 3,
+            "type": "child-ack",
+            "at": "2026-10-26T11:53:43.860Z",
+            "requestId": "attempt:f17e006f-e9d6-4a2e-aa2d-77afa0ff67b4",
+            "workflowRunId": "474bdbe7-2f26-d459-5400-c35844a29d76",
+            "nodeId": "task",
+            "attempt": 1,
+            "bindingRevision": "7",
+            "definitionRevision": "sha256:1a3f8e7717f3cb97edffb99f18467239f629da021421656f31a9643f2502c2f5",
+            "parentAgentId": "center-parent",
+            "sessionId": "center-session",
+            "toolCallId": "2878ad59-ba51-4184-85e5-9dfe99c4e4e0",
+            "childId": "child",
+            "nativeRunId": "native-run",
+            "source": "tool-runtime",
+            "artifacts": [],
+            "artifactSource": "unknown"
+          }
+        ]
+      }
+    },
+    {
+      "expectedRevision": 3,
+      "snapshot": {
+        "journalSchema": "tradeloom.native-run-journal/v1",
+        "id": "474bdbe7-2f26-d459-5400-c35844a29d76",
+        "workflowId": "workflow",
+        "title": "Workflow",
+        "executionMode": "native_dsh",
+        "status": "interrupted",
+        "revision": 4,
+        "startedAt": "2026-10-26T11:53:43.859Z",
+        "finishedAt": "2026-10-26T11:53:43.860Z",
+        "document": {
+          "confirmed": true,
+          "description": "",
+          "edges": [],
+          "id": "workflow",
+          "nodes": [
+            {
+              "agent": "product",
+              "id": "task",
+              "instruction": "Stored task",
+              "kind": "agent",
+              "model": null,
+              "position": {
+                "x": 40,
+                "y": 40
+              },
+              "title": "Task"
+            }
+          ],
+          "source": "manual",
+          "title": "Workflow",
+          "version": 1
+        },
+        "nodes": {
+          "task": {
+            "status": "interrupted",
+            "output": "",
+            "error": "PROCESS_RESTARTED",
+            "attempt": 1,
+            "attemptState": "interrupted",
+            "requestId": "attempt:f17e006f-e9d6-4a2e-aa2d-77afa0ff67b4",
+            "toolCallId": "2878ad59-ba51-4184-85e5-9dfe99c4e4e0",
+            "childId": "child",
+            "nativeRunId": "native-run",
+            "artifacts": [],
+            "artifactSource": "unknown"
+          }
+        },
+        "requestId": "submit:474bdbe72f26d4595400c35844a29d769174e3d4bf0ea4e478dcf645f9879c9f",
+        "parentAgentId": "center-parent",
+        "sessionId": "center-session",
+        "bindingRevision": "7",
+        "definitionRevision": "sha256:1a3f8e7717f3cb97edffb99f18467239f629da021421656f31a9643f2502c2f5",
+        "events": [
+          {
+            "sequence": 1,
+            "type": "run-created",
+            "at": "2026-10-26T11:53:43.859Z",
+            "requestId": "submit:474bdbe72f26d4595400c35844a29d769174e3d4bf0ea4e478dcf645f9879c9f",
+            "workflowRunId": "474bdbe7-2f26-d459-5400-c35844a29d76",
+            "nodeId": null,
+            "attempt": null,
+            "bindingRevision": "7",
+            "definitionRevision": "sha256:1a3f8e7717f3cb97edffb99f18467239f629da021421656f31a9643f2502c2f5",
+            "parentAgentId": "center-parent",
+            "sessionId": "center-session",
+            "toolCallId": null,
+            "childId": null,
+            "nativeRunId": null,
+            "source": "native-run-journal",
+            "artifacts": [],
+            "artifactSource": "unknown"
+          },
+          {
+            "sequence": 2,
+            "type": "attempt-started",
+            "at": "2026-10-26T11:53:43.860Z",
+            "requestId": "attempt:f17e006f-e9d6-4a2e-aa2d-77afa0ff67b4",
+            "workflowRunId": "474bdbe7-2f26-d459-5400-c35844a29d76",
+            "nodeId": "task",
+            "attempt": 1,
+            "bindingRevision": "7",
+            "definitionRevision": "sha256:1a3f8e7717f3cb97edffb99f18467239f629da021421656f31a9643f2502c2f5",
+            "parentAgentId": "center-parent",
+            "sessionId": "center-session",
+            "toolCallId": null,
+            "childId": null,
+            "nativeRunId": null,
+            "source": "native-executor",
+            "status": "running",
+            "artifacts": [],
+            "artifactSource": "unknown"
+          },
+          {
+            "sequence": 3,
+            "type": "child-ack",
+            "at": "2026-10-26T11:53:43.860Z",
+            "requestId": "attempt:f17e006f-e9d6-4a2e-aa2d-77afa0ff67b4",
+            "workflowRunId": "474bdbe7-2f26-d459-5400-c35844a29d76",
+            "nodeId": "task",
+            "attempt": 1,
+            "bindingRevision": "7",
+            "definitionRevision": "sha256:1a3f8e7717f3cb97edffb99f18467239f629da021421656f31a9643f2502c2f5",
+            "parentAgentId": "center-parent",
+            "sessionId": "center-session",
+            "toolCallId": "2878ad59-ba51-4184-85e5-9dfe99c4e4e0",
+            "childId": "child",
+            "nativeRunId": "native-run",
+            "source": "tool-runtime",
+            "artifacts": [],
+            "artifactSource": "unknown"
+          },
+          {
+            "sequence": 4,
+            "type": "node-interrupted",
+            "at": "2026-10-26T11:53:43.860Z",
+            "requestId": "attempt:f17e006f-e9d6-4a2e-aa2d-77afa0ff67b4",
+            "workflowRunId": "474bdbe7-2f26-d459-5400-c35844a29d76",
+            "nodeId": "task",
+            "attempt": 1,
+            "bindingRevision": "7",
+            "definitionRevision": "sha256:1a3f8e7717f3cb97edffb99f18467239f629da021421656f31a9643f2502c2f5",
+            "parentAgentId": "center-parent",
+            "sessionId": "center-session",
+            "toolCallId": "2878ad59-ba51-4184-85e5-9dfe99c4e4e0",
+            "childId": "child",
+            "nativeRunId": "native-run",
+            "source": "startup-recovery",
+            "status": "interrupted",
+            "errorCategory": "PROCESS_RESTARTED",
+            "artifacts": [],
+            "artifactSource": "unknown"
+          },
+          {
+            "sequence": 5,
+            "type": "run-interrupted",
+            "at": "2026-10-26T11:53:43.860Z",
+            "requestId": "submit:474bdbe72f26d4595400c35844a29d769174e3d4bf0ea4e478dcf645f9879c9f",
+            "workflowRunId": "474bdbe7-2f26-d459-5400-c35844a29d76",
+            "nodeId": null,
+            "attempt": null,
+            "bindingRevision": "7",
+            "definitionRevision": "sha256:1a3f8e7717f3cb97edffb99f18467239f629da021421656f31a9643f2502c2f5",
+            "parentAgentId": "center-parent",
+            "sessionId": "center-session",
+            "toolCallId": null,
+            "childId": null,
+            "nativeRunId": null,
+            "source": "startup-recovery",
+            "status": "interrupted",
+            "errorCategory": "PROCESS_RESTARTED",
+            "artifacts": [],
+            "artifactSource": "unknown"
+          }
+        ]
+      }
+    }
+  ],
+  "artifact": [
+    {
+      "expectedRevision": 0,
+      "snapshot": {
+        "journalSchema": "tradeloom.native-run-journal/v1",
+        "id": "22222222-2222-4222-8222-222222222222",
+        "workflowId": "artifact-flow",
+        "title": "Synthetic declared file",
+        "executionMode": "native_dsh",
+        "status": "running",
+        "revision": 1,
+        "startedAt": "2026-10-26T11:53:43.861Z",
+        "finishedAt": null,
+        "document": {
+          "confirmed": true,
+          "description": "",
+          "edges": [],
+          "id": "artifact-flow",
+          "nodes": [
+            {
+              "agent": "product",
+              "id": "task",
+              "instruction": "Synthetic task",
+              "kind": "agent",
+              "model": null,
+              "position": {
+                "x": 40,
+                "y": 40
+              },
+              "title": "Task"
+            }
+          ],
+          "source": "manual",
+          "title": "Synthetic declared file",
+          "version": 1
+        },
+        "nodes": {
+          "task": {
+            "status": "pending",
+            "output": "",
+            "error": "",
+            "attempt": 0,
+            "attemptState": "none",
+            "requestId": null,
+            "toolCallId": null,
+            "childId": null,
+            "nativeRunId": null,
+            "artifacts": [],
+            "artifactSource": "unknown"
+          }
+        },
+        "requestId": "artifact-submit",
+        "parentAgentId": "fixture-parent",
+        "sessionId": "fixture-session",
+        "bindingRevision": "1",
+        "definitionRevision": "sha256:59a97adf2faa77b3d4cc8d661483dc04f3e5162fa2755ba3d68ea689dbd8b3b3",
+        "events": [
+          {
+            "sequence": 1,
+            "type": "run-created",
+            "at": "2026-10-26T11:53:43.861Z",
+            "requestId": "artifact-submit",
+            "workflowRunId": "22222222-2222-4222-8222-222222222222",
+            "nodeId": null,
+            "attempt": null,
+            "bindingRevision": "1",
+            "definitionRevision": "sha256:59a97adf2faa77b3d4cc8d661483dc04f3e5162fa2755ba3d68ea689dbd8b3b3",
+            "parentAgentId": "fixture-parent",
+            "sessionId": "fixture-session",
+            "toolCallId": null,
+            "childId": null,
+            "nativeRunId": null,
+            "source": "native-run-journal",
+            "artifacts": [],
+            "artifactSource": "unknown"
+          }
+        ]
+      }
+    },
+    {
+      "expectedRevision": 1,
+      "snapshot": {
+        "journalSchema": "tradeloom.native-run-journal/v1",
+        "id": "22222222-2222-4222-8222-222222222222",
+        "workflowId": "artifact-flow",
+        "title": "Synthetic declared file",
+        "executionMode": "native_dsh",
+        "status": "running",
+        "revision": 2,
+        "startedAt": "2026-10-26T11:53:43.861Z",
+        "finishedAt": null,
+        "document": {
+          "confirmed": true,
+          "description": "",
+          "edges": [],
+          "id": "artifact-flow",
+          "nodes": [
+            {
+              "agent": "product",
+              "id": "task",
+              "instruction": "Synthetic task",
+              "kind": "agent",
+              "model": null,
+              "position": {
+                "x": 40,
+                "y": 40
+              },
+              "title": "Task"
+            }
+          ],
+          "source": "manual",
+          "title": "Synthetic declared file",
+          "version": 1
+        },
+        "nodes": {
+          "task": {
+            "status": "running",
+            "output": "",
+            "error": "",
+            "attempt": 1,
+            "attemptState": "started",
+            "requestId": "artifact-attempt",
+            "toolCallId": null,
+            "childId": null,
+            "nativeRunId": null,
+            "artifacts": [],
+            "artifactSource": "unknown"
+          }
+        },
+        "requestId": "artifact-submit",
+        "parentAgentId": "fixture-parent",
+        "sessionId": "fixture-session",
+        "bindingRevision": "1",
+        "definitionRevision": "sha256:59a97adf2faa77b3d4cc8d661483dc04f3e5162fa2755ba3d68ea689dbd8b3b3",
+        "events": [
+          {
+            "sequence": 1,
+            "type": "run-created",
+            "at": "2026-10-26T11:53:43.861Z",
+            "requestId": "artifact-submit",
+            "workflowRunId": "22222222-2222-4222-8222-222222222222",
+            "nodeId": null,
+            "attempt": null,
+            "bindingRevision": "1",
+            "definitionRevision": "sha256:59a97adf2faa77b3d4cc8d661483dc04f3e5162fa2755ba3d68ea689dbd8b3b3",
+            "parentAgentId": "fixture-parent",
+            "sessionId": "fixture-session",
+            "toolCallId": null,
+            "childId": null,
+            "nativeRunId": null,
+            "source": "native-run-journal",
+            "artifacts": [],
+            "artifactSource": "unknown"
+          },
+          {
+            "sequence": 2,
+            "type": "attempt-started",
+            "at": "2026-10-26T11:53:43.861Z",
+            "requestId": "artifact-attempt",
+            "workflowRunId": "22222222-2222-4222-8222-222222222222",
+            "nodeId": "task",
+            "attempt": 1,
+            "bindingRevision": "1",
+            "definitionRevision": "sha256:59a97adf2faa77b3d4cc8d661483dc04f3e5162fa2755ba3d68ea689dbd8b3b3",
+            "parentAgentId": "fixture-parent",
+            "sessionId": "fixture-session",
+            "toolCallId": null,
+            "childId": null,
+            "nativeRunId": null,
+            "source": "native-executor",
+            "status": "running",
+            "artifacts": [],
+            "artifactSource": "unknown"
+          }
+        ]
+      }
+    },
+    {
+      "expectedRevision": 2,
+      "snapshot": {
+        "journalSchema": "tradeloom.native-run-journal/v1",
+        "id": "22222222-2222-4222-8222-222222222222",
+        "workflowId": "artifact-flow",
+        "title": "Synthetic declared file",
+        "executionMode": "native_dsh",
+        "status": "running",
+        "revision": 3,
+        "startedAt": "2026-10-26T11:53:43.861Z",
+        "finishedAt": null,
+        "document": {
+          "confirmed": true,
+          "description": "",
+          "edges": [],
+          "id": "artifact-flow",
+          "nodes": [
+            {
+              "agent": "product",
+              "id": "task",
+              "instruction": "Synthetic task",
+              "kind": "agent",
+              "model": null,
+              "position": {
+                "x": 40,
+                "y": 40
+              },
+              "title": "Task"
+            }
+          ],
+          "source": "manual",
+          "title": "Synthetic declared file",
+          "version": 1
+        },
+        "nodes": {
+          "task": {
+            "status": "running",
+            "output": "",
+            "error": "",
+            "attempt": 1,
+            "attemptState": "acknowledged",
+            "requestId": "artifact-attempt",
+            "toolCallId": "fixture-spawn",
+            "childId": "fixture-child",
+            "nativeRunId": "fixture-epoch",
+            "artifacts": [],
+            "artifactSource": "unknown",
+            "artifactRangeStart": {
+              "childSessionId": "fixture-child",
+              "nativeRunId": "fixture-epoch",
+              "startInclusive": 4
+            }
+          }
+        },
+        "requestId": "artifact-submit",
+        "parentAgentId": "fixture-parent",
+        "sessionId": "fixture-session",
+        "bindingRevision": "1",
+        "definitionRevision": "sha256:59a97adf2faa77b3d4cc8d661483dc04f3e5162fa2755ba3d68ea689dbd8b3b3",
+        "events": [
+          {
+            "sequence": 1,
+            "type": "run-created",
+            "at": "2026-10-26T11:53:43.861Z",
+            "requestId": "artifact-submit",
+            "workflowRunId": "22222222-2222-4222-8222-222222222222",
+            "nodeId": null,
+            "attempt": null,
+            "bindingRevision": "1",
+            "definitionRevision": "sha256:59a97adf2faa77b3d4cc8d661483dc04f3e5162fa2755ba3d68ea689dbd8b3b3",
+            "parentAgentId": "fixture-parent",
+            "sessionId": "fixture-session",
+            "toolCallId": null,
+            "childId": null,
+            "nativeRunId": null,
+            "source": "native-run-journal",
+            "artifacts": [],
+            "artifactSource": "unknown"
+          },
+          {
+            "sequence": 2,
+            "type": "attempt-started",
+            "at": "2026-10-26T11:53:43.861Z",
+            "requestId": "artifact-attempt",
+            "workflowRunId": "22222222-2222-4222-8222-222222222222",
+            "nodeId": "task",
+            "attempt": 1,
+            "bindingRevision": "1",
+            "definitionRevision": "sha256:59a97adf2faa77b3d4cc8d661483dc04f3e5162fa2755ba3d68ea689dbd8b3b3",
+            "parentAgentId": "fixture-parent",
+            "sessionId": "fixture-session",
+            "toolCallId": null,
+            "childId": null,
+            "nativeRunId": null,
+            "source": "native-executor",
+            "status": "running",
+            "artifacts": [],
+            "artifactSource": "unknown"
+          },
+          {
+            "sequence": 3,
+            "type": "child-ack",
+            "at": "2026-10-26T11:53:43.861Z",
+            "requestId": "artifact-attempt",
+            "workflowRunId": "22222222-2222-4222-8222-222222222222",
+            "nodeId": "task",
+            "attempt": 1,
+            "bindingRevision": "1",
+            "definitionRevision": "sha256:59a97adf2faa77b3d4cc8d661483dc04f3e5162fa2755ba3d68ea689dbd8b3b3",
+            "parentAgentId": "fixture-parent",
+            "sessionId": "fixture-session",
+            "toolCallId": "fixture-spawn",
+            "childId": "fixture-child",
+            "nativeRunId": "fixture-epoch",
+            "source": "tool-runtime",
+            "artifactRangeStart": {
+              "childSessionId": "fixture-child",
+              "nativeRunId": "fixture-epoch",
+              "startInclusive": 4
+            },
+            "artifacts": [],
+            "artifactSource": "unknown"
+          }
+        ]
+      }
+    },
+    {
+      "expectedRevision": 3,
+      "snapshot": {
+        "journalSchema": "tradeloom.native-run-journal/v1",
+        "id": "22222222-2222-4222-8222-222222222222",
+        "workflowId": "artifact-flow",
+        "title": "Synthetic declared file",
+        "executionMode": "native_dsh",
+        "status": "done",
+        "revision": 4,
+        "startedAt": "2026-10-26T11:53:43.861Z",
+        "finishedAt": "2026-10-26T11:53:43.861Z",
+        "document": {
+          "confirmed": true,
+          "description": "",
+          "edges": [],
+          "id": "artifact-flow",
+          "nodes": [
+            {
+              "agent": "product",
+              "id": "task",
+              "instruction": "Synthetic task",
+              "kind": "agent",
+              "model": null,
+              "position": {
+                "x": 40,
+                "y": 40
+              },
+              "title": "Task"
+            }
+          ],
+          "source": "manual",
+          "title": "Synthetic declared file",
+          "version": 1
+        },
+        "nodes": {
+          "task": {
+            "status": "done",
+            "output": "",
+            "error": "",
+            "attempt": 1,
+            "attemptState": "terminal",
+            "requestId": "artifact-attempt",
+            "toolCallId": "fixture-spawn",
+            "childId": "fixture-child",
+            "nativeRunId": "fixture-epoch",
+            "artifacts": [
+              {
+                "sourceSessionSeq": 6,
+                "fileIndex": 0,
+                "presentCallId": "fixture-present",
+                "sourceTurn": 1,
+                "path": "C:/synthetic-not-a-real-file/report.txt"
+              }
+            ],
+            "artifactSource": "deliverables/presented",
+            "artifactRangeStart": {
+              "childSessionId": "fixture-child",
+              "nativeRunId": "fixture-epoch",
+              "startInclusive": 4
+            },
+            "artifactEvidence": {
+              "schema": "tradeloom.presented-evidence/v1",
+              "range": {
+                "childSessionId": "fixture-child",
+                "nativeRunId": "fixture-epoch",
+                "startInclusive": 4,
+                "endExclusive": 8
+              },
+              "declarations": [
+                {
+                  "sourceSessionSeq": 6,
+                  "fileIndex": 0,
+                  "presentCallId": "fixture-present",
+                  "sourceTurn": 1,
+                  "path": "C:/synthetic-not-a-real-file/report.txt"
+                }
+              ]
+            }
+          }
+        },
+        "requestId": "artifact-submit",
+        "parentAgentId": "fixture-parent",
+        "sessionId": "fixture-session",
+        "bindingRevision": "1",
+        "definitionRevision": "sha256:59a97adf2faa77b3d4cc8d661483dc04f3e5162fa2755ba3d68ea689dbd8b3b3",
+        "events": [
+          {
+            "sequence": 1,
+            "type": "run-created",
+            "at": "2026-10-26T11:53:43.861Z",
+            "requestId": "artifact-submit",
+            "workflowRunId": "22222222-2222-4222-8222-222222222222",
+            "nodeId": null,
+            "attempt": null,
+            "bindingRevision": "1",
+            "definitionRevision": "sha256:59a97adf2faa77b3d4cc8d661483dc04f3e5162fa2755ba3d68ea689dbd8b3b3",
+            "parentAgentId": "fixture-parent",
+            "sessionId": "fixture-session",
+            "toolCallId": null,
+            "childId": null,
+            "nativeRunId": null,
+            "source": "native-run-journal",
+            "artifacts": [],
+            "artifactSource": "unknown"
+          },
+          {
+            "sequence": 2,
+            "type": "attempt-started",
+            "at": "2026-10-26T11:53:43.861Z",
+            "requestId": "artifact-attempt",
+            "workflowRunId": "22222222-2222-4222-8222-222222222222",
+            "nodeId": "task",
+            "attempt": 1,
+            "bindingRevision": "1",
+            "definitionRevision": "sha256:59a97adf2faa77b3d4cc8d661483dc04f3e5162fa2755ba3d68ea689dbd8b3b3",
+            "parentAgentId": "fixture-parent",
+            "sessionId": "fixture-session",
+            "toolCallId": null,
+            "childId": null,
+            "nativeRunId": null,
+            "source": "native-executor",
+            "status": "running",
+            "artifacts": [],
+            "artifactSource": "unknown"
+          },
+          {
+            "sequence": 3,
+            "type": "child-ack",
+            "at": "2026-10-26T11:53:43.861Z",
+            "requestId": "artifact-attempt",
+            "workflowRunId": "22222222-2222-4222-8222-222222222222",
+            "nodeId": "task",
+            "attempt": 1,
+            "bindingRevision": "1",
+            "definitionRevision": "sha256:59a97adf2faa77b3d4cc8d661483dc04f3e5162fa2755ba3d68ea689dbd8b3b3",
+            "parentAgentId": "fixture-parent",
+            "sessionId": "fixture-session",
+            "toolCallId": "fixture-spawn",
+            "childId": "fixture-child",
+            "nativeRunId": "fixture-epoch",
+            "source": "tool-runtime",
+            "artifactRangeStart": {
+              "childSessionId": "fixture-child",
+              "nativeRunId": "fixture-epoch",
+              "startInclusive": 4
+            },
+            "artifacts": [],
+            "artifactSource": "unknown"
+          },
+          {
+            "sequence": 4,
+            "type": "node-terminal",
+            "at": "2026-10-26T11:53:43.861Z",
+            "requestId": "artifact-attempt",
+            "workflowRunId": "22222222-2222-4222-8222-222222222222",
+            "nodeId": "task",
+            "attempt": 1,
+            "bindingRevision": "1",
+            "definitionRevision": "sha256:59a97adf2faa77b3d4cc8d661483dc04f3e5162fa2755ba3d68ea689dbd8b3b3",
+            "parentAgentId": "fixture-parent",
+            "sessionId": "fixture-session",
+            "toolCallId": "fixture-spawn",
+            "childId": "fixture-child",
+            "nativeRunId": "fixture-epoch",
+            "source": "subagent/end",
+            "status": "done",
+            "stopReason": "completed",
+            "errorCategory": null,
+            "output": "",
+            "artifactEvidence": {
+              "schema": "tradeloom.presented-evidence/v1",
+              "range": {
+                "childSessionId": "fixture-child",
+                "nativeRunId": "fixture-epoch",
+                "startInclusive": 4,
+                "endExclusive": 8
+              },
+              "declarations": [
+                {
+                  "sourceSessionSeq": 6,
+                  "fileIndex": 0,
+                  "presentCallId": "fixture-present",
+                  "sourceTurn": 1,
+                  "path": "C:/synthetic-not-a-real-file/report.txt"
+                }
+              ]
+            },
+            "artifacts": [
+              {
+                "sourceSessionSeq": 6,
+                "fileIndex": 0,
+                "presentCallId": "fixture-present",
+                "sourceTurn": 1,
+                "path": "C:/synthetic-not-a-real-file/report.txt"
+              }
+            ],
+            "artifactSource": "deliverables/presented"
+          }
+        ]
+      }
+    }
+  ]
+}

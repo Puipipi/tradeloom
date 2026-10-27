@@ -1,0 +1,442 @@
+diff --git a/apps/desktop/scripts/desktop-build-paths.d.mts b/apps/desktop/scripts/desktop-build-paths.d.mts
+index c7b8173c..bc533e84 100644
+--- a/apps/desktop/scripts/desktop-build-paths.d.mts
++++ b/apps/desktop/scripts/desktop-build-paths.d.mts
+@@ -1,6 +1,9 @@
+ import type { DesktopAutoUpdateTarget } from './desktop-auto-update-environment.mjs'
+ 
+ /** Mutable target directories plus the shared immutable download cache. */
++/** Quote an absolute Windows path as an NSIS string literal. */
++export function quoteNsisPath(value: string): string
++
+ export interface DesktopTargetBuildPaths {
+   readonly root: string
+   readonly artifacts: string
+@@ -35,7 +38,7 @@ export function resolveDesktopBuildTarget(
+  * @param target - Supported Desktop target name.
+  * @returns Target paths plus the shared immutable download cache.
+  */
+-export function desktopTargetBuildPaths(target: DesktopAutoUpdateTarget): DesktopTargetBuildPaths
++export function desktopTargetBuildPaths(target: DesktopAutoUpdateTarget, environment?: NodeJS.ProcessEnv): DesktopTargetBuildPaths
+ 
+ /**
+  * Return the platform and architecture of the payload one release target prepares.
+diff --git a/apps/desktop/scripts/desktop-build-paths.mjs b/apps/desktop/scripts/desktop-build-paths.mjs
+index e577b1d3..2456fd21 100644
+--- a/apps/desktop/scripts/desktop-build-paths.mjs
++++ b/apps/desktop/scripts/desktop-build-paths.mjs
+@@ -1,11 +1,18 @@
+ /** Resolve build-owned Desktop paths without sharing mutable state across release targets. */
+ 
+-import { join, resolve } from 'node:path'
++import { isAbsolute, join, resolve } from 'node:path'
+ 
+ const APP_ROOT = resolve(import.meta.dirname, '..')
+-const BUILD_ROOT = join(APP_ROOT, '.desktop-build')
++const DEFAULT_BUILD_ROOT = join(APP_ROOT, '.desktop-build')
+ const SUPPORTED_TARGETS = new Set(['mac-arm64', 'mac-x64', 'win-x64'])
+ 
++/** Quote an absolute Windows path for an NSIS string literal. */
++export function quoteNsisPath(value) {
++  if (!isAbsolute(value)) throw new Error('desktop build paths: NSIS path must be absolute')
++  const dollar = String.fromCharCode(36)
++  return '"' + value.split(dollar).join(dollar + dollar).split('"').join(dollar + String.fromCharCode(92) + '"') + '"'
++}
++
+ /**
+  * Resolve the fixed build target selected by a packaging environment.
+  * @param {NodeJS.ProcessEnv} env - Packaging environment.
+@@ -40,9 +47,19 @@ function assertSupportedTarget(target) {
+  * @param {'mac-arm64' | 'mac-x64' | 'win-x64'} target - Supported Desktop target name.
+  * @returns {{ root: string, artifacts: string, unsignedArtifacts: string, unnotarizedArtifacts: string, runtime: string, packageSet: string, dsh: string, dshPnpm: string, electron: string, packedDsh: string, packedVendor: string, packedLandlock: string, downloads: string }} Target paths plus the shared immutable download cache.
+  */
+-export function desktopTargetBuildPaths(target) {
++export function desktopTargetBuildPaths(target, environment = process.env) {
+   assertSupportedTarget(target)
+-  const root = join(BUILD_ROOT, 'targets', target)
++  const requestedRoot = environment.TRADELOOM_DESKTOP_BUILD_ROOT
++  let buildRoot = DEFAULT_BUILD_ROOT
++  if (requestedRoot !== undefined) {
++    const ownedIntent = (environment.DSH_DESKTOP_APP_ID === undefined || environment.DSH_DESKTOP_APP_ID === 'cn.tradeloom.workbench')
++      && typeof environment.TRADELOOM_DESKTOP_STAGE === 'string'
++      && isAbsolute(environment.TRADELOOM_DESKTOP_STAGE)
++    if (!ownedIntent) throw new Error('desktop build paths: TRADELOOM_DESKTOP_BUILD_ROOT requires explicit TradeLoom package intent')
++    if (!isAbsolute(requestedRoot)) throw new Error('desktop build paths: TRADELOOM_DESKTOP_BUILD_ROOT must be an absolute path')
++    buildRoot = resolve(requestedRoot)
++  }
++  const root = join(buildRoot, 'targets', target)
+   const packed = join(root, 'packed')
+   return {
+     root,
+@@ -57,7 +74,7 @@ export function desktopTargetBuildPaths(target) {
+     packedDsh: join(packed, 'dsh'),
+     packedVendor: join(packed, 'vendor'),
+     packedLandlock: join(packed, 'landlock'),
+-    downloads: join(BUILD_ROOT, 'downloads'),
++    downloads: join(buildRoot, 'downloads'),
+   }
+ }
+ 
+diff --git a/apps/desktop/scripts/desktop-package-environment.d.mts b/apps/desktop/scripts/desktop-package-environment.d.mts
+index 995c117d..3bd9b0c7 100644
+--- a/apps/desktop/scripts/desktop-package-environment.d.mts
++++ b/apps/desktop/scripts/desktop-package-environment.d.mts
+@@ -5,6 +5,8 @@
+  * @param environment Parent environment, retained for build tools and networking.
+  * @returns Unsigned build environment with the standard application identifier and no update policy.
+  */
++export function isTradeLoomBuildIntent(environment: NodeJS.ProcessEnv): boolean
++
+ export function localMacOSPackageEnvironment(environment?: NodeJS.ProcessEnv): NodeJS.ProcessEnv
+ 
+ /**
+diff --git a/apps/desktop/scripts/desktop-package-environment.mjs b/apps/desktop/scripts/desktop-package-environment.mjs
+index 8116dea2..57fe9a36 100644
+--- a/apps/desktop/scripts/desktop-package-environment.mjs
++++ b/apps/desktop/scripts/desktop-package-environment.mjs
+@@ -1,6 +1,6 @@
+ /** Select local test defaults or platform release settings without changing the caller's environment. */
+ 
+-import { accessSync, constants, readFileSync, statSync } from 'node:fs'
++import { accessSync, constants, existsSync, readFileSync, statSync } from 'node:fs'
+ import { dirname, isAbsolute, join, resolve } from 'node:path'
+ import { fileURLToPath } from 'node:url'
+ import { parseEnv } from 'node:util'
+@@ -25,6 +25,12 @@ const FILE_SETTINGS = ['DSH_DESKTOP_WINDOWS_CER_FILE', 'DSH_DESKTOP_WINDOWS_SIGN
+  * @param {NodeJS.ProcessEnv} environment Parent environment, retained for build tools and networking.
+  * @returns {NodeJS.ProcessEnv} Unsigned build environment with the standard application identifier and no update policy.
+  */
++export function isTradeLoomBuildIntent(environment) {
++  return (environment.DSH_DESKTOP_APP_ID === undefined || environment.DSH_DESKTOP_APP_ID === 'cn.tradeloom.workbench')
++    && typeof environment.TRADELOOM_DESKTOP_STAGE === 'string'
++    && isAbsolute(environment.TRADELOOM_DESKTOP_STAGE)
++}
++
+ export function localMacOSPackageEnvironment(environment = process.env) {
+   return {
+     ...Object.fromEntries(Object.entries(environment).filter(([name]) => !AMBIENT_RELEASE_SETTING.test(name))),
+@@ -55,9 +61,16 @@ export function loadDesktopPackageEnvironment(platform, environment = process.en
+   const publicPlatformSetting = platform === 'win32'
+     ? /^DSH_DESKTOP_WINDOWS_SIGNATURE_CACHE_(?:DIR|CONCURRENCY)$/u
+     : /^DSH_DESKTOP_MACOS_(?:SIGNATURE_CACHE_DIR|PACK_CONCURRENCY|DOWNLOAD_PROXY|NOTARIZATION_PROXY)$/u
+-  const settings = readSettings(path, name => preset === undefined
+-    ? SHARED_SETTING.test(name) || platformSetting.test(name)
+-    : /^(?:DSH_DESKTOP_(?:APP_ID|AUTO_UPDATE_ENV|NPM_REGISTRY|MANDATORY_UPDATE_(?:CONFIG|(?:TEST|PROD)_ORIGIN))|DOWNLOAD_TEST_(?:ORIGIN|RELEASE_ID))$/u.test(name) || publicPlatformSetting.test(name))
++  const tradeLoomIntent = isTradeLoomBuildIntent(environment)
++  const settings = tradeLoomIntent && !existsSync(path)
++    ? { DSH_DESKTOP_APP_ID: 'cn.tradeloom.workbench' }
++    : readSettings(path, name => preset === undefined
++      ? SHARED_SETTING.test(name) || platformSetting.test(name)
++      : /^(?:DSH_DESKTOP_(?:APP_ID|AUTO_UPDATE_ENV|NPM_REGISTRY|MANDATORY_UPDATE_(?:CONFIG|(?:TEST|PROD)_ORIGIN))|DOWNLOAD_TEST_(?:ORIGIN|RELEASE_ID))$/u.test(name) || publicPlatformSetting.test(name))
++  if (tradeLoomIntent && settings.DSH_DESKTOP_APP_ID !== undefined && settings.DSH_DESKTOP_APP_ID !== 'cn.tradeloom.workbench') {
++    throw new Error('desktop package: TradeLoom build intent conflicts with the configured application identifier')
++  }
++  if (tradeLoomIntent) settings.DSH_DESKTOP_APP_ID = 'cn.tradeloom.workbench'
+   if (preset !== undefined) {
+     if (settings.DSH_DESKTOP_AUTO_UPDATE_ENV !== preset) throw new Error('desktop package: preset deployment must match its name')
+     if (!options.unsigned && (platform === 'darwin' || !options.prepareOnly)) {
+@@ -79,6 +92,7 @@ export function loadDesktopPackageEnvironment(platform, environment = process.en
+     ...settings,
+     ...(environment.DSH_DESKTOP_UPDATE_CHANNEL === undefined ? {} : { DSH_DESKTOP_UPDATE_CHANNEL: environment.DSH_DESKTOP_UPDATE_CHANNEL }),
+     ...(preset === undefined ? {} : { DSH_PACKAGING_PRESET: preset }),
++    ...(tradeLoomIntent ? { DSH_CLIENT_TITLE: '\u7ec7\u8d38\u52a9\u624b' } : {}),
+   }
+ }
+ 
+@@ -136,11 +150,11 @@ function requireReadableFile(environment, name) {
+ export function validateDesktopPackageEnvironment(environment, target, options = {}) {
+   resolveDesktopAppId(environment)
+   resolveNpmRegistry(environment)
+-  if (target.platform !== 'darwin' || !options.unsigned) resolveDesktopPolicyEnvironment(environment)
++  if (!isTradeLoomBuildIntent(environment) && (target.platform !== 'darwin' || !options.unsigned)) resolveDesktopPolicyEnvironment(environment)
+   if (target.platform === 'darwin') resolveMacOSPackageSettings(environment)
+   else resolveWindowsPackageSettings(environment)
+   if (options.unsigned) return
+-  if (!options.prepareOnly) resolveDesktopAutoUpdateConfig(environment, target.platform, target.arch)
++  if (!isTradeLoomBuildIntent(environment) && !options.prepareOnly) resolveDesktopAutoUpdateConfig(environment, target.platform, target.arch)
+   if (target.platform === 'win32') {
+     if (!options.prepareOnly) createWindowsTokenSigner({
+       certificateFile: environment.DSH_DESKTOP_WINDOWS_CER_FILE,
+diff --git a/apps/desktop/scripts/electron-builder-config.mjs b/apps/desktop/scripts/electron-builder-config.mjs
+index e9d300a9..ca55048f 100644
+--- a/apps/desktop/scripts/electron-builder-config.mjs
++++ b/apps/desktop/scripts/electron-builder-config.mjs
+@@ -20,10 +20,11 @@ import {
+   scrubWindowsSigningEnvironment,
+ } from './windows-sign.mjs'
+ import { resolveDesktopAutoUpdateConfig } from './desktop-auto-update-environment.mjs'
++import { isTradeLoomBuildIntent } from './desktop-package-environment.mjs'
+ import { resolveDesktopBuildCommit } from './desktop-build-commit.mjs'
+ import { resolveDesktopBuildVersion } from './desktop-build-version.mjs'
+ import { resolveDesktopPolicyEnvironment } from './desktop-policy-environment.mjs'
+-import { desktopArtifactOutput, desktopTargetBuildPaths, resolveDesktopBuildTarget } from './desktop-build-paths.mjs'
++import { desktopArtifactOutput, desktopTargetBuildPaths, quoteNsisPath, resolveDesktopBuildTarget } from './desktop-build-paths.mjs'
+ import { installWindowsDirectoryInstaller } from './windows-directory-installer.mjs'
+ import { preserveWindowsRuntimeSignature, signWindowsCode } from './windows-runtime-signature.mjs'
+ import { prepareWindowsAsarUnpack, verifyWindowsAsarUnpack } from './windows-asar-unpack.mjs'
+@@ -68,12 +69,15 @@ export function createElectronBuilderConfig(
+   if (skipNotarization && (unsigned || resolvedPlatform !== 'darwin')) throw new Error('Skipping notarization requires a signed macOS build')
+   const packagesMacOS = targetPlatform === 'darwin' || (targetPlatform === undefined && hostPlatform === 'darwin')
+   const packagesWindows = resolvedPlatform === 'win32'
+-  const policy = packagesMacOS && unsigned ? undefined : resolveDesktopPolicyEnvironment(env)
++  const policy = (packagesMacOS && unsigned) || isTradeLoomBuildIntent(env) ? undefined : resolveDesktopPolicyEnvironment(env)
+   if (resolvedPlatform === 'win32') installWindowsDirectoryInstaller()
+   const macOSSigning = packagesMacOS && !unsigned ? resolveMacOSSigningEnvironment(env) : undefined
+   if (packagesMacOS && !unsigned && !skipNotarization) resolveMacOSNotarizationEnvironment(env)
+-  const buildPaths = desktopTargetBuildPaths(resolveDesktopBuildTarget(env, hostPlatform, hostArch))
++  const buildPaths = desktopTargetBuildPaths(resolveDesktopBuildTarget(env, hostPlatform, hostArch), env)
+   const output = desktopArtifactOutput(buildPaths, { unsigned, skipNotarization })
++  const installerUiDirectory = join(buildPaths.root, 'installer-ui')
++  const installerScript = fileURLToPath(new URL('./installer.nsh', import.meta.url))
++  const installerInclude = join(buildPaths.root, 'tradeloom-installer.nsh')
+   let primaryRuntimeDestination
+   let dshDestination
+   let windowsCode = []
+@@ -98,7 +102,7 @@ export function createElectronBuilderConfig(
+   if (windowsSigner !== undefined) {
+     installWindowsNsisBootstrapSigner({ sign: windowsSigner })
+   }
+-  const update = unsigned ? undefined : resolveDesktopAutoUpdateConfig(env, resolvedPlatform, resolvedArch)
++  const update = unsigned || isTradeLoomBuildIntent(env) ? undefined : resolveDesktopAutoUpdateConfig(env, resolvedPlatform, resolvedArch)
+   if (preparedRuntime !== undefined) buildPaths.dsh = preparedRuntime
+   // electron-builder merges extraMetadata into the packaged manifest, so a build version here reaches
+   // the artifact names, the update feed, and the installed app.getVersion() the updater compares against.
+@@ -126,14 +130,17 @@ export function createElectronBuilderConfig(
+     electronDist: buildPaths.electron,
+     electronFuses: { runAsNode: true },
+     beforeBuild: async () => {
++      const { mkdir, writeFile } = await import('node:fs/promises')
++      await mkdir(buildPaths.root, { recursive: true })
++      await writeFile(installerInclude, `!define /ifndef INSTALLER_BUILD_DIR ${quoteNsisPath(installerUiDirectory)}\n!include ${quoteNsisPath(installerScript)}\n`, 'utf8')
+       if (resolvedPlatform !== 'win32') return true
+       await promisify(execFile)('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
+         fileURLToPath(new URL('./prepare-windows-installer.ps1', import.meta.url)),
+-        '-OutputDirectory', join(buildPaths.root, 'installer-ui')], {
++        '-OutputDirectory', installerUiDirectory], {
+         env: scrubWindowsSigningEnvironment(env), windowsHide: true,
+       })
+       if (windowsSigner !== undefined) {
+-        await windowsSigner({ path: join(buildPaths.root, 'installer-ui', 'window-frame.dll'), hash: 'sha256', isNest: false })
++        await windowsSigner({ path: join(installerUiDirectory, 'window-frame.dll'), hash: 'sha256', isNest: false })
+       }
+       // A falsy result tells electron-builder to omit its production node_modules collection.
+       return true
+@@ -257,9 +264,9 @@ export function createElectronBuilderConfig(
+       target: ['AppImage'],
+     },
+     nsis: {
+-      installerSidebar: join(buildPaths.root, 'installer-ui', 'uninstaller-sidebar.bmp'),
+-      uninstallerSidebar: join(buildPaths.root, 'installer-ui', 'uninstaller-sidebar.bmp'),
+-      include: fileURLToPath(new URL('./installer.nsh', import.meta.url)),
++      installerSidebar: join(installerUiDirectory, 'uninstaller-sidebar.bmp'),
++      uninstallerSidebar: join(installerUiDirectory, 'uninstaller-sidebar.bmp'),
++      include: installerInclude,
+       oneClick: false,
+       perMachine: false,
+       allowElevation: false,
+diff --git a/apps/desktop/scripts/package-target.ts b/apps/desktop/scripts/package-target.ts
+index be2f577e..83eecac3 100644
+--- a/apps/desktop/scripts/package-target.ts
++++ b/apps/desktop/scripts/package-target.ts
+@@ -10,7 +10,7 @@ import {
+ } from './desktop-auto-update-environment.mjs'
+ import { desktopArtifactOutput, desktopTargetBuildPaths } from './desktop-build-paths.mjs'
+ import { packageMacOSArtifacts, type DesktopPrepackagedArtifact } from './package-macos.ts'
+-import { loadDesktopPackageEnvironment, localMacOSPackageEnvironment, validateDesktopPackageEnvironment } from './desktop-package-environment.mjs'
++import { isTradeLoomBuildIntent, loadDesktopPackageEnvironment, localMacOSPackageEnvironment, validateDesktopPackageEnvironment } from './desktop-package-environment.mjs'
+ import { createPackagingRun, recordPackagingEvent } from './packaging-run.mjs'
+ import { withWindowsSigningStage } from './windows-signing-stage.mjs'
+ import { prepareWindowsSignatureCacheDirectory, resolveWindowsSignatureCacheDirectory } from './windows-signature-cache-directory.mjs'
+@@ -327,7 +327,7 @@ async function resolveRequestedBuildVersion(
+   const requested = invocation.requestedBuildVersion
+   if (requested === undefined) return productVersion
+   if (requested !== AUTOMATIC_BUILD_VERSION) return validateDesktopBuildVersion(requested, productVersion)
+-  const paths = desktopTargetBuildPaths(invocation.target.name)
++  const paths = desktopTargetBuildPaths(invocation.target.name, environment)
+   return suggestDesktopBuildVersion({
+     productVersion, target: invocation.target.name,
+     // Machine presets own packaging, not upload credentials; local auto numbering uses existing artifacts.
+@@ -399,7 +399,7 @@ async function main(): Promise<void> {
+     run.finish(success)
+   }
+   if (success && target.platform === 'darwin' && !invocation.directory && !invocation.prepareOnly) {
+-    const paths = desktopTargetBuildPaths(target.name)
++    const paths = desktopTargetBuildPaths(target.name, environment)
+     const output = desktopArtifactOutput(paths, invocation)
+     const filename = `deepseek-harness-${buildVersion}-mac-${target.arch}${output.suffix}.dmg`
+     console.log(`DMG: ${join(output.directory, filename)}`)
+@@ -424,7 +424,7 @@ export async function packageTarget(
+   const proxyEvent = (status: string) => { if (journal) recordPackagingEvent(journal, { type: 'notarization-proxy', status }) }
+   const mac = target.platform === 'darwin' ? resolveMacOSPackageSettings(environment) : undefined
+   const packArguments = mac === undefined ? [] : ['--concurrency', String(mac.packConcurrency)]
+-  const buildPaths = desktopTargetBuildPaths(target.name)
++  const buildPaths = desktopTargetBuildPaths(target.name, environment)
+   const releaseRecordPath = join(buildPaths.artifacts, desktopBuildRecordFilename(target.name))
+   if (!invocation.prepareOnly && !invocation.unsigned && !invocation.skipNotarization) {
+     rmSync(releaseRecordPath, { force: true })
+@@ -523,7 +523,7 @@ export async function packageTarget(
+     await execute(['exec', 'tsx', 'scripts/smoke-packaged-runtime.ts',
+       ...(invocation.unsigned ? ['--unsigned'] : []), ...(invocation.skipNotarization ? ['--skip-notarization'] : [])], targetEnv)
+   }
+-  if (!invocation.directory && !invocation.unsigned && !invocation.skipNotarization) {
++  if (!invocation.directory && !invocation.unsigned && !invocation.skipNotarization && !isTradeLoomBuildIntent(electronBuilderEnv)) {
+     writeReleaseRecord(target, electronBuilderEnv, buildPaths.artifacts)
+   }
+   if (journal) recordPackagingEvent(journal, { type: 'artifacts', directory: artifactsRoot })
+diff --git a/apps/desktop/src/main.ts b/apps/desktop/src/main.ts
+index ba20f15e..b47b3252 100644
+--- a/apps/desktop/src/main.ts
++++ b/apps/desktop/src/main.ts
+@@ -807,6 +807,7 @@ async function main(): Promise<void> {
+   let promptOperation: Promise<void> | undefined
+   let policyAuthenticationQueued = false
+   const openUpdatePrompt = (manual = false): Promise<void> => {
++    if (app.getName() === '织贸助手') return Promise.resolve()
+     if (authenticationOperation !== undefined) {
+       policyAuth?.focus(); updateDialog.focus()
+     }
+@@ -927,6 +928,7 @@ async function main(): Promise<void> {
+ 
+   const automaticCheck = (): void => {
+     if (!quitting) void mandatoryPolicy?.check('foreground-or-resume').catch((error: unknown) => { console.error(error) })
++    if (app.getName() === '织贸助手') return
+     if (!quitting) void updateSchedule.check().catch((error: unknown) => { console.error(error) })
+   }
+   powerMonitor.on('resume', automaticCheck)
+diff --git a/apps/desktop/src/update-coordinator.ts b/apps/desktop/src/update-coordinator.ts
+index 3b83cea0..3fad51ca 100644
+--- a/apps/desktop/src/update-coordinator.ts
++++ b/apps/desktop/src/update-coordinator.ts
+@@ -52,7 +52,7 @@ export class DesktopUpdateCoordinator {
+     private readonly publish: (state: DesktopUpdateState) => DesktopUpdateState,
+     private readonly beforeRestart: () => Promise<boolean>,
+     private readonly updater: AppUpdater = autoUpdater,
+-    private readonly enabled: () => boolean = () => app.isPackaged && existsSync(join(process.resourcesPath, 'app-update.yml')),
++    private readonly enabled: () => boolean = () => app.getName() !== '织贸助手' && app.isPackaged && existsSync(join(process.resourcesPath, 'app-update.yml')),
+     private readonly currentVersion: () => string = () => app.getVersion(),
+     private readonly downloadResult?: (success: boolean, reason?: string) => void,
+     private readonly channel: 'nightly' | 'latest' = 'nightly',
+diff --git a/apps/desktop/tests/desktop-build-paths.spec.ts b/apps/desktop/tests/desktop-build-paths.spec.ts
+index ede5c5e3..56404f64 100644
+--- a/apps/desktop/tests/desktop-build-paths.spec.ts
++++ b/apps/desktop/tests/desktop-build-paths.spec.ts
+@@ -33,6 +33,7 @@ describe('desktop build paths', () => {
+     expect(arm64.artifacts).toContain(join('targets', 'mac-arm64', 'artifacts'))
+     expect(x64.dsh).toContain(join('targets', 'mac-x64', 'dsh'))
+     expect(windows.runtime).toContain(join('targets', 'win-x64', 'runtime'))
++    expect(windows.root).toContain(join('apps', 'desktop', '.desktop-build', 'targets', 'win-x64'))
+   })
+ 
+   it('shares only the immutable upstream download cache', () => {
+@@ -66,5 +67,14 @@ describe('desktop build paths', () => {
+     expect(resolveDesktopBuildTarget({}, 'win32', 'x64')).toBe('win-x64')
+     expect(() => resolveDesktopBuildTarget({}, 'linux', 'x64')).toThrow(/unsupported target/u)
+     expect(() => desktopTargetBuildPaths('linux-x64' as 'mac-x64')).toThrow(/unsupported target/u)
++
++    const ownedIntent = { DSH_DESKTOP_APP_ID: 'cn.tradeloom.workbench', TRADELOOM_DESKTOP_STAGE: join(process.cwd(), 'TradeLoom', 'stage') }
++    const customRoot = join(process.cwd(), 'TradeLoom', 'build')
++    expect(desktopTargetBuildPaths('win-x64', { ...ownedIntent, TRADELOOM_DESKTOP_BUILD_ROOT: customRoot }).root)
++      .toBe(join(customRoot, 'targets', 'win-x64'))
++    expect(() => desktopTargetBuildPaths('win-x64', { ...ownedIntent, TRADELOOM_DESKTOP_BUILD_ROOT: 'relative-build' }))
++      .toThrow(/must be an absolute path/u)
++    expect(() => desktopTargetBuildPaths('win-x64', { TRADELOOM_DESKTOP_BUILD_ROOT: customRoot }))
++      .toThrow(/explicit TradeLoom package intent/u)
+   })
+ })
+diff --git a/apps/desktop/tests/desktop-installer-include.spec.ts b/apps/desktop/tests/desktop-installer-include.spec.ts
+new file mode 100644
+index 00000000..8ab90900
+--- /dev/null
++++ b/apps/desktop/tests/desktop-installer-include.spec.ts
+@@ -0,0 +1,65 @@
++import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
++import { join } from 'node:path'
++import { afterEach, expect, it, vi } from 'vitest'
++import { createElectronBuilderConfig } from '../scripts/electron-builder-config.mjs'
++import { desktopTargetBuildPaths } from '../scripts/desktop-build-paths.mjs'
++
++const execFileMock = vi.hoisted(() => vi.fn((...args: any[]) => {
++  const callback = args.at(-1)
++  if (typeof callback === 'function') callback(null, '', '')
++}))
++vi.mock('node:child_process', async importOriginal => ({
++  ...await importOriginal(),
++  execFile: execFileMock,
++}))
++
++const temporaryRoots: string[] = []
++const generatedDefaultIncludes: string[] = []
++afterEach(async () => {
++  for (const include of generatedDefaultIncludes.splice(0)) await rm(include, { force: true })
++  for (const root of temporaryRoots.splice(0)) await rm(root, { recursive: true, force: true })
++  execFileMock.mockClear()
++})
++
++it('quotes NSIS paths with spaces, Unicode, dollar signs, and quotes', async () => {
++  const { quoteNsisPath } = await import('../scripts/desktop-build-paths.mjs')
++  expect(quoteNsisPath).toBeTypeOf('function')
++  expect(quoteNsisPath(String.raw`C:\space dir\织贸助手\$cash\installer"quote.nsh`))
++    .toBe(String.raw`"C:\space dir\织贸助手\$$cash\installer$\"quote.nsh"`)
++})
++
++it.each([false, true])('uses one NSIS installer UI root for default/custom builds (custom=%s)', async customRoot => {
++  const testArea = join(process.cwd(), 'testing')
++  await mkdir(testArea, { recursive: true })
++  const root = await mkdtemp(join(testArea, 'nsis $ root - 织贸助手-'))
++  temporaryRoots.push(root)
++  const stage = join(root, 'stage')
++  await mkdir(stage)
++  await writeFile(join(stage, '.tradeloom-desktop-stage-owned'), 'tradeloom-desktop-stage-v1\n')
++  const env: NodeJS.ProcessEnv = {
++    DSH_DESKTOP_APP_ID: 'cn.tradeloom.workbench',
++    DSH_DESKTOP_TARGET_PLATFORM: 'win32',
++    DSH_DESKTOP_UNSIGNED: '1',
++    TRADELOOM_DESKTOP_STAGE: stage,
++  }
++  if (customRoot) env.TRADELOOM_DESKTOP_BUILD_ROOT = join(root, 'external build $ root', '织贸助手')
++  const paths = desktopTargetBuildPaths('win-x64', env)
++  const config = createElectronBuilderConfig(env, 'win32', 'x64') as {
++    nsis: { include: string }
++    beforeBuild: () => Promise<boolean>
++  }
++  const expectedInclude = join(paths.root, 'tradeloom-installer.nsh')
++  const expectedUi = join(paths.root, 'installer-ui')
++  const script = join(process.cwd(), 'scripts', 'installer.nsh')
++  if (!customRoot) generatedDefaultIncludes.push(expectedInclude)
++  expect(config.nsis.include).toBe(expectedInclude)
++
++  expect(await config.beforeBuild()).toBe(true)
++  const wrapper = await readFile(config.nsis.include, 'utf8')
++  const { quoteNsisPath } = await import('../scripts/desktop-build-paths.mjs')
++  expect(wrapper).toContain(`INSTALLER_BUILD_DIR ${quoteNsisPath(expectedUi)}`)
++  expect(wrapper).toContain(`!include ${quoteNsisPath(script)}`)
++  const call = execFileMock.mock.calls[0]
++  expect(call?.[1]).toContain('-OutputDirectory')
++  expect(call?.[1][call[1].indexOf('-OutputDirectory') + 1]).toBe(expectedUi)
++})
+diff --git a/apps/desktop/tests/desktop-package-environment.spec.ts b/apps/desktop/tests/desktop-package-environment.spec.ts
+index 1c3eb02f..0d48ef01 100644
+--- a/apps/desktop/tests/desktop-package-environment.spec.ts
++++ b/apps/desktop/tests/desktop-package-environment.spec.ts
+@@ -137,6 +137,21 @@ describe('Desktop local packaging configuration', () => {
+     })
+   })
+ 
++  it('uses explicit TradeLoom package intent without release dotenv or update origin', async () => {
++    await withDirectory(async (directory) => {
++      const intent = { TRADELOOM_DESKTOP_STAGE: join(directory, 'desktop-stage') }
++      const environment = loadDesktopPackageEnvironment('win32', intent, directory)
++      expect(environment.DSH_DESKTOP_APP_ID).toBe('cn.tradeloom.workbench')
++      expect(environment.DSH_CLIENT_TITLE).toBe('\u7ec7\u8d38\u52a9\u624b')
++      expect(() => validateDesktopPackageEnvironment(environment, WINDOWS)).toThrow(/DSH_DESKTOP_WINDOWS_CER_FILE/u)
++      expect(() => validateDesktopPackageEnvironment(environment, WINDOWS, { unsigned: true })).not.toThrow()
++      expect(() => loadDesktopPackageEnvironment('win32', { ...intent, DSH_DESKTOP_APP_ID: 'com.example.desktop' }, directory)).toThrow(/\.env\.windows/u)
++      const conflictingConfig = join(directory, '.env.windows')
++      await writeFile(conflictingConfig, 'DSH_DESKTOP_APP_ID=com.example.desktop\n')
++      expect(() => loadDesktopPackageEnvironment('win32', intent, directory)).toThrow(/conflicts with the configured application identifier/u)
++    })
++  })
++
+   it('checks application and update configuration before Windows credentials while preserving unsigned and preparation modes', () => {
+     expect(() => {
+       validateDesktopPackageEnvironment({}, WINDOWS, { unsigned: true })

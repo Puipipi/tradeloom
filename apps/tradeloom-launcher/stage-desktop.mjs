@@ -4,7 +4,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import os from 'node:os'
 import { ensureOwnedDirectory } from './core.mjs'
-import { trustedReleaseRoot, validateOwnedRuntime } from './prepare-profile.mjs'
+import { trustedReleaseRoot, validateOwnedRuntime, assertNoReparseAncestors, hashTree } from './prepare-profile.mjs'
 import { BOOTSTRAP_MARKER, BOOTSTRAP_MARKER_CONTENT, MANIFEST_NAME } from './bootstrap-core.mjs'
 import { verifyDesktopBuildReceipt } from './desktop-receipt.mjs'
 
@@ -119,8 +119,23 @@ async function stageBusinessBundle(stageRoot, destination) {
   return { root: 'resources/tradeloom/backend', files, fileCount: files.length, bytes: files.reduce((sum, item) => sum + item.bytes, 0), sha256: digestInventory(files) }
 }
 
-async function stageBusinessShell(stageRoot, destination) {
-  const source = path.join(repoRoot, 'packages/tradeloom-shell')
+export async function resolvePackagedInputs({lockPathOverride, shellSource, digest = digestFile, treeHash = hashTree} = {}) {
+  if (lockPathOverride === undefined && shellSource === undefined) return {lockPath, shellSource: path.join(repoRoot, 'packages/tradeloom-shell')}
+  const expectedLock=path.join(repoRoot, 'integrations/dsh/prospective/desktop24-exit/patches.prospective.lock.json')
+  const approvedShells=[path.join(path.dirname(repoRoot), 'workspace/release/desktop24-portable-20261027/shell-candidate'),path.join(repoRoot, 'integrations/dsh/desktop24-portable-ui-bundle')]
+  const expectedShell=approvedShells.find(p=>shellSource && path.resolve(shellSource).toLowerCase()===p.toLowerCase())
+  if (!lockPathOverride || path.resolve(lockPathOverride).toLowerCase() !== expectedLock.toLowerCase()) throw Error('desktop24 lock 路径不符')
+  if (!expectedShell) throw Error('desktop24 shell 路径不符')
+  await assertNoReparseAncestors(expectedLock, path.parse(expectedLock).root); await assertNoReparseAncestors(expectedShell, path.parse(expectedShell).root)
+  if ((await digest(expectedLock)).sha256 !== '848409e5579e83d3760e07b0975f5a2dae3d4b09b4b856eedd0a64a383b2c94c') throw Error('desktop24 lock 摘要不符')
+  const pkg=JSON.parse(await readFile(path.join(expectedShell,'package.json'),'utf8'))
+  if (!Array.isArray(pkg.files) || pkg.files.length !== 50) throw Error('desktop24 shell 清单不符')
+  for(const name of ['package.json', ...pkg.files.map(safeManifestPath)]) {const f=path.join(expectedShell,...name.split('/'));await assertNoReparseAncestors(f,expectedShell);const info=await lstat(f);if(!info.isFile()||info.isSymbolicLink())throw Error('desktop24 shell 非普通文件')}
+  if (await treeHash(expectedShell,['package.json',...pkg.files]) !== 'e212822f57447838ea66264651f548d8dad604026a1d0e8cf433664628f52494') throw Error('desktop24 shell 摘要不符')
+  return {lockPath:expectedLock,shellSource:expectedShell}
+}
+
+async function stageBusinessShell(stageRoot, destination, source) {
   const packageManifest = JSON.parse(await readFile(path.join(source, 'package.json'), 'utf8'))
   if (packageManifest.name !== '@tradeloom/dsh-business-shell' || !Array.isArray(packageManifest.files)) throw new Error('织贸助手 business-shell package manifest 无效。')
   const names = ['package.json', ...packageManifest.files.map(safeManifestPath)]
@@ -140,7 +155,7 @@ async function stageBusinessShell(stageRoot, destination) {
     bytes: files.reduce((sum, item) => sum + item.bytes, 0), sha256: digestInventory(files) }
 }
 
-async function stagePackagedResources({ stageRoot, resourcesDestination, pythonPayloadRoot, pythonManifestPath, pythonFilesManifestPath, postgresPayloadRoot, postgresManifestPath, postgresFilesManifestPath }) {
+async function stagePackagedResources({ stageRoot, resourcesDestination, pythonPayloadRoot, pythonManifestPath, pythonFilesManifestPath, postgresPayloadRoot, postgresManifestPath, postgresFilesManifestPath, shellSource }) {
   const businessDestination = path.join(resourcesDestination, 'backend')
   const pythonDestination = path.join(resourcesDestination, 'python-packages')
   const postgresDestination = path.join(resourcesDestination, 'postgresql')
@@ -150,7 +165,7 @@ async function stagePackagedResources({ stageRoot, resourcesDestination, pythonP
   await ensureStageDirectory(stageRoot, postgresDestination)
   await ensureStageDirectory(stageRoot, shellDestination)
   const business = await stageBusinessBundle(stageRoot, businessDestination)
-  const businessShell = await stageBusinessShell(stageRoot, shellDestination)
+  const businessShell = await stageBusinessShell(stageRoot, shellDestination, shellSource)
   const python = await verifiedPayload({ stageRoot, payloadPath: path.join(pythonPayloadRoot ?? '', 'python-packages'), manifestPath: pythonManifestPath,
     filesManifestPath: pythonFilesManifestPath, kind: 'Python dependencies', destination: pythonDestination,
     filter: name => !name.split('/').includes('__pycache__') && !name.endsWith('.pyc') })
@@ -248,7 +263,7 @@ async function assertStageOutputFile(target) {
 }
 
 export async function stageDesktop({ env = process.env, mode = 'source', runtimePath, pythonPath, managePath, hostAddress, stagePath, networkInterfaces = () => os.networkInterfaces(),
-  pythonPayloadRoot, pythonManifestPath, pythonFilesManifestPath, postgresPayloadRoot, postgresManifestPath, postgresFilesManifestPath } = {}) {
+  pythonPayloadRoot, pythonManifestPath, pythonFilesManifestPath, postgresPayloadRoot, postgresManifestPath, postgresFilesManifestPath, lockPathOverride, shellSource } = {}) {
   if (mode !== 'source' && mode !== 'packaged') throw new Error('桌面 stage mode 仅支持 source 或 packaged。')
   if (mode === 'source' && (!runtimePath || !pythonPath || !managePath || !hostAddress)) throw new Error('部署资料不完整；需要受控 runtime、专用 Python、Django manage.py 和所选局域网地址。')
   if (!runtimePath) throw new Error('部署资料缺少受控 runtime。')
@@ -275,7 +290,9 @@ export async function stageDesktop({ env = process.env, mode = 'source', runtime
   const mainPath = path.join(runtime, 'apps/desktop/lib/main.js')
   const mainInfo = await lstat(mainPath)
   if (mainInfo.isSymbolicLink() || !mainInfo.isFile()) throw new Error('受控 runtime 缺少已编译的 desktop main.js。')
-  const lock = JSON.parse(await readFile(lockPath, 'utf8'))
+  if (mode !== 'packaged' && (lockPathOverride !== undefined || shellSource !== undefined)) throw Error('显式输入仅支持 packaged')
+  const selected = await resolvePackagedInputs({lockPathOverride, shellSource})
+  const lock = JSON.parse(await readFile(selected.lockPath, 'utf8'))
   const receipt = await verifyDesktopBuildReceipt(runtime, lock, trustedReleaseRoot)
   await ensureStage(targetStage)
   const launcherDestination = path.join(targetStage, 'launcher')
@@ -302,7 +319,7 @@ export async function stageDesktop({ env = process.env, mode = 'source', runtime
     runtime: { root: 'resources/runtime/primary-runtime', python: 'resources/runtime/primary-runtime/dependencies/python/python.exe', version: '3.12.14', providedBy: 'official-electron-builder' },
     sourceBuild: { appMainSha256: receipt.compiledFiles['apps/desktop/lib/main.js'], lock },
     resources: await stagePackagedResources({ stageRoot: targetStage, resourcesDestination, pythonPayloadRoot, pythonManifestPath, pythonFilesManifestPath,
-      postgresPayloadRoot, postgresManifestPath, postgresFilesManifestPath }),
+      postgresPayloadRoot, postgresManifestPath, postgresFilesManifestPath, shellSource: selected.shellSource }),
   }
   const markerPath = path.join(resourcesDestination, BOOTSTRAP_MARKER)
   const manifestPath = path.join(resourcesDestination, MANIFEST_NAME)
@@ -316,7 +333,7 @@ export async function stageDesktop({ env = process.env, mode = 'source', runtime
 async function main() {
   let options
   if (process.argv[2] === '--mode') {
-    const allowed = new Set(['--mode', '--runtime-path', '--stage-path', '--python-payload-root', '--python-manifest', '--python-files-manifest', '--postgres-payload-root', '--postgres-manifest', '--postgres-files-manifest'])
+    const allowed = new Set(['--mode', '--runtime-path', '--stage-path', '--python-payload-root', '--python-manifest', '--python-files-manifest', '--postgres-payload-root', '--postgres-manifest', '--postgres-files-manifest', '--desktop-build-lock', '--shell-source'])
     const values = {}
     for (let index = 2; index < process.argv.length; index += 2) {
       const key = process.argv[index]
@@ -327,7 +344,7 @@ async function main() {
     if (values['--mode'] !== 'packaged') throw new Error('--mode 命名参数仅支持 packaged。')
     options = { mode: 'packaged', runtimePath: values['--runtime-path'], stagePath: values['--stage-path'],
       pythonPayloadRoot: values['--python-payload-root'], pythonManifestPath: values['--python-manifest'], pythonFilesManifestPath: values['--python-files-manifest'],
-      postgresPayloadRoot: values['--postgres-payload-root'], postgresManifestPath: values['--postgres-manifest'], postgresFilesManifestPath: values['--postgres-files-manifest'] }
+      postgresPayloadRoot: values['--postgres-payload-root'], postgresManifestPath: values['--postgres-manifest'], postgresFilesManifestPath: values['--postgres-files-manifest'], lockPathOverride: values['--desktop-build-lock'], shellSource: values['--shell-source'] }
   } else {
     options = { runtimePath: process.argv[2], pythonPath: process.argv[3], managePath: process.argv[4], hostAddress: process.argv[5] }
   }

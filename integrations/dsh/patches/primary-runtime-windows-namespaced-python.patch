@@ -1,0 +1,26 @@
+diff --git a/scripts/primary-runtime/prepare.ts b/scripts/primary-runtime/prepare.ts
+index 31f631eb..e5e11478 100644
+--- a/scripts/primary-runtime/prepare.ts
++++ b/scripts/primary-runtime/prepare.ts
+@@ -8,6 +8,6 @@ import { cp } from 'node:fs/promises'
+ import { createRequire } from 'node:module'
+ import { tmpdir } from 'node:os'
+-import { dirname, join, resolve } from 'node:path'
++import { dirname, join, resolve, win32 } from 'node:path'
+ import { parseArgs } from 'node:util'
+ import extractZip from 'extract-zip'
+ import { x as extractTar } from 'tar'
+@@ -260,9 +260,10 @@ export function smokePrimaryRuntime(root: string, environment: NodeJS.ProcessEnv
+   }
+   const options = { stdio: 'inherit', timeout: 120_000, env: environment } as const
+-  execFileSync(entries.python, ['-I', '-B', '-c', 'import decimal, xml.parsers.expat, lzma, uuid, numpy, pandas; assert numpy.arange(4).sum() == 6; assert pandas.DataFrame({"n": [1, 2]}).n.sum() == 3'], options)
+-  execFileSync(entries.python, ['-I', '-B', join(import.meta.dirname, 'smoke.py'), JSON.stringify(manifest.pythonPackages),
++  const python = manifest.platform === 'win32' ? win32.toNamespacedPath(entries.python) : entries.python
++  execFileSync(python, ['-I', '-B', '-c', 'import decimal, xml.parsers.expat, lzma, uuid, numpy, pandas; assert numpy.arange(4).sum() == 6; assert pandas.DataFrame({"n": [1, 2]}).n.sum() == 3'], options)
++  execFileSync(python, ['-I', '-B', join(import.meta.dirname, 'smoke.py'), JSON.stringify(manifest.pythonPackages),
+     manifest.python], options)
+-  execFileSync(entries.python, ['-I', '-B', '-m', 'pip', 'check'], options)
++  execFileSync(python, ['-I', '-B', '-m', 'pip', 'check'], options)
+   if (entries.node !== undefined) execFileSync(entries.node, ['-e', `if (process.versions.node !== ${JSON.stringify(manifest.node)}) process.exit(1)`], options)
+   if (entries.pnpm !== undefined && entries.node !== undefined) execFileSync(entries.node, [entries.pnpm, '--version'], options)
+ }

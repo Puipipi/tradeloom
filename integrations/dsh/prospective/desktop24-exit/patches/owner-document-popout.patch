@@ -1,0 +1,1169 @@
+diff --git a/packages/client/ui-attachment/src/client/ComposerAttachments.tsx b/packages/client/ui-attachment/src/client/ComposerAttachments.tsx
+index 0065410..2342d24 100644
+--- a/packages/client/ui-attachment/src/client/ComposerAttachments.tsx
++++ b/packages/client/ui-attachment/src/client/ComposerAttachments.tsx
+@@ -12,6 +12,8 @@ import { attachmentRailLabels, dropOverlayLabels, fileCardLabels, lightboxLabels
+ import { installDocumentDropEvents } from './drop-events.ts'
+ import css from './ComposerAttachments.module.css'
+ 
++const OWNER_DOCUMENT_CHANGE_EVENT = 'dsh:composer-owner-document-change'
++
+ /** Rail item retaining its browser-owned attachment for callbacks. */
+ interface ComposerRailItem extends AttachmentRailItem {
+   attachment: ComposerAttachment
+@@ -19,7 +21,7 @@ interface ComposerRailItem extends AttachmentRailItem {
+ 
+ /** Draft image previews, pending-file cards, drop target, and original-image preview. */
+ export function ComposerAttachments({
+-  attachments, canAcceptDrop, onAddFiles, onRemoveAttachment, uploads, onRetryFile, dropLimits, t,
++  ownerElement, attachments, canAcceptDrop, onAddFiles, onRemoveAttachment, uploads, onRetryFile, dropLimits, t,
+ }: ComposerAttachmentsProps) {
+   const [preview, setPreview] = useState<ComposerImageAttachment | null>(null)
+   const [dragActive, setDragActive] = useState(false)
+@@ -30,8 +32,22 @@ export function ComposerAttachments({
+   }, [attachments, preview])
+ 
+   useEffect(() => {
+-    return installDocumentDropEvents(canAcceptDrop, onAddFiles, dragDepth, setDragActive)
+-  }, [canAcceptDrop, onAddFiles])
++    let ownerDocument = ownerElement?.ownerDocument ?? globalThis.document
++    let dispose = installDocumentDropEvents(canAcceptDrop, onAddFiles, dragDepth, setDragActive, ownerDocument)
++    const rebind = (): void => {
++      const nextDocument = ownerElement?.ownerDocument ?? globalThis.document
++      if (nextDocument === ownerDocument) return
++      dispose()
++      ownerDocument = nextDocument
++      dispose = installDocumentDropEvents(canAcceptDrop, onAddFiles, dragDepth, setDragActive,
++        ownerDocument)
++    }
++    ownerElement?.addEventListener(OWNER_DOCUMENT_CHANGE_EVENT, rebind)
++    return () => {
++      ownerElement?.removeEventListener(OWNER_DOCUMENT_CHANGE_EVENT, rebind)
++      dispose()
++    }
++  }, [canAcceptDrop, onAddFiles, ownerElement])
+ 
+   const railItems = useMemo<ComposerRailItem[]>(() => attachments.map(attachment => ({
+     id: attachment.id,
+diff --git a/packages/client/ui-attachment/src/client/drop-events.ts b/packages/client/ui-attachment/src/client/drop-events.ts
+index 2f3da69..e3008a7 100644
+--- a/packages/client/ui-attachment/src/client/drop-events.ts
++++ b/packages/client/ui-attachment/src/client/drop-events.ts
+@@ -32,7 +32,9 @@ export function installDocumentDropEvents(
+   onAddFiles: ComposerAttachmentsProps['onAddFiles'],
+   dragDepth: { current: number },
+   setDragActive: (active: boolean) => void,
++  ownerDocument: Document = globalThis.document,
+ ): () => void {
++  const ownerWindow = ownerDocument.defaultView ?? globalThis.window
+   const fileTransfer = (event: globalThis.DragEvent): DataTransfer | null => {
+     const dataTransfer = event.dataTransfer
+     if (dataTransfer === null || !dataTransfer.types.includes('Files')) return null
+@@ -59,8 +61,8 @@ export function installDocumentDropEvents(
+     dragDepth.current = Math.max(0, dragDepth.current - 1)
+     if (dragDepth.current === 0) setDragActive(false)
+     const leftViewport = event.clientX <= 0 || event.clientY <= 0
+-      || event.clientX >= window.innerWidth || event.clientY >= window.innerHeight
+-    if ((event.target === document.documentElement || event.target === document.body) && leftViewport) reset()
++      || event.clientX >= ownerWindow.innerWidth || event.clientY >= ownerWindow.innerHeight
++    if ((event.target === ownerDocument.documentElement || event.target === ownerDocument.body) && leftViewport) reset()
+   }
+   const onDrop = (event: globalThis.DragEvent): void => {
+     const dataTransfer = fileTransfer(event)
+@@ -72,16 +74,16 @@ export function installDocumentDropEvents(
+       onAddFiles(files, droppedDirectories(dataTransfer, files))
+     }
+   }
+-  document.addEventListener('dragenter', onDragEnter)
+-  document.addEventListener('dragover', onDragOver)
+-  document.addEventListener('dragleave', onDragLeave)
+-  document.addEventListener('drop', onDrop)
+-  window.addEventListener('dragend', reset)
++  ownerDocument.addEventListener('dragenter', onDragEnter)
++  ownerDocument.addEventListener('dragover', onDragOver)
++  ownerDocument.addEventListener('dragleave', onDragLeave)
++  ownerDocument.addEventListener('drop', onDrop)
++  ownerWindow.addEventListener('dragend', reset)
+   return () => {
+-    document.removeEventListener('dragenter', onDragEnter)
+-    document.removeEventListener('dragover', onDragOver)
+-    document.removeEventListener('dragleave', onDragLeave)
+-    document.removeEventListener('drop', onDrop)
+-    window.removeEventListener('dragend', reset)
++    ownerDocument.removeEventListener('dragenter', onDragEnter)
++    ownerDocument.removeEventListener('dragover', onDragOver)
++    ownerDocument.removeEventListener('dragleave', onDragLeave)
++    ownerDocument.removeEventListener('drop', onDrop)
++    ownerWindow.removeEventListener('dragend', reset)
+   }
+ }
+diff --git a/packages/client/ui-attachment/tests/composer-attachments.client.spec.tsx b/packages/client/ui-attachment/tests/composer-attachments.client.spec.tsx
+index 057e29d..ab3eb6c 100644
+--- a/packages/client/ui-attachment/tests/composer-attachments.client.spec.tsx
++++ b/packages/client/ui-attachment/tests/composer-attachments.client.spec.tsx
+@@ -7,6 +7,8 @@ import type {
+ } from '@deepseek-ai/dsh-client-ui-conversation/client'
+ import { ComposerAttachments } from '../src/client/ComposerAttachments.tsx'
+ 
++const OWNER_DOCUMENT_CHANGE_EVENT = 'dsh:composer-owner-document-change'
++
+ beforeEach(() => {
+   vi.stubGlobal('ResizeObserver', class {
+     observe(): void {}
+@@ -114,6 +116,49 @@ describe('ComposerAttachments', () => {
+     expect(view.queryByRole('status')).toBeNull()
+   })
+ 
++  it('rebinds document drop intake when the same owner root moves across documents and preserves File identity', () => {
++    const iframe = document.createElement('iframe')
++    document.body.append(iframe)
++    const childDocument = iframe.contentDocument!
++    const panelHost = document.createElement('div')
++    const ownerElement = document.createElement('div')
++    ownerElement.setAttribute('data-dsh-owner-document-root', '')
++    panelHost.append(ownerElement)
++    document.body.append(panelHost)
++    const existingDraft = fileDraft('moved', '生产指令单.xlsx')
++    const file = existingDraft.file
++    const onAddFiles = vi.fn()
++    const view = render(<ComposerAttachments {...props({ ownerElement, attachments: [existingDraft], onAddFiles })} />)
++    const existingCardButton = view.getByRole('button', { name: '移除文件 生产指令单.xlsx' })
++
++    childDocument.body.append(panelHost)
++    ownerElement.dispatchEvent(new childDocument.defaultView!.Event(OWNER_DOCUMENT_CHANGE_EVENT))
++    expect(view.getByRole('button', { name: '移除文件 生产指令单.xlsx' })).toBe(existingCardButton)
++    const childTransfer = { types: ['Files'], files: [file], items: [], dropEffect: 'none' }
++    fireEvent.drop(childDocument.body, { dataTransfer: childTransfer })
++    expect(onAddFiles).toHaveBeenCalledTimes(1)
++    expect(onAddFiles.mock.calls[0]?.[0]?.[0]).toBe(file)
++    const childFile = new childDocument.defaultView!.File([Uint8Array.of(9, 8, 7)], '跨窗来源.xlsx', {
++      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
++    })
++    fireEvent.drop(childDocument.body, {
++      dataTransfer: { types: ['Files'], files: [childFile], items: [], dropEffect: 'none' },
++    })
++    expect(onAddFiles).toHaveBeenCalledTimes(2)
++    expect(onAddFiles.mock.calls[1]?.[0]?.[0]).toBe(childFile)
++
++    document.body.append(panelHost)
++    ownerElement.dispatchEvent(new document.defaultView!.Event(OWNER_DOCUMENT_CHANGE_EVENT))
++    expect(view.getByRole('button', { name: '移除文件 生产指令单.xlsx' })).toBe(existingCardButton)
++    const mainTransfer = { types: ['Files'], files: [file], items: [], dropEffect: 'none' }
++    fireEvent.drop(document.body, { dataTransfer: mainTransfer })
++    expect(onAddFiles).toHaveBeenCalledTimes(3)
++    expect(onAddFiles.mock.calls[2]?.[0]?.[0]).toBe(file)
++
++    view.unmount()
++    iframe.remove()
++  })
++
+   it('reports dropped directories from the entry API beside the dropped files', () => {
+     const onAddFiles = vi.fn()
+     render(<ComposerAttachments {...props({ onAddFiles })} />)
+diff --git a/packages/client/ui-conversation/src/client/contract/slots.ts b/packages/client/ui-conversation/src/client/contract/slots.ts
+index 4a0bd3a..5b50545 100644
+--- a/packages/client/ui-conversation/src/client/contract/slots.ts
++++ b/packages/client/ui-conversation/src/client/contract/slots.ts
+@@ -58,6 +58,8 @@ export type DraftFileUploads = Readonly<Record<string, DraftFileUpload>>
+ 
+ /** Input state handed to the optional attachment presentation plugin. */
+ export interface ComposerAttachmentsOwnerProps {
++  /** The current Session's contenteditable root; used only to follow its owning document when a dock pane is popped out. */
++  ownerElement?: HTMLElement | null
+   /** Browser-owned draft attachments in input order. */
+   attachments: readonly ComposerAttachment[]
+   /** Whether a document-level file drop may add attachments now. */
+diff --git a/packages/client/ui-conversation/src/client/input/editor/ComposerContentEditable.tsx b/packages/client/ui-conversation/src/client/input/editor/ComposerContentEditable.tsx
+index b975ee1..8306a8c 100644
+--- a/packages/client/ui-conversation/src/client/input/editor/ComposerContentEditable.tsx
++++ b/packages/client/ui-conversation/src/client/input/editor/ComposerContentEditable.tsx
+@@ -10,6 +10,9 @@ import { useLayoutEffect, useRef } from 'react'
+ import type { HTMLAttributes, ReactNode } from 'react'
+ import type { LexicalEditor } from 'lexical'
+ 
++/** Shell dispatches this after moving the existing composer node between same-origin windows. */
++export const COMPOSER_OWNER_DOCUMENT_CHANGE_EVENT = 'dsh:composer-owner-document-change'
++
+ /** Host props: the editor binding plus the div passthroughs the bar owns. */
+ export interface ComposerContentEditableProps extends HTMLAttributes<HTMLDivElement> {
+   /** The shell-owned editor; null renders the same div unbound and inert. */
+@@ -29,7 +32,21 @@ export function ComposerContentEditable({ editor, editable, ...rest }: ComposerC
+     const el = ref.current
+     if (editor === null || el === null) return
+     editor.setRootElement(el)
+-    return () => { editor.setRootElement(null) }
++    let ownerDocument = el.ownerDocument
++    const rebindOwnerDocument = (): void => {
++      const nextDocument = el.ownerDocument
++      if (nextDocument === ownerDocument) return
++      // The public API rebinds Lexical's listeners while keeping the same root
++      // element and editor state; no editor or session is recreated.
++      editor.setRootElement(null)
++      editor.setRootElement(el)
++      ownerDocument = nextDocument
++    }
++    el.addEventListener(COMPOSER_OWNER_DOCUMENT_CHANGE_EVENT, rebindOwnerDocument)
++    return () => {
++      el.removeEventListener(COMPOSER_OWNER_DOCUMENT_CHANGE_EVENT, rebindOwnerDocument)
++      editor.setRootElement(null)
++    }
+   }, [editor])
+   useLayoutEffect(() => {
+     if (editor !== null) editor.setEditable(editable)
+@@ -44,6 +61,7 @@ export function ComposerContentEditable({ editor, editable, ...rest }: ComposerC
+       role="textbox"
+       aria-multiline="true"
+       data-composer-input
++      data-dsh-owner-document-root=""
+       {...rest}
+     />
+   )
+diff --git a/packages/client/ui-conversation/src/client/input/editor/view-binding.ts b/packages/client/ui-conversation/src/client/input/editor/view-binding.ts
+index dacb179..de5ca5d 100644
+--- a/packages/client/ui-conversation/src/client/input/editor/view-binding.ts
++++ b/packages/client/ui-conversation/src/client/input/editor/view-binding.ts
+@@ -28,7 +28,9 @@ interface DraftViewGate {
+ export function revealDraftSelection(scrollRef: RefObject<HTMLDivElement>): void {
+   const scrollEl = scrollRef.current
+   if (scrollEl === null || scrollEl.scrollHeight <= scrollEl.clientHeight) return
+-  const selection = window.getSelection()
++  const ownerDocument = scrollEl.ownerDocument
++  const ownerWindow = ownerDocument.defaultView
++  const selection = ownerWindow?.getSelection() ?? null
+   if (selection === null || selection.rangeCount === 0) return
+   const range = selection.getRangeAt(0)
+   let rect = range.getBoundingClientRect()
+@@ -36,7 +38,8 @@ export function revealDraftSelection(scrollRef: RefObject<HTMLDivElement>): void
+     // A collapsed caret at an empty line reports a zero rect in some
+     // engines; the anchor's element box is the line the caret sits on.
+     const anchor = selection.anchorNode
+-    const el = anchor instanceof HTMLElement ? anchor : anchor?.parentElement
++    const HTMLElementConstructor = ownerWindow?.HTMLElement
++    const el = HTMLElementConstructor && anchor instanceof HTMLElementConstructor ? anchor : anchor?.parentElement
+     if (el === undefined || el === null) return
+     rect = el.getBoundingClientRect()
+   }
+@@ -67,7 +70,8 @@ export function installDraftWheel(scrollRef: RefObject<HTMLDivElement>): (() =>
+   if (el === null) return
+   const onWheel = (e: WheelEvent): void => {
+     const host = el.closest('[data-conversation-scroll]')
+-    if (!(host instanceof HTMLElement) || e.deltaY === 0) return
++    const HTMLElementConstructor = el.ownerDocument.defaultView?.HTMLElement
++    if (HTMLElementConstructor === undefined || !(host instanceof HTMLElementConstructor) || e.deltaY === 0) return
+     const atTop = el.scrollTop <= 0
+     const atEnd = el.scrollTop + el.clientHeight >= el.scrollHeight - 1
+     if ((e.deltaY < 0 && !atTop) || (e.deltaY > 0 && !atEnd)) return
+diff --git a/packages/client/ui-conversation/src/client/skeleton/InputBar.tsx b/packages/client/ui-conversation/src/client/skeleton/InputBar.tsx
+index ef95796..ac49bd2 100644
+--- a/packages/client/ui-conversation/src/client/skeleton/InputBar.tsx
++++ b/packages/client/ui-conversation/src/client/skeleton/InputBar.tsx
+@@ -280,7 +280,9 @@ export const InputBar = memo(function InputBar({
+   const onCardMouseDown = (e: MouseEvent<HTMLDivElement>): void => {
+     if (!editable || editor === null || e.button !== 0 || e.defaultPrevented) return
+     const target = e.target
+-    if (!(target instanceof Element) || !e.currentTarget.contains(target)) return
++    const ownerDocument = e.currentTarget.ownerDocument
++    const ElementConstructor = ownerDocument.defaultView?.Element
++    if (ElementConstructor === undefined || !(target instanceof ElementConstructor) || !e.currentTarget.contains(target)) return
+     if (target.closest('[data-composer-overlay]') !== null) return
+     if (scrollRef.current?.contains(target)) return
+     const control = target.closest('button, a, input, select, textarea, [role="button"], [contenteditable], [tabindex]')
+@@ -288,7 +290,7 @@ export const InputBar = memo(function InputBar({
+     e.preventDefault()
+     // Lexical's stored selection can lag behind native caret moves, so calling
+     // editor.focus() on a focused editor can restore an older caret.
+-    if (document.activeElement !== editor.getRootElement()) focusDraftEditor(editor, revealSelection)
++    if (ownerDocument.activeElement !== editor.getRootElement()) focusDraftEditor(editor, revealSelection)
+   }
+ 
+   const onToggleCommandMenu = (): void => {
+@@ -405,6 +407,7 @@ export const InputBar = memo(function InputBar({
+         )}
+         {accessory !== undefined && <div className={css.accessory}>{accessory}</div>}
+         {renderSlot('conversation.input.attachments', {
++          ownerElement: editor?.getRootElement() ?? null,
+           attachments,
+           canAcceptDrop,
+           onAddFiles: intakeFiles,
+diff --git a/packages/client/ui-conversation/tests/secondary-window-owner-document.client.spec.tsx b/packages/client/ui-conversation/tests/secondary-window-owner-document.client.spec.tsx
+new file mode 100644
+index 0000000..c859c2a
+--- /dev/null
++++ b/packages/client/ui-conversation/tests/secondary-window-owner-document.client.spec.tsx
+@@ -0,0 +0,43 @@
++// @vitest-environment jsdom
++/** Mounted composer roots retain their Lexical editor while their panel host moves between documents. */
++import { act, cleanup, render } from '@testing-library/react'
++import { createPortal } from 'react-dom'
++import { afterEach, expect, it } from 'vitest'
++import { $createParagraphNode, $createTextNode, $getRoot, createEditor } from 'lexical'
++import { ComposerContentEditable, COMPOSER_OWNER_DOCUMENT_CHANGE_EVENT } from '../src/client/input/editor/ComposerContentEditable.tsx'
++
++afterEach(cleanup)
++
++it('rebinds the mounted Lexical root in both directions without changing its DOM node or editor state', async () => {
++  const iframe = document.createElement('iframe')
++  document.body.append(iframe)
++  const childDocument = iframe.contentDocument!
++  const panelHost = document.createElement('div')
++  document.body.append(panelHost)
++  const editor = createEditor({
++    namespace: 'secondary-window-owner-document-test',
++    onError(error) { throw error },
++  })
++  editor.update(() => {
++    $getRoot().append($createParagraphNode().append($createTextNode('客户生产要求草稿')))
++  }, { discrete: true })
++  const initialState = editor.getEditorState()
++  const view = render(createPortal(<ComposerContentEditable editor={editor} editable />, panelHost))
++  const root = panelHost.querySelector<HTMLElement>('[data-composer-input]')!
++  expect(editor.getRootElement()).toBe(root)
++
++  childDocument.body.append(panelHost)
++  await act(async () => { root.dispatchEvent(new childDocument.defaultView!.Event(COMPOSER_OWNER_DOCUMENT_CHANGE_EVENT)) })
++  expect(editor.getRootElement()).toBe(root)
++  expect(editor.getEditorState()).toBe(initialState)
++
++  document.body.append(panelHost)
++  await act(async () => { root.dispatchEvent(new document.defaultView!.Event(COMPOSER_OWNER_DOCUMENT_CHANGE_EVENT)) })
++  expect(editor.getRootElement()).toBe(root)
++  expect(editor.getEditorState()).toBe(initialState)
++  expect(root.ownerDocument).toBe(document)
++
++  view.unmount()
++  editor.setRootElement(null)
++  iframe.remove()
++})
+diff --git a/packages/client/ui-primitives/src/HoverCard.tsx b/packages/client/ui-primitives/src/HoverCard.tsx
+index 3b3ab47..e851285 100644
+--- a/packages/client/ui-primitives/src/HoverCard.tsx
++++ b/packages/client/ui-primitives/src/HoverCard.tsx
+@@ -7,6 +7,7 @@ import { usePointerGrace } from './pointer-grace.ts'
+ import { overlayTopMargin } from './overlay-top-margin.ts'
+ import { HoverCardGroupContext } from './HoverCardGroup.tsx'
+ import css from './HoverCard.module.css'
++import { OWNER_DOCUMENT_CHANGE_EVENT, OWNER_DOCUMENT_ROOT_ATTRIBUTE, ownerWindowOf } from './owner-document.ts'
+ 
+ /** Preview opacity transition and retained lifetime during dismissal. */
+ const PREVIEW_FADE_MS = 100
+@@ -54,6 +55,23 @@ export function HoverCard({
+   copiedLabel?: string
+ })) {
+-  const rootRef = useRef<HTMLSpanElement>(null)
++  const rootRef = useRef<HTMLSpanElement | null>(null)
++  const [rootDocument, setRootDocument] = useState<Document | null>(null)
++  const setRootElement = useCallback((element: HTMLSpanElement | null) => {
++    rootRef.current = element
++    setRootDocument(current => current === element?.ownerDocument ? current : element?.ownerDocument ?? null)
++  }, [])
++  useEffect(() => {
++    const root = rootRef.current
++    if (root === null) return
++    const refreshOwnerDocument = () => {
++      const nextDocument = root.ownerDocument
++      setRootDocument(current => current === nextDocument ? current : nextDocument)
++    }
++    root.addEventListener(OWNER_DOCUMENT_CHANGE_EVENT, refreshOwnerDocument)
++    return () => root.removeEventListener(OWNER_DOCUMENT_CHANGE_EVENT, refreshOwnerDocument)
++  }, [])
++  const ownerDocument = rootDocument ?? document
++  const ownerWindow = ownerWindowOf(ownerDocument)
+   const cardRef = useRef<HTMLDivElement>(null)
+   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+@@ -147,9 +165,9 @@ export function HoverCard({
+       cancelClose()
+       close()
+     }
+-    window.addEventListener('keydown', dismiss, inline)
+-    return () => { window.removeEventListener('keydown', dismiss, inline) }
+-  }, [open, variant, inline, cancelClose, close])
++    ownerWindow.addEventListener('keydown', dismiss, inline)
++    return () => { ownerWindow.removeEventListener('keydown', dismiss, inline) }
++  }, [open, variant, inline, cancelClose, close, ownerWindow])
+ 
+   // Fixed-position from the anchor rect before paint; track the anchor while
+   // open (capture-phase scroll catches nested panes), as in Menu portal mode.
+@@ -163,15 +181,15 @@ export function HoverCard({
+       const h = cardRef.current?.offsetHeight ?? 0
+       if (variant === 'preview') {
+         const bounds = widthAnchorRef?.current?.getBoundingClientRect() ?? r
+-        const width = Math.max(0, Math.min(bounds.width - PREVIEW_INSET * 2, window.innerWidth - VIEWPORT_MARGIN * 2))
++        const width = Math.max(0, Math.min(bounds.width - PREVIEW_INSET * 2, ownerWindow.innerWidth - VIEWPORT_MARGIN * 2))
+         const topMargin = overlayTopMargin(VIEWPORT_MARGIN)
+         const belowTop = Math.max(topMargin, r.bottom + ANCHOR_GAP)
+         const above = Math.max(0, r.top - ANCHOR_GAP - topMargin)
+-        const below = Math.max(0, window.innerHeight - belowTop - VIEWPORT_MARGIN)
++        const below = Math.max(0, ownerWindow.innerHeight - belowTop - VIEWPORT_MARGIN)
+         const onTop = above >= Math.min(PREVIEW_MAX_HEIGHT, below)
+         const maxHeight = Math.min(PREVIEW_MAX_HEIGHT, onTop ? above : below)
+         setPos({
+-          left: Math.max(VIEWPORT_MARGIN, Math.min(bounds.left + PREVIEW_INSET, window.innerWidth - width - VIEWPORT_MARGIN)),
++          left: Math.max(VIEWPORT_MARGIN, Math.min(bounds.left + PREVIEW_INSET, ownerWindow.innerWidth - width - VIEWPORT_MARGIN)),
+           top: onTop ? Math.max(topMargin, r.top - Math.min(h, maxHeight) - ANCHOR_GAP) : belowTop,
+           width, maxHeight,
+         })
+@@ -179,21 +197,21 @@ export function HoverCard({
+       }
+       if (inline) {
+         const height = Math.max(h, cardRef.current?.scrollHeight ?? 0)
+-        const width = Math.max(0, Math.min(INLINE_PREVIEW_WIDTH, window.innerWidth - VIEWPORT_MARGIN * 2))
++        const width = Math.max(0, Math.min(INLINE_PREVIEW_WIDTH, ownerWindow.innerWidth - VIEWPORT_MARGIN * 2))
+         const topMargin = overlayTopMargin(VIEWPORT_MARGIN)
+         const belowTop = Math.max(topMargin, r.bottom + ANCHOR_GAP)
+         const above = Math.max(0, r.top - ANCHOR_GAP - topMargin)
+-        const below = Math.max(0, window.innerHeight - belowTop - VIEWPORT_MARGIN)
++        const below = Math.max(0, ownerWindow.innerHeight - belowTop - VIEWPORT_MARGIN)
+         const onTop = height > below && above > below
+         const maxHeight = onTop ? above : below
+         setPos({
+-          left: Math.max(VIEWPORT_MARGIN, Math.min(r.left, window.innerWidth - width - VIEWPORT_MARGIN)),
++          left: Math.max(VIEWPORT_MARGIN, Math.min(r.left, ownerWindow.innerWidth - width - VIEWPORT_MARGIN)),
+           top: onTop ? r.top - ANCHOR_GAP - Math.min(height, maxHeight) : belowTop,
+           width, maxHeight,
+         })
+         return
+       }
+-      const top = r.top + h > window.innerHeight - VIEWPORT_MARGIN ? window.innerHeight - h - VIEWPORT_MARGIN : r.top
++      const top = r.top + h > ownerWindow.innerHeight - VIEWPORT_MARGIN ? ownerWindow.innerHeight - h - VIEWPORT_MARGIN : r.top
+       setPos({ left: r.right + ANCHOR_GAP, top })
+     }
+     place()
+@@ -201,14 +219,14 @@ export function HoverCard({
+     for (const element of [cardRef.current, rootRef.current, widthAnchorRef?.current]) {
+       if (element !== null && element !== undefined) observer?.observe(element)
+     }
+-    window.addEventListener('scroll', place, true)
+-    window.addEventListener('resize', place)
++    ownerWindow.addEventListener('scroll', place, true)
++    ownerWindow.addEventListener('resize', place)
+     return () => {
+       observer?.disconnect()
+-      window.removeEventListener('scroll', place, true)
+-      window.removeEventListener('resize', place)
++      ownerWindow.removeEventListener('scroll', place, true)
++      ownerWindow.removeEventListener('resize', place)
+     }
+-  }, [open, variant, widthAnchorRef, positioned, inline])
++  }, [open, variant, widthAnchorRef, positioned, inline, ownerWindow])
+ 
+   // The first placement ran before the card mounted (height read 0): once the
+   // card's real height is measurable, correct the bottom-edge clamp. The
+@@ -217,10 +235,10 @@ export function HoverCard({
+     if (!open || pos === null || variant === 'preview' || inline) return
+     /* v8 ignore next -- the card is mounted whenever pos is set, so the ref is attached here. */
+     const h = cardRef.current?.offsetHeight ?? 0
+-    if (pos.top + h > window.innerHeight - VIEWPORT_MARGIN) {
+-      setPos({ left: pos.left, top: window.innerHeight - h - VIEWPORT_MARGIN })
++    if (pos.top + h > ownerWindow.innerHeight - VIEWPORT_MARGIN) {
++      setPos({ left: pos.left, top: ownerWindow.innerHeight - h - VIEWPORT_MARGIN })
+     }
+-  }, [open, pos, variant, inline])
++  }, [open, pos, variant, inline, ownerWindow])
+ 
+   const copy = async (text: string): Promise<void> => {
+     if (copied || copyingRef.current) return
+@@ -258,7 +276,7 @@ export function HoverCard({
+       aria-label={copyable ? `${copyLabel}: ${copyText}` : undefined}
+       onClick={copyable
+         ? (e) => {
+-          const selection = window.getSelection()
++          const selection = ownerWindow.getSelection()
+           if (selection !== null && !selection.isCollapsed) {
+             for (let i = 0; i < selection.rangeCount; i += 1) {
+               if (selection.getRangeAt(i).intersectsNode(e.currentTarget)) return
+@@ -281,7 +299,8 @@ export function HoverCard({
+ 
+   return (
+     <span
+-      ref={rootRef}
++      ref={setRootElement}
++      {...{ [OWNER_DOCUMENT_ROOT_ATTRIBUTE]: '' }}
+       className={clsx(css.root, inline && css.inline)}
+       onFocus={inline ? (event) => {
+         if (!disabled && event.target.matches(':focus-visible')) { cancelClose(); setPhase('open') }
+@@ -310,7 +329,7 @@ export function HoverCard({
+     >
+       {anchor}
+       {open && copyable && <span className={css.status} role="status">{copied ? copiedLabel : ''}</span>}
+-      {card !== false && createPortal(card, document.body)}
++      {card !== false && createPortal(card, ownerDocument.body)}
+     </span>
+   )
+ }
+diff --git a/packages/client/ui-primitives/src/HoverCardGroup.tsx b/packages/client/ui-primitives/src/HoverCardGroup.tsx
+index 163202d..bf224a2 100644
+--- a/packages/client/ui-primitives/src/HoverCardGroup.tsx
++++ b/packages/client/ui-primitives/src/HoverCardGroup.tsx
+@@ -1,4 +1,5 @@
+ import { createContext, useState, type ReactNode } from 'react'
++import { isNodeInDocument } from './owner-document.ts'
+ 
+ interface GroupState {
+   isWarm: () => boolean
+@@ -34,7 +35,9 @@ export function HoverCardGroup({ children, className }: { children: ReactNode; c
+         // A displayed card owns the grace across the gap; its release ends an outside visit.
+         if (active === null) warm = false
+       },
+-      containsCard: target => target instanceof Node && active !== null && active.element.contains(target),
++      containsCard: target => active !== null
++        && isNodeInDocument(target, active.element.ownerDocument)
++        && active.element.contains(target),
+       shown: (owner, dismiss, element) => {
+         // Keyboard focus can replace the portal under the pointer without a pointer-out event.
+         if (pointer === 'card') { pointer = 'outside'; warm = false }
+@@ -60,7 +63,7 @@ export function HoverCardGroup({ children, className }: { children: ReactNode; c
+         }}
+         onPointerOutCapture={(event) => {
+           const fromGroup = event.currentTarget.contains(event.target as Node) || group.containsCard(event.target)
+-          const intoGroup = (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget))
++          const intoGroup = (isNodeInDocument(event.relatedTarget, event.currentTarget.ownerDocument) && event.currentTarget.contains(event.relatedTarget))
+             || group.containsCard(event.relatedTarget)
+           if (fromGroup && !intoGroup) group.leave()
+         }}
+diff --git a/packages/client/ui-primitives/src/Menu.tsx b/packages/client/ui-primitives/src/Menu.tsx
+index 87e7628..d542009 100644
+--- a/packages/client/ui-primitives/src/Menu.tsx
++++ b/packages/client/ui-primitives/src/Menu.tsx
+@@ -1,4 +1,4 @@
+-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
++import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+ import type { CSSProperties, ReactNode, SyntheticEvent } from 'react'
+ import { createPortal } from 'react-dom'
+ import clsx from 'clsx'
+@@ -9,7 +9,9 @@ import { isBehindModal } from './useModalLayer.ts'
+ import { observeComposition } from './keyboard-composition.ts'
+ import { focusWithoutRing } from './focus.ts'
+ import { ShortcutKeys } from './ShortcutKeys.tsx'
++import { OWNER_DOCUMENT_CHANGE_EVENT, OWNER_DOCUMENT_ROOT_ATTRIBUTE } from './owner-document.ts'
+ import { MenuSurface } from './MenuSurface.tsx'
++import { isElementInDocument, isHTMLElementInDocument, isIFrameInDocument, isNodeInDocument, ownerWindowOf } from './owner-document.ts'
+ import css from './Menu.module.css'
+ 
+ /** Selectable row (optionally with a nested submenu). */
+@@ -194,6 +196,23 @@ export function Menu({ open, anchor, items = [], children, selectedId, selectedI
+   listClassName?: string | undefined
+ }) {
+-  const rootRef = useRef<HTMLSpanElement>(null)
++  const rootRef = useRef<HTMLSpanElement | null>(null)
++  const [rootDocument, setRootDocument] = useState<Document | null>(null)
++  const setRootElement = useCallback((element: HTMLSpanElement | null) => {
++    rootRef.current = element
++    setRootDocument(current => current === element?.ownerDocument ? current : element?.ownerDocument ?? null)
++  }, [])
++  useEffect(() => {
++    const root = rootRef.current
++    if (root === null) return
++    const refreshOwnerDocument = () => {
++      const nextDocument = root.ownerDocument
++      setRootDocument(current => current === nextDocument ? current : nextDocument)
++    }
++    root.addEventListener(OWNER_DOCUMENT_CHANGE_EVENT, refreshOwnerDocument)
++    return () => root.removeEventListener(OWNER_DOCUMENT_CHANGE_EVENT, refreshOwnerDocument)
++  }, [])
++  const ownerDocument = rootDocument ?? document
++  const ownerWindow = ownerWindowOf(ownerDocument)
+   const listRef = useRef<HTMLDivElement>(null)
+   /** Index the arrow walk last focused, the resume point when focus left the rows. */
+   const walkIndex = useRef<number | null>(null)
+@@ -214,7 +233,7 @@ export function Menu({ open, anchor, items = [], children, selectedId, selectedI
+    */
+   const refocusAnchor = (navigation = false): void => {
+     const trigger = triggerRef.current
+-    const target = trigger !== null && document.contains(trigger) && !(trigger as HTMLButtonElement).disabled
++    const target = trigger !== null && ownerDocument.contains(trigger) && !(trigger as HTMLButtonElement).disabled
+       ? trigger : rootRef.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')
+     if (target == null) return
+     if (navigation) target.focus()
+@@ -232,8 +251,8 @@ export function Menu({ open, anchor, items = [], children, selectedId, selectedI
+     const navigation = selectingWithTab.current
+     queueMicrotask(() => {
+       if (openRef.current) return
+-      const active = document.activeElement
+-      if (active === null || active === document.body || listRef.current?.contains(active) === true) refocusAnchor(navigation)
++      const active = ownerDocument.activeElement
++      if (active === null || active === ownerDocument.body || listRef.current?.contains(active) === true) refocusAnchor(navigation)
+     })
+   }
+   const openRef = useRef(open)
+@@ -259,8 +278,8 @@ export function Menu({ open, anchor, items = [], children, selectedId, selectedI
+       }
+       if (r === null) return
+       const MARGIN = 12
+-      const vw = window.innerWidth
+-      const vh = window.innerHeight
++      const vw = ownerWindow.innerWidth
++      const vh = ownerWindow.innerHeight
+       const listEl = listRef.current
+       if (listEl !== null) {
+         const minimum = minWidthFromAnchor ? `${Math.min(r.width, Math.max(0, vw - MARGIN * 2))}px` : ''
+@@ -297,14 +316,14 @@ export function Menu({ open, anchor, items = [], children, selectedId, selectedI
+       frame = requestAnimationFrame(track)
+     }
+     let frame = requestAnimationFrame(track)
+-    window.addEventListener('scroll', place, true)
+-    window.addEventListener('resize', place)
++    ownerWindow.addEventListener('scroll', place, true)
++    ownerWindow.addEventListener('resize', place)
+     return () => {
+       cancelAnimationFrame(frame)
+-      window.removeEventListener('scroll', place, true)
+-      window.removeEventListener('resize', place)
++      ownerWindow.removeEventListener('scroll', place, true)
++      ownerWindow.removeEventListener('resize', place)
+     }
+-  }, [open, portal, align, side, getAnchorRect, minWidthFromAnchor])
++  }, [open, portal, align, side, getAnchorRect, minWidthFromAnchor, ownerDocument, ownerWindow])
+ 
+   // Opening remembers where the keyboard was, so closing can hand it back to
+   // that control — an anchor wrapping several (a split button) cannot be asked
+@@ -315,9 +334,9 @@ export function Menu({ open, anchor, items = [], children, selectedId, selectedI
+       triggerRef.current = null
+       return
+     }
+-    const active = document.activeElement
+-    triggerRef.current = active instanceof HTMLElement && rootRef.current?.contains(active) === true ? active : null
+-  }, [open])
++    const active = ownerDocument.activeElement
++    triggerRef.current = isHTMLElementInDocument(active, ownerDocument) && rootRef.current?.contains(active) === true ? active : null
++  }, [open, ownerDocument])
+ 
+   useEffect(() => {
+     if (!open || !autoFocus) return
+@@ -332,9 +351,9 @@ export function Menu({ open, anchor, items = [], children, selectedId, selectedI
+       walkIndex.current = null
+       return
+     }
+-    const composition = observeComposition(document)
++    const composition = observeComposition(ownerDocument)
+     const onPointerDown = (e: PointerEvent) => {
+-      if (!(e.target instanceof Node)) return
++      if (!isNodeInDocument(e.target, ownerDocument)) return
+       // The portaled list is outside the anchor subtree; check both.
+       if (rootRef.current?.contains(e.target) === true) return
+       if (listRef.current?.contains(e.target) === true) return
+@@ -344,7 +363,7 @@ export function Menu({ open, anchor, items = [], children, selectedId, selectedI
+       if (composition.guards(e) || isBehindModal(rootRef.current) || e.defaultPrevented || e.ctrlKey || e.altKey || e.metaKey) return
+       // Where the keyboard is, computed once: the menu owns it when it holds a
+       // row or sits on its anchor region.
+-      const focused = document.activeElement
++      const focused = ownerDocument.activeElement
+       const insideList = listRef.current?.contains(focused) === true
+       const anchored = rootRef.current?.contains(focused) === true || insideList
+       if (e.key === 'Escape' && !e.shiftKey) {
+@@ -374,7 +393,7 @@ export function Menu({ open, anchor, items = [], children, selectedId, selectedI
+         // button inside an error strip) and a list with no enabled row keep the
+         // browser's traversal instead of being swallowed.
+         if (insideList) {
+-          if (focused instanceof Element && focused.getAttribute('role') === 'menuitem') {
++          if (isElementInDocument(focused, ownerDocument) && focused.getAttribute('role') === 'menuitem') {
+             e.preventDefault()
+             selectingWithTab.current = true
+             try { (focused as HTMLElement).click() }
+@@ -417,22 +436,22 @@ export function Menu({ open, anchor, items = [], children, selectedId, selectedI
+     // instead. Only that case closes: an app or tab switch leaves the
+     // document's focus where it was, so activeElement is not an iframe.
+     const onWindowBlur = () => {
+-      if (document.activeElement instanceof HTMLIFrameElement) onClose()
++      if (isIFrameInDocument(ownerDocument.activeElement, ownerDocument)) onClose()
+     }
+-    document.addEventListener('pointerdown', onPointerDown)
++    ownerDocument.addEventListener('pointerdown', onPointerDown)
+     const onEscape = (event: KeyboardEvent): void => { if (event.key === 'Escape') onKeyDown(event) }
+     const onOtherKey = (event: KeyboardEvent): void => { if (event.key !== 'Escape') onKeyDown(event) }
+-    document.addEventListener('keydown', onOtherKey)
+-    document.addEventListener('keydown', onEscape, true)
+-    window.addEventListener('blur', onWindowBlur)
++    ownerDocument.addEventListener('keydown', onOtherKey)
++    ownerDocument.addEventListener('keydown', onEscape, true)
++    ownerWindow.addEventListener('blur', onWindowBlur)
+     return () => {
+       composition.dispose()
+-      document.removeEventListener('pointerdown', onPointerDown)
+-      document.removeEventListener('keydown', onOtherKey)
+-      document.removeEventListener('keydown', onEscape, true)
+-      window.removeEventListener('blur', onWindowBlur)
++      ownerDocument.removeEventListener('pointerdown', onPointerDown)
++      ownerDocument.removeEventListener('keydown', onOtherKey)
++      ownerDocument.removeEventListener('keydown', onEscape, true)
++      ownerWindow.removeEventListener('blur', onWindowBlur)
+     }
+-  }, [open, onClose, autoFocus])
++  }, [open, onClose, autoFocus, ownerDocument, ownerWindow])
+ 
+   // A close from selection/Escape/outside click outruns a pending grace close;
+   // left armed it would shut a list reopened inside the grace window. Its own
+@@ -487,7 +506,7 @@ export function Menu({ open, anchor, items = [], children, selectedId, selectedI
+           {selected && selection === 'check' && <IconCheckOutlineRegular className={css.check} />}
+         </button>
+         {subOpen && entry.submenu !== undefined && (
+-          <MenuSurface compact={compact} className={clsx(css.submenu, compact && css.compactList)} role="menu">
++          <MenuSurface compact={compact} ownerDocument={ownerDocument} className={clsx(css.submenu, compact && css.compactList)} role="menu">
+             {entry.submenu.map(sub => (
+               <button
+                 key={sub.id}
+@@ -514,7 +533,7 @@ export function Menu({ open, anchor, items = [], children, selectedId, selectedI
+   // focus, data row or component row — closes the open card. A parent opens
+   // its card in its own handlers; rows inside the card are not top-level rows.
+   const collapseSubmenuFrom = (e: SyntheticEvent<HTMLDivElement>): void => {
+-    const row = e.target instanceof Element ? e.target.closest('button[role="menuitem"]') : null
++    const row = isElementInDocument(e.target, ownerDocument) ? e.target.closest('button[role="menuitem"]') : null
+     if (row === null || row.getAttribute('aria-haspopup') === 'menu') return
+     if (row.closest('[role="menu"]') !== e.currentTarget) return
+     setOpenSubmenuId(null)
+@@ -525,7 +544,7 @@ export function Menu({ open, anchor, items = [], children, selectedId, selectedI
+   // already at the final position (with getAnchorRect returning null the
+   // list simply stays hidden).
+   const list = open && (
+-    <MenuSurface compact={compact}
++    <MenuSurface compact={compact} ownerDocument={ownerDocument}
+       ref={listRef}
+       className={clsx(css.list, listClassName, dense && css.denseList, compact && css.compactList, scrollable && css.scrollable, portal && css.portal, side === 'top' && !portal && css.sideTop, align === 'end' && !portal && css.alignEnd)}
+       style={portal ? fixedPos ?? MEASURE_STYLE : undefined}
+@@ -538,7 +557,7 @@ export function Menu({ open, anchor, items = [], children, selectedId, selectedI
+       // own handler ran; a submenu parent only opened its card.
+       onClick={(e) => {
+         e.stopPropagation()
+-        const row = e.target instanceof Element ? e.target.closest('button[role="menuitem"]') : null
++        const row = isElementInDocument(e.target, ownerDocument) ? e.target.closest('button[role="menuitem"]') : null
+         if (row !== null && row.getAttribute('aria-haspopup') !== 'menu') refocusAfterSelection()
+       }}
+       onMouseOver={collapseSubmenuFrom}
+@@ -562,13 +581,14 @@ export function Menu({ open, anchor, items = [], children, selectedId, selectedI
+   // gap between them, therefore never counts as leaving.
+   return (
+     <span
+-      ref={rootRef}
++      ref={setRootElement}
++      {...{ [OWNER_DOCUMENT_ROOT_ATTRIBUTE]: '' }}
+       className={clsx(css.root, className)}
+       onPointerEnter={closeOnPointerLeave ? cancelClose : undefined}
+       onPointerLeave={closeOnPointerLeave ? () => { if (open) armClose() } : undefined}
+     >
+       {anchor}
+-      {portal ? (list !== false && createPortal(list, document.body)) : list}
++      {portal ? (list !== false && createPortal(list, ownerDocument.body)) : list}
+     </span>
+   )
+ }
+diff --git a/packages/client/ui-primitives/src/MenuSurface.tsx b/packages/client/ui-primitives/src/MenuSurface.tsx
+index 1bdefd0..34cf4db 100644
+--- a/packages/client/ui-primitives/src/MenuSurface.tsx
++++ b/packages/client/ui-primitives/src/MenuSurface.tsx
+@@ -1,5 +1,5 @@
+ /** Shared menu material and the macOS backing that lets Chromium blur transparent windows. */
+-import { forwardRef, useId, useLayoutEffect, useRef, type ComponentPropsWithoutRef, type CSSProperties } from 'react'
++import { forwardRef, useCallback, useId, useLayoutEffect, useRef, useState, type ComponentPropsWithoutRef, type CSSProperties } from 'react'
+ import { createPortal } from 'react-dom'
+ import clsx from 'clsx'
+ import css from './MenuSurface.module.css'
+@@ -8,6 +8,8 @@ import css from './MenuSurface.module.css'
+ export interface MenuSurfaceProps extends ComponentPropsWithoutRef<'div'> {
+   /** Match the shared compact menu's smaller outer radius. */
+   compact?: boolean
++  /** Portal document for a menu rendered in a secondary same-origin window. */
++  ownerDocument?: Document
+ }
+ 
+ /**
+@@ -18,21 +20,33 @@ export interface MenuSurfaceProps extends ComponentPropsWithoutRef<'div'> {
+  * @returns Menu content plus a backing portal removed with the menu.
+  */
+ export const MenuSurface = forwardRef<HTMLDivElement, MenuSurfaceProps>(function MenuSurface({
+-  compact = false, className, style, children, ...props
++  compact = false, ownerDocument: explicitDocument, className, style, children, ...props
+ }, ref) {
+   const id = useId()
++  const surfaceRef = useRef<HTMLDivElement | null>(null)
++  const [surfaceDocument, setSurfaceDocument] = useState<Document | null>(null)
+   const backingRef = useRef<HTMLDivElement>(null)
++  const ownerDocument = explicitDocument ?? surfaceDocument ?? document
++  const setSurfaceElement = useCallback((element: HTMLDivElement | null) => {
++    surfaceRef.current = element
++    if (typeof ref === 'function') ref(element)
++    else if (ref) ref.current = element
++    if (explicitDocument === undefined) {
++      setSurfaceDocument(current => current === element?.ownerDocument ? current : element?.ownerDocument ?? null)
++    }
++  }, [explicitDocument, ref])
+   useLayoutEffect(() => {
+     // Nested React portals can insert the backing before its anchor. CSS anchor
+     // positioning requires the anchor to precede the positioned element.
+     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- The portal ref is attached before layout effects run.
+-    document.body.appendChild(backingRef.current!)
+-  }, [])
++    const backing = backingRef.current
++    if (backing && backing.ownerDocument === ownerDocument) ownerDocument.body.appendChild(backing)
++  }, [ownerDocument])
+   const anchorStyle: CSSProperties & { '--dsh-menu-anchor': string } = {
+     '--dsh-menu-anchor': `--dsh-menu-${id.replaceAll(':', '')}`,
+   }
+   return <>
+-    <div {...props} ref={ref} data-menu-material="translucent"
++    <div {...props} ref={setSurfaceElement} data-menu-material="translucent"
+       className={clsx(css.surface, compact && css.compact, className)} style={{ ...style, ...anchorStyle }}>
+       <div aria-hidden="true" className={css.material} />
+       {children}
+@@ -40,7 +54,7 @@ export const MenuSurface = forwardRef<HTMLDivElement, MenuSurfaceProps>(function
+     {createPortal(
+       <div ref={backingRef} aria-hidden="true" data-menu-backing="" className={clsx(css.backing, compact && css.compact)}
+         style={{ ...anchorStyle, visibility: style?.visibility }} />,
+-      document.body,
++      ownerDocument.body,
+     )}
+   </>
+ })
+diff --git a/packages/client/ui-primitives/src/Tooltip.tsx b/packages/client/ui-primitives/src/Tooltip.tsx
+index 8259ed6..eace10a 100644
+--- a/packages/client/ui-primitives/src/Tooltip.tsx
++++ b/packages/client/ui-primitives/src/Tooltip.tsx
+@@ -10,6 +10,7 @@ import css from './Tooltip.module.css'
+ // Tooltips take the wide answer — any key returns to the keyboard. Focus rings read the
+ // narrower `data-input-modality` attribute the same module publishes.
+ import { pointerModality } from './input-modality.ts'
++import { OWNER_DOCUMENT_CHANGE_EVENT, OWNER_DOCUMENT_ROOT_ATTRIBUTE, ownerWindowOf } from './owner-document.ts'
+ 
+ export type { TooltipSide } from './tooltip-placement.ts'
+ 
+@@ -64,14 +65,29 @@ export function Tooltip({ label, shortcutKeys, side = 'right', align = 'center',
+   const id = useId()
+   const [pinned, setPinned] = useState(false)
+   const anchor = useRef<HTMLElement | null>(null)
++  const [anchorDocument, setAnchorDocument] = useState<Document | null>(null)
++  const ownerDocument = anchorDocument ?? document
++  const ownerWindow = ownerWindowOf(ownerDocument)
+   // React 18 keeps the element's ref outside props; forward it so wrapping an
+   // anchor in Tooltip never silently severs the owner's ref.
+   const childRef = (children as ReactElement<AnchorProps> & { ref?: Ref<HTMLElement> }).ref
+   const mergedRef = useCallback((el: HTMLElement | null) => {
+     anchor.current = el
++    el?.setAttribute(OWNER_DOCUMENT_ROOT_ATTRIBUTE, '')
++    setAnchorDocument(current => current === el?.ownerDocument ? current : el?.ownerDocument ?? null)
+     if (typeof childRef === 'function') childRef(el)
+     else if (childRef != null) (childRef as MutableRefObject<HTMLElement | null>).current = el
+   }, [childRef])
++  useEffect(() => {
++    const element = anchor.current
++    if (element === null) return
++    const refreshOwnerDocument = () => {
++      const nextDocument = element.ownerDocument
++      setAnchorDocument(current => current === nextDocument ? current : nextDocument)
++    }
++    element.addEventListener(OWNER_DOCUMENT_CHANGE_EVENT, refreshOwnerDocument)
++    return () => element.removeEventListener(OWNER_DOCUMENT_CHANGE_EVENT, refreshOwnerDocument)
++  }, [])
+   const [pos, setPos] = useState<DOMRect | null>(null)
+   const bubble = useRef<HTMLSpanElement | null>(null)
+   const resolvedLabel = pos === null
+@@ -102,7 +118,7 @@ export function Tooltip({ label, shortcutKeys, side = 'right', align = 'center',
+       if (size === undefined) return
+       const placement = placeTooltip({
+         anchor: anchorRect, width: size.inlineSize, height: size.blockSize,
+-        viewportWidth: window.innerWidth, viewportHeight: window.innerHeight, side, align, gap,
++        viewportWidth: ownerWindow.innerWidth, viewportHeight: ownerWindow.innerHeight, side, align, gap,
+       })
+       const horizontal = placement.side === 'right' || placement.side === 'left'
+       const offsetX = horizontal ? 0 : align === 'end' ? placement.width : placement.width / 2
+@@ -121,12 +137,12 @@ export function Tooltip({ label, shortcutKeys, side = 'right', align = 'center',
+       fit()
+     })
+     observer.observe(el, { box: 'border-box' })
+-    window.addEventListener('resize', onResize)
++    ownerWindow.addEventListener('resize', onResize)
+     return () => {
+       observer.disconnect()
+-      window.removeEventListener('resize', onResize)
++      ownerWindow.removeEventListener('resize', onResize)
+     }
+-  }, [align, gap, pos, side, suppressed, visible])
++  }, [align, gap, pos, side, suppressed, visible, ownerWindow])
+   useEffect(() => {
+     announce(visible)
+     return () => { announce(false) }
+@@ -190,9 +206,9 @@ export function Tooltip({ label, shortcutKeys, side = 'right', align = 'center',
+       if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation() }
+       dismiss()
+     }
+-    document.addEventListener('keydown', onKeyDown, true)
+-    return () => { document.removeEventListener('keydown', onKeyDown, true) }
+-  }, [dismiss, openOnClick, visible])
++    ownerDocument.addEventListener('keydown', onKeyDown, true)
++    return () => { ownerDocument.removeEventListener('keydown', onKeyDown, true) }
++  }, [dismiss, openOnClick, visible, ownerDocument])
+ 
+   const content = visible && !suppressed && (
+     <span
+@@ -240,7 +256,7 @@ export function Tooltip({ label, shortcutKeys, side = 'right', align = 'center',
+         },
+         onBlur: (e) => { children.props.onBlur?.(e); triggers.current.focus = false; hide() },
+       })}
+-      {portal ? (content !== false && createPortal(content, document.body)) : content}
++      {portal ? (content !== false && createPortal(content, ownerDocument.body)) : content}
+     </TooltipSuppression.Provider>
+   )
+ }
+diff --git a/packages/client/ui-primitives/src/owner-document.ts b/packages/client/ui-primitives/src/owner-document.ts
+new file mode 100644
+index 0000000..a0394cd
+--- /dev/null
++++ b/packages/client/ui-primitives/src/owner-document.ts
+@@ -0,0 +0,40 @@
++/** DOM realm helpers for components rendered into secondary same-origin windows. */
++
++/** Shell dispatches this on marked roots after Dockview moves a panel between windows. */
++export const OWNER_DOCUMENT_CHANGE_EVENT = 'dsh:composer-owner-document-change'
++/** Only explicit UI roots that own document-scoped listeners receive migration notifications. */
++export const OWNER_DOCUMENT_ROOT_ATTRIBUTE = 'data-dsh-owner-document-root'
++
++/** Return the node's document, falling back to the primary document for non-node values. */
++export function ownerDocumentOf(node: Node | null | undefined): Document {
++  return node?.ownerDocument ?? document
++}
++
++/** Return the window that owns a document, with the primary window as a detached-document fallback. */
++export function ownerWindowOf(document: Document): Window & typeof globalThis {
++  return document.defaultView ?? window
++}
++
++/** Cross-realm-safe Node check against the DOM owner of the listener. */
++export function isNodeInDocument(value: EventTarget | null, document: Document): value is Node {
++  const NodeConstructor = document.defaultView?.Node
++  return NodeConstructor !== undefined && value instanceof NodeConstructor
++}
++
++/** Cross-realm-safe Element check against the DOM owner of the listener. */
++export function isElementInDocument(value: EventTarget | null, document: Document): value is Element {
++  const ElementConstructor = document.defaultView?.Element
++  return ElementConstructor !== undefined && value instanceof ElementConstructor
++}
++
++/** Cross-realm-safe HTMLElement check against the DOM owner of the listener. */
++export function isHTMLElementInDocument(value: EventTarget | null, document: Document): value is HTMLElement {
++  const HTMLElementConstructor = document.defaultView?.HTMLElement
++  return HTMLElementConstructor !== undefined && value instanceof HTMLElementConstructor
++}
++
++/** Cross-realm-safe iframe check against the DOM owner of the listener. */
++export function isIFrameInDocument(value: EventTarget | null, document: Document): value is HTMLIFrameElement {
++  const IFrameConstructor = document.defaultView?.HTMLIFrameElement
++  return IFrameConstructor !== undefined && value instanceof IFrameConstructor
++}
+diff --git a/packages/client/ui-primitives/src/useDismissOnOutsidePointer.ts b/packages/client/ui-primitives/src/useDismissOnOutsidePointer.ts
+index 2f16f43..f2806d6 100644
+--- a/packages/client/ui-primitives/src/useDismissOnOutsidePointer.ts
++++ b/packages/client/ui-primitives/src/useDismissOnOutsidePointer.ts
+@@ -4,6 +4,7 @@
+  */
+ import { useEffect } from 'react'
+ import type { RefObject } from 'react'
++import { isNodeInDocument, OWNER_DOCUMENT_CHANGE_EVENT } from './owner-document.ts'
+ 
+ /**
+  * Close an open popover when a pointerdown lands outside its root element.
+@@ -21,14 +22,30 @@ export function useDismissOnOutsidePointer(
+ ): void {
+   useEffect(() => {
+     if (!open) return
++    let document = root.current?.ownerDocument ?? portal?.current?.ownerDocument ?? globalThis.document
+     const closeOutside = (event: PointerEvent): void => {
+-      if (event.target instanceof Node
++      if (isNodeInDocument(event.target, document)
+         && root.current?.contains(event.target) !== true
+         && portal?.current?.contains(event.target) !== true) {
+         setOpen(false)
+       }
+     }
+-    document.addEventListener('pointerdown', closeOutside)
+-    return () => { document.removeEventListener('pointerdown', closeOutside) }
+-  }, [root, open, setOpen, portal])
++    const bind = () => document.addEventListener('pointerdown', closeOutside)
++    const unbind = () => document.removeEventListener('pointerdown', closeOutside)
++    const rebindOwnerDocument = () => {
++      const nextDocument = root.current?.ownerDocument ?? portal?.current?.ownerDocument ?? globalThis.document
++      if (nextDocument === document) return
++      unbind()
++      document = nextDocument
++      bind()
++    }
++    bind()
++    root.current?.addEventListener(OWNER_DOCUMENT_CHANGE_EVENT, rebindOwnerDocument)
++    portal?.current?.addEventListener(OWNER_DOCUMENT_CHANGE_EVENT, rebindOwnerDocument)
++    return () => {
++      unbind()
++      root.current?.removeEventListener(OWNER_DOCUMENT_CHANGE_EVENT, rebindOwnerDocument)
++      portal?.current?.removeEventListener(OWNER_DOCUMENT_CHANGE_EVENT, rebindOwnerDocument)
++    }
++  }, [root, open, setOpen, portal, portal?.current?.ownerDocument])
+ }
+diff --git a/packages/client/ui-primitives/tests/secondary-window.client.spec.tsx b/packages/client/ui-primitives/tests/secondary-window.client.spec.tsx
+new file mode 100644
+index 0000000..22d0199
+--- /dev/null
++++ b/packages/client/ui-primitives/tests/secondary-window.client.spec.tsx
+@@ -0,0 +0,166 @@
++// @vitest-environment jsdom
++/** Same-origin secondary-window ownership for anchored popovers. */
++import { createPortal } from 'react-dom'
++import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
++import { afterEach, expect, it, vi } from 'vitest'
++import { Menu } from '../src/Menu.tsx'
++import { Tooltip } from '../src/Tooltip.tsx'
++import { HoverCard } from '../src/HoverCard.tsx'
++import { isElementInDocument, isHTMLElementInDocument, isNodeInDocument } from '../src/owner-document.ts'
++import { OWNER_DOCUMENT_CHANGE_EVENT, OWNER_DOCUMENT_ROOT_ATTRIBUTE } from '../src/owner-document.ts'
++
++afterEach(cleanup)
++
++function makeSecondaryDocument(): { iframe: HTMLIFrameElement; document: Document } {
++  const iframe = document.createElement('iframe')
++  document.body.append(iframe)
++  const childDocument = iframe.contentDocument
++  if (childDocument === null) throw new Error('jsdom iframe did not create a document')
++  return { iframe, document: childDocument }
++}
++
++it('uses the secondary document portal, viewport, focus and keyboard listeners for menus', async () => {
++  const { iframe, document: childDocument } = makeSecondaryDocument()
++  const target = childDocument.createElement('div')
++  childDocument.body.append(target)
++  const onClose = vi.fn()
++  const view = render(createPortal(
++    <Menu open portal autoFocus anchor={<button>Open menu</button>}
++      items={[{ id: 'one', label: 'One' }]} onClose={onClose} />,
++    target,
++  ))
++
++  const menu = childDocument.querySelector('[role="menu"]')
++  expect(menu).not.toBeNull()
++  expect(document.querySelector('[role="menu"]')).toBeNull()
++  expect(childDocument.querySelector('[data-menu-backing]')).not.toBeNull()
++  expect(document.querySelector('[data-menu-backing]')).toBeNull()
++  fireEvent.pointerDown(childDocument.body)
++  expect(onClose).toHaveBeenCalledTimes(1)
++  fireEvent.keyDown(childDocument, { key: 'Escape' })
++  expect(onClose).toHaveBeenCalledTimes(2)
++  view.unmount()
++  iframe.remove()
++})
++
++it('portals tooltips into their anchor document and handles its Escape key there', async () => {
++  const { iframe, document: childDocument } = makeSecondaryDocument()
++  const target = childDocument.createElement('div')
++  childDocument.body.append(target)
++  const view = render(createPortal(<Tooltip portal label="Tip" openOnClick><button>Tooltip anchor</button></Tooltip>, target))
++  const tooltipAnchor = childDocument.querySelector('button')!
++
++  fireEvent.click(tooltipAnchor)
++  await waitFor(() => expect(childDocument.querySelector('[role="tooltip"]')).not.toBeNull())
++  expect(document.querySelector('[role="tooltip"]')).toBeNull()
++  fireEvent.keyDown(childDocument, { key: 'Escape' })
++  await waitFor(() => expect(childDocument.querySelector('[role="tooltip"]')).toBeNull())
++  view.unmount()
++  iframe.remove()
++})
++
++it('portals hover cards into their anchor document and handles its Escape key there', async () => {
++  const { iframe, document: childDocument } = makeSecondaryDocument()
++  const target = childDocument.createElement('div')
++  childDocument.body.append(target)
++  const view = render(createPortal(<HoverCard anchor={<button>Hover anchor</button>}
++    content={<span>Preview body</span>} openDelayMs={0} variant="preview" />, target))
++  const anchor = childDocument.querySelector('button')!
++  fireEvent.pointerEnter(anchor.parentElement!)
++  await waitFor(() => expect(childDocument.body.textContent).toContain('Preview body'))
++  expect(document.body.textContent).not.toContain('Preview body')
++  fireEvent.keyDown(childDocument, { key: 'Escape' })
++  await waitFor(() => expect(childDocument.body.textContent).not.toContain('Preview body'))
++  view.unmount()
++  iframe.remove()
++})
++
++it('recognizes DOM elements using the owning window constructors', () => {
++  const { iframe, document: childDocument } = makeSecondaryDocument()
++  const element = childDocument.createElement('button')
++  expect(isNodeInDocument(element, childDocument)).toBe(true)
++  expect(isElementInDocument(element, childDocument)).toBe(true)
++  expect(isHTMLElementInDocument(element, childDocument)).toBe(true)
++  expect(isNodeInDocument(element, document)).toBe(false)
++  expect(isElementInDocument(element, document)).toBe(false)
++  expect(isHTMLElementInDocument(element, document)).toBe(false)
++  iframe.remove()
++})
++
++it('rebinds a mounted menu and its portal after its panel host is adopted into another document', async () => {
++  const { iframe, document: childDocument } = makeSecondaryDocument()
++  const panelHost = document.createElement('div')
++  document.body.append(panelHost)
++  const onClose = vi.fn()
++  const view = render(createPortal(
++    <Menu open={false} portal anchor={<button>Open menu</button>} items={[{ id: 'one', label: 'One' }]} onClose={onClose} />,
++    panelHost,
++  ))
++  const root = panelHost.querySelector(`[${OWNER_DOCUMENT_ROOT_ATTRIBUTE}]`)
++  expect(root).not.toBeNull()
++
++  childDocument.body.append(panelHost)
++  await act(async () => { root!.dispatchEvent(new childDocument.defaultView!.Event(OWNER_DOCUMENT_CHANGE_EVENT)) })
++  view.rerender(createPortal(
++    <Menu open portal anchor={<button>Open menu</button>} items={[{ id: 'one', label: 'One' }]} onClose={onClose} />,
++    panelHost,
++  ))
++  await waitFor(() => expect(childDocument.querySelector('[role="menu"]')).not.toBeNull())
++  expect(document.querySelector('[role="menu"]')).toBeNull()
++  document.body.append(panelHost)
++  await act(async () => { root!.dispatchEvent(new document.defaultView!.Event(OWNER_DOCUMENT_CHANGE_EVENT)) })
++  await waitFor(() => expect(document.querySelector('[role="menu"]')).not.toBeNull())
++  expect(childDocument.querySelector('[role="menu"]')).toBeNull()
++  fireEvent.pointerDown(document.body)
++  expect(onClose).toHaveBeenCalledTimes(1)
++
++  view.unmount()
++  iframe.remove()
++})
++
++it('rebinds a mounted tooltip anchor and Escape listener after panel adoption', async () => {
++  const { iframe, document: childDocument } = makeSecondaryDocument()
++  const panelHost = document.createElement('div')
++  document.body.append(panelHost)
++  const view = render(createPortal(
++    <Tooltip portal openOnClick label="Tip"><button>Tooltip anchor</button></Tooltip>,
++    panelHost,
++  ))
++  const anchor = panelHost.querySelector(`[${OWNER_DOCUMENT_ROOT_ATTRIBUTE}]`)
++  expect(anchor).not.toBeNull()
++
++  childDocument.body.append(panelHost)
++  await act(async () => { anchor!.dispatchEvent(new childDocument.defaultView!.Event(OWNER_DOCUMENT_CHANGE_EVENT)) })
++  fireEvent.click(anchor!)
++  await waitFor(() => expect(childDocument.querySelector('[role="tooltip"]')).not.toBeNull())
++  expect(document.querySelector('[role="tooltip"]')).toBeNull()
++  fireEvent.keyDown(childDocument, { key: 'Escape' })
++  await waitFor(() => expect(childDocument.querySelector('[role="tooltip"]')).toBeNull())
++
++  view.unmount()
++  iframe.remove()
++})
++
++it('rebinds a mounted hover card anchor and Escape listener after panel adoption', async () => {
++  const { iframe, document: childDocument } = makeSecondaryDocument()
++  const panelHost = document.createElement('div')
++  document.body.append(panelHost)
++  const view = render(createPortal(
++    <HoverCard anchor={<button>Hover anchor</button>} content={<span>Preview body</span>}
++      openDelayMs={0} variant="preview" />,
++    panelHost,
++  ))
++  const root = panelHost.querySelector(`[${OWNER_DOCUMENT_ROOT_ATTRIBUTE}]`)
++  expect(root).not.toBeNull()
++
++  childDocument.body.append(panelHost)
++  await act(async () => { root!.dispatchEvent(new childDocument.defaultView!.Event(OWNER_DOCUMENT_CHANGE_EVENT)) })
++  fireEvent.pointerEnter(root!)
++  await waitFor(() => expect(childDocument.body.textContent).toContain('Preview body'))
++  expect(document.body.textContent).not.toContain('Preview body')
++  fireEvent.keyDown(childDocument, { key: 'Escape' })
++  await waitFor(() => expect(childDocument.body.textContent).not.toContain('Preview body'))
++
++  view.unmount()
++  iframe.remove()
++})

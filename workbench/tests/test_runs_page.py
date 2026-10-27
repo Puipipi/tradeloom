@@ -48,6 +48,44 @@ class RunsDiagnosticsTests(TestCase):
         self.assertContains(response, config["prompt_version"])
         self.assertContains(response, config["rules_sha256"])
         self.assertContains(response, config["prompt_sha256"])
+        self.assertContains(response, 'data-testid="platform-health-tree"')
+        self.assertContains(response, 'data-testid="runs-events-scroll"')
+        self.assertLess(body.index('data-testid="platform-status"'), body.index('data-testid="runs-table"'))
+        self.assertContains(response, "business-runs-health3")
+        self.assertContains(response, "本地模拟")
+        self.assertContains(response, "本地数据与配置")
+        self.assertContains(response, "工作流运行")
+        self.assertContains(response, "外部服务接入")
+        self.assertContains(response, 'data-testid="current-intent-config"')
+
+    def test_runs_empty_state_is_single_compact_message(self):
+        response = self.client.get("/runs")
+
+        self.assertContains(response, 'data-testid="runs-empty"')
+        self.assertContains(response, "暂无运行记录 · 本地产品资料执行器运行后会在这里留下摘要。")
+
+    def test_runs_platform_tree_preserves_unknown_and_not_checked_states(self):
+        diagnostics = {
+            "status": "unknown_overall",
+            "dependencies": {
+                "database": {"status": "not_checked"},
+                "intent_config": {"status": "unknown_config"},
+                "runtime": {"status": "unknown_runtime"},
+                "external_provider": {"status": "not_checked"},
+            },
+            "runtime_health": None,
+            "intent": None,
+        }
+        with patch("workbench.views.collect_local_diagnostics", return_value=diagnostics):
+            response = self.client.get("/runs")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+        self.assertIn("unknown_overall", body)
+        self.assertIn("not_checked", body)
+        self.assertIn("unknown_config", body)
+        self.assertIn("unknown_runtime", body)
+        self.assertIn("未知", body)
 
     def test_health_preserves_legacy_fields_and_reports_local_checks(self):
         response = self.client.get("/api/health")

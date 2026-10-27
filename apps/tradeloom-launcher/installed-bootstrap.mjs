@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto'
-import { spawn } from 'node:child_process'
+import { spawn, execFileSync } from 'node:child_process'
 import { open, lstat, mkdir, readFile, readdir, realpath, writeFile, copyFile, appendFile, rename } from 'node:fs/promises'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -17,6 +17,35 @@ export const POSTGRES_MARKER_CONTENT = 'tradeloom-postgres-data-v1\n'
 export const POSTGRES_PORT = 55432
 export const DJANGO_PORT = 3090
 export const DSH_PORT = 3088
+export function validatePackagedPorts(value = { host: DSH_PORT, django: DJANGO_PORT, postgres: POSTGRES_PORT }) {
+  if (!value || Object.keys(value).sort().join(',') !== 'django,host,postgres' || Object.values(value).some(n => !Number.isInteger(n) || n < 1 || n > 65535) || new Set(Object.values(value)).size !== 3) throw new TypeError('invalid packaged port tuple')
+  return Object.freeze({ ...value })
+}
+export function parsePackagedPortFlags(argv) {
+  const names = { '--tradeloom-host-port': 'host', '--tradeloom-django-port': 'django', '--tradeloom-postgres-port': 'postgres' }
+  const result = {}
+  for (let i = 0; i < argv.length; i++) {
+    if (!Object.hasOwn(names, argv[i])) { if (String(argv[i]).startsWith('--tradeloom-') && String(argv[i]).includes('-port')) throw new TypeError('invalid packaged port flag'); continue }
+    const key = names[argv[i]], raw = argv[++i]
+    if (key in result || !/^[1-9][0-9]*$/.test(raw ?? '')) throw new TypeError('invalid packaged port flag')
+    result[key] = Number(raw)
+  }
+  return Object.keys(result).length ? validatePackagedPorts(result) : validatePackagedPorts()
+}
+async function verifyOwnedPostgresListener(data, port, fs, deps) {
+  const pidFile = path.join(data, 'postmaster.pid')
+  const stat = await fs.lstat(pidFile)
+  if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('owned PostgreSQL identity file invalid')
+  const lines = (await fs.readFile(pidFile, 'utf8')).split(/\r?\n/)
+  const pid = Number(lines[0]); const recordedPort = Number(lines[3])
+  if (!Number.isInteger(pid) || pid <= 0 || recordedPort !== port || path.resolve(lines[1] ?? '').toLowerCase() !== path.resolve(data).toLowerCase()) throw new Error('owned PostgreSQL identity mismatch')
+  const check = deps.listenerOwner ?? ((requestedPort) => {
+    const systemRoot = process.env.SystemRoot || 'C:/Windows'
+    const out = execFileSync(path.join(systemRoot, 'System32', 'netstat.exe'), ['-ano', '-p', 'tcp'], { encoding: 'utf8', windowsHide: true })
+    return out.split(/\r?\n/).some(line => { const fields = line.trim().split(/\s+/); return fields[0] === 'TCP' && fields[1] === `127.0.0.1:${requestedPort}` && fields[3] === 'LISTENING' && Number(fields[4]) === pid })
+  })
+  if (!(await check(port, pid))) throw new Error('owned PostgreSQL listener identity mismatch')
+}
 export const BUSINESS_SHELL_INVENTORY_FILE = '.tradeloom-business-shell-inventory.json'
 export const LEGACY_BUSINESS_SHELL_SHA256 = 'b86ae8b432b6a9cfb28582673d1867b0bfa7f39b8d9cd65c29f3ed692fb3766f'
 
@@ -399,17 +428,17 @@ function pythonRunArgs(pythonPath, backendRoot, packagesRoot, managePath, django
   return ['-I', '-B', '-c', runner, spec]
 }
 
-function makeDjangoEnv(isolated, host, password, paths, nativeBridgeKey) {
+function makeDjangoEnv(isolated, host, password, paths, nativeBridgeKey, ports) {
   return {
     ...isolated,
     TRADELOOM_NATIVE_BRIDGE_KEY: nativeBridgeKey,
     TRADELOOM_DSH_EMBED: '1',
     TRADELOOM_DSH_ALLOWED_HOSTS: host,
-    TRADELOOM_DSH_CSRF_TRUSTED_ORIGINS: 'http://' + host + ':' + DSH_PORT,
+    TRADELOOM_DSH_CSRF_TRUSTED_ORIGINS: new URL('http://' + host + ':' + ports.host).origin,
     TRADELOOM_DB_NAME: 'tradeloom',
     TRADELOOM_DB_USER: 'tradeloom',
     TRADELOOM_DB_HOST: '127.0.0.1',
-    TRADELOOM_DB_PORT: String(POSTGRES_PORT),
+    TRADELOOM_DB_PORT: String(ports.postgres),
     TRADELOOM_DB_PASSWORD: password,
     TRADELOOM_MEDIA_ROOT: path.join(paths.dataRoot, 'media'),
     TRADELOOM_ARTIFACT_ROOT: path.join(paths.dataRoot, 'artifacts'),
@@ -427,7 +456,8 @@ async function waitForListener(host, port, record, timeoutMs, delay, connect) {
   throw new Error('Django 未在 ' + timeoutMs / 1000 + ' 秒内监听 127.0.0.1:' + port + '。')
 }
 
-export async function bootstrapInstalledDesktop({ env = process.env, processEnv = process.env, appPath, resourcesPath, platform = process.platform, deps = {} } = {}) {
+export async function bootstrapInstalledDesktop({ env = process.env, processEnv = process.env, appPath, resourcesPath, platform = process.platform, deps = {}, ports: requestedPorts } = {}) {
+  const ports = validatePackagedPorts(requestedPorts)
   const fs = deps.fs ?? { lstat, readFile, writeFile, readdir, mkdir, realpath, copyFile, rename }
   const pathsFactory = deps.getDefaultPaths ?? getDefaultPaths
   const ownDirectory = deps.ensureOwnedDirectory ?? ensureOwnedDirectory
@@ -500,14 +530,15 @@ export async function bootstrapInstalledDesktop({ env = process.env, processEnv 
   const requested = await deps.chooseNetworkAddress(candidates)
   const host = (deps.chooseAddress ?? chooseAddress)(candidates, requested)
   try {
-    await (deps.assertPortsAvailable ?? (async () => {}))([[host, DSH_PORT], ['127.0.0.1', DJANGO_PORT]])
+    await (deps.assertPortsAvailable ?? (async () => {}))([[host, ports.host], ['127.0.0.1', ports.django]])
   } catch {
-    throw new Error('桌面服务端口 3088 或 3090 被其他进程占用；织贸助手不会终止该进程。')
+    throw new Error('桌面服务端口 ' + ports.host + ' 或 ' + ports.django + ' 被其他进程占用；织贸助手不会终止该进程。')
   }
   processEnv.TRADELOOM_DSH_BIND_HOST = host
-  processEnv.TRADELOOM_DSH_BIND_PORT = String(DSH_PORT)
+  processEnv.TRADELOOM_DSH_BIND_PORT = String(ports.host)
   processEnv.DSH_DESKTOP_BIND_HOST = host
-  processEnv.DSH_DESKTOP_BIND_PORT = String(DSH_PORT)
+  processEnv.DSH_DESKTOP_BIND_PORT = String(ports.host)
+  processEnv.TRADELOOM_DJANGO_PORT = String(ports.django)
   const shellDestination = path.join(paths.home, 'profiles', 'desktop', 'node_modules', '@tradeloom', 'dsh-business-shell')
   const profileDir = path.dirname(path.dirname(path.dirname(shellDestination)))
   const lockAddress = (deps.launcherPipeName ?? launcherPipeName)(paths.home, platform)
@@ -572,11 +603,12 @@ export async function bootstrapInstalledDesktop({ env = process.env, processEnv 
     const status = await controller(pgCtl, ['status', '-D', postgresData], { cwd: paths.workspace, env: isolated, logPath: path.join(logs, 'postgres-controller.log') })
     if (status.error) throw status.error
     if (status.code === 0) {
+      await verifyOwnedPostgresListener(postgresData, ports.postgres, fs, deps)
       postgresActive = true
-      if (!(await connect('127.0.0.1', POSTGRES_PORT))) throw new Error('owned PostgreSQL 正在运行但未监听 127.0.0.1:55432。')
+      if (!(await connect('127.0.0.1', ports.postgres))) throw new Error('owned PostgreSQL 未监听 127.0.0.1:' + ports.postgres + '。')
     } else {
-      try { await (deps.assertPortsAvailable ?? (async () => {}))([['127.0.0.1', POSTGRES_PORT]]) }
-      catch { throw new Error('数据库端口 55432 被其他进程占用；织贸助手不会终止该进程。') }
+      try { await (deps.assertPortsAvailable ?? (async () => {}))([['127.0.0.1', ports.postgres]]) }
+      catch { throw new Error('数据库端口 ' + ports.postgres + ' 被其他进程占用；织贸助手不会终止该进程。') }
       if (!initialized) {
         const entries = await fs.readdir(postgresData)
         if (entries.length) throw new Error('PostgreSQL data 目录不是空目录；拒绝初始化或清空。')
@@ -587,33 +619,33 @@ export async function bootstrapInstalledDesktop({ env = process.env, processEnv 
       }
       postgresActive = true
       postgresStartedHere = true
-      const start = await controller(pgCtl, ['start', '-D', postgresData, '-o', '-h 127.0.0.1 -p ' + POSTGRES_PORT, '-w', '-t', '45'],
+      const start = await controller(pgCtl, ['start', '-D', postgresData, '-o', '-h 127.0.0.1 -p ' + ports.postgres, '-w', '-t', '45'],
         { cwd: paths.workspace, env: isolated, logPath: path.join(logs, 'postgres-controller.log') })
       if (start.error || start.code !== 0) throw new Error('owned PostgreSQL 启动失败（exit=' + (start.code ?? 'null') + '）。')
     }
-    const dbCheck = await runFile(psql, ['-h', '127.0.0.1', '-p', String(POSTGRES_PORT), '-U', 'tradeloom', '-d', 'postgres', '-tAc', "SELECT 1 FROM pg_database WHERE datname = 'tradeloom'"],
+    const dbCheck = await runFile(psql, ['-h', '127.0.0.1', '-p', String(ports.postgres), '-U', 'tradeloom', '-d', 'postgres', '-tAc', "SELECT 1 FROM pg_database WHERE datname = 'tradeloom'"],
       { cwd: paths.workspace, env: dbEnv, logPath: path.join(logs, 'postgres-check.log') })
     if (dbCheck.error || dbCheck.code !== 0) throw new Error('owned PostgreSQL connection check failed (' + (dbCheck.code ?? 'null') + ').')
     if (String(dbCheck.stdout ?? '').trim() !== '1') {
-      const created = await runFile(createdb, ['-h', '127.0.0.1', '-p', String(POSTGRES_PORT), '-U', 'tradeloom', 'tradeloom'],
+      const created = await runFile(createdb, ['-h', '127.0.0.1', '-p', String(ports.postgres), '-U', 'tradeloom', 'tradeloom'],
         { cwd: paths.workspace, env: dbEnv, logPath: path.join(logs, 'postgres-createdb.log') })
       if (created.error || created.code !== 0) throw new Error('owned PostgreSQL tradeloom database creation failed (' + (created.code ?? 'null') + ').')
     }
 
-    const djangoEnv = makeDjangoEnv(isolated, host, secret.password, { ...paths, media, artifacts }, nativeBridgeKey)
+    const djangoEnv = makeDjangoEnv(isolated, host, secret.password, { ...paths, media, artifacts }, nativeBridgeKey, ports)
     const runPython = async djangoArgs => {
       const result = await runFile(manifest.python, pythonRunArgs(manifest.python, manifest.backend, manifest.packages, path.join(manifest.backend, 'manage.py'), djangoArgs),
         { cwd: workspace, env: djangoEnv, logPath: path.join(logs, 'django-startup.log') })
       if (result.error || result.code !== 0) throw new Error('Django ' + djangoArgs[0] + ' 失败（exit=' + (result.code ?? 'null') + '）。')
     }
     await runPython(['migrate', '--noinput'])
-    const djangoArgs = pythonRunArgs(manifest.python, manifest.backend, manifest.packages, path.join(manifest.backend, 'manage.py'), ['runserver', '--noreload', '127.0.0.1:' + DJANGO_PORT])
+    const djangoArgs = pythonRunArgs(manifest.python, manifest.backend, manifest.packages, path.join(manifest.backend, 'manage.py'), ['runserver', '--noreload', '127.0.0.1:' + ports.django])
     django = (deps.startOwnedChild ?? startOwnedChild)(manifest.python, djangoArgs, { cwd: workspace, env: djangoEnv, logPath: path.join(logs, 'django-startup.log'), logLabel: 'Django' })
     await django.spawned
-    await waitForListener('127.0.0.1', DJANGO_PORT, django, deps.readyTimeoutMs ?? 60_000, delay, connect)
+    await waitForListener('127.0.0.1', ports.django, django, deps.readyTimeoutMs ?? 60_000, delay, connect)
     await deps.installQuitHandler(async () => cleanup())
     await deps.importMain()
-    const ready = Promise.resolve().then(() => deps.waitForDesktopReady(host, DSH_PORT, deps.readyTimeoutMs ?? 60_000)).catch(async error => {
+    const ready = Promise.resolve().then(() => deps.waitForDesktopReady(host, ports.host, deps.readyTimeoutMs ?? 60_000)).catch(async error => {
       await cleanup().catch(() => {})
       throw error
     })

@@ -1,0 +1,104 @@
+diff --git a/packages/client/ui-primitives/src/useAnchoredPosition.ts b/packages/client/ui-primitives/src/useAnchoredPosition.ts
+--- a/packages/client/ui-primitives/src/useAnchoredPosition.ts
++++ b/packages/client/ui-primitives/src/useAnchoredPosition.ts
+@@ -29,6 +29,8 @@
+   gap: number
+   /** Distance kept between the panel and each viewport edge; the frame's overlay inset widens the top margin. */
+   margin: number
++  /** Fit above or below the anchor without covering its clickable bounds. */
++  avoidAnchor?: boolean
+ }
+ 
+ /**
+@@ -37,7 +39,7 @@
+  * @returns `left`/`top` for the panel, or `null` before the first measurement.
+  */
+ export function useAnchoredPosition(options: AnchoredPositionOptions): CSSProperties | null {
+-  const { open, anchorRef, panelRef, side = 'bottom', align = 'start', gap, margin } = options
++  const { open, anchorRef, panelRef, side = 'bottom', align = 'start', gap, margin, avoidAnchor = false } = options
+   const [position, setPosition] = useState<CSSProperties | null>(null)
+   useLayoutEffect(() => {
+     if (!open) {
+@@ -53,12 +55,21 @@
+       const panel = panelRef.current
+       const width = panel?.offsetWidth ?? 0
+       const height = panel?.offsetHeight ?? 0
++      const topMargin = avoidAnchor || height > 0 ? overlayTopMargin(margin) : margin
++      const above = Math.max(0, Math.min(rect.top - gap, window.innerHeight - margin) - topMargin)
++      const below = Math.max(0, window.innerHeight - margin - Math.max(rect.bottom + gap, topMargin))
++      const preferredSpace = side === 'top' ? above : below
++      const oppositeSpace = side === 'top' ? below : above
++      const placedSide = avoidAnchor && height > preferredSpace && oppositeSpace > preferredSpace
++        ? side === 'top' ? 'bottom' : 'top' : side
++      const maxHeight = placedSide === 'top' ? above : below
++      const placedHeight = avoidAnchor ? Math.min(height, maxHeight) : height
+       let left = align === 'end' ? rect.right - width : rect.left
+-      let top = side === 'top' ? rect.top - gap - height : rect.bottom + gap
++      let top = placedSide === 'top' ? rect.top - gap - placedHeight : rect.bottom + gap
+       if (width > 0) left = Math.min(Math.max(left, margin), window.innerWidth - width - margin)
+-      if (height > 0) top = Math.min(Math.max(top, overlayTopMargin(margin)), window.innerHeight - height - margin)
++      if (placedHeight > 0) top = Math.min(Math.max(top, topMargin), window.innerHeight - placedHeight - margin)
+       /* v8 ignore stop */
+-      setPosition({ left, top })
++      setPosition(avoidAnchor ? { left, top, maxHeight } : { left, top })
+     }
+     // The first run measures the panel in the same commit that opened it, so
+     // the clamp uses real dimensions before anything paints.
+@@ -81,6 +92,6 @@
+       window.removeEventListener('scroll', place, true)
+       window.removeEventListener('resize', place)
+     }
+-  }, [open, anchorRef, panelRef, side, align, gap, margin])
++  }, [open, anchorRef, panelRef, side, align, gap, margin, avoidAnchor])
+   return position
+ }
+diff --git a/packages/client/ui-chat/src/client/chat/stat-dialog.ts b/packages/client/ui-chat/src/client/chat/stat-dialog.ts
+--- a/packages/client/ui-chat/src/client/chat/stat-dialog.ts
++++ b/packages/client/ui-chat/src/client/chat/stat-dialog.ts
+@@ -44,6 +44,7 @@
+     side: 'top',
+     gap: PANEL_GAP,
+     margin: PANEL_MARGIN,
++    avoidAnchor: true,
+   })
+ 
+   // Outside pointerdown closes through the shared primitive; the portaled
+diff --git a/packages/client/ui-primitives/tests/use-anchored-position.client.spec.tsx b/packages/client/ui-primitives/tests/use-anchored-position.client.spec.tsx
+--- a/packages/client/ui-primitives/tests/use-anchored-position.client.spec.tsx
++++ b/packages/client/ui-primitives/tests/use-anchored-position.client.spec.tsx
+@@ -51,10 +51,10 @@
+  * @param props - whether the panel is open.
+  * @returns the anchor and, while open, the panel carrying the position.
+  */
+-function Host({ open, align }: { open: boolean; align?: 'start' | 'end' }) {
++function Host({ open, align, avoidAnchor, side }: { open: boolean; align?: 'start' | 'end'; avoidAnchor?: boolean; side?: 'top' | 'bottom' }) {
+   const anchorRef = useRef<HTMLButtonElement>(null)
+   const panelRef = useRef<HTMLDivElement>(null)
+-  const position = useAnchoredPosition({ open, anchorRef, panelRef, gap: 4, margin: 12, ...align === undefined ? {} : { align } })
++  const position = useAnchoredPosition({ open, anchorRef, panelRef, gap: 4, margin: 12, ...avoidAnchor === undefined ? {} : { avoidAnchor }, ...side === undefined ? {} : { side }, ...align === undefined ? {} : { align } })
+   return (
+     <>
+       <button ref={anchorRef} type="button">anchor</button>
+@@ -147,3 +147,22 @@
+     add.mockRestore()
+   })
+ })
++
++describe('opt-in anchor avoidance', () => {
++  it.each([{top:20, expectedTop:60, maxHeight:408}, {top:400, expectedTop:60, maxHeight:336}])('fits available space with anchor at $top', ({top,expectedTop,maxHeight}) => {
++    const root=document.documentElement, style=root.getAttribute('style')
++    root.style.setProperty('--dsh-frame-top-clearance','40px')
++    onTestFinished(()=>{if(style===null)root.removeAttribute('style');else root.setAttribute('style',style);vi.restoreAllMocks()})
++    vi.stubGlobal('innerHeight',480)
++    vi.spyOn(HTMLButtonElement.prototype,'getBoundingClientRect').mockReturnValue(new DOMRect(20,top,40,20))
++    vi.spyOn(HTMLDivElement.prototype,'offsetHeight','get').mockReturnValue(600)
++    const view=render(<Host open side="top" avoidAnchor />), panel=view.getByTestId('panel')
++    expect(panel.style.top).toBe(expectedTop+'px')
++    expect(panel.style.maxHeight).toBe(maxHeight+'px')
++  })
++  it('does not add a height constraint without opt-in',()=>{
++    onTestFinished(()=>vi.restoreAllMocks())
++    const view=render(<Host open />)
++    expect(view.getByTestId('panel').style.maxHeight).toBe('')
++  })
++})

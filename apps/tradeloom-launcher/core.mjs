@@ -198,7 +198,7 @@ export function buildChildEnvironment(source, paths, extra = {}) {
   const env = {}
   for (const name of Object.keys(source)) {
     if (/^DSH_/i.test(name) || name.toUpperCase() === NATIVE_BRIDGE_ENV || secretPattern.test(name) || /^TRADELOOM_.*(?:API_KEY|TOKEN|SECRET|PASSWORD|BASE_URL|ENDPOINT)$/i.test(name)
-      || /^TRADELOOM_(?:DATA_ROOT|INTAKE_ROOT)$/i.test(name)
+      || /^TRADELOOM_(?:DATA_ROOT|INTAKE_ROOT|ARTIFACT_NODE|ARTIFACT_NODE_SHA256)$/i.test(name)
       || /^(?:ROUTER|CAVEMAN|LLM)_(?:.*(?:API_KEY|TOKEN|SECRET|PASSWORD|BASE_URL|ENDPOINT|PROVIDER|MODEL).*)$/i.test(name)) continue
     env[name] = source[name]
   }

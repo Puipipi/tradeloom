@@ -89,9 +89,10 @@ function installSourceQuitHandler(stopOwnedServices) {
 }
 
 async function runPackagedBootstrap() {
-  const { bootstrapInstalledDesktop } = await import('./installed-bootstrap.mjs')
+  const { bootstrapInstalledDesktop, parsePackagedPortFlags } = await import('./installed-bootstrap.mjs')
+  const ports = parsePackagedPortFlags(process.argv.slice(1))
   const startup = await bootstrapInstalledDesktop({
-    env: process.env, processEnv: process.env, appPath: app.getAppPath(), resourcesPath: process.resourcesPath, platform: process.platform,
+    env: process.env, processEnv: process.env, appPath: app.getAppPath(), resourcesPath: process.resourcesPath, platform: process.platform, ports,
     deps: {
       fs: await import('node:fs/promises'), getDefaultPaths, ensureOwnedDirectory, ensureOwnedHome, buildChildEnvironment,
       launcherPipeName, reserveNamedPipe, startOwnedChild, assertPortsAvailable,

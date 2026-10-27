@@ -1,0 +1,6 @@
+{
+  "name": "pane-popout-integration-fixture",
+  "private": true,
+  "type": "module",
+  "main": "main.mjs"
+}

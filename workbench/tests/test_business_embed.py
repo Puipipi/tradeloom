@@ -95,8 +95,8 @@ class BusinessEmbedTests(SimpleTestCase):
         request = RequestFactory().get("/business/home")
         html = render_to_string("workbench/base.html", _page_context("home"), request=request)
         self.assertIn('data-business-embed="true"', html)
-        self.assertIn('href="/business-static/workbench/styles.css?v=intake-application2"', html)
-        self.assertIn('src="/business-static/workbench/app.js?v=native-workflow-bridge1"', html)
+        self.assertIn('href="/business-static/workbench/styles.css?v=business-font-scale1"', html)
+        self.assertIn('src="/business-static/workbench/app.js?v=business-font-scale1"', html)
         self.assertNotIn('aria-label="主导航"', html)
 
     @override_settings(TRADELOOM_DSH_EMBED=True)
@@ -107,7 +107,8 @@ class BusinessEmbedTests(SimpleTestCase):
             version=1,
             status="approved",
             sha256="fixture-sha256",
-            source_product_versions=[],
+            status_label="已批准",
+            source_product_versions=[{"product_id": "product-1", "revision_id": "revision-1", "version": 2}],
             preview_url=preview_url,
             download_url=download_url,
             artifact_type_label="英文目录 HTML",
@@ -153,6 +154,12 @@ class BusinessEmbedTests(SimpleTestCase):
             with self.subTest(page="embedded preview"):
                 self.assertIn(f'href="{expected_url}"', page)
                 self.assertNotIn('target="_blank"', page)
+                self.assertIn('<span class="status-pill approved">已批准</span>', page)
+                self.assertIn('<summary>来源与校验信息</summary>', page)
+                self.assertIn("fixture-sha256", page)
+                self.assertIn("product-1", page)
+                self.assertIn("revision-1", page)
+                self.assertLess(page.index("来源与校验信息"), page.index("fixture-sha256"))
 
     @override_settings(TRADELOOM_DSH_EMBED=True)
     def test_csv_artifact_preview_keeps_the_embedded_shell_layout(self):
@@ -205,8 +212,8 @@ class BusinessEmbedTests(SimpleTestCase):
         request = RequestFactory().get("/home")
         html = render_to_string("workbench/base.html", _page_context("home"), request=request)
         self.assertIn('data-business-embed="false"', html)
-        self.assertIn('href="/static/workbench/styles.css?v=intake-application2"', html)
-        self.assertIn('src="/static/workbench/app.js?v=native-workflow-bridge1"', html)
+        self.assertIn('href="/static/workbench/styles.css?v=business-font-scale1"', html)
+        self.assertIn('src="/static/workbench/app.js?v=business-font-scale1"', html)
         self.assertIn('aria-label="主导航"', html)
 
     def test_embed_frame_header_preserves_existing_csp_directives(self):

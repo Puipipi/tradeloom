@@ -1,0 +1,26 @@
+diff --git a/packages/util/native-command/src/file-applications-windows.ts b/packages/util/native-command/src/file-applications-windows.ts
+index 3eb762a..3a6b518 100644
+--- a/packages/util/native-command/src/file-applications-windows.ts
++++ b/packages/util/native-command/src/file-applications-windows.ts
+@@ -267,7 +267,7 @@ ${application === null ? 'ConvertTo-Json -InputObject @([DshFileAssociations]::L
+   try {
+     await writeFile(scriptPath, `\uFEFF${script}`, 'utf8')
+     const result = await run('powershell.exe', [
+-      '-NoProfile', '-NonInteractive', '-STA', '-ExecutionPolicy', 'Bypass', '-File', scriptPath,
++      '-NoProfile', '-NonInteractive', '-STA', '-File', scriptPath,
+     ], signal, 'hidden')
+     return result.stdout
+   } finally {
+diff --git a/packages/util/native-command/tests/file-applications.spec.ts b/packages/util/native-command/tests/file-applications.spec.ts
+index f14d299..865d19a 100644
+--- a/packages/util/native-command/tests/file-applications.spec.ts
++++ b/packages/util/native-command/tests/file-applications.spec.ts
+@@ -132,7 +132,7 @@ it('encodes Windows query and invocation data separately from native adapter sou
+   await openNativeFileApplication(path, application.id, signal, { platform: 'win32', run })
+   expect(scripts[1]!).toContain('::Open($path, $application)')
+   expect(run.mock.calls[1]![0]).toBe('powershell.exe')
+-  expect(run.mock.calls[1]![1]).toEqual(['-NoProfile', '-NonInteractive', '-STA', '-ExecutionPolicy', 'Bypass', '-File', expect.any(String)])
++  expect(run.mock.calls[1]![1]).toEqual(['-NoProfile', '-NonInteractive', '-STA', '-File', expect.any(String)])
+   // PowerShell 5.1 reads a -File script as ANSI without the BOM.
+   expect(scripts[1]!).toMatch(/^\uFEFF/)
+ })

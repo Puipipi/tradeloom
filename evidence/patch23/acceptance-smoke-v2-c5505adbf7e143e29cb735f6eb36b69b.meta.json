@@ -1,0 +1,10 @@
+{
+  "runId": "c5505adbf7e143e29cb735f6eb36b69b",
+  "sourceSha256": "39460E2C7011F2580EC5F1F5372F7D2C1AAA298CCDE0F0E4933E7C9B8540915C",
+  "resultPath": "C:\\Users\\23825\\Desktop\\ICT\\tradeloom\\evidence\\patch23\\acceptance-smoke-v2-c5505adbf7e143e29cb735f6eb36b69b.json",
+  "nodeCheck": "exit 0",
+  "candidateElectronProcesses": 0,
+  "electronExit": 0,
+  "stderrBytes": 0,
+  "preflightAndRun": "node --check exit 0; no candidate Electron processes before launch; hidden single launch; no candidate Electron processes after exit"
+}

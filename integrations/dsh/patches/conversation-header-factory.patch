@@ -1,0 +1,156 @@
+diff --git a/packages/client/ui-conversation/src/client/apply.ts b/packages/client/ui-conversation/src/client/apply.ts
+--- a/packages/client/ui-conversation/src/client/apply.ts
++++ b/packages/client/ui-conversation/src/client/apply.ts
+@@ -39,7 +39,7 @@
+ import { ConversationRoot } from './skeleton/ConversationRoot.tsx'
+ import { ConversationContent } from './skeleton/ConversationContent.tsx'
+ import { ConversationPanel } from './skeleton/ConversationPanel.tsx'
+-import { ConversationHeader } from './skeleton/ConversationHeader.tsx'
++import { ConversationHeader, ConversationHeaderSlot } from './skeleton/ConversationHeader.tsx'
+ import { ConversationSession, ConversationSessionHeader } from './skeleton/ConversationSession.tsx'
+ import { InputBar } from './skeleton/InputBar.tsx'
+ import { todoDockEntry } from './skeleton/TodoPanel.tsx'
+@@ -423,13 +423,16 @@
+     },
+   }, ConversationSession)
+ 
+-  const registerHeader = () => slots.register({
+-    name: 'conversation.header',
++  const registerHeaderFrame = () => slots.registerFactory({
++    name: 'conversation.header.frame',
++    scope: 'session-maybe',
+     children: {
+       'conversation.header.leading': { kind: 'single', scope: 'root' },
+       'conversation.session.header': { kind: 'single', scope: 'session' },
+     },
+   }, ConversationHeader)
++
++  const registerHeader = () => slots.register({ name: 'conversation.header' }, ConversationHeaderSlot)
+ 
+   const registerSessionHeader = () => slots.register({
+     name: 'conversation.session.header',
+@@ -574,6 +577,7 @@
+     yield registerConversationRoot()
+     yield registerConversationContent()
+     yield registerConversationSession()
++    yield registerHeaderFrame()
+     yield registerHeader()
+     yield registerSessionHeader()
+     yield registerComposerBar()
+diff --git a/packages/client/ui-conversation/src/client/contract/slots.ts b/packages/client/ui-conversation/src/client/contract/slots.ts
+--- a/packages/client/ui-conversation/src/client/contract/slots.ts
++++ b/packages/client/ui-conversation/src/client/contract/slots.ts
+@@ -176,6 +176,15 @@
+ 
+ declare module '@deepseek-ai/dsh-client-ui-slots' {
+   interface SlotFactoryMap {
++    /** Shared native header; owns its child seats once across presentation hosts. */
++    'conversation.header.frame': {
++      scope: 'session-maybe'
++      children: {
++        'conversation.header.leading': { kind: 'single'; scope: 'root' }
++        'conversation.session.header': { kind: 'single'; scope: 'session' }
++      }
++    }
++
+     /** Parse one original text and render its business nodes through the owned keyed Slot. */
+     'conversation.user.text': {
+       scope: 'session'
+@@ -618,6 +627,9 @@
+   PropsRuntime<'conversation.header'>
+   & PropsRenderSlots<'conversation.header.leading' | 'conversation.session.header'>
+ 
++/** Compatibility slot delegating to the shared header factory. */
++export type ConversationHeaderSlotProps = PropsRuntime<'conversation.header'> & PropsRenderFactories
++
+ /** Full props of the strict Session header. */
+ export type ConversationSessionHeaderSlotProps =
+   PropsRuntime<'conversation.session.header'>
+diff --git a/packages/client/ui-conversation/src/client/skeleton/ConversationHeader.tsx b/packages/client/ui-conversation/src/client/skeleton/ConversationHeader.tsx
+--- a/packages/client/ui-conversation/src/client/skeleton/ConversationHeader.tsx
++++ b/packages/client/ui-conversation/src/client/skeleton/ConversationHeader.tsx
+@@ -1,6 +1,6 @@
+ /** Resident conversation navigation and Session-specific header content. */
+ import clsx from 'clsx'
+-import type { ConversationHeaderProps } from '../contract/slots.ts'
++import type { ConversationHeaderProps, ConversationHeaderSlotProps } from '../contract/slots.ts'
+ import { conversationPhase } from '../contract/snapshot.ts'
+ import css from './ConversationRoot.module.css'
+ 
+@@ -25,3 +25,8 @@
+     </header>
+   )
+ }
++
++/** Keeps the original slot available to existing hosts and header replacements. */
++export function ConversationHeaderSlot({ renderFactorySlot }: ConversationHeaderSlotProps) {
++  return renderFactorySlot('conversation.header.frame', {})
++}
+diff --git a/packages/client/ui-conversation/tests/apply-wiring.client.spec.tsx b/packages/client/ui-conversation/tests/apply-wiring.client.spec.tsx
+--- a/packages/client/ui-conversation/tests/apply-wiring.client.spec.tsx
++++ b/packages/client/ui-conversation/tests/apply-wiring.client.spec.tsx
+@@ -1,18 +1,20 @@
+ // @vitest-environment jsdom
+ import { describe, expect, it, vi } from 'vitest'
++import type { PropsRenderFactories } from '@deepseek-ai/dsh-client-ui-slots'
+ import {
+   SlotTestRuntime, stubConfigForm, usePinnedBrowserLanguages,
+ } from '@deepseek-ai/dsh-client-test-runtime'
+ import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
+ import { createSnapshotStore, type ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
+ import type { SessionId } from '@deepseek-ai/dsh-session/types'
+-import { apply, inject, type ViewTab } from '@deepseek-ai/dsh-client-ui-conversation/client'
++import { apply, inject } from '../src/client/apply.ts'
++import type { ViewTab } from '../src/client/contract/views.ts'
+ 
+ usePinnedBrowserLanguages('zh-CN')
+ 
+ const SID = 'session-1' as SessionId
+ 
+-async function bench(options: { declareConversation?: boolean } = {}) {
++async function bench(options: { declareConversation?: boolean; renderFrames?: boolean } = {}) {
+   const runtime = await SlotTestRuntime.create()
+   const developerTools = createSnapshotStore(true)
+   runtime.ctx.provide('uiWorkspace', {
+@@ -29,7 +31,7 @@
+     await runtime.root.declare({
+       'main': { kind: 'keyed', scope: 'root' },
+       'settings.general.item': { kind: 'list', scope: 'root' },
+-    }, (_props: { renderSlot?: unknown }) => null)
++    }, ((props: PropsRenderFactories) => options.renderFrames ? <>{props.renderFactorySlot('conversation.header.frame', {})}{props.renderFactorySlot('conversation.header.frame', {})}</> : null) as never)
+   }
+   const feature = await runtime.mount({ inject: [...inject], apply })
+   if (options.declareConversation !== false) runtime.renderRoot()
+@@ -44,6 +46,32 @@
+ }
+ 
+ describe('target-neutral Conversation apply wiring', () => {
++  it('renders two real native header occurrences without foreign-slot access or duplicate declarations', async () => {
++    const b = await bench({ renderFrames: true })
++    b.runtime.slots.register({ name: 'conversation.header.leading' }, () => <button data-native-header-probe>Navigation</button>)
++    await vi.waitFor(() => {
++      expect(document.querySelectorAll('header[data-window-drag]')).toHaveLength(2)
++      expect(document.querySelectorAll('[data-native-header-probe]')).toHaveLength(2)
++    })
++    await b.runtime.dispose()
++    expect(document.querySelectorAll('[data-native-header-probe]')).toHaveLength(0)
++  })
++
++  it('shares one optional-Session header factory without duplicating child ownership', async () => {
++    const b = await bench()
++    const factory = b.runtime.factoryOf('conversation.header.frame')
++    expect(factory.scope).toBe('session-maybe')
++    expect(factory.children).toEqual({
++      'conversation.header.leading': { kind: 'single', scope: 'root' },
++      'conversation.session.header': { kind: 'single', scope: 'session' },
++    })
++    const wrapper = b.runtime.slots.entries('conversation.header')[0]!
++    expect(wrapper.children).toBeUndefined()
++    expect(factory.store).toBeUndefined()
++    expect(b.runtime.slots.entries('conversation.session.header')).toHaveLength(1)
++    await b.runtime.dispose()
++  })
++
+   it('hands every Session header the same in-memory View pins without restoring saved choices', async () => {
+     localStorage.setItem('dsh.slot.manual-order.conversation.view.v1', JSON.stringify({ unpinned: ['trajectory'] }))
+     try {

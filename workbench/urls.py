@@ -7,9 +7,13 @@ from .erpnext import api as erpnext_api
 from .intake import api as intake_api
 from .requirements import api as requirement_api
 from .execution_plans import api as execution_plan_api
+from . import canvas_workflow_api, native_artifact_api
 
 
 urlpatterns = [
+    path("api/native-artifacts", native_artifact_api.register),
+    path("api/native-artifacts/<uuid:run_id>/<uuid:version_id>/<str:action>", native_artifact_api.read),
+    path("api/canvas-workflow-runs", canvas_workflow_api.runs),
     path("", views.task_list, name="task-list"),
     path("home", views.home, name="home"),
     path("products", views.products, name="products"),

@@ -1,0 +1,4 @@
+integrations/dsh/patches/*.patch -text
+integrations/dsh/prospective/desktop24-exit/** -text
+integrations/dsh/desktop24-ui-bundle/** -text
+integrations/dsh/desktop24-portable-ui-bundle/** -text

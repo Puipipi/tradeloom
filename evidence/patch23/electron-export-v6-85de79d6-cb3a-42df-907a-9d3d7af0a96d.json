@@ -1,0 +1,50 @@
+{
+  "provider": "deepseek",
+  "origin": "https://chat.deepseek.com",
+  "documentStable": true,
+  "inputPresent": true,
+  "loginRequired": "unknown",
+  "draftState": "unknown",
+  "generationState": "unknown",
+  "candidateListComplete": true,
+  "candidates": [
+    {
+      "kind": "input",
+      "tag": "textarea",
+      "testId": "inside_form"
+    },
+    {
+      "kind": "input",
+      "tag": "textarea",
+      "testId": "chat_composer",
+      "hasLabel": true
+    },
+    {
+      "kind": "button",
+      "tag": "button",
+      "ariaLabel": "Send"
+    }
+  ],
+  "messageIdentityAttributes": [
+    {
+      "name": "data-message-id",
+      "present": true
+    },
+    {
+      "name": "data-turn-id",
+      "present": true
+    },
+    {
+      "name": "data-message-key",
+      "present": false
+    },
+    {
+      "name": "data-turn",
+      "present": false
+    },
+    {
+      "name": "data-id",
+      "present": false
+    }
+  ]
+}

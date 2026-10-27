@@ -23,8 +23,9 @@ async function fixture(t, handler = defaultHandler, dependencies = {}) {
   t.after(() => new Promise(resolve => server.close(resolve)))
   const definitions = new Map()
   const { webServer = TRUSTED_WEB_SERVER, preset = 'tradeloom-center', agents, nativeBridgeKey = NATIVE_BRIDGE_KEY, ...toolDependencies } = dependencies
+  const resolvedWebServer = typeof webServer === 'function' ? webServer(server.address().port) : webServer
   registerBusinessTools({
-    webServer,
+    webServer: resolvedWebServer,
     agents,
     tools: { register(definition) { definitions.set(definition.name, definition); return () => definitions.delete(definition.name) } },
   }, { preset }, { ...toolDependencies, nativeBridgeKey, port: server.address().port })
@@ -1290,6 +1291,55 @@ test('rejects a non-LAN configured authority and does not expose HTML or CSRF va
   assert.equal(invalid.error_code, 'business_authority_unavailable')
 })
 
+test('native test authority resolver can target the actual loopback Host origin without weakening the default', async t => {
+  const seen = []
+  const resolver = webServer => {
+    seen.push(webServer)
+    const origin = webServer?.getOrigin?.()
+    const parsed = typeof origin === 'string' ? new URL(origin) : undefined
+    if (webServer?.protocol !== 'http:' || webServer.host !== '127.0.0.1'
+      || !Number.isInteger(webServer.port) || webServer.port < 1
+      || !parsed || parsed.origin !== origin || parsed.protocol !== 'http:'
+      || parsed.hostname !== webServer.host || parsed.port !== String(webServer.port)
+      || parsed.pathname !== '/' || parsed.search || parsed.hash || parsed.username || parsed.password) {
+      throw new Error('fixture_host_authority_mismatch')
+    }
+    return { host: webServer.host, origin: parsed.origin, hostHeader: `${webServer.host}:${String(webServer.port)}` }
+  }
+  const webServer = port => ({ protocol: 'http:', host: '127.0.0.1', port, getOrigin: () => `http://127.0.0.1:${String(port)}` })
+  const resolved = await fixture(t, undefined, { webServer, authorityResolver: resolver })
+  const result = await resolved.tools.get('tradeloom_read_workflow_task').execute({ workflow_id: 'wf-1' }, agent())
+  assert.equal(result.ok, true)
+  assert.equal(seen.length, 1)
+  assert.equal(seen[0].host, '127.0.0.1')
+  assert.equal(seen[0].port > 0, true)
+  assert.ok(resolved.requests.length > 0)
+  const requestCount = resolved.requests.length
+  assert.equal((await resolved.tools.get('tradeloom_read_workflow_task').execute(
+    { workflow_id: 'wf-1', authorityResolver: resolver }, agent(),
+  )).error_code, 'invalid_arguments')
+  assert.equal(resolved.requests.length, requestCount)
+
+  const defaultLoopback = await fixture(t, undefined, { webServer })
+  assert.equal((await defaultLoopback.tools.get('tradeloom_read_workflow_task').execute({ workflow_id: 'wf-1' }, agent())).error_code,
+    'business_authority_unavailable')
+  assert.equal(defaultLoopback.requests.length, 0)
+
+  const definitions = new Map()
+  const spoofedContext = { webServer: webServer(3088), tools: { register(definition) { definitions.set(definition.name, definition); return () => {} } } }
+  registerBusinessTools(spoofedContext, { preset: 'tradeloom-center', authorityResolver: resolver })
+  assert.equal((await definitions.get('tradeloom_read_workflow_task').execute({ workflow_id: 'wf-1' }, agent())).error_code,
+    'business_authority_unavailable')
+  assert.equal(seen.length, 1)
+
+  const badOrigin = await fixture(t, undefined, { webServer: port => ({
+    protocol: 'http:', host: '127.0.0.1', port, getOrigin: () => `http://127.0.0.1:${String(port)}/unexpected`,
+  }), authorityResolver: resolver })
+  assert.equal((await badOrigin.tools.get('tradeloom_read_workflow_task').execute({ workflow_id: 'wf-1' }, agent())).error_code,
+    'business_authority_unavailable')
+  assert.equal(badOrigin.requests.length, 0)
+})
+
 test('aborts the loopback request on native cancellation and enforces a bounded timeout', async t => {
   const handler = (_record, _response) => new Promise(() => {})
   const cancelledFixture = await fixture(t, handler)
@@ -1781,4 +1831,39 @@ test('narrative excerpt rejects a mismatched source and backend pages or lines b
   assert.equal((await excerpt.execute({ source_id: sourceId, limit: 5 }, agent())).error_code, 'invalid_narrative_dto')
   body.lines = [{ line_number: 1, text: 'x'.repeat(2001), truncated: true }]
   assert.equal((await excerpt.execute({ source_id: sourceId }, agent())).error_code, 'invalid_narrative_dto')
+})
+
+
+test('business JSON request sends HTTP to the configured Django port', async t => {
+  const { requestBusinessJson } = await import('../business-tools.js')
+  let received = false
+  const server = http.createServer((_req, res) => { received = true; res.writeHead(200, {'content-type':'application/json'}); res.end('{}') })
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  t.after(() => new Promise(resolve => server.close(resolve)))
+  const prior = process.env.TRADELOOM_DJANGO_PORT
+  process.env.TRADELOOM_DJANGO_PORT = String(server.address().port)
+  try { const response = await requestBusinessJson({path:'/', method:'GET', authority:{hostHeader:'192.168.1.23:3088',origin:'http://192.168.1.23:3088'}}); assert.equal(response.status,200); assert.equal(received,true) }
+  finally { if(prior===undefined) delete process.env.TRADELOOM_DJANGO_PORT; else process.env.TRADELOOM_DJANGO_PORT=prior }
+})
+
+
+test('trusted business authority accepts only the configured Host port and matching origin', async () => {
+  const { trustedBusinessAuthority } = await import('../business-tools.js')
+  const old=process.env.TRADELOOM_DSH_BIND_PORT
+  try {
+    delete process.env.TRADELOOM_DSH_BIND_PORT
+    assert.throws(() => trustedBusinessAuthority({protocol:'http:',host:'192.168.1.23',port:43088,getOrigin:()=> 'http://192.168.1.23:43088'}))
+    process.env.TRADELOOM_DSH_BIND_PORT='43088'
+    assert.equal(trustedBusinessAuthority({protocol:'http:',host:'192.168.1.23',port:43088,getOrigin:()=> 'http://192.168.1.23:43088'}).hostHeader,'192.168.1.23:43088')
+    assert.throws(() => trustedBusinessAuthority({protocol:'http:',host:'192.168.1.23',port:43088,getOrigin:()=> 'http://192.168.1.23:3088'}))
+  } finally { if(old===undefined) delete process.env.TRADELOOM_DSH_BIND_PORT; else process.env.TRADELOOM_DSH_BIND_PORT=old }
+})
+
+
+test('trusted authority accepts canonical HTTP port 80 but rejects other origins', async () => {
+  const { trustedBusinessAuthority } = await import('../business-tools.js'); const old=process.env.TRADELOOM_DSH_BIND_PORT
+  try { process.env.TRADELOOM_DSH_BIND_PORT='80'
+    for (const origin of ['http://192.168.1.23','http://192.168.1.23:80']) assert.equal(trustedBusinessAuthority({protocol:'http:',host:'192.168.1.23',port:80,getOrigin:()=>origin}).origin,'http://192.168.1.23')
+    assert.throws(()=>trustedBusinessAuthority({protocol:'http:',host:'192.168.1.23',port:80,getOrigin:()=> 'http://192.168.1.23:81'}))
+  } finally { if(old===undefined) delete process.env.TRADELOOM_DSH_BIND_PORT; else process.env.TRADELOOM_DSH_BIND_PORT=old }
 })

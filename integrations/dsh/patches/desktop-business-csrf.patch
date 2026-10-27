@@ -1,42 +1,78 @@
 diff --git a/apps/desktop/src/web-document.ts b/apps/desktop/src/web-document.ts
-index a74ea7c7..d511a6e0 100644
+index a74ea7c..524e492 100644
 --- a/apps/desktop/src/web-document.ts
 +++ b/apps/desktop/src/web-document.ts
-@@ -64,6 +64,10 @@ const WITHHELD_RESPONSE_HEADERS = [
+@@ -64,6 +64,15 @@ const WITHHELD_RESPONSE_HEADERS = [
  /** Host routes whose responses carry immutable cache headers keyed by a per-process revision. */
  const PLUGIN_BUNDLE_PATH = /^\/plugins\//u
  
 +/** CSRF tokens scoped to the authenticated Host authority and this process. */
 +const BUSINESS_CSRF_COOKIE = new Map<string, string>()
++const BUSINESS_CSRF_BOOTSTRAP = new Map<string, Promise<void>>()
 +const BUSINESS_PATH = /^\/(?:business|business-api|business-static|business-media)(?:\/|$)/u
++
++function csrfCookieFromRequest(cookieHeader: string | null): string | undefined {
++  return cookieHeader?.split(';').map(value => value.trim()).find(value => value.startsWith('csrftoken='))
++}
 +
  /**
   * Forward local application requests to its authenticated Host, preserving streaming and cancellation.
   * Plugin bundle responses lose their `cache-control` for `no-store`: the Host marks them immutable
-@@ -81,13 +85,28 @@ export async function forwardWebRequest(request: Request, host: string, cookie:
+@@ -81,13 +90,57 @@ export async function forwardWebRequest(request: Request, host: string, cookie:
    const target = new URL(host)
    target.pathname = source.pathname
    target.search = source.search
 +  const businessRequest = BUSINESS_PATH.test(source.pathname)
++  const requestCsrfCookie = businessRequest ? csrfCookieFromRequest(request.headers.get('cookie')) : undefined
++  let releaseCsrfBootstrap: (() => void) | undefined
++  const isBusinessHtmlBootstrap = businessRequest
++    && request.method === 'GET'
++    && request.headers.get('accept')?.includes('text/html') === true
++  if (isBusinessHtmlBootstrap && !requestCsrfCookie) {
++    while (!BUSINESS_CSRF_COOKIE.has(target.origin)) {
++      const pendingBootstrap = BUSINESS_CSRF_BOOTSTRAP.get(target.origin)
++      if (pendingBootstrap) {
++        await pendingBootstrap
++        continue
++      }
++      let release!: () => void
++      const bootstrap = new Promise<void>(resolve => { release = resolve })
++      BUSINESS_CSRF_BOOTSTRAP.set(target.origin, bootstrap)
++      releaseCsrfBootstrap = () => {
++        if (BUSINESS_CSRF_BOOTSTRAP.get(target.origin) === bootstrap) BUSINESS_CSRF_BOOTSTRAP.delete(target.origin)
++        release()
++      }
++      break
++    }
++  }
    const headers = new Headers(request.headers)
    for (const name of ['host', 'origin', 'cookie', 'sec-fetch-site']) headers.delete(name)
 -  headers.set('cookie', cookie)
-+  const csrfCookie = businessRequest ? BUSINESS_CSRF_COOKIE.get(target.origin) : undefined
++  const csrfCookie = businessRequest ? requestCsrfCookie ?? BUSINESS_CSRF_COOKIE.get(target.origin) : undefined
 +  headers.set('cookie', [cookie, csrfCookie].filter(Boolean).join('; '))
 +  if (businessRequest && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method)) headers.set('origin', target.origin)
    const init = { method: request.method, headers, body: request.body, signal: request.signal, duplex: 'half', redirect: 'manual' as const }
-   const response = await fetch(target, init)
-   const outgoing = new Headers(response.headers)
+-  const response = await fetch(target, init)
+-  const outgoing = new Headers(response.headers)
++  let response: Response
++  let outgoing: Headers
 +  let rendererCsrfCookie: string | undefined
-+  if (businessRequest) {
-+    const setCookies = response.headers.getSetCookie()
-+    for (const setCookie of setCookies) {
-+      const match = /^csrftoken=([^;]+)/iu.exec(setCookie)
-+      if (match) {
-+        BUSINESS_CSRF_COOKIE.set(target.origin, `csrftoken=${match[1]}`)
-+        rendererCsrfCookie = `csrftoken=${match[1]}; Path=/; SameSite=Strict`
++  try {
++    response = await fetch(target, init)
++    outgoing = new Headers(response.headers)
++    if (businessRequest) {
++      const setCookies = response.headers.getSetCookie()
++      for (const setCookie of setCookies) {
++        const match = /^csrftoken=([^;]+)/iu.exec(setCookie)
++        if (match) {
++          BUSINESS_CSRF_COOKIE.set(target.origin, `csrftoken=${match[1]}`)
++          rendererCsrfCookie = `csrftoken=${match[1]}; Path=/; SameSite=Strict`
++        }
 +      }
 +    }
++  } finally {
++    // Release after headers and any CSRF Set-Cookie have been processed; never await or consume the body.
++    releaseCsrfBootstrap?.()
 +  }
    for (const name of WITHHELD_RESPONSE_HEADERS) outgoing.delete(name)
 +  if (rendererCsrfCookie !== undefined) outgoing.append('set-cookie', rendererCsrfCookie)
@@ -44,10 +80,10 @@ index a74ea7c7..d511a6e0 100644
    return new Response(response.body, { status: response.status, headers: outgoing })
  }
 diff --git a/apps/desktop/tests/web-document.spec.ts b/apps/desktop/tests/web-document.spec.ts
-index 0fd9b591..63f101c6 100644
+index 0fd9b59..6e3faef 100644
 --- a/apps/desktop/tests/web-document.spec.ts
 +++ b/apps/desktop/tests/web-document.spec.ts
-@@ -86,3 +86,22 @@ it('refuses another page origin without forwarding its request', async () => {
+@@ -86,3 +86,163 @@ it('refuses another page origin without forwarding its request', async () => {
    expect(response.status).toBe(403)
    expect(fetch).not.toHaveBeenCalled()
  })
@@ -69,4 +105,145 @@ index 0fd9b591..63f101c6 100644
 +  expect(headers.get('x-csrftoken')).toBe('csrf-value')
 +  expect(post.headers.get('set-cookie')).toBeNull()
 +  expect(fetch.mock.calls[0]?.[0]).toBeInstanceOf(URL)
++})
++
++it('prefers the renderer request CSRF cookie to a newer cached iframe cookie', async () => {
++  const fetch = vi.fn()
++    .mockResolvedValueOnce(new Response('iframe A', { headers: { 'set-cookie': 'csrftoken=csrf-a; Path=/; SameSite=Lax' } }))
++    .mockResolvedValueOnce(new Response('iframe B', { headers: { 'set-cookie': 'csrftoken=csrf-b; Path=/; SameSite=Lax' } }))
++    .mockResolvedValueOnce(new Response('saved'))
++  vi.stubGlobal('fetch', fetch)
++  await forwardWebRequest(new Request('dsh-app://app/business/a'), 'http://127.0.0.1:1241/', 'session=owned')
++  await forwardWebRequest(new Request('dsh-app://app/business/b'), 'http://127.0.0.1:1241/', 'session=owned')
++  await forwardWebRequest(new Request('dsh-app://app/business-api/save', {
++    method: 'POST', headers: {
++      origin: 'dsh-app://app', cookie: 'theme=private; csrftoken=csrf-a; other=private', 'x-csrftoken': 'csrf-a',
++    }, body: 'x=1',
++  }), 'http://127.0.0.1:1241/', 'session=owned')
++
++  const [, init] = fetch.mock.calls[2] as [URL, RequestInit]
++  const headers = new Headers(init.headers)
++  expect(headers.get('cookie')).toBe('session=owned; csrftoken=csrf-a')
++  expect(headers.get('x-csrftoken')).toBe('csrf-a')
++})
++
++it('uses the renderer cookie during interleaved iframe responses before that iframe settles', async () => {
++  let resolveA: ((response: Response) => void) | undefined
++  let resolveB: ((response: Response) => void) | undefined
++  const fetch = vi.fn()
++    .mockImplementationOnce(() => new Promise<Response>(resolve => { resolveA = resolve }))
++    .mockImplementationOnce(() => new Promise<Response>(resolve => { resolveB = resolve }))
++    .mockResolvedValueOnce(new Response('saved'))
++  vi.stubGlobal('fetch', fetch)
++
++  const iframeA = forwardWebRequest(new Request('dsh-app://app/business/a'), 'http://127.0.0.1:1242/', 'session=owned')
++  const iframeB = forwardWebRequest(new Request('dsh-app://app/business/b'), 'http://127.0.0.1:1242/', 'session=owned')
++  resolveB?.(new Response('B', { headers: { 'set-cookie': 'csrftoken=csrf-b; Path=/' } }))
++  await iframeB
++  const post = forwardWebRequest(new Request('dsh-app://app/business-api/save', {
++    method: 'POST', headers: { origin: 'dsh-app://app', cookie: 'csrftoken=csrf-a', 'x-csrftoken': 'csrf-a' }, body: 'x=1',
++  }), 'http://127.0.0.1:1242/', 'session=owned')
++  await post
++  resolveA?.(new Response('A', { headers: { 'set-cookie': 'csrftoken=csrf-a; Path=/' } }))
++  await iframeA
++
++  const [, init] = fetch.mock.calls[2] as [URL, RequestInit]
++  expect(new Headers(init.headers).get('cookie')).toBe('session=owned; csrftoken=csrf-a')
++})
++
++it('does not create a CSRF cookie from the X-CSRFToken header alone', async () => {
++  const fetch = vi.fn().mockResolvedValue(new Response('rejected'))
++  vi.stubGlobal('fetch', fetch)
++  await forwardWebRequest(new Request('dsh-app://app/business-api/save', {
++    method: 'POST', headers: { origin: 'dsh-app://app', 'x-csrftoken': 'header-only-secret' }, body: 'x=1',
++  }), 'http://127.0.0.1:1243/', 'session=owned')
++  const [, init] = fetch.mock.calls[0] as [URL, RequestInit]
++  expect(new Headers(init.headers).get('cookie')).toBe('session=owned')
++  expect(new Headers(init.headers).get('x-csrftoken')).toBe('header-only-secret')
++})
++
++it('serializes concurrent first business HTML requests until a CSRF cookie is learned', async () => {
++  let resolveFirst: ((response: Response) => void) | undefined
++  const fetch = vi.fn()
++    .mockImplementationOnce(() => new Promise<Response>(resolve => { resolveFirst = resolve }))
++    .mockImplementation(async (_target: URL, init: RequestInit) => {
++      const headers = new Headers(init.headers)
++      expect(headers.get('cookie')).toBe('session=owned; csrftoken=shared-csrf')
++      return new Response('<meta name="csrf-token" content="shared-csrf">', {
++        headers: { 'set-cookie': 'csrftoken=shared-csrf; Path=/; SameSite=Lax' },
++      })
++    })
++  vi.stubGlobal('fetch', fetch)
++
++  const htmlA = forwardWebRequest(new Request('dsh-app://app/business/a', { headers: { accept: 'text/html' } }), 'http://127.0.0.1:1250/', 'session=owned')
++  const htmlB = forwardWebRequest(new Request('dsh-app://app/business/b', { headers: { accept: 'text/html' } }), 'http://127.0.0.1:1250/', 'session=owned')
++  expect(fetch).toHaveBeenCalledTimes(1)
++  resolveFirst?.(new Response('<meta name="csrf-token" content="shared-csrf">', {
++    headers: { 'set-cookie': 'csrftoken=shared-csrf; Path=/; SameSite=Lax' },
++  }))
++  const [responseA, responseB] = await Promise.all([htmlA, htmlB])
++  expect(responseA.headers.getSetCookie()).toEqual(['csrftoken=shared-csrf; Path=/; SameSite=Strict'])
++  expect(responseB.headers.getSetCookie()).toEqual(['csrftoken=shared-csrf; Path=/; SameSite=Strict'])
++  expect(await responseA.text()).toContain('content="shared-csrf"')
++  expect(await responseB.text()).toContain('content="shared-csrf"')
++  expect(fetch).toHaveBeenCalledTimes(2)
++
++  const postA = forwardWebRequest(new Request('dsh-app://app/business-api/a', {
++    method: 'POST', headers: { 'x-csrftoken': 'shared-csrf' }, body: 'x=1',
++  }), 'http://127.0.0.1:1250/', 'session=owned')
++  const postB = forwardWebRequest(new Request('dsh-app://app/business-api/b', {
++    method: 'POST', headers: { 'x-csrftoken': 'shared-csrf' }, body: 'x=1',
++  }), 'http://127.0.0.1:1250/', 'session=owned')
++  await Promise.all([postA, postB])
++  expect(new Headers((fetch.mock.calls[2] as [URL, RequestInit])[1].headers).get('cookie')).toBe('session=owned; csrftoken=shared-csrf')
++  expect(new Headers((fetch.mock.calls[3] as [URL, RequestInit])[1].headers).get('cookie')).toBe('session=owned; csrftoken=shared-csrf')
++  expect(new Headers((fetch.mock.calls[2] as [URL, RequestInit])[1].headers).get('x-csrftoken')).toBe('shared-csrf')
++  expect(new Headers((fetch.mock.calls[3] as [URL, RequestInit])[1].headers).get('x-csrftoken')).toBe('shared-csrf')
++})
++
++it('releases the first-business-HTML gate when bootstrap fetch fails', async () => {
++  const fetch = vi.fn()
++    .mockRejectedValueOnce(new Error('offline'))
++    .mockResolvedValueOnce(new Response('html', { headers: { 'set-cookie': 'csrftoken=retry-csrf; Path=/' } }))
++  vi.stubGlobal('fetch', fetch)
++  await expect(forwardWebRequest(new Request('dsh-app://app/business/fail', {
++    headers: { accept: 'text/html' },
++  }), 'http://127.0.0.1:1251/', 'session=owned')).rejects.toThrow('offline')
++  const response = await forwardWebRequest(new Request('dsh-app://app/business/retry', {
++    headers: { accept: 'text/html' },
++  }), 'http://127.0.0.1:1251/', 'session=owned')
++  expect(response.headers.getSetCookie()).toEqual(['csrftoken=retry-csrf; Path=/; SameSite=Strict'])
++  expect(fetch).toHaveBeenCalledTimes(2)
++})
++
++it('lets a waiting business HTML request retry bootstrap when the first response has no CSRF cookie', async () => {
++  let resolveFirst: ((response: Response) => void) | undefined
++  const fetch = vi.fn()
++    .mockImplementationOnce(() => new Promise<Response>(resolve => { resolveFirst = resolve }))
++    .mockResolvedValueOnce(new Response('retry html', { headers: { 'set-cookie': 'csrftoken=retry-csrf; Path=/' } }))
++  vi.stubGlobal('fetch', fetch)
++  const first = forwardWebRequest(new Request('dsh-app://app/business/a', {
++    headers: { accept: 'text/html' },
++  }), 'http://127.0.0.1:1252/', 'session=owned')
++  const waiting = forwardWebRequest(new Request('dsh-app://app/business/b', {
++    headers: { accept: 'text/html' },
++  }), 'http://127.0.0.1:1252/', 'session=owned')
++  expect(fetch).toHaveBeenCalledTimes(1)
++  resolveFirst?.(new Response('no csrf cookie'))
++  await Promise.all([first, waiting])
++  expect(fetch).toHaveBeenCalledTimes(2)
++  expect(new Headers((fetch.mock.calls[1] as [URL, RequestInit])[1].headers).get('cookie')).toBe('session=owned')
++})
++
++it('does not share a cached business CSRF cookie across Host origins', async () => {
++  const fetch = vi.fn()
++    .mockResolvedValueOnce(new Response('html', { headers: { 'set-cookie': 'csrftoken=origin-a; Path=/' } }))
++    .mockResolvedValueOnce(new Response('saved'))
++  vi.stubGlobal('fetch', fetch)
++  await forwardWebRequest(new Request('dsh-app://app/business/', { headers: { accept: 'text/html' } }), 'http://127.0.0.1:1253/', 'session=owned')
++  await forwardWebRequest(new Request('dsh-app://app/business-api/save', {
++    method: 'POST', headers: { 'x-csrftoken': 'origin-a' }, body: 'x=1',
++  }), 'http://127.0.0.1:1254/', 'session=owned')
++  expect(new Headers((fetch.mock.calls[1] as [URL, RequestInit])[1].headers).get('cookie')).toBe('session=owned')
++  expect(new Headers((fetch.mock.calls[1] as [URL, RequestInit])[1].headers).get('x-csrftoken')).toBe('origin-a')
 +})

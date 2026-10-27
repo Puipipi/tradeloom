@@ -4,9 +4,9 @@
 
 ## 固定版本和外部目录
 
-权威版本记录在 [`integrations/dsh/patches/patches.lock.json`](../integrations/dsh/patches/patches.lock.json)：上游为 [`deepseek-ai/deepseek-harness`](https://github.com/deepseek-ai/deepseek-harness)，版本 `0.2.1-rc.2`，commit `687f282e8625c6b8d11ff58211a90524be2e4317`。准备脚本还会核对 `LICENSE` SHA-256 `EBB4F09972AEE8608BE255DEBAF78451A68E95C290F55C240DEC2ECFA16EA6BE`、11 个 patch 文件和各 patch target 的基准/目标 hash。升级时先选新版本目录，不能覆盖已有发行目录。
+权威版本记录在 [`integrations/dsh/patches/patches.lock.json`](../integrations/dsh/patches/patches.lock.json)：上游为 [`deepseek-ai/deepseek-harness`](https://github.com/deepseek-ai/deepseek-harness)，当前候选 `0.2.1-rc.3`，commit `1f81c047fc48fa190a683e469daa699857e9afe8`。准备脚本会核对 `LICENSE` SHA-256 `EBB4F09972AEE8608BE255DEBAF78451A68E95C290F55C240DEC2ECFA16EA6BE`、13 个按锁定顺序应用的 patch 文件，以及各 patch target 的基准/目标 hash。RC3 原生 sidebar 已提供 More/actions 菜单；未被 TradeLoom 插件消费且当前 shell 测试禁止注册的旧 `sidebar.agents` 补丁不再进入新序列。升级时选新版本目录，不能覆盖已有发行目录。
 
-脚本按固定 sibling 布局查找路径。假设产品仓库位于 `<workspace>\tradeloom`，只读上游 checkout 应位于 `<workspace>\workspace\research\references\deepseek-harness`，准备后的 runtime 应位于 `<workspace>\workspace\runtime\tradeloom-harness\releases\<version>`。脚本会拒绝错误根目录、reparse/link 路径和已存在的目标目录。若你的仓库布局不同，先调整工作区布局；不要绕过这些路径检查。
+脚本按固定 sibling 布局查找路径。假设产品仓库位于 `<workspace>\tradeloom`，当前锁定的只读上游 checkout 应位于 `<workspace>\workspace\research\05-交付构建\references\deepseek-harness-v0.2.1-rc.3-readonly`，准备后的 runtime 应位于 `<workspace>\workspace\runtime\tradeloom-harness\releases\<version>`。脚本会拒绝错误根目录、reparse/link 路径和已存在的目标目录。若你的仓库布局不同，先调整工作区布局；不要绕过这些路径检查。
 
 ## 准备 pinned 源码及 patched runtime
 
@@ -14,11 +14,11 @@
 
 ```powershell
 $workspaceRoot = Split-Path -Parent (Resolve-Path .)
-$referenceParent = Join-Path $workspaceRoot 'workspace\research\references'
-$reference = Join-Path $referenceParent 'deepseek-harness'
+$referenceParent = Join-Path $workspaceRoot 'workspace\research\05-交付构建\references'
+$reference = Join-Path $referenceParent 'deepseek-harness-v0.2.1-rc.3-readonly'
 $releaseRoot = Join-Path $workspaceRoot 'workspace\runtime\tradeloom-harness\releases'
-$runtime = Join-Path $releaseRoot '0.2.1-rc.2-tradeloom-desktop-2'
-$pinnedCommit = '687f282e8625c6b8d11ff58211a90524be2e4317'
+$runtime = Join-Path $releaseRoot '0.2.1-rc.3-tradeloom-desktop-10'
+$pinnedCommit = '1f81c047fc48fa190a683e469daa699857e9afe8'
 
 New-Item -ItemType Directory -Force -Path $referenceParent, $releaseRoot | Out-Null
 git clone https://github.com/deepseek-ai/deepseek-harness.git $reference
@@ -65,7 +65,7 @@ console.log('desktop build receipt verified');
 
 ## 安装/编译与 launcher 启动门槛
 
-上游 `package.json` 要求 Node.js `^22.19.0 || >=24.0.0` 和 pnpm `11.28.5`。在已校验源码树中，官方项目构建入口为 `pnpm install --frozen-lockfile --ignore-scripts`、`pnpm run build:lib`、`pnpm run build:web`、`pnpm run build:desktop`。若维护者为一个全新版本目录执行这些步骤，应从 runtime 根目录运行：
+RC3 上游 `package.json` 要求 Node.js `^22.19.0 || >=24.0.0` 和 pnpm `11.28.5`。源码定义的构建入口为 `pnpm install --frozen-lockfile --ignore-scripts`、`pnpm run build:lib`、`pnpm run build:web`、`pnpm run build:desktop`。候选 10 已以冻结 lockfile 和本机缓存完成 install 及三个官方 build 子命令，真实退出码记录在本机外置 evidence 目录；若构建后续版本，应从 runtime 根目录运行：
 
 ```powershell
 Push-Location $runtime
@@ -85,7 +85,7 @@ try {
 
 source-mode desktop launcher 还要求发行根有普通 `.tradeloom-runtime-owned` marker、`apps/desktop/lib/main.js`、`apps/desktop-host/lib/index.js`、Electron 运行文件，以及 `.tradeloom-desktop-build-receipt.json`。receipt schema 为 1，记录 pinned source commit、marker、patch-set digest 和上述两个编译文件的 SHA-256。产品提供的 `apps/tradeloom-launcher/receipt-writer.mjs` 只接受外部 builder 报告的真实成功证据；它不是编译器，也不提供可用虚构 exit code 生成 receipt 的命令。不得手工伪造 receipt 来绕过启动校验。
 
-当前仓库没有把 clean clone 到完整 patched/build/receipt/first-launch 串成已验证的一键流程。需要管理员/维护者提供受控 builder 过程并保留 build receipt，再按[源码启动指南](quick-start.md)启动。普通包装脚本默认寻找 `0.2.1-rc.2-tradeloom-desktop-2`；它不会自动升级到别的 runtime。PowerShell 包装脚本支持可选 `-Runtime` 参数，但这不绕过 launcher 的信任校验：runtime 必须是当前 checkout 推导出的受信 `workspace/runtime/tradeloom-harness/releases` 根目录的直接子目录，并通过 ownership marker、真实 desktop build receipt 与编译文件摘要、产品身份和开发 project descriptor 检查。仅传入另一个路径或完成 `prepare-runtime.ps1` 不满足启动条件。
+仓库提供受控 builder，可依次复用上游 lib/web/desktop 构建、Primary Runtime 组装、descriptor 生成和官方 receipt writer。候选 10 的三个官方构建阶段均以退出码 0 完成，Primary Runtime 通过官方组装 API 准备；按用户要求未运行 Primary Runtime smoke，因此此候选没有 smoke 通过或 GUI 启动证据。普通启动脚本默认候选为 `0.2.1-rc.3-tradeloom-desktop-10`，但本轮尚未启动该 runtime；它不会自动升级 runtime。`-Runtime` 参数仍受信任 release 根目录、ownership marker、真实 build receipt、编译文件摘要、产品身份和 development project descriptor 校验。仅传入另一条路径或完成 `prepare-runtime.ps1` 不满足启动条件。严格单 pin 下，新 launcher 会拒绝 RC2 runtime8；回退须把旧 launcher/lock/patch 元数据与 runtime8 成对恢复，之后仍需执行对应的启动验证。仅保留旧目录不构成已验证回退。
 
 ## 升级原则
 
@@ -93,3 +93,7 @@ source-mode desktop launcher 还要求发行根有普通 `.tradeloom-runtime-own
 - 每个发行目录都应保留自己的 marker、编译产物和 build receipt。升级只切换到已独立构建并验证的目录；不把 profile/session 数据复制进源码仓库。
 - source-mode 与 packaged-runtime 是不同部署合同。`docs/desktop-bootstrap.md` 中 Python 3.12.14 等要求只适用于 packaged runtime；source-mode Python 依赖见 `requirements-workbench.txt`。隔离 Django 全量回归用过 Python 3.14.5，但这不等于对所有 Python 版本的兼容承诺。
 - 桌面菜单退出与普通窗口 X 隐藏是不同操作。运行实例使用自己的 DataRoot；不要对其他 DSH 实例调用 TradeLoom launcher 的停止脚本。
+
+## 使用已经审阅的开发包
+
+在多人同时修改源码的开发环境中，可向启动或同步入口显式传入 `--bundle-source <绝对目录路径>`，使用已审阅的冻结 package 及其文件清单。启动器仍执行原有 native receipt、目标目录、bundle SHA 与 profile 一致性校验；该参数不允许覆盖不匹配的版本化文件。省略参数时继续使用仓库源码目录。不要把未完成的共享后端源码覆盖到冻结包中。

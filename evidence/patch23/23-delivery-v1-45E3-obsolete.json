@@ -1,0 +1,65 @@
+{
+  "patch": "desktop-ai-web-readonly-diagnostics.patch",
+  "patchSha256": "45E35CC6935E8E21E1DDC8FC13DC38C8987E6E476F25142AE1700890FEC6431B",
+  "basePatch": "desktop-ai-web-multisite-state.patch",
+  "basePatchSha256": "858DBAED145ACB6F124989597A980F641CC9592D3F007C2740D1181C96091088",
+  "runtime": "private 22 candidate only; apply patch23 after frozen multisite-state patch",
+  "targets": {
+    "apps/desktop/src/ai-web-diagnostics.ts": {
+      "beforeSha256": null,
+      "afterSha256": "152DDFA2F449A44C49836650E3EBD2126D90763EFD40AFC885B1D8D1FEF64262"
+    },
+    "apps/desktop/tests/ai-web-diagnostics-electron.fixture.cjs": {
+      "beforeSha256": null,
+      "afterSha256": "1E6EE44BE51C07439CD066B3A652D33EC355D0F830F18B8F8BAFA7E1595482B6"
+    },
+    "apps/desktop/src/browser-guests.ts": {
+      "beforeSha256": "0DF772C8ADBA1CD62CD9889A6EC1BF5E0B03AC0D693B147D432691E8195F88B5",
+      "afterSha256": "527F2FB4035526AA199DA916B1F8C157D29D17D327BAB2CB18F073931D9D05CC"
+    },
+    "apps/desktop/tests/build-ai-web-diagnostics-fixture.cjs": {
+      "beforeSha256": null,
+      "afterSha256": "EFE246C5D642643024B65D9DEBD657325156651422BA46730CC38782507C8989"
+    }
+  },
+  "roundtrip": "core.autocrlf=false; forward --check/apply and reverse --check/reverse apply in evidence/patch23/roundtrip-v2; forward SHA256 equals candidate bytes; reverse browser source equals v22 baseline and added files removed",
+  "semanticTypecheck": {
+    "command": "runtime16 TypeScript tsc --noEmit --strict on apps/desktop/src/ai-web-diagnostics.ts",
+    "exitCode": 0,
+    "log": "evidence/patch23/strict-typecheck-final.log",
+    "changedHostFilesWithTestOnlyStubs": {
+      "command": "strict tsc on browser-guests.ts, ipc.ts, ai-web-diagnostics.ts with actual Electron 44 types and minimal ambient declarations for absent workspace-only shortcut/browser package type modules",
+      "exitCode": 0,
+      "log": "evidence/patch23/host-files-strict-typecheck.log"
+    }
+  },
+  "electronFixture": {
+    "command": "Electron 44 hidden one-shot after node --check",
+    "exitCode": 0,
+    "liveSite": false,
+    "assertions": 12,
+    "result": "evidence/patch23/electron-diagnostics-result-v5-pid-61760.json",
+    "exportJson": "evidence/patch23/electron-export-v5.json",
+    "exportJsonSha256": "AD1D76099D9B61480ADFA2FC152999E893FE925AD3F1F0E3ABC9EE1BC1AE8E0E"
+  },
+  "nativeRegression": {
+    "preload": {
+      "exitCode": 0,
+      "tests": 24,
+      "log": "evidence/patch23/preload-regression.log"
+    },
+    "startupAndWebDocument": {
+      "exitCode": 0,
+      "tests": 148,
+      "log": "evidence/patch23/native-regression.log"
+    }
+  },
+  "additionalNotes": {
+    "syntaxError": "Initial PowerShell quote defect in diagnostics fixture corrected; old PIDs 2372 and 14128 plus children confirmed stopped; no candidate Electron remains.",
+    "legacyAcceptanceSmoke": "Old acceptance.cjs:85 smoke failed because window.fileResult was undefined immediately after manager.upload; page readiness passed, and its change listener awaits File.text() before assigning. Cause unconfirmed; no source was changed."
+  },
+  "liveRuntime": "not modified",
+  "restart": "not performed",
+  "productApi": "not added",
+  "httpOrCdp": "not added"
+}

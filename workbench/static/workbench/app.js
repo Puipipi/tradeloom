@@ -2,20 +2,40 @@
   const embeddedBusinessPage = document.documentElement?.dataset?.businessEmbed === "true";
   if (embeddedBusinessPage && window.parent !== window) {
     document.documentElement.dataset.businessIframe = "true";
+    const businessBridge = globalThis.TradeLoomBusiness;
     const onThemeMessage = (event) => {
       const value = event.data;
-      if (event.source !== window.parent || event.origin !== window.location.origin
+      if (!businessBridge?.isTrustedBridgeEvent?.(event)
         || !value || value.type !== "tradeloom:theme"
-        || Object.keys(value).sort().join(",") !== "colorScheme,palette,type"
+        || Object.keys(value).sort().join(",") !== "colorScheme,palette,type,ui"
         || !["light", "dark"].includes(value.colorScheme)) return;
-      const paletteKeys = ["accent", "border", "canvas", "header", "muted", "panel", "teal", "text"];
+      const paletteKeys = ["accent", "accentSoft", "accentStrong", "border", "buttonInk", "canvas", "danger", "dangerBackground", "dangerBorder", "header", "muted", "panel", "success", "successBackground", "teal", "text", "warning", "warningBackground", "warningBorder"];
       if (!value.palette || Object.keys(value.palette).sort().join(",") !== paletteKeys.join(",")
         || paletteKeys.some(key => typeof value.palette[key] !== "string" || !/^#[0-9a-f]{6}$/i.test(value.palette[key]))) return;
+      const uiKeys = ["controlHeight", "cornerRadius", "dockTabHeight", "fontBody", "fontCompact", "fontFamily", "iconSize", "lineHeight", "modelControl", "navHeight", "sceneTabHeight", "toolbarHeight", "topRowHeight"];
+      if (!value.ui || Object.keys(value.ui).sort().join(",") !== uiKeys.join(",")
+        || !Number.isFinite(value.ui.fontBody) || value.ui.fontBody < 10 || value.ui.fontBody > 22
+        || !Number.isFinite(value.ui.fontCompact) || value.ui.fontCompact < 10 || value.ui.fontCompact > value.ui.fontBody
+        || !Number.isFinite(value.ui.lineHeight) || value.ui.lineHeight < 1.1 || value.ui.lineHeight > 1.8
+        || typeof value.ui.fontFamily !== "string" || value.ui.fontFamily.length > 120
+        || !/^[\w\s,"'-]+$/.test(value.ui.fontFamily)
+        || ["controlHeight", "dockTabHeight", "modelControl", "navHeight", "sceneTabHeight", "toolbarHeight", "topRowHeight"].some(key => !Number.isInteger(value.ui[key]) || value.ui[key] < 16 || value.ui[key] > 96)
+        || !Number.isInteger(value.ui.iconSize) || value.ui.iconSize < 8 || value.ui.iconSize > 32
+        || !Number.isInteger(value.ui.cornerRadius) || value.ui.cornerRadius < 0 || value.ui.cornerRadius > 16) return;
       document.documentElement.dataset.colorScheme = value.colorScheme;
       for (const key of paletteKeys) document.documentElement.style.setProperty(`--wb-theme-${key}`, value.palette[key]);
+      document.documentElement.style.setProperty("--wb-font-body", `${value.ui.fontBody}px`);
+      document.documentElement.style.setProperty("--wb-font-compact", `${value.ui.fontCompact}px`);
+      document.documentElement.style.setProperty("--wb-ui-scale", String(value.ui.fontBody / 14));
+      document.documentElement.style.setProperty("--wb-font-family", value.ui.fontFamily);
+      document.documentElement.style.setProperty("--wb-line-height", value.ui.lineHeight);
+      for (const key of uiKeys) {
+        if (["fontBody", "fontCompact", "fontFamily", "lineHeight"].includes(key)) continue;
+        document.documentElement.style.setProperty(`--wb-${key.replace(/[A-Z]/g, char => `-${char.toLowerCase()}`)}`, `${value.ui[key]}px`);
+      }
     };
     window.addEventListener("message", onThemeMessage);
-    window.parent.postMessage({ type: "tradeloom:theme:request" }, window.location.origin);
+    businessBridge?.bridgeTarget?.()?.postMessage({ type: "tradeloom:theme:request" }, window.location.origin);
   }
 
   const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || "";

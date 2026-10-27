@@ -155,6 +155,8 @@ class PageTests(TestCase):
         self.assertEqual(response.context["pending_count"], 3)
         self.assertEqual(response.context["workflow_count"], 1)
         self.assertEqual(response.context["actionable_count"], 1)
+        html = response.content.decode()
+        self.assertLess(html.index('data-testid="home-stats"'), html.index('home-action-panel'))
         self.assertContains(response, 'data-testid="stat-batches">4<')
         self.assertContains(response, 'data-testid="stat-products">4<')
         self.assertContains(response, 'data-testid="stat-pending">3<')
@@ -165,6 +167,12 @@ class PageTests(TestCase):
         self.assertContains(response, "尚未导入产品")
         self.assertContains(response, "可确认")
         self.assertContains(response, "待补 1 项")
+
+    def test_home_empty_actionable_state_is_compact(self):
+        response = self.client.get("/home")
+
+        self.assertContains(response, 'data-testid="actionable-empty"')
+        self.assertContains(response, "当前没有可立即确认的批次；先补齐待确认批次的资料缺项。")
 
     def test_products_page_shows_latest_revision_and_missing_fields(self):
         batch = self.make_batch(title="产品批次")
@@ -281,6 +289,7 @@ class PageTests(TestCase):
         response = self.client.get("/artifacts")
 
         self.assertContains(response, "英文目录 HTML")
+        self.assertContains(response, '"artifact_type": "catalog_markdown"')
         self.assertContains(response, 'data-testid="artifact-version-2"')
         self.assertContains(response, "草稿")
         self.assertNotContains(response, 'href="/api/artifacts')
@@ -311,8 +320,13 @@ class PageTests(TestCase):
         self.assertContains(response, 'data-tasks-url="/api/tasks"')
         self.assertContains(response, 'data-products-url="/api/product-library"')
         self.assertContains(response, "intake-product-application.js?v=intake-application2")
-        self.assertContains(response, "intake.js?v=intake-application2")
-        self.assertContains(response, "styles.css?v=intake-application2")
+        self.assertContains(response, "intake.js?v=intake-panel-route9")
+        self.assertContains(response, "artifact-browser.js?v=files-browser10")
+        self.assertContains(response, "styles.css?v=business-ui-density8")
+        self.assertContains(response, "data-file-browser")
+        self.assertContains(response, 'data-file-filter="source"')
+        self.assertContains(response, 'data-file-view="grid"')
+        self.assertContains(response, 'sandbox=""')
 
     def test_runs_page_shows_real_runs_events_and_platform_status(self):
         batch = self.make_batch(title="运行批次")

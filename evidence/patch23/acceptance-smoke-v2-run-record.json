@@ -1,0 +1,11 @@
+{
+  "resultFile": "acceptance-smoke-v2-c5505adbf7e143e29cb735f6eb36b69b.json",
+  "resultRunId": "c5505adbf7e143e29cb735f6eb36b",
+  "resultRunIdLength": 29,
+  "preflightLaunchToken": "c5505adbf7e143e29cb735f6eb36b69b",
+  "preflightTokenLength": 32,
+  "sourceSha256": "39460E2C7011F2580EC5F1F5372F7D2C1AAA298CCDE0F0E4933E7C9B8540915C",
+  "electronExit": 0,
+  "resultSha256": "896A73BDE36F5E4B73E3201538B9348B6A22F31B31382F7178A95BFF0C30D3F1",
+  "note": "The Electron invocation used a shortened runId literal while the unique output filename used the full preflight token. The raw result is unchanged; both values are recorded here. Source hash matches."
+}

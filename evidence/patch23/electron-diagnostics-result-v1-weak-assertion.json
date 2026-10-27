@@ -1,0 +1,19 @@
+{
+  "status": "passed-before-stronger-standalone-assertion",
+  "checks": [
+    "menu reports exported path only",
+    "diagnostic action does not show/focus window",
+    "export is in fixed app-owned directory",
+    "export JSON contains no sensitive canary",
+    "standalone textarea is reported, draft/generation unknown",
+    "only button inside a trusted composer root is returned",
+    "sensitive message values are only presence metadata",
+    "unsupported origin rejected with safe code",
+    "navigation during probe rejected with safe code",
+    "destroyed owner rejected with safe code",
+    "hung page probe fails within five-second deadline",
+    "owner destruction closes its owned page"
+  ],
+  "ok": true,
+  "caveat": "At this run the standalone assertion checked only inputPresent=true and unknown draft/generation; it did not assert chat_composer was present. Do not treat this as evidence for standalone textarea support."
+}

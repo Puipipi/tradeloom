@@ -11,7 +11,7 @@ const testRuntime = process.env.TRADELOOM_DSH_TEST_RUNTIME ? path.resolve(proces
 const testReleaseRoot = process.env.TRADELOOM_TEST_RELEASE_ROOT
   ? path.resolve(process.env.TRADELOOM_TEST_RELEASE_ROOT)
   : trustedReleaseRoot
-const runtime = testRuntime ?? path.resolve(repoRoot, '../workspace/runtime/tradeloom-harness/releases/0.2.1-rc.2-tradeloom-slots-1')
+const runtime = testRuntime ?? path.resolve(repoRoot, '../workspace/runtime/tradeloom-harness/releases/0.2.1-rc.3-tradeloom-desktop-12')
 const appBootEntry = path.join(runtime, 'packages/boot/app-boot/lib/index.js')
 const appBootPackage = path.join(runtime, 'packages/boot/app-boot/package.json')
 const sourcePackage = path.join(repoRoot, 'packages/tradeloom-shell')
@@ -62,7 +62,7 @@ test('official DSH loader composes base, Web, and TradeLoom bundles from a tempo
 })
 
 test('prepared profile resolves its installed pinned TradeLoom bundle through official DSH and Node resolution', async t => {
-  const runtime = testRuntime ?? path.join(testReleaseRoot, '0.2.1-rc.2-tradeloom-desktop-2')
+  const runtime = testRuntime ?? path.join(testReleaseRoot, '0.2.1-rc.3-tradeloom-desktop-12')
   const appBootEntry = path.join(runtime, 'packages/boot/app-boot/lib/index.js')
   const appBoot = await import(pathToFileURL(appBootEntry).href)
   const temp = await mkdtemp(path.join(os.tmpdir(), 'tradeloom-prepared-profile-'))

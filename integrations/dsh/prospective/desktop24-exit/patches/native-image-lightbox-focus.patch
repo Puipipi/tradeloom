@@ -1,0 +1,12 @@
+diff --git a/packages/client/ui-primitives/src/ImageLightbox.tsx b/packages/client/ui-primitives/src/ImageLightbox.tsx
+--- a/packages/client/ui-primitives/src/ImageLightbox.tsx
++++ b/packages/client/ui-primitives/src/ImageLightbox.tsx
+@@ -55,7 +55,7 @@ export function ImageLightbox({ src, alt, labels, onClose }: {
+       aria-label={labels.dialog}
+     >
+       <div className={css.stage}>
+-        <div className={css.mask} aria-hidden="true" onMouseDown={onClose} />
++        <div className={css.mask} aria-hidden="true" onMouseDown={event => { event.preventDefault(); onClose() }} />
+         <img className={css.image} src={src} alt={alt} />
+         <button ref={closeRef} type="button" className={css.close} aria-label={labels.close} onClick={onClose}>
+           <IconCloseOutlineRegular size={16} />

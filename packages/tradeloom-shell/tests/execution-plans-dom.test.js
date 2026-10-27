@@ -9,6 +9,9 @@ if (!domRoot) throw new Error('TRADELOOM_DOM_TEST_ROOT must point to the existin
 const { JSDOM } = await import(pathToFileURL(join(domRoot, 'node_modules', 'jsdom', 'lib', 'api.js')).href)
 const moduleSource = await readFile(new URL('../../../workbench/static/workbench/execution-plans.js', import.meta.url), 'utf8')
 const stylesSource = await readFile(new URL('../../../workbench/static/workbench/styles.css', import.meta.url), 'utf8')
+const appSource = await readFile(new URL('../../../workbench/static/workbench/app.js', import.meta.url), 'utf8')
+const businessUrlSource = await readFile(new URL('../../../workbench/static/workbench/business-url.js', import.meta.url), 'utf8')
+const baseTemplate = await readFile(new URL('../../../workbench/templates/workbench/base.html', import.meta.url), 'utf8')
 
 const reqId = 'a'.repeat(32)
 const revisionId = 'b'.repeat(32)
@@ -94,16 +97,53 @@ test('unconfirmed and dirty requirement contexts cannot save; blank material qua
 
 test('execution plan selectors use the existing light and dark theme tokens', () => {
   const block = stylesSource.slice(stylesSource.indexOf('.execution-plan-history-row,'), stylesSource.indexOf('.execution-plan-history-row p,'))
-  const light = stylesSource.slice(stylesSource.indexOf(':root {'), stylesSource.indexOf('html[data-color-scheme="dark"]'))
-  const dark = stylesSource.slice(stylesSource.indexOf('html[data-color-scheme="dark"] {'), stylesSource.indexOf('\n}', stylesSource.indexOf('html[data-color-scheme="dark"] {')))
+  const root = stylesSource.slice(stylesSource.indexOf(':root {'), stylesSource.indexOf('\n}', stylesSource.indexOf(':root {')))
   assert.match(block, /var\(--line\)/)
   assert.match(block, /var\(--surface-soft\)/)
   assert.match(block, /border-radius: 8px/)
   assert.doesNotMatch(block, /--wb-(?:border|surface|radius)/)
-  for (const theme of [light, dark]) {
-    assert.match(theme, /--line:/)
-    assert.match(theme, /--surface-soft:/)
+  assert.match(root, /--line:\s*var\(--wb-theme-border\)/)
+  assert.match(root, /--surface-soft:\s*var\(--wb-theme-header\)/)
+
+  const parent = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://localhost/' })
+  const dom = new JSDOM('<!doctype html><html data-business-embed="true"><body></body></html>', {
+    url: 'http://localhost/business/artifacts', runScripts: 'outside-only',
+  })
+  const businessUrlScript = baseTemplate.indexOf('business-url.js')
+  const appScript = baseTemplate.indexOf("app.js?v=business-popout-bridge1")
+  assert.ok(businessUrlScript >= 0 && appScript > businessUrlScript,
+    'base.html loads the real business URL helper before app.js')
+  Object.defineProperty(dom.window, 'parent', { value: parent.window, configurable: true })
+  dom.window.document.documentElement.dataset.businessEmbed = 'true'
+  dom.window.eval(businessUrlSource)
+  dom.window.eval(appSource)
+  const palette = Object.fromEntries([
+    'accent', 'accentSoft', 'accentStrong', 'border', 'buttonInk', 'canvas', 'danger', 'dangerBackground',
+    'dangerBorder', 'header', 'muted', 'panel', 'success', 'successBackground', 'teal', 'text', 'warning',
+    'warningBackground', 'warningBorder',
+  ].map(key => [key, '#123456']))
+  const ui = {
+    fontFamily: 'Segoe UI, sans-serif', fontBody: 16, fontCompact: 14, lineHeight: 1.45,
+    topRowHeight: 42, navHeight: 40, modelControl: 34, sceneTabHeight: 34, dockTabHeight: 30,
+    controlHeight: 32, toolbarHeight: 36, iconSize: 18, cornerRadius: 8,
   }
+  const applyTheme = (colorScheme, border, header) => {
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: { type: 'tradeloom:theme', colorScheme, palette: { ...palette, border, header }, ui },
+      origin: 'http://localhost', source: parent.window,
+    }))
+  }
+  applyTheme('light', '#ccd3df', '#f5f7fa')
+  let computed = dom.window.getComputedStyle(dom.window.document.documentElement)
+  assert.equal(computed.getPropertyValue('--wb-theme-border'), '#ccd3df')
+  assert.equal(computed.getPropertyValue('--wb-theme-header'), '#f5f7fa')
+  applyTheme('dark', '#39465a', '#202a39')
+  computed = dom.window.getComputedStyle(dom.window.document.documentElement)
+  assert.equal(dom.window.document.documentElement.dataset.colorScheme, 'dark')
+  assert.equal(computed.getPropertyValue('--wb-theme-border'), '#39465a')
+  assert.equal(computed.getPropertyValue('--wb-theme-header'), '#202a39')
+  dom.window.close()
+  parent.window.close()
 })
 
 test('late history response for another exact requirement cannot replace the selected requirement history', async () => {

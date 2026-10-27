@@ -1,0 +1,13 @@
+diff --git a/apps/desktop/tsconfig.client.json b/apps/desktop/tsconfig.client.json
+index 938484f..c4da16c 100644
+--- a/apps/desktop/tsconfig.client.json
++++ b/apps/desktop/tsconfig.client.json
+@@ -6,7 +6,8 @@
+   },
+   "include": [
+     "src/client",
+     "src/welcome-api.ts",
++    "src/ai-web-diagnostics.ts",
+     "src/locale.ts"
+   ],
+   "references": [

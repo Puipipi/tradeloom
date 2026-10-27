@@ -4,7 +4,7 @@
 {% block page_eyebrow %}交付物 / 样品清单预览{% endblock %}
 {% block page_title %}样品清单 CSV 预览{% endblock %}
 {% block content %}
-<div class="page-stack">
+<div class="page-stack document-reader-page">
   <section class="panel">
     <div class="panel-heading">
       <div>
@@ -14,8 +14,11 @@
       <span class="status-pill {{ version.status }}">{{ version.status }}</span>
     </div>
     <p class="timezone-note">本地模拟产物 · 当前审核状态：{{ status_label }}。预览不会提交审核或更改版本状态。</p>
+    <details class="document-reader-metadata">
+      <summary>文件与来源信息</summary>
     <p class="preview-metadata">SHA-256 <span class="mono">{{ version.sha256 }}</span> · 文件大小 {{ byte_size }} bytes</p>
     <p class="preview-metadata">来源版本：{% for source in source_versions %}<span class="mono">{{ source.product_id }}/{{ source.revision_id }} v{{ source.version }}</span>{% if not forloop.last %}、{% endif %}{% empty %}—{% endfor %}</p>
+    </details>
     <p><a class="button secondary" href="{{ download_url|business_url }}">下载此版本 CSV</a> <a href="{% business_path '/artifacts' %}">返回交付物</a></p>
     <div class="table-wrap">
       <table data-testid="sample-checklist-preview" aria-label="样品清单保存版本内容">

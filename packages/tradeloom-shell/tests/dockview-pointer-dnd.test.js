@@ -110,6 +110,16 @@ test('real Dockview pointer drop uses pointerup coordinates and never drops on c
   }
 
   const dockviewSource = await readFile(new URL('../client.dockview.js', import.meta.url), 'utf8')
+  const sceneSource = await readFile(new URL('../client.scenes.js', import.meta.url), 'utf8')
+  const internalDropAnimation = sceneSource.match(/dropEndEventRef\.current\s*=\s*readyApi\.onWillDrop\?\.\(event\s*=>\s*\{([\s\S]*?)\}\)\s*\?\?\s*null/)
+  assert.ok(internalDropAnimation,
+    'the workbench geometry settle hook subscribes to Dockview onWillDrop, which is the event emitted before same-view moves')
+  assert.match(internalDropAnimation[1], /transfer\?\.viewId\s*!==\s*readyApi\.id/,
+    'the workbench settle hook accepts only transfers originating in this Dockview instance')
+  assert.match(internalDropAnimation[1], /requestAnimationFrame\(/,
+    'the workbench measures the group after Dockview completes its synchronous internal move')
+  assert.match(internalDropAnimation[1], /animateDockviewGeometry\(/,
+    'the settled moved group uses the production geometry FLIP helper')
   let registration
   dom.window.__ModuleLoader__ = { load(value) { if (value.chunk === 'client.dockview.js') registration = value } }
   dom.window.ResizeObserver = ResizeObserverShim
@@ -126,6 +136,7 @@ test('real Dockview pointer drop uses pointerup coordinates and never drops on c
     let api
     const overlays = []
     const willDrops = []
+    const didDrops = []
     let overlayListener
     let willDropListener
     await act(async () => {
@@ -136,7 +147,8 @@ test('real Dockview pointer drop uses pointerup coordinates and never drops on c
         onReady: event => {
           api = event.api
           overlayListener = api.onWillShowOverlay(event => overlays.push({ kind: event.kind, position: event.position, edge: event.edge }))
-          willDropListener = api.onWillDrop(event => willDrops.push({ kind: event.kind, position: event.position, edge: event.edge }))
+          willDropListener = api.onWillDrop(event => willDrops.push({ kind: event.kind, position: event.position, edge: event.edge, transfer: event.getData?.() }))
+          api.onDidDrop(event => didDrops.push({ position: event.position, transfer: event.getData?.() }))
         },
       }))
       await settled()
@@ -183,6 +195,10 @@ test('real Dockview pointer drop uses pointerup coordinates and never drops on c
     assert.deepEqual(groupsFromJSON(before.grid.root), [['source'], ['target']])
     if (kind === 'fast' || kind === 'multi') {
       assert.deepEqual(groupsFromJSON(after.grid.root), [['target', 'source']], `${kind} pointer drag merges the source panel into the target group`)
+      assert.ok(willDrops.some(event => event.transfer?.viewId === api.id),
+        `${kind} actual same-view move is reported by the public onWillDrop event`)
+      assert.equal(didDrops.length, 0,
+        `${kind} same-view move does not emit onDidDrop; that event is for external drops`)
     } else if (kind === 'content-edge') {
       assert.deepEqual(groupsFromJSON(after.grid.root), [['target'], ['source']],
         'the Dockview content-edge target creates the split shown by the preview')
