@@ -3,6 +3,8 @@ from __future__ import annotations
 from django.urls import path
 
 from . import api, views, workflow_views
+from .customers import api as customer_api
+from .customers import views as customer_views
 from .erpnext import api as erpnext_api
 from .intake import api as intake_api
 from .requirements import api as requirement_api
@@ -13,6 +15,8 @@ urlpatterns = [
     path("", views.task_list, name="task-list"),
     path("home", views.home, name="home"),
     path("products", views.products, name="products"),
+    path("customers", customer_views.customer_list, name="customer-list"),
+    path("customers/<str:customer_id>", customer_views.customer_detail, name="customer-detail"),
     path("agent-center", views.agent_center, name="agent-center"),
     path("workflow-tasks/<str:workflow_id>", workflow_views.workflow_detail, name="workflow-detail"),
     path("artifacts", views.artifacts, name="artifacts"),
@@ -47,6 +51,15 @@ urlpatterns = [
     path("api/production-requirements/<str:requirement_id>/execution-plan-revisions", execution_plan_api.plan_revision_collection),
     path("api/execution-plans/<str:plan_revision_id>", execution_plan_api.execution_plan_detail),
     path("api/agents", api.list_agents),
+    path("api/customers", customer_api.customer_collection),
+    path("api/customers/<str:customer_id>", customer_api.customer_detail),
+    path("api/customers/<str:customer_id>/analysis", customer_api.customer_analysis),
+    path("api/customers/<str:customer_id>/backtest", customer_api.customer_backtest),
+    path("api/customers/<str:customer_id>/reconcile", customer_api.customer_reconcile),
+    path("api/customers/<str:customer_id>/evaluate", customer_api.evaluate_customer),
+    path("api/customer-events/from-candidate", customer_api.event_from_candidate),
+    path("api/customer-aliases/<str:alias_id>/decision", customer_api.alias_decision),
+    path("api/customer-actions/<str:action_id>/decision", customer_api.action_decision),
     path("api/tasks", api.tasks_collection),
     path("api/workflow-tasks", api.create_workflow_task),
     path("api/workflow-intent/preview", api.preview_workflow_intent),

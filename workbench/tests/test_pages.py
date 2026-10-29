@@ -102,6 +102,7 @@ class PageTests(TestCase):
         for path in (
             "/home",
             "/products",
+            "/customers",
             "/agent-center",
             "/artifacts",
             "/runs",
@@ -123,6 +124,7 @@ class PageTests(TestCase):
         for testid in (
             "nav-home",
             "nav-products",
+            "nav-customers",
             "nav-agent-center",
             "nav-artifacts",
             "nav-runs",

@@ -428,7 +428,7 @@ class WorkflowOrchestratorTests(TestCase):
                 "center", center_result, task_id=self.workflow.id, batch_id=self.batch.id
             )
 
-        for role_id in ("market_customer", "quotation"):
+        for role_id in ("quotation",):
             with self.subTest(role_id=role_id):
                 role = registry.get(role_id)
                 placeholder_result = {
