@@ -805,13 +805,12 @@ class WorkflowRoleTests(TestCase):
             toolbox.call("read_workflow_task")["id"] == workflow.id
         )
 
-    def test_unknown_role_center_subtask_and_placeholders_are_explicit(self):
+    def test_unknown_role_center_subtask_and_quotation_placeholder_are_explicit(self):
         batch = self.make_batch(title="角色边界批次")
         workflow = self.make_workflow(batch)
         runtime = MockAgentRuntime()
         unknown = self.make_subtask(workflow, role="mystery_role")
         center_subtask = self.make_subtask(workflow, role="center")
-        market = self.make_subtask(workflow, role="market_customer")
         quotation = self.make_subtask(workflow, role="quotation")
 
         with patch.object(WorkflowContext, "from_workflow", side_effect=AssertionError):
@@ -822,18 +821,12 @@ class WorkflowRoleTests(TestCase):
         self.assertEqual(unknown_context.exception.code, 404)
         self.assertEqual(center_context.exception.role_id, "center")
 
-        with self.assertRaises(RoleUnavailable) as market_context:
-            runtime.run_subtask(market.id)
-        self.assertEqual(market_context.exception.code, 409)
-        self.assertEqual(market_context.exception.role_id, "market_customer")
-
         with self.assertRaises(RoleUnavailable) as quotation_context:
             runtime.run_subtask(quotation.id)
         self.assertEqual(quotation_context.exception.code, 409)
         self.assertEqual(quotation_context.exception.role_id, "quotation")
         self.assert_no_persisted_execution(unknown, workflow)
         self.assert_no_persisted_execution(center_subtask, workflow)
-        self.assert_no_persisted_execution(market, workflow)
         self.assert_no_persisted_execution(quotation, workflow)
 
     def test_role_registry_schemas_and_legacy_capabilities_stay_separate(self):

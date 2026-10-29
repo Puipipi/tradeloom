@@ -935,3 +935,180 @@ class ErpNextDraftOperation(models.Model):
 
     def delete(self, *args, **kwargs):
         raise ValidationError("ERPNext 草稿操作记录不可删除。")
+
+
+class Customer(models.Model):
+    id = models.CharField(primary_key=True, max_length=32, default=hex_uuid, editable=False)
+    display_name = models.CharField(max_length=200)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["display_name", "id"]
+
+
+class CustomerAlias(models.Model):
+    class Decision(models.TextChoices):
+        SUGGESTED = "suggested", "Suggested"
+        CONFIRMED = "confirmed", "Confirmed"
+        REJECTED = "rejected", "Rejected"
+
+    id = models.CharField(primary_key=True, max_length=32, default=hex_uuid, editable=False)
+    customer = models.ForeignKey(
+        Customer, null=True, blank=True, on_delete=models.PROTECT, related_name="aliases"
+    )
+    source_candidate = models.ForeignKey(
+        IntakeCandidate, null=True, blank=True, on_delete=models.PROTECT, related_name="customer_aliases"
+    )
+    raw_text = models.CharField(max_length=200)
+    normalized_text = models.CharField(max_length=200, unique=True)
+    decision = models.CharField(max_length=16, choices=Decision.choices, default=Decision.SUGGESTED)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    Q(decision="confirmed", customer__isnull=False)
+                    | Q(decision__in=["suggested", "rejected"], customer__isnull=True)
+                ),
+                name="customer_alias_identity_consistent",
+            ),
+        ]
+
+
+class CustomerEvent(AppendOnlyModel):
+    class Kind(models.TextChoices):
+        INQUIRY = "inquiry", "Inquiry"
+        QUOTATION = "quotation", "Quotation"
+        ORDER = "order", "Order"
+        ISSUE = "issue", "Issue"
+        REPLY = "reply", "Reply"
+
+    id = models.CharField(primary_key=True, max_length=32, default=hex_uuid, editable=False)
+    customer = models.ForeignKey(Customer, on_delete=models.PROTECT, related_name="events")
+    alias = models.ForeignKey(CustomerAlias, on_delete=models.PROTECT, related_name="events")
+    source_candidate = models.ForeignKey(
+        IntakeCandidate, on_delete=models.PROTECT, related_name="customer_events"
+    )
+    event_type = models.CharField(max_length=24, choices=Kind.choices)
+    occurred_on = models.DateField()
+    payload = models.JSONField(default=dict)
+    source_refs = models.JSONField(default=dict)
+    dedupe_key = models.CharField(max_length=64, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["occurred_on", "created_at", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["source_candidate", "event_type"], name="uniq_customer_event_candidate_type"
+            ),
+        ]
+
+    def save(self, *args, **kwargs):
+        if (
+            self.alias.decision != CustomerAlias.Decision.CONFIRMED
+            or self.alias.customer_id != self.customer_id
+        ):
+            raise ValidationError("客户事件必须绑定已确认且归属一致的别名。")
+        return super().save(*args, **kwargs)
+
+
+class CustomerMetricSnapshot(AppendOnlyModel):
+    class Kind(models.TextChoices):
+        ORDER_INTERVAL_MEDIAN_DAYS = "order_interval_median_days", "Order interval median days"
+        SILENCE_DAYS = "silence_days", "Silence days"
+
+    id = models.CharField(primary_key=True, max_length=32, default=hex_uuid, editable=False)
+    customer = models.ForeignKey(Customer, on_delete=models.PROTECT, related_name="metric_snapshots")
+    metric_key = models.CharField(max_length=64, choices=Kind.choices)
+    metric_version = models.CharField(max_length=64)
+    as_of = models.DateField()
+    window_start = models.DateField()
+    window_end = models.DateField()
+    value = models.DecimalField(max_digits=18, decimal_places=6, null=True, blank=True)
+    unit = models.CharField(max_length=16)
+    coverage = models.JSONField(default=dict)
+    input_event_ids = models.JSONField(default=list)
+    inputs_hash = models.CharField(max_length=64)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["customer_id", "metric_key", "-as_of", "-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["customer", "metric_key", "metric_version", "as_of", "inputs_hash"],
+                name="uniq_customer_metric_inputs",
+            ),
+        ]
+
+
+class CustomerPrediction(models.Model):
+    class Kind(models.TextChoices):
+        SILENCE_FOLLOWUP = "silence_followup", "Silence follow-up"
+
+    class Result(models.TextChoices):
+        INSUFFICIENT_DATA = "insufficient_data", "Insufficient data"
+        NOT_RECOMMENDED = "not_recommended", "Not recommended"
+        RECOMMENDED = "recommended", "Recommended"
+
+    class Outcome(models.TextChoices):
+        PENDING = "pending", "Pending"
+        ORDER_PLACED = "order_placed", "Order placed"
+        NO_ORDER = "no_order", "No order"
+
+    id = models.CharField(primary_key=True, max_length=32, default=hex_uuid, editable=False)
+    customer = models.ForeignKey(Customer, on_delete=models.PROTECT, related_name="predictions")
+    prediction_type = models.CharField(max_length=40, choices=Kind.choices)
+    predicted_on = models.DateField()
+    horizon_days = models.PositiveIntegerField(default=30)
+    result = models.CharField(max_length=24, choices=Result.choices)
+    rule_id = models.CharField(max_length=64)
+    rule_version = models.CharField(max_length=64)
+    input_snapshot = models.JSONField(default=dict)
+    inputs_hash = models.CharField(max_length=64)
+    outcome = models.CharField(max_length=24, choices=Outcome.choices, default=Outcome.PENDING)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-predicted_on", "-created_at", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["customer", "prediction_type", "rule_version", "predicted_on", "inputs_hash"],
+                name="uniq_customer_prediction_inputs",
+            ),
+        ]
+
+
+class CustomerAction(models.Model):
+    class Kind(models.TextChoices):
+        FOLLOW_UP = "follow_up", "Follow up"
+
+    class Status(models.TextChoices):
+        SUGGESTED = "suggested", "Suggested"
+        ACCEPTED = "accepted", "Accepted"
+        COMPLETED = "completed", "Completed"
+        DISMISSED = "dismissed", "Dismissed"
+
+    id = models.CharField(primary_key=True, max_length=32, default=hex_uuid, editable=False)
+    customer = models.ForeignKey(Customer, on_delete=models.PROTECT, related_name="actions")
+    prediction = models.ForeignKey(CustomerPrediction, on_delete=models.PROTECT, related_name="actions")
+    action_type = models.CharField(max_length=32, choices=Kind.choices)
+    suggestion = models.TextField()
+    due_on = models.DateField(null=True, blank=True)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.SUGGESTED)
+    note = models.TextField(blank=True, default="")
+    decided_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["prediction", "action_type"], name="uniq_customer_action_prediction"),
+        ]

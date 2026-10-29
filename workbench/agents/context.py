@@ -6,7 +6,28 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from workbench.models import HumanReview, Product, ProductRevision, Task, TaskFile, WorkflowStep, WorkflowTask
+from workbench.customers.service import (
+    action_payload,
+    alias_payload,
+    customer_payload,
+    event_payload,
+    metric_payload,
+    prediction_payload,
+)
+from workbench.models import (
+    Customer,
+    CustomerAction,
+    CustomerEvent,
+    CustomerMetricSnapshot,
+    CustomerPrediction,
+    HumanReview,
+    Product,
+    ProductRevision,
+    Task,
+    TaskFile,
+    WorkflowStep,
+    WorkflowTask,
+)
 
 from .workflow_contracts import (
     CrossBatchReferenceError,
@@ -57,7 +78,15 @@ TOOL_ALLOWLIST = {
             "compose_generation_intent",
         }
     ),
-    "market_customer": frozenset(),
+    "market_customer": frozenset(
+        {
+            "read_customer_profile",
+            "read_customer_events",
+            "read_customer_metrics",
+            "read_customer_predictions",
+            "read_customer_actions",
+        }
+    ),
     "quotation": frozenset(),
 }
 
@@ -758,6 +787,69 @@ def _compose_generation_intent(
     ]
 
 
+def _get_customer(customer_id: str) -> Customer:
+    customer = Customer.objects.filter(pk=customer_id).first()
+    if customer is None:
+        raise InputContractError(f"客户不存在：{customer_id}")
+    return customer
+
+
+def _read_customer_profile(
+    _context: WorkflowContext,
+    *,
+    customer_id: str,
+) -> dict[str, Any]:
+    customer = _get_customer(customer_id)
+    return {
+        **customer_payload(customer),
+        "aliases": [alias_payload(alias) for alias in customer.aliases.all()],
+    }
+
+
+def _read_customer_events(
+    _context: WorkflowContext,
+    *,
+    customer_id: str,
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    customer = _get_customer(customer_id)
+    events = CustomerEvent.objects.filter(customer_id=customer.id)[:limit]
+    return [event_payload(event) for event in events]
+
+
+def _read_customer_metrics(
+    _context: WorkflowContext,
+    *,
+    customer_id: str,
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    customer = _get_customer(customer_id)
+    metrics = CustomerMetricSnapshot.objects.filter(customer_id=customer.id)[:limit]
+    return [metric_payload(metric) for metric in metrics]
+
+
+def _read_customer_predictions(
+    _context: WorkflowContext,
+    *,
+    customer_id: str,
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    customer = _get_customer(customer_id)
+    predictions = CustomerPrediction.objects.filter(customer_id=customer.id)[:limit]
+    return [prediction_payload(prediction) for prediction in predictions]
+
+
+def _read_customer_actions(
+    _context: WorkflowContext,
+    *,
+    customer_id: str,
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    customer = _get_customer(customer_id)
+    actions = CustomerAction.objects.filter(customer_id=customer.id)[:limit]
+    return [action_payload(action) for action in actions]
+
+
 _TOOL_DEFINITIONS: dict[str, ToolDefinition] = {
     "read_workflow_task": make_tool_definition("read_workflow_task", _read_workflow_task),
     "read_batch_products": make_tool_definition("read_batch_products", _read_batch_products),
@@ -768,4 +860,9 @@ _TOOL_DEFINITIONS: dict[str, ToolDefinition] = {
     "validate_product_data": make_tool_definition("validate_product_data", _validate_product_data),
     "check_data_readiness": make_tool_definition("check_data_readiness", _check_data_readiness),
     "compose_generation_intent": make_tool_definition("compose_generation_intent", _compose_generation_intent),
+    "read_customer_profile": make_tool_definition("read_customer_profile", _read_customer_profile),
+    "read_customer_events": make_tool_definition("read_customer_events", _read_customer_events),
+    "read_customer_metrics": make_tool_definition("read_customer_metrics", _read_customer_metrics),
+    "read_customer_predictions": make_tool_definition("read_customer_predictions", _read_customer_predictions),
+    "read_customer_actions": make_tool_definition("read_customer_actions", _read_customer_actions),
 }

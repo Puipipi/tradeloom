@@ -10,8 +10,9 @@ from .contracts import (
 )
 from .local import LocalProductProfileExecutor
 from .center import CenterAgent
+from .customer_agent import MarketCustomerAgent
 from .delivery_agent import DeliveryQualityAgent
-from .placeholders import MarketCustomerPlaceholder, QuotationPlaceholder
+from .placeholders import QuotationPlaceholder
 from .product_agent import ProductAgent
 from .workflow_contracts import UnknownWorkflowRole
 
@@ -115,7 +116,7 @@ def build_workflow_role_registry() -> WorkflowRoleRegistry:
         CenterAgent(),
         ProductAgent(),
         DeliveryQualityAgent(),
-        MarketCustomerPlaceholder(),
+        MarketCustomerAgent(),
         QuotationPlaceholder(),
     ):
         registry.register(role)
