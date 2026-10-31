@@ -17,8 +17,10 @@ class CustomerPageTests(CustomerFixtureMixin, TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'data-testid="nav-customers"')
-        self.assertContains(response, 'data-testid="candidate-event-form"')
+        self.assertContains(response, 'data-testid="commercial-candidates"')
+        self.assertContains(response, f'data-candidate-id="{candidate.id}"')
         self.assertContains(response, "Page Pending Customer")
+        self.assertContains(response, "归并到已有客户")
         self.assertContains(response, "确认并新建客户")
         self.assertContains(response, "系统不会按相似名称自动合并")
 

@@ -7,16 +7,20 @@ from pathlib import Path
 from typing import Any
 
 from workbench.customers.service import (
+    CustomerError,
     action_payload,
     alias_payload,
+    customer_family_ids,
     customer_payload,
     event_payload,
     metric_payload,
     prediction_payload,
+    resolve_customer,
 )
 from workbench.models import (
     Customer,
     CustomerAction,
+    CustomerAlias,
     CustomerEvent,
     CustomerMetricSnapshot,
     CustomerPrediction,
@@ -788,10 +792,10 @@ def _compose_generation_intent(
 
 
 def _get_customer(customer_id: str) -> Customer:
-    customer = Customer.objects.filter(pk=customer_id).first()
-    if customer is None:
-        raise InputContractError(f"客户不存在：{customer_id}")
-    return customer
+    try:
+        return resolve_customer(customer_id)
+    except CustomerError as exc:
+        raise InputContractError(f"客户不存在或归属无效：{customer_id}") from exc
 
 
 def _read_customer_profile(
@@ -802,7 +806,10 @@ def _read_customer_profile(
     customer = _get_customer(customer_id)
     return {
         **customer_payload(customer),
-        "aliases": [alias_payload(alias) for alias in customer.aliases.all()],
+        "aliases": [
+            alias_payload(alias)
+            for alias in CustomerAlias.objects.filter(customer_id__in=customer_family_ids(customer))
+        ],
     }
 
 
@@ -813,7 +820,7 @@ def _read_customer_events(
     limit: int = 20,
 ) -> list[dict[str, Any]]:
     customer = _get_customer(customer_id)
-    events = CustomerEvent.objects.filter(customer_id=customer.id)[:limit]
+    events = CustomerEvent.objects.filter(customer_id__in=customer_family_ids(customer))[:limit]
     return [event_payload(event) for event in events]
 
 
@@ -824,7 +831,7 @@ def _read_customer_metrics(
     limit: int = 20,
 ) -> list[dict[str, Any]]:
     customer = _get_customer(customer_id)
-    metrics = CustomerMetricSnapshot.objects.filter(customer_id=customer.id)[:limit]
+    metrics = CustomerMetricSnapshot.objects.filter(customer_id__in=customer_family_ids(customer))[:limit]
     return [metric_payload(metric) for metric in metrics]
 
 
@@ -835,7 +842,7 @@ def _read_customer_predictions(
     limit: int = 20,
 ) -> list[dict[str, Any]]:
     customer = _get_customer(customer_id)
-    predictions = CustomerPrediction.objects.filter(customer_id=customer.id)[:limit]
+    predictions = CustomerPrediction.objects.filter(customer_id__in=customer_family_ids(customer))[:limit]
     return [prediction_payload(prediction) for prediction in predictions]
 
 
@@ -846,7 +853,7 @@ def _read_customer_actions(
     limit: int = 20,
 ) -> list[dict[str, Any]]:
     customer = _get_customer(customer_id)
-    actions = CustomerAction.objects.filter(customer_id=customer.id)[:limit]
+    actions = CustomerAction.objects.filter(customer_id__in=customer_family_ids(customer))[:limit]
     return [action_payload(action) for action in actions]
 
 

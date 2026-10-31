@@ -2,16 +2,30 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from django.db.models import Count, Max, Q
+from django.db.models import Max, Q
 from django.http import Http404
-from django.shortcuts import render
+from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.views.decorators.csrf import ensure_csrf_cookie
 
-from workbench.models import Customer, CustomerAction, CustomerAlias, CustomerEvent, CustomerPrediction
+from workbench.business_urls import public_url
+from workbench.models import (
+    Customer,
+    CustomerAction,
+    CustomerAlias,
+    CustomerEvent,
+    CustomerMerge,
+    CustomerPrediction,
+    IntakeCandidate,
+)
 from workbench.views import _page_context
 
-from .service import analyze_customer
+from .service import (
+    CustomerError,
+    analyze_customer,
+    customer_family_ids,
+    resolve_customer,
+)
 
 
 EVENT_LABELS = {
@@ -51,26 +65,55 @@ def _event_source_summary(event: CustomerEvent) -> str:
     return f"{location} · 快照 {str(snapshot_id)[:8]}"
 
 
+def _candidate_value(candidate: IntakeCandidate, field: str) -> str:
+    fields = candidate.typed_payload.get("fields") if isinstance(candidate.typed_payload, dict) else {}
+    values = fields.get(field) if isinstance(fields, dict) else None
+    if not isinstance(values, list):
+        return ""
+    for item in values:
+        if isinstance(item, dict) and item.get("state") == "present" and isinstance(item.get("value"), str):
+            return item["value"].strip()
+    return ""
+
+
+def _commercial_candidates() -> list[IntakeCandidate]:
+    rows = []
+    candidates = IntakeCandidate.objects.filter(candidate_type="commercial_source").order_by(
+        "-created_at", "-id"
+    )[:50]
+    for candidate in candidates:
+        party_text = _candidate_value(candidate, "party_text")
+        if not party_text:
+            continue
+        candidate.party_text = party_text
+        candidate.document_reference = _candidate_value(candidate, "document_reference") or "无单据号"
+        candidate.event_count = candidate.customer_events.count()
+        rows.append(candidate)
+        if len(rows) >= 20:
+            break
+    return rows
+
+
 @ensure_csrf_cookie
 def customer_list(request):
     query = request.GET.get("q", "").strip()
-    customers = Customer.objects.annotate(
-        event_count=Count("events", distinct=True),
-        open_action_count=Count(
-            "actions",
-            filter=Q(actions__status__in=["suggested", "accepted"]),
-            distinct=True,
-        ),
-        last_order_on=Max(
-            "events__occurred_on",
-            filter=Q(events__event_type=CustomerEvent.Kind.ORDER),
-        ),
-    )
+    customers = Customer.objects.filter(merged_into__isnull=True)
     if query:
         customers = customers.filter(
             Q(display_name__icontains=query) | Q(aliases__raw_text__icontains=query)
         ).distinct()
-    customers = customers[:100]
+    customers = list(customers[:100])
+    for customer in customers:
+        family_ids = customer_family_ids(customer)
+        customer.event_count = CustomerEvent.objects.filter(customer_id__in=family_ids).count()
+        customer.open_action_count = CustomerAction.objects.filter(
+            customer_id__in=family_ids,
+            status__in=["suggested", "accepted"],
+        ).count()
+        customer.last_order_on = CustomerEvent.objects.filter(
+            customer_id__in=family_ids,
+            event_type=CustomerEvent.Kind.ORDER,
+        ).aggregate(value=Max("occurred_on"))["value"]
     pending_aliases = CustomerAlias.objects.filter(
         decision=CustomerAlias.Decision.SUGGESTED
     ).select_related("source_candidate").order_by("created_at", "id")[:50]
@@ -84,8 +127,10 @@ def customer_list(request):
             pending_alias_total=CustomerAlias.objects.filter(
                 decision=CustomerAlias.Decision.SUGGESTED
             ).count(),
+            commercial_candidates=_commercial_candidates(),
+            customer_options=Customer.objects.filter(merged_into__isnull=True),
             filters={"q": query},
-            customer_total=Customer.objects.count(),
+            customer_total=Customer.objects.filter(merged_into__isnull=True).count(),
             open_action_total=CustomerAction.objects.filter(
                 status__in=["suggested", "accepted"]
             ).count(),
@@ -98,9 +143,15 @@ def customer_list(request):
 
 @ensure_csrf_cookie
 def customer_detail(request, customer_id: str):
-    customer = Customer.objects.filter(pk=customer_id).first()
-    if customer is None:
-        raise Http404("客户不存在")
+    try:
+        customer = resolve_customer(customer_id)
+    except CustomerError as exc:
+        raise Http404("客户不存在") from exc
+    if customer.pk != customer_id:
+        query = request.GET.urlencode()
+        target = public_url(f"/customers/{customer.pk}")
+        return redirect(f"{target}?{query}" if query else target)
+    family_ids = customer_family_ids(customer)
     date_error = ""
     raw_as_of = request.GET.get("as_of", "")
     if raw_as_of:
@@ -119,15 +170,21 @@ def customer_detail(request, customer_id: str):
         {"key": kind, "label": EVENT_LABELS[kind], "count": analysis["event_counts"][kind]}
         for kind in CustomerEvent.Kind.values
     ]
-    events = list(customer.events.order_by("-occurred_on", "-created_at", "-id")[:50])
+    events = list(CustomerEvent.objects.filter(customer_id__in=family_ids).order_by(
+        "-occurred_on", "-created_at", "-id"
+    )[:50])
     for event in events:
         event.type_label = EVENT_LABELS[event.event_type]
         event.source_summary = _event_source_summary(event)
-    predictions = list(customer.predictions.all()[:30])
+    predictions = list(CustomerPrediction.objects.filter(customer_id__in=family_ids).order_by(
+        "-predicted_on", "-created_at", "id"
+    )[:30])
     for prediction in predictions:
         prediction.result_label = PREDICTION_LABELS[prediction.result]
         prediction.outcome_label = OUTCOME_LABELS[prediction.outcome]
-    actions = list(customer.actions.select_related("prediction").all()[:30])
+    actions = list(CustomerAction.objects.filter(customer_id__in=family_ids).select_related(
+        "prediction"
+    ).order_by("-created_at", "id")[:30])
     for action in actions:
         action.status_label = ACTION_LABELS[action.status]
         action.can_accept = action.status == CustomerAction.Status.SUGGESTED
@@ -147,7 +204,10 @@ def customer_detail(request, customer_id: str):
             events=events,
             predictions=predictions,
             actions=actions,
-            aliases=customer.aliases.all(),
+            aliases=CustomerAlias.objects.filter(customer_id__in=family_ids),
+            customer_options=Customer.objects.filter(merged_into__isnull=True).exclude(pk=customer.pk),
+            merge_history=CustomerMerge.objects.filter(target_customer=customer),
+            merged_sources=customer.merged_sources.all(),
             as_of=as_of.isoformat(),
             date_error=date_error,
             backtest_start=(as_of - timedelta(days=180)).isoformat(),

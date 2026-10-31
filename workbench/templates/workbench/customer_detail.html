@@ -27,6 +27,35 @@
   </section>
 
   <section class="panel">
+    <div class="panel-heading"><div><h2>身份与客户合并</h2><p>别名改派只影响新事件；客户合并保留原记录，并在当前客户下汇总整个客户族的历史视图。</p></div></div>
+    {% if merged_sources %}<p class="inline-alert warning">当前客户已合并：{% for source in merged_sources %}{{ source.display_name }}{% if not forloop.last %}、{% endif %}{% endfor %}。原事件和推测仍保留原主键。</p>{% endif %}
+    <div class="customer-analysis-grid">
+      <div>
+        <h3>已确认别名</h3>
+        {% if aliases %}{% for alias in aliases %}
+        <article class="alias-resolve-card" data-testid="confirmed-alias-{{ alias.id }}">
+          <div><strong>{{ alias.raw_text }}</strong><span class="cell-subtitle mono">{{ alias.id }}</span></div>
+          <form class="identity-operation-form" data-url="/api/customer-aliases/{{ alias.id }}/reassign">
+            <div class="field"><label for="reassign-{{ alias.id }}">改派到</label><select id="reassign-{{ alias.id }}" name="customer_id" required><option value="">选择客户</option>{% for option in customer_options %}<option value="{{ option.id }}">{{ option.display_name }}</option>{% endfor %}</select></div>
+            <div class="field"><label for="reassign-note-{{ alias.id }}">改派依据</label><input id="reassign-note-{{ alias.id }}" name="note" maxlength="500" placeholder="只影响改派后的新事件"></div>
+            <button class="button secondary small" type="submit" {% if not customer_options %}disabled{% endif %}>改派别名</button>
+          </form>
+        </article>
+        {% endfor %}{% else %}<p class="muted-text">暂无已确认别名。</p>{% endif %}
+      </div>
+      <div>
+        <h3>把另一个客户合并到当前客户</h3>
+        <form id="customer-merge-form" class="identity-operation-form" data-url="/api/customers/{{ customer.id }}/merge" data-testid="customer-merge-form">
+          <div class="field"><label for="merge-source">源客户</label><select id="merge-source" name="source_customer_id" required><option value="">选择要合并的客户</option>{% for option in customer_options %}<option value="{{ option.id }}">{{ option.display_name }}</option>{% endfor %}</select></div>
+          <div class="field"><label for="merge-note">合并依据</label><input id="merge-note" name="note" maxlength="500" placeholder="例如：同一企业的两个历史名称"></div>
+          <button class="button primary" type="submit" {% if not customer_options %}disabled{% endif %}>确认合并</button>
+        </form>
+        {% if merge_history %}<dl class="status-list">{% for merge in merge_history %}<div><dt>{{ merge.created_at|date:"Y-m-d H:i" }}</dt><dd>{{ merge.source_customer.display_name }} 已合并到当前客户。{{ merge.note }}</dd></div>{% endfor %}</dl>{% endif %}
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
     <div class="panel-heading"><div><h2>跟进建议</h2><p>建议只由规则生成；采纳、完成与放弃均由人决定，系统不会自动联系客户。</p></div></div>
     {% if actions %}
     <div class="customer-action-list">

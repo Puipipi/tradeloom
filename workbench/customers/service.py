@@ -14,7 +14,9 @@ from workbench.models import (
     Customer,
     CustomerAction,
     CustomerAlias,
+    CustomerAliasDecision,
     CustomerEvent,
+    CustomerMerge,
     CustomerMetricSnapshot,
     CustomerPrediction,
     IntakeCandidate,
@@ -45,6 +47,57 @@ class CustomerError(ValueError):
         self.code = code
         self.status = status
         super().__init__(code)
+
+
+def resolve_customer(value: Customer | str) -> Customer:
+    customer = Customer.objects.filter(pk=value).first() if isinstance(value, str) else value
+    if customer is None:
+        raise CustomerError("customer_not_found", 404)
+    seen = set()
+    while customer.merged_into_id is not None:
+        if customer.pk in seen:
+            raise CustomerError("customer_merge_cycle", 409)
+        seen.add(customer.pk)
+        customer = customer.merged_into
+    return customer
+
+
+def customer_family_ids(value: Customer | str) -> list[str]:
+    canonical = resolve_customer(value)
+    family = [canonical]
+    seen = {canonical.pk}
+    index = 0
+    while index < len(family):
+        for child in family[index].merged_sources.all():
+            if child.pk in seen:
+                raise CustomerError("customer_merge_cycle", 409)
+            seen.add(child.pk)
+            family.append(child)
+        index += 1
+    return [customer.pk for customer in family]
+
+
+def _validate_identity_note(note: object) -> str:
+    if not isinstance(note, str) or len(note) > 500:
+        raise CustomerError("invalid_identity_note")
+    return note.strip()
+
+
+def _record_alias_decision(
+    alias: CustomerAlias,
+    decision: str,
+    *,
+    from_customer: Customer | None,
+    to_customer: Customer | None,
+    note: str = "",
+) -> None:
+    CustomerAliasDecision.objects.create(
+        alias=alias,
+        from_customer=from_customer,
+        to_customer=to_customer,
+        decision=decision,
+        note=note,
+    )
 
 
 def _hash(value: object) -> str:
@@ -169,19 +222,40 @@ def customer_payload(customer: Customer) -> dict:
     return {
         "id": customer.pk,
         "display_name": customer.display_name,
+        "merged_into_id": customer.merged_into_id,
+        "merged_at": customer.merged_at.isoformat() if customer.merged_at else None,
         "created_at": customer.created_at.isoformat(),
         "updated_at": customer.updated_at.isoformat(),
     }
 
 
+def merge_payload(merge: CustomerMerge) -> dict:
+    return {
+        "id": merge.pk,
+        "source_customer_id": merge.source_customer_id,
+        "target_customer_id": merge.target_customer_id,
+        "note": merge.note,
+        "created_at": merge.created_at.isoformat(),
+    }
+
+
 def customer_detail_payload(customer: Customer) -> dict:
+    customer = resolve_customer(customer)
+    family_ids = customer_family_ids(customer)
     return {
         **customer_payload(customer),
-        "aliases": [alias_payload(row) for row in customer.aliases.all()[:100]],
-        "events": [event_payload(row) for row in customer.events.all()[:100]],
-        "metric_snapshots": [metric_payload(row) for row in customer.metric_snapshots.all()[:100]],
-        "predictions": [prediction_payload(row) for row in customer.predictions.all()[:100]],
-        "actions": [action_payload(row) for row in customer.actions.all()[:100]],
+        "customer_family_ids": family_ids,
+        "aliases": [alias_payload(row) for row in CustomerAlias.objects.filter(customer_id__in=family_ids)[:100]],
+        "events": [event_payload(row) for row in CustomerEvent.objects.filter(customer_id__in=family_ids)[:100]],
+        "metric_snapshots": [
+            metric_payload(row)
+            for row in CustomerMetricSnapshot.objects.filter(customer_id__in=family_ids)[:100]
+        ],
+        "predictions": [
+            prediction_payload(row)
+            for row in CustomerPrediction.objects.filter(customer_id__in=family_ids)[:100]
+        ],
+        "actions": [action_payload(row) for row in CustomerAction.objects.filter(customer_id__in=family_ids)[:100]],
     }
 
 
@@ -232,7 +306,7 @@ def record_event_from_candidate(
     try:
         with transaction.atomic():
             event = CustomerEvent.objects.create(
-                customer_id=alias.customer_id,
+                customer_id=resolve_customer(alias.customer_id).pk,
                 alias=alias,
                 source_candidate=candidate,
                 event_type=event_type,
@@ -265,7 +339,10 @@ def decide_alias(
         if alias is None:
             raise CustomerError("alias_not_found", 404)
         if alias.decision == CustomerAlias.Decision.CONFIRMED:
-            same_customer = customer_id is not None and alias.customer_id == customer_id
+            same_customer = (
+                customer_id is not None
+                and alias.customer_id == resolve_customer(customer_id).pk
+            )
             same_name = (
                 display_name is not None
                 and alias.customer is not None
@@ -276,24 +353,104 @@ def decide_alias(
             raise CustomerError("alias_already_confirmed", 409)
         if decision == "reject":
             if alias.decision == CustomerAlias.Decision.SUGGESTED:
+                previous_customer = alias.customer
                 alias.decision = CustomerAlias.Decision.REJECTED
                 alias.save(update_fields=["decision", "updated_at"])
+                _record_alias_decision(
+                    alias,
+                    CustomerAliasDecision.Kind.REJECTED,
+                    from_customer=previous_customer,
+                    to_customer=None,
+                )
             return alias
 
         if (customer_id is None) == (display_name is None):
             raise CustomerError("invalid_alias_decision")
         if customer_id is not None:
-            customer = Customer.objects.filter(pk=customer_id).first()
-            if customer is None:
-                raise CustomerError("customer_not_found", 404)
+            customer = resolve_customer(customer_id)
         else:
             if not isinstance(display_name, str) or not display_name.strip() or len(display_name.strip()) > 200:
                 raise CustomerError("invalid_alias_decision")
             customer = Customer.objects.create(display_name=display_name.strip())
+        previous_customer = alias.customer
         alias.customer = customer
         alias.decision = CustomerAlias.Decision.CONFIRMED
         alias.save(update_fields=["customer", "decision", "updated_at"])
+        _record_alias_decision(
+            alias,
+            CustomerAliasDecision.Kind.CONFIRMED,
+            from_customer=previous_customer,
+            to_customer=customer,
+        )
         return alias
+
+
+def reassign_alias(alias_id: str, customer_id: str, note: str = "") -> CustomerAlias:
+    note = _validate_identity_note(note)
+    target = resolve_customer(customer_id)
+    with transaction.atomic():
+        alias = CustomerAlias.objects.select_for_update().filter(pk=alias_id).first()
+        if alias is None:
+            raise CustomerError("alias_not_found", 404)
+        if alias.decision != CustomerAlias.Decision.CONFIRMED:
+            raise CustomerError("alias_not_confirmed", 409)
+        if alias.customer_id == target.pk:
+            return alias
+        previous = alias.customer
+        alias.customer = target
+        alias.save(update_fields=["customer", "updated_at"])
+        _record_alias_decision(
+            alias,
+            CustomerAliasDecision.Kind.REASSIGNED,
+            from_customer=previous,
+            to_customer=target,
+            note=note,
+        )
+        return alias
+
+
+def merge_customers(source_customer_id: str, target_customer_id: str, note: str = "") -> CustomerMerge:
+    note = _validate_identity_note(note)
+    target = resolve_customer(target_customer_id)
+    source = Customer.objects.filter(pk=source_customer_id).first()
+    if source is None:
+        raise CustomerError("customer_not_found", 404)
+    if source.merged_into_id is not None:
+        if resolve_customer(source).pk == target.pk:
+            merge = CustomerMerge.objects.filter(source_customer=source).first()
+            if merge is not None:
+                return merge
+        raise CustomerError("customer_already_merged", 409)
+    if source.pk == target.pk:
+        raise CustomerError("invalid_customer_merge")
+    with transaction.atomic():
+        locked = {
+            row.pk: row
+            for row in Customer.objects.select_for_update().filter(pk__in=[source.pk, target.pk]).order_by("id")
+        }
+        source = locked[source.pk]
+        target = locked[target.pk]
+        if source.merged_into_id is not None or target.merged_into_id is not None:
+            raise CustomerError("customer_already_merged", 409)
+        merge = CustomerMerge.objects.create(
+            source_customer=source,
+            target_customer=target,
+            note=note,
+        )
+        for alias in source.aliases.all():
+            alias.customer = target
+            alias.save(update_fields=["customer", "updated_at"])
+            _record_alias_decision(
+                alias,
+                CustomerAliasDecision.Kind.MERGED,
+                from_customer=source,
+                to_customer=target,
+                note=note,
+            )
+        source.merged_into = target
+        source.merged_at = timezone.now()
+        source.save(update_fields=["merged_into", "merged_at", "updated_at"])
+        return merge
 
 
 def _store_metric(
@@ -371,10 +528,10 @@ def _followup_result(
 def compute_customer_metrics(customer_id: str, as_of: date) -> dict[str, CustomerMetricSnapshot]:
     if type(as_of) is not date:
         raise CustomerError("invalid_metric_date")
-    customer = Customer.objects.filter(pk=customer_id).first()
-    if customer is None:
-        raise CustomerError("customer_not_found", 404)
-    events = list(customer.events.filter(
+    customer = resolve_customer(customer_id)
+    family_ids = customer_family_ids(customer)
+    events = list(CustomerEvent.objects.filter(
+        customer_id__in=family_ids,
         occurred_on__lte=as_of,
     ).order_by("occurred_on", "created_at", "id"))
     orders = [row for row in events if row.event_type == CustomerEvent.Kind.ORDER]
@@ -513,12 +670,12 @@ def _month_shift(month: date, offset: int) -> date:
 def analyze_customer(customer_id: str, as_of: date) -> dict:
     if type(as_of) is not date:
         raise CustomerError("invalid_analysis_date")
-    customer = Customer.objects.filter(pk=customer_id).first()
-    if customer is None:
-        raise CustomerError("customer_not_found", 404)
-    events = list(customer.events.filter(occurred_on__lte=as_of).order_by(
-        "occurred_on", "created_at", "id"
-    ))
+    customer = resolve_customer(customer_id)
+    family_ids = customer_family_ids(customer)
+    events = list(CustomerEvent.objects.filter(
+        customer_id__in=family_ids,
+        occurred_on__lte=as_of,
+    ).order_by("occurred_on", "created_at", "id"))
     orders = [row for row in events if row.event_type == CustomerEvent.Kind.ORDER]
     facts = _order_facts(orders, as_of)
     event_counts = {kind: 0 for kind in CustomerEvent.Kind.values}
@@ -567,10 +724,10 @@ def analyze_customer(customer_id: str, as_of: date) -> dict:
         for offset in range(-11, 1)
     ]
     prediction_outcomes = {kind: 0 for kind in CustomerPrediction.Outcome.values}
-    for outcome in customer.predictions.values_list("outcome", flat=True):
+    for outcome in CustomerPrediction.objects.filter(customer_id__in=family_ids).values_list("outcome", flat=True):
         prediction_outcomes[outcome] += 1
     action_statuses = {kind: 0 for kind in CustomerAction.Status.values}
-    for status in customer.actions.values_list("status", flat=True):
+    for status in CustomerAction.objects.filter(customer_id__in=family_ids).values_list("status", flat=True):
         action_statuses[status] += 1
     intervals = facts["intervals"]
     return {
@@ -624,10 +781,11 @@ def backtest_silence_followup(
         or (end - start).days // step_days + 2 > 100
     ):
         raise CustomerError("invalid_backtest_range")
-    customer = Customer.objects.filter(pk=customer_id).first()
-    if customer is None:
-        raise CustomerError("customer_not_found", 404)
-    events = list(customer.events.order_by("occurred_on", "created_at", "id"))
+    customer = resolve_customer(customer_id)
+    family_ids = customer_family_ids(customer)
+    events = list(CustomerEvent.objects.filter(customer_id__in=family_ids).order_by(
+        "occurred_on", "created_at", "id"
+    ))
     orders = [row for row in events if row.event_type == CustomerEvent.Kind.ORDER]
     observation_end = max((row.occurred_on for row in events), default=None)
     evaluation_dates = []
@@ -695,16 +853,17 @@ def backtest_silence_followup(
 def reconcile_prediction_outcomes(customer_id: str, as_of: date) -> dict:
     if type(as_of) is not date:
         raise CustomerError("invalid_reconciliation_date")
-    customer = Customer.objects.filter(pk=customer_id).first()
-    if customer is None:
-        raise CustomerError("customer_not_found", 404)
-    orders = list(customer.events.filter(
+    customer = resolve_customer(customer_id)
+    family_ids = customer_family_ids(customer)
+    orders = list(CustomerEvent.objects.filter(
+        customer_id__in=family_ids,
         event_type=CustomerEvent.Kind.ORDER,
         occurred_on__lte=as_of,
     ).order_by("occurred_on", "created_at", "id"))
     resolved = []
     with transaction.atomic():
-        pending = customer.predictions.select_for_update().filter(
+        pending = CustomerPrediction.objects.select_for_update().filter(
+            customer_id__in=family_ids,
             outcome=CustomerPrediction.Outcome.PENDING,
             prediction_type=CustomerPrediction.Kind.SILENCE_FOLLOWUP,
         ).order_by("predicted_on", "created_at", "id")
@@ -729,8 +888,9 @@ def reconcile_prediction_outcomes(customer_id: str, as_of: date) -> dict:
             resolved.append(prediction)
     return {
         "resolved_count": len(resolved),
-        "pending_count": customer.predictions.filter(
-            outcome=CustomerPrediction.Outcome.PENDING
+        "pending_count": CustomerPrediction.objects.filter(
+            customer_id__in=family_ids,
+            outcome=CustomerPrediction.Outcome.PENDING,
         ).count(),
         "resolved_predictions": [prediction_payload(row) for row in resolved],
     }
