@@ -2726,6 +2726,14 @@ tbody tr:hover {
   gap: var(--wb-space-3);
 }
 
+.candidate-inline-form {
+  display: grid;
+  grid-template-columns: minmax(100px, 0.7fr) minmax(150px, 1fr) auto;
+  gap: var(--wb-space-2);
+  align-items: center;
+  min-width: 440px;
+}
+
 .customer-analysis-grid {
   display: grid;
   grid-template-columns: minmax(220px, 1fr) minmax(0, 2fr);

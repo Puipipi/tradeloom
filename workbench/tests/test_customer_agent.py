@@ -4,6 +4,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from workbench.agents.context import RoleToolbox, WorkflowContext
+from workbench.customers.service import merge_customers
 from workbench.agents.mock_runtime import MockAgentRuntime
 from workbench.agents.result_contracts import validate_role_result
 from workbench.agents.workflow_contracts import (
@@ -11,6 +12,7 @@ from workbench.agents.workflow_contracts import (
     RolePermissionError,
     ToolInputContractError,
 )
+from workbench.tests.test_customer_knowledge import CustomerFixtureMixin
 from workbench.models import (
     Customer,
     CustomerAction,
@@ -24,7 +26,7 @@ from workbench.models import (
 )
 
 
-class MarketCustomerAgentTests(TestCase):
+class MarketCustomerAgentTests(CustomerFixtureMixin, TestCase):
     def setUp(self) -> None:
         now = timezone.now()
         self.batch = Task.objects.create(
@@ -175,3 +177,18 @@ class MarketCustomerAgentTests(TestCase):
                 toolbox.call(tool_name, customer_id=self.customer.id, limit=1),
                 [],
             )
+
+    def test_agent_reads_events_across_merged_customer_family(self) -> None:
+        source_id = self.create_customer_with_orders(
+            "Agent Merge Source", ["2026-01-01", "2026-02-01", "2026-03-01"]
+        )
+        target_id = self.create_customer_with_orders("Agent Merge Target", ["2026-04-01"])
+        merge_customers(source_id, target_id, "合并后只读核验")
+        subtask = self.make_subtask(self.make_refs(target_id))
+        before = self.fact_counts()
+
+        result = MockAgentRuntime().run_subtask(subtask.id)
+
+        self.assertEqual(result["customer"]["id"], target_id)
+        self.assertEqual(len(result["events"]), 4)
+        self.assertEqual(self.fact_counts(), before)

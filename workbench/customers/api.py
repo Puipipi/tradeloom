@@ -20,6 +20,9 @@ from .service import (
     decide_action,
     decide_alias,
     evaluate_silence_followup,
+    merge_customers,
+    merge_payload,
+    reassign_alias,
     reconcile_prediction_outcomes,
     event_payload,
     metric_payload,
@@ -67,7 +70,7 @@ def _date(value: object) -> date:
 def customer_collection(request: HttpRequest) -> JsonResponse:
     if request.GET:
         return _error(CustomerError("invalid_arguments"))
-    rows = Customer.objects.all()[:100]
+    rows = Customer.objects.filter(merged_into__isnull=True)[:100]
     return JsonResponse({"ok": True, "customers": [customer_payload(row) for row in rows]})
 
 
@@ -118,6 +121,20 @@ def customer_reconcile(request: HttpRequest, customer_id: str) -> JsonResponse:
 
 
 @require_POST
+def customer_merge(request: HttpRequest, customer_id: str) -> JsonResponse:
+    try:
+        body = _body(request, {"source_customer_id"}, {"note"})
+        source_customer_id = _opaque_id(body["source_customer_id"])
+        note = body.get("note", "")
+        if not isinstance(note, str):
+            raise CustomerError("invalid_identity_note")
+        merge = merge_customers(source_customer_id, customer_id, note)
+    except CustomerError as exc:
+        return _error(exc)
+    return JsonResponse({"ok": True, "merge": merge_payload(merge)})
+
+
+@require_POST
 def event_from_candidate(request: HttpRequest) -> JsonResponse:
     try:
         body = _body(request, {"candidate_id", "event_type", "occurred_on"})
@@ -164,6 +181,20 @@ def alias_decision(request: HttpRequest, alias_id: str) -> JsonResponse:
             customer_id=customer_id,
             display_name=display_name,
         )
+    except CustomerError as exc:
+        return _error(exc)
+    return JsonResponse({"ok": True, "alias": alias_payload(alias)})
+
+
+@require_POST
+def alias_reassignment(request: HttpRequest, alias_id: str) -> JsonResponse:
+    try:
+        body = _body(request, {"customer_id"}, {"note"})
+        customer_id = _opaque_id(body["customer_id"])
+        note = body.get("note", "")
+        if not isinstance(note, str):
+            raise CustomerError("invalid_identity_note")
+        alias = reassign_alias(alias_id, customer_id, note)
     except CustomerError as exc:
         return _error(exc)
     return JsonResponse({"ok": True, "alias": alias_payload(alias)})

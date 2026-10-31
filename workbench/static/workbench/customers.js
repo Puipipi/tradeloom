@@ -82,29 +82,29 @@
   }
 
   function bindCandidateEvent() {
-    const form = document.getElementById("candidate-event-form");
-    if (!form) return;
-    form.addEventListener("submit", async event => {
-      event.preventDefault();
-      clearError();
-      const button = form.querySelector('button[type="submit"]');
-      button.disabled = true;
-      try {
-        const payload = await request("/api/customer-events/from-candidate", {
-          candidate_id: form.elements.candidate_id.value.trim(),
-          event_type: form.elements.event_type.value,
-          occurred_on: form.elements.occurred_on.value,
-        });
-        if (payload.status === "recorded") {
-          globalThis.location.assign(businessUrl(`/customers/${payload.event.customer_id}`));
-        } else {
-          globalThis.location.reload();
+    for (const form of document.querySelectorAll(".candidate-event-form")) {
+      form.addEventListener("submit", async event => {
+        event.preventDefault();
+        clearError();
+        const button = form.querySelector('button[type="submit"]');
+        button.disabled = true;
+        try {
+          const payload = await request("/api/customer-events/from-candidate", {
+            candidate_id: form.dataset.candidateId,
+            event_type: form.elements.event_type.value,
+            occurred_on: form.elements.occurred_on.value,
+          });
+          if (payload.status === "recorded") {
+            globalThis.location.assign(businessUrl(`/customers/${payload.event.customer_id}`));
+          } else {
+            globalThis.location.reload();
+          }
+        } catch (error) {
+          showError(error);
+          button.disabled = false;
         }
-      } catch (error) {
-        showError(error);
-        button.disabled = false;
-      }
-    });
+      });
+    }
   }
 
   function bindAliasDecisions() {
@@ -114,7 +114,14 @@
           clearError();
           const decision = button.dataset.decision;
           const body = { decision };
-          if (decision === "confirm") {
+          if (decision === "confirm" && button.dataset.mode === "existing") {
+            const customerId = form.elements.customer_id.value;
+            if (!customerId) {
+              showError(new Error("customer_required"));
+              return;
+            }
+            body.customer_id = customerId;
+          } else if (decision === "confirm") {
             const displayName = form.elements.display_name.value.trim();
             if (!displayName) {
               showError(new Error("display_name_required"));
@@ -197,6 +204,28 @@
     });
   }
 
+  function bindIdentityOperations() {
+    for (const form of document.querySelectorAll(".identity-operation-form")) {
+      form.addEventListener("submit", async event => {
+        event.preventDefault();
+        clearError();
+        const button = form.querySelector('button[type="submit"]');
+        const body = {};
+        for (const name of ["customer_id", "source_customer_id", "note"]) {
+          if (form.elements[name]) body[name] = form.elements[name].value;
+        }
+        button.disabled = true;
+        try {
+          await request(form.dataset.url, body);
+          globalThis.location.reload();
+        } catch (error) {
+          showError(error);
+          button.disabled = false;
+        }
+      });
+    }
+  }
+
   globalThis.TradeLoomCustomers = {
     backtestSummaryText,
     formatHitRate,
@@ -210,5 +239,6 @@
     bindReloadForm("customer-reconcile-form", form => `/api/customers/${form.dataset.customerId}/reconcile`);
     bindActions();
     bindBacktest();
+    bindIdentityOperations();
   }
 })();

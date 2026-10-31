@@ -49,23 +49,28 @@
 
   <section class="panel">
     <div class="panel-heading">
-      <div><h2>候选单据入账</h2><p>身份未确认时只生成别名建议，不写入客户事件。日期和事件类型按操作者补录标注。</p></div>
+      <div><h2>候选单据一键入账</h2><p>直接选择最近的商业候选，无需复制候选 ID。身份未确认时只生成别名建议。</p></div>
     </div>
-    <form id="candidate-event-form" class="filter-form" data-testid="candidate-event-form">
-      <div class="filter-field filter-search">
-        <label for="candidate-id">商业候选单据 ID</label>
-        <input id="candidate-id" name="candidate_id" class="mono" minlength="32" maxlength="32" required placeholder="32 位 commercial_source 候选 ID">
-      </div>
-      <div class="filter-field">
-        <label for="candidate-event-type">事件类型</label>
-        <select id="candidate-event-type" name="event_type">{% for value, label in event_type_choices %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select>
-      </div>
-      <div class="filter-field">
-        <label for="candidate-occurred-on">发生日期</label>
-        <input id="candidate-occurred-on" name="occurred_on" type="date" value="{{ today }}" required>
-      </div>
-      <div class="filter-actions"><button class="button primary" type="submit">检查身份并入账</button></div>
-    </form>
+    {% if commercial_candidates %}
+    <div class="table-wrap"><table data-testid="commercial-candidates">
+      <thead><tr><th>单据中的客户名称</th><th>单据号</th><th>事件类型</th><th>发生日期</th><th>操作</th></tr></thead>
+      <tbody>
+      {% for candidate in commercial_candidates %}
+        <tr>
+          <td><strong>{{ candidate.party_text }}</strong>{% if candidate.event_count %}<span class="cell-subtitle">已入账 {{ candidate.event_count }} 条</span>{% endif %}</td>
+          <td class="mono">{{ candidate.document_reference }}</td>
+          <td colspan="3">
+            <form class="candidate-event-form candidate-inline-form" data-candidate-id="{{ candidate.id }}" data-testid="candidate-event-{{ candidate.id }}">
+              <select name="event_type" aria-label="事件类型">{% for value, label in event_type_choices %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select>
+              <input name="occurred_on" type="date" value="{{ today }}" required aria-label="发生日期">
+              <button class="button primary small" type="submit">检查身份并入账</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}<div class="empty-state"><h3>没有可入账的商业候选</h3><p>先通过现有资料导入流程生成 commercial_source 候选。</p></div>{% endif %}
   </section>
 
   {% if pending_aliases %}
@@ -76,9 +81,11 @@
       <article class="alias-resolve-card" data-testid="alias-{{ alias.id }}">
         <div><strong>{{ alias.raw_text }}</strong><span class="cell-subtitle mono">候选 {{ alias.source_candidate_id|default:"手工别名" }}</span></div>
         <form class="alias-decision-form" data-alias-id="{{ alias.id }}">
-          <div class="field"><label for="alias-name-{{ alias.id }}">新客户显示名称</label><input id="alias-name-{{ alias.id }}" name="display_name" value="{{ alias.raw_text }}" maxlength="200"></div>
+          <div class="field"><label for="alias-existing-{{ alias.id }}">归并到已有客户</label><select id="alias-existing-{{ alias.id }}" name="customer_id"><option value="">选择已有客户</option>{% for customer in customer_options %}<option value="{{ customer.id }}">{{ customer.display_name }}</option>{% endfor %}</select></div>
+          <div class="button-row"><button class="button secondary small alias-decision" type="button" data-decision="confirm" data-mode="existing" {% if not customer_options %}disabled{% endif %}>归并到已有客户</button></div>
+          <div class="field"><label for="alias-name-{{ alias.id }}">或建立新客户</label><input id="alias-name-{{ alias.id }}" name="display_name" value="{{ alias.raw_text }}" maxlength="200"></div>
           <div class="button-row">
-            <button class="button primary small alias-decision" type="button" data-decision="confirm">确认并新建客户</button>
+            <button class="button primary small alias-decision" type="button" data-decision="confirm" data-mode="new">确认并新建客户</button>
             <button class="button secondary small alias-decision" type="button" data-decision="reject">拒绝</button>
           </div>
         </form>

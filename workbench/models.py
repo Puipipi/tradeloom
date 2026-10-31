@@ -940,11 +940,20 @@ class ErpNextDraftOperation(models.Model):
 class Customer(models.Model):
     id = models.CharField(primary_key=True, max_length=32, default=hex_uuid, editable=False)
     display_name = models.CharField(max_length=200)
+    merged_into = models.ForeignKey(
+        "self", null=True, blank=True, on_delete=models.PROTECT, related_name="merged_sources"
+    )
+    merged_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["display_name", "id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=~Q(merged_into=models.F("id")), name="customer_no_self_merge"
+            ),
+        ]
 
 
 class CustomerAlias(models.Model):
@@ -975,6 +984,53 @@ class CustomerAlias(models.Model):
                     | Q(decision__in=["suggested", "rejected"], customer__isnull=True)
                 ),
                 name="customer_alias_identity_consistent",
+            ),
+        ]
+
+
+class CustomerAliasDecision(AppendOnlyModel):
+    class Kind(models.TextChoices):
+        CONFIRMED = "confirmed", "Confirmed"
+        REJECTED = "rejected", "Rejected"
+        REASSIGNED = "reassigned", "Reassigned"
+        MERGED = "merged", "Merged"
+
+    id = models.CharField(primary_key=True, max_length=32, default=hex_uuid, editable=False)
+    alias = models.ForeignKey(CustomerAlias, on_delete=models.PROTECT, related_name="decision_history")
+    from_customer = models.ForeignKey(
+        Customer, null=True, blank=True, on_delete=models.PROTECT, related_name="alias_decisions_from"
+    )
+    to_customer = models.ForeignKey(
+        Customer, null=True, blank=True, on_delete=models.PROTECT, related_name="alias_decisions_to"
+    )
+    decision = models.CharField(max_length=16, choices=Kind.choices)
+    note = models.TextField(blank=True, default="")
+    actor = models.CharField(max_length=32, default="local_workbench")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+
+class CustomerMerge(AppendOnlyModel):
+    id = models.CharField(primary_key=True, max_length=32, default=hex_uuid, editable=False)
+    source_customer = models.ForeignKey(
+        Customer, on_delete=models.PROTECT, related_name="merge_outgoing"
+    )
+    target_customer = models.ForeignKey(
+        Customer, on_delete=models.PROTECT, related_name="merge_incoming"
+    )
+    note = models.TextField(blank=True, default="")
+    actor = models.CharField(max_length=32, default="local_workbench")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["source_customer"], name="uniq_customer_merge_source"),
+            models.CheckConstraint(
+                condition=~Q(source_customer=models.F("target_customer")),
+                name="customer_merge_distinct_customers",
             ),
         ]
 
