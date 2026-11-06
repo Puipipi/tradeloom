@@ -10,11 +10,11 @@ TradeLoom supports manufacturing and trade work, with product catalogs and sampl
 
 ## Portable release status
 
-The R75 Windows x64 portable ZIP has passed entry-by-entry archive readback, extraction, and a fresh C10 startup from its own empty data directory. Release assets will be listed at [ui18-r75-portable-20261106](https://github.com/Puipipi/tradeloom/releases/tag/ui18-r75-portable-20261106); check that page for availability. See [R75 validation and rebuild inputs](docs/releases/ui18-r75-validation.md) for the artifact hash, startup evidence, and rebuild boundary.
+The frozen R76 Windows x64 portable candidate passed full archive readback and a scoped native toast check in an isolated QA profile. Root reviewed the user-triggered screenshot showing the dark native warning toast with complete white text; browser checks cover light and dark palette contrast. The planned tag is [ui18-r76-portable-20261106](https://github.com/Puipipi/tradeloom/releases/tag/ui18-r76-portable-20261106); check that page for publication status. R75 is a historical validation baseline whose GitHub Release remains a draft, not a current download. See [R76 validation and rebuild inputs](docs/releases/ui18-r76-validation.md) and the [R75 fresh-start baseline](docs/releases/ui18-r76-validation.md#r75-fresh-start-baseline).
 
-Extract the release asset to a short path, such as `C:/Apps/TradeLoom`, then run `启动工作台.exe`. It includes the Electron, Node, Python, PostgreSQL, Django/backend, and pure program plugin seed required by the bundled runtime; it excludes personal profiles, credentials, databases, and chats. External services such as ERPNext must be provided separately.
+When the R76 release page is available, extract its complete ZIP to a short path such as `C:/Apps/TradeLoom`, then run `启动工作台.exe`. The package includes Electron, Node, Python, PostgreSQL, Django/backend, and the pure program plugin seed; it excludes personal profiles, credentials, databases, and chats. External services such as ERPNext must be provided separately.
 
-The [desktop16 portable release](https://github.com/Puipipi/tradeloom/releases/tag/desktop16-portable-20261026) is an older historical release, not the current R75 artifact. Its hash is `ab973c6bf742979ef3875819a4b7729ef0ba1a3f2018dbc7b28d536cc6b13660`.
+The [desktop16 portable release](https://github.com/Puipipi/tradeloom/releases/tag/desktop16-portable-20261026) is an older historical release. Its hash is b973c6bf742979ef3875819a4b7729ef0ba1a3f2018dbc7b28d536cc6b13660.
 
 ## Features and status
 
@@ -31,7 +31,7 @@ The [desktop16 portable release](https://github.com/Puipipi/tradeloom/releases/t
 
 Start with [quick start](docs/quick-start.md) and [runtime preparation and upgrades](docs/upgrade-harness.md). Cloning the source does not provide the external runtime or configured services. These documents contain earlier environment records: verify the applicable runtime before using their commands.
 
-The published release and this local source snapshot are versioned separately. R75 source and artifact evidence is summarized in [the release validation record](docs/releases/ui18-r75-validation.md); runtime and vendor inputs are version-pinned there.
+The published R75 release and local R76 candidate are versioned separately. R76 source and artifact evidence is summarized in [the release validation record](docs/releases/ui18-r76-validation.md); runtime and vendor inputs are version-pinned there.
 
 ## Documentation
 
@@ -48,7 +48,7 @@ The published release and this local source snapshot are versioned separately. R
 
 ## Current limits
 
-The locally prepared R75 archive contains 39,739 program files and has been started once from a fresh extracted path. The new profile had no configured user accounts; no login or message sending was performed. The source builder uses a fixed R74 ASAR/sidecar input and fixed SDK/vendor snapshots; it does not claim a full SDK TypeScript rebuild. Real-model business end-to-end behavior is not established by the package startup check.
+The R75 archive contains 39,739 program files and was started once from a fresh extracted path. The R76 archive also contains 39,739 files and passed full ZIP entry readback; its native toast check used an isolated existing QA profile. The source builder reuses the fixed R75/R76-identical ASAR and fixed SDK/vendor snapshots; it does not claim a full SDK TypeScript rebuild. No real-model business end-to-end run was performed.
 
 The product is under development. A successful build, simulated workflow or submitted task does not prove a completed business outcome. The final competition requirements follow the latest Huawei rules.
 

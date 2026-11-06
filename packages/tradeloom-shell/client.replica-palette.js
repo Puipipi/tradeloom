@@ -29,7 +29,6 @@ window.__ModuleLoader__.load({
       '--dsw-alias-markdown-code-block': 'surface-code',
       '--dsw-alias-markdown-code-block-banner': 'surface-subtle',
       '--dsw-alias-markdown-inline-code': 'surface-code',
-      '--dsw-alias-toast-bg': 'bg-panel',
       '--dsw-alias-tooltip-bg': 'panel-header',
       '--dsw-alias-button-primary-fill': 'accent',
       '--dsw-alias-button-primary-hover': 'accent',

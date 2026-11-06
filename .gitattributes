@@ -298,3 +298,5 @@
 /workbench/workflows/reviews.py -text
 /workbench/workflows/states.py -text
 /workbench/workflows/validation.py -text
+
+apps/tradeloom-launcher/accepted-build-inputs/r75/client.replica-palette.js -text

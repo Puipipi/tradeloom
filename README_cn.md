@@ -10,11 +10,11 @@
 
 ## 下载试用
 
-R75 Windows x64 便携包已完成逐项读回、解压和隔离目录首次启动验证。发布资产将在 [ui18-r75-portable-20261106](https://github.com/Puipipi/tradeloom/releases/tag/ui18-r75-portable-20261106) 页面列出；请以该页面确认可用性。验证摘要、程序树摘要和重建边界见 [R75 验证与重建说明](docs/releases/ui18-r75-validation.md)。
+R76 Windows x64 便携包候选已冻结，逐项 ZIP 读回和隔离 QA 原生提示框检查通过。Root 核看了用户触发的截图：深色原生警告框完整显示白色说明文字；浅色/深色配色对比另由浏览器验证。拟用 tag 为 [ui18-r76-portable-20261106](https://github.com/Puipipi/tradeloom/releases/tag/ui18-r76-portable-20261106)，请以页面确认发布状态。R75 仅作历史 fresh-start 验证基线，其 GitHub Release 仍为草稿，不能作为当前下载。验证与重建边界见 [R76 验证说明](docs/releases/ui18-r76-validation.md)，R75 首启基线见[R75记录](docs/releases/ui18-r76-validation.md#r75-fresh-start-baseline)。
 
-发布资产可完整解压到短路径（例如 `C:/Apps/TradeLoom`），然后双击 `启动工作台.exe`。便携包包含程序运行所需的 Electron、Python、PostgreSQL、Django/backend 及纯程序插件 seed；不包含个人 profile、登录凭据、数据库或聊天记录。ERPNext 等外部服务仍需单独提供。
+R76 Release 页面可用后，可将完整便携包解压到短路径（例如 `C:/Apps/TradeLoom`），然后双击 `启动工作台.exe`。包内包含 Electron、Node、Python、PostgreSQL、Django/backend 及纯程序插件 seed；不包含个人 profile、登录凭据、数据库或聊天记录。ERPNext 等外部服务仍需单独提供。
 
-[desktop16 便携包](https://github.com/Puipipi/tradeloom/releases/tag/desktop16-portable-20261026) 是旧版历史发布，不是当前 R75 包。旧版 SHA-256：`ab973c6bf742979ef3875819a4b7729ef0ba1a3f2018dbc7b28d536cc6b13660`。
+[desktop16 便携包](https://github.com/Puipipi/tradeloom/releases/tag/desktop16-portable-20261026) 是历史版本。旧版 SHA-256：b973c6bf742979ef3875819a4b7729ef0ba1a3f2018dbc7b28d536cc6b13660。
 
 ## 功能与状态
 
@@ -31,7 +31,7 @@ R75 Windows x64 便携包已完成逐项读回、解压和隔离目录首次启�
 
 先读[快速开始](docs/quick-start.md)和[运行时准备与升级](docs/upgrade-harness.md)。克隆源码不会附带外置 runtime 或已配置服务。这些文档含早期环境记录，使用命令前请核对适用的 runtime。
 
-发布包与本地源码快照分别管理。R75 源码与程序工件证据见[发布验证记录](docs/releases/ui18-r75-validation.md)；runtime 与 vendor 输入均按版本固定。
+公开 R75 发布包与本地 R76 候选分别管理。R76 源码与程序工件证据见[发布验证记录](docs/releases/ui18-r76-validation.md)；runtime 与 vendor 输入均按版本固定。
 
 ## 文档导航
 
@@ -48,7 +48,7 @@ R75 Windows x64 便携包已完成逐项读回、解压和隔离目录首次启�
 
 ## 当前限制
 
-R75 便携包已通过逐项 ZIP 读回、解压和隔离目录首次 C10 启动。fresh profile 未配置账号、未登录或发送消息；这些检查不证明真实模型业务端到端已通过。源码重建使用固定 R74 ASAR/sidecar 与固定 SDK/vendor 快照，不声称完整 DSH SDK TypeScript 可重建。发布可用性以对应 GitHub Release 页面为准。
+R75 便携包已通过逐项 ZIP 读回、解压和隔离目录首次 C10 启动。R76 包含 39,739 个程序文件并通过逐项 ZIP 读回；原生提示框检查使用隔离 QA profile。源码构建复用固定且与 R76 相同的 R75 ASAR，以及固定 SDK/vendor 快照，不声称完整 DSH SDK TypeScript 可重建。本轮未执行真实模型业务端到端。
 
 产品仍在开发。构建成功、模拟工作流或任务已提交，不等于业务结果已完成。比赛最终要求以华为最新官方规则为准。
 
