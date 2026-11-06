@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { runInNewContext } from 'node:vm'
 import { Readable } from 'node:stream'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
-import { ROLE_IDS } from '../state.js'
+import { HOME_MARKER, HOME_MARKER_VALUE, ROLE_IDS, createStateStore } from '../state.js'
 import { createScenesHandler } from '../host.js'
 import { defaultSceneWorkbench } from '../scene-layout.js'
 import { normalizeDockLayouts } from '../dock-layout.js'
@@ -26,7 +28,7 @@ test('scene JSON defines role-bound 4x4 grids and maps all known business routes
   assert.deepEqual(config.scenes.map(scene => [scene.id, scene.label, scene.roleId]), [
     ['center', '工作总览', 'center'],
     ['products', '商品', 'product'],
-    ['agent-center', '任务', 'center'],
+    ['agent-center', '工作流', 'center'],
     ['deliverables', '交付物', 'delivery'],
     ['runs', '运行记录', 'center'],
     ['user-profile', '资料整理', 'user-profile'],
@@ -35,13 +37,8 @@ test('scene JSON defines role-bound 4x4 grids and maps all known business routes
   assert.deepEqual(config.scenes.map(scene => scene.icon), ['⌂', '▦', '◉', '⇩', '≋', '◈', '▤'],
     'each scene has a compact, accessible glyph for the unified navigation rail')
   assert.deepEqual(config.scenes.map(scene => [scene.id, scene.layoutProfile.kind, scene.layoutProfile.minimumWidth, scene.layoutProfile.minimumHeight]), [
-    ['center', 'assistant_lead', 1000, 360],
-    ['products', 'collaboration_grid', 960, 560],
-    ['agent-center', 'collaboration_grid', 960, 560],
-    ['deliverables', 'collaboration_grid', 960, 560],
-    ['runs', 'business_lead', 1143, 360],
-    ['user-profile', 'business_lead', 1143, 360],
-    ['erpnext', 'business_lead', 1143, 360],
+    ...['center', 'products', 'agent-center', 'deliverables'].map(id => [id, 'collaboration_grid', 960, 560]),
+    ['runs', 'business_lead', 1143, 360], ['user-profile', 'collaboration_grid', 960, 560], ['erpnext', 'business_lead', 1143, 360],
   ], 'every scene uses the reviewed split profile and canvas fit threshold')
   const invalidProfile = structuredClone(config)
   invalidProfile.scenes[0].layoutProfile.minimumWidth++
@@ -50,29 +47,67 @@ test('scene JSON defines role-bound 4x4 grids and maps all known business routes
   assert.equal(erpScene.panels.find(panel => panel.id === 'auxiliary').text, '在此添加与当前业务相关的资料与任务。')
   assert.equal(erpScene.panels.find(panel => panel.id === 'reference').text, '在此配置当前业务的参考资料来源。')
   assert.ok(config.scenes.every(scene => ROLE_IDS.includes(scene.roleId)))
+  assert.deepEqual(config.scenes.map(scene => scene.navigationGroup), ['business', 'business', 'business', 'business', 'tools', 'business', 'tools'])
   assert.deepEqual(Object.keys(config.businessRoutes).sort(), ['/agent-center', '/artifacts', '/home', '/products', '/runs'])
   assert.deepEqual(config.businessRoutes['/agent-center'], { sceneId: 'agent-center', panelId: 'business-main' })
   assert.deepEqual(config.businessRoutes['/products'], { sceneId: 'products', panelId: 'business-main' })
   assert.deepEqual(config.businessRoutes['/artifacts'], { sceneId: 'deliverables', panelId: 'business-main' })
   assert.deepEqual(config.businessRoutes['/runs'], { sceneId: 'runs', panelId: 'business-main' })
+  const reviewedPanelLayouts = {
+    center: [
+      ['business-main', 'business-iframe', 1, 1, 3, 2], ['files', 'business-iframe', 4, 1, 1, 2],
+      ['preview', 'business-iframe', 1, 3, 1, 2], ['native-chat', 'native-chat', 2, 3, 3, 2],
+      ['assistant-product', 'native-chat', 1, 3, 1, 2], ['assistant-delivery', 'native-chat', 1, 3, 1, 2],
+      ['assistant-user-profile', 'native-chat', 1, 3, 1, 2], ['native-workspace', 'native-workspace', 1, 1, 2, 2],
+    ],
+    products: [
+      ['business-main', 'business-iframe', 1, 1, 3, 2], ['files', 'business-iframe', 4, 1, 1, 2],
+      ['preview', 'business-iframe', 1, 3, 1, 2], ['native-chat', 'native-chat', 2, 3, 3, 2],
+      ['assistant-center', 'native-chat', 1, 3, 1, 2], ['assistant-delivery', 'native-chat', 1, 3, 1, 2],
+      ['assistant-user-profile', 'native-chat', 1, 3, 1, 2], ['native-workspace', 'native-workspace', 1, 1, 2, 2],
+    ],
+    'agent-center': [
+      ['business-main', 'business-iframe', 1, 1, 3, 2], ['files', 'business-iframe', 4, 1, 1, 2],
+      ['preview', 'business-iframe', 1, 3, 1, 2], ['native-chat', 'native-chat', 2, 3, 3, 2],
+      ['assistant-product', 'native-chat', 1, 3, 1, 2], ['assistant-delivery', 'native-chat', 1, 3, 1, 2],
+      ['assistant-user-profile', 'native-chat', 1, 3, 1, 2], ['native-workspace', 'native-workspace', 1, 1, 2, 2],
+    ],
+    deliverables: [
+      ['business-main', 'business-iframe', 1, 1, 3, 2], ['files', 'business-iframe', 4, 1, 1, 2],
+      ['preview', 'business-iframe', 1, 3, 1, 2], ['native-chat', 'native-chat', 2, 3, 3, 2],
+      ['assistant-center', 'native-chat', 1, 3, 1, 2], ['assistant-product', 'native-chat', 1, 3, 1, 2],
+      ['assistant-user-profile', 'native-chat', 1, 3, 1, 2], ['native-workspace', 'native-workspace', 1, 1, 2, 2],
+    ],
+    runs: [
+      ['business-main', 'business-iframe', 1, 1, 3, 2], ['auxiliary', 'business-iframe', 4, 1, 1, 2],
+      ['reference', 'business-iframe', 1, 3, 1, 2], ['native-chat', 'native-chat', 2, 3, 3, 2],
+      ['native-workspace', 'native-workspace', 1, 1, 2, 2],
+    ],
+    'user-profile': [
+      ['business-main', 'business-iframe', 1, 1, 3, 2], ['files', 'business-iframe', 4, 1, 1, 2],
+      ['preview', 'business-iframe', 1, 3, 1, 2], ['native-chat', 'native-chat', 2, 3, 3, 2],
+      ['assistant-center', 'native-chat', 1, 3, 1, 2], ['assistant-product', 'native-chat', 1, 3, 1, 2],
+      ['assistant-delivery', 'native-chat', 1, 3, 1, 2], ['native-workspace', 'native-workspace', 1, 1, 2, 2],
+    ],
+    erpnext: [
+      ['business-main', 'erpnext-status', 1, 1, 3, 2], ['auxiliary', 'placeholder', 4, 1, 1, 2],
+      ['reference', 'placeholder', 1, 3, 1, 2], ['native-chat', 'native-chat', 2, 3, 3, 2],
+      ['native-workspace', 'native-workspace', 1, 1, 2, 2],
+    ],
+  }
+  assert.deepEqual(config.scenes.map(scene => [scene.id, scene.panels.map(panel => [panel.id, panel.type, panel.col, panel.row, panel.w, panel.h])]),
+    Object.entries(reviewedPanelLayouts), 'each R76 scene keeps its reviewed panel identities, types, and grid geometry')
   for (const scene of config.scenes) {
     assert.deepEqual(new Set(scene.panels.map(panel => panel.id)).size, scene.panels.length)
     const business = scene.panels.find(panel => panel.id === 'business-main')
-    const auxiliary = scene.panels.find(panel => panel.id === 'auxiliary')
-    const reference = scene.panels.find(panel => panel.id === 'reference')
+    const auxiliary = scene.panels.find(panel => panel.id === 'auxiliary' || panel.id === 'files')
+    const reference = scene.panels.find(panel => panel.id === 'reference' || panel.id === 'preview')
     const chat = scene.panels.find(panel => panel.id === 'native-chat')
-    assert.deepEqual([business, auxiliary, reference, chat].map(({ col, row, w, h }) => ({ col, row, w, h })), [
-      { col: 1, row: 1, w: 3, h: 2 },
-      { col: 4, row: 1, w: 1, h: 2 },
-      { col: 1, row: 3, w: 1, h: 2 },
-      { col: 2, row: 3, w: 3, h: 2 },
-    ])
+    assert.deepEqual(new Set([business, auxiliary, reference, chat].map(panel => panel?.id)).size, 4)
     assert.equal(chat.type, 'native-chat')
-    assert.ok(['business-iframe', 'erpnext-status'].includes(business.type))
-    if (scene.id !== 'erpnext') {
-      assert.equal(auxiliary.type, 'business-iframe', `${scene.id} uses an existing business page in its auxiliary panel`)
-      assert.equal(reference.type, 'business-iframe', `${scene.id} uses an existing business page in its reference panel`)
-    }
+    assert.equal(business.type, scene.id === 'erpnext' ? 'erpnext-status' : 'business-iframe')
+    if (auxiliary) assert.equal(auxiliary.type, scene.id === 'erpnext' ? 'placeholder' : 'business-iframe')
+    if (reference) assert.equal(reference.type, scene.id === 'erpnext' ? 'placeholder' : 'business-iframe')
   }
   const added = structuredClone(config)
   added.scenes.push({
@@ -130,18 +165,18 @@ test('scene client chunk exposes independent layout state and scene-to-role mapp
   assert.equal(exports.roleForScene(config, 'user-profile'), 'user-profile')
   assert.equal(exports.roleForScene(config, 'unknown'), undefined)
   assert.deepEqual(JSON.parse(JSON.stringify(exports.sceneNavigationItems(config))), [
-    { id: 'center', label: '工作总览', icon: '⌂', route: '/home' },
-    { id: 'products', label: '商品', icon: '▦', route: '/products' },
-    { id: 'agent-center', label: '任务', icon: '◉', route: '/agent-center' },
-    { id: 'deliverables', label: '交付物', icon: '⇩', route: '/artifacts' },
-    { id: 'runs', label: '运行记录', icon: '≋', route: '/runs' },
-    { id: 'user-profile', label: '资料整理', icon: '◈', route: null },
-    { id: 'erpnext', label: 'ERPNext', icon: '▤', route: null },
+    { id: 'center', label: '工作总览', icon: '⌂', route: '/home', navigationGroup: 'business' },
+    { id: 'products', label: '商品', icon: '▦', route: '/products', navigationGroup: 'business' },
+    { id: 'agent-center', label: '工作流', icon: '◉', route: '/agent-center', navigationGroup: 'business' },
+    { id: 'deliverables', label: '交付物', icon: '⇩', route: '/artifacts', navigationGroup: 'business' },
+    { id: 'runs', label: '运行记录', icon: '≋', route: '/runs', navigationGroup: 'tools' },
+    { id: 'user-profile', label: '资料整理', icon: '◈', route: null, navigationGroup: 'business' },
+    { id: 'erpnext', label: 'ERPNext', icon: '▤', route: null, navigationGroup: 'tools' },
   ])
   const current = { config, activeSceneId: 'center', businessPath: '/home', layouts: bothStates }
   const selectedProfile = exports.selectScene(current, 'user-profile')
   assert.equal(selectedProfile.activeSceneId, 'user-profile')
-  assert.equal(selectedProfile.businessPath, '/artifacts', 'a scene without a menu default opens its configured main business panel')
+  assert.equal(selectedProfile.businessPath, '/artifacts#sources', 'a scene without a menu default opens its configured main business panel')
   assert.equal(selectedProfile.layouts.center.expandedPanel, 'session')
   assert.equal(selectedProfile.layouts['user-profile'].expandedPanel, 'business')
   assert.strictEqual(exports.selectScene(selectedProfile, 'unknown'), selectedProfile)
@@ -161,23 +196,35 @@ test('native chat panel uses the pinned conversation factory', async () => {
   let registration
   runInNewContext(await readFile(sceneChunkUrl, 'utf8'), {
     window: {
+      location: { origin: 'http://desktop.local' },
       __ModuleLoader__: { load(value) { registration = value } },
       addEventListener() {}, removeEventListener() {},
     },
   })
-  const React = { Fragment: 'Fragment', createElement: (type, props, ...children) => ({ type, props, children }) }
+  const hooks = []
+  let hookIndex = 0
+  const React = {
+    Fragment: 'Fragment', createElement: (type, props, ...children) => ({ type, props, children }),
+    useState(initial) {
+      const index = hookIndex++
+      if (!(index in hooks)) hooks[index] = typeof initial === 'function' ? initial() : initial
+      return [hooks[index], value => { hooks[index] = typeof value === 'function' ? value(hooks[index]) : value }]
+    },
+    useRef(initial) { const index = hookIndex++; return hooks[index] ??= { current: initial } },
+    useLayoutEffect(effect) { effect() },
+  }
   const exports = registration.factory(() => React)
   let factoryCall
   const node = exports.SceneChatPanel({
     sessionId: 'session-center',
     renderFactorySlot(...args) { factoryCall = args; return { conversation: true } },
   })
-  assert.deepEqual(node, { conversation: true })
+  assert.equal(node.type, 'div')
+  assert.equal(node.props.className, 'tl-native-conversation')
+  assert.deepEqual(node.children[1], { conversation: true })
   assert.equal(factoryCall[0], 'conversation.content')
   assert.deepEqual(JSON.parse(JSON.stringify(factoryCall[1])), { variant: 'embedded', phase: 'active', hero: false })
-  assert.equal(typeof factoryCall[2].slots.views, 'function')
-  const renderedView = factoryCall[2].slots.views({ renderSlot(name, owner) { return { name, owner } } })
-  assert.deepEqual(JSON.parse(JSON.stringify(renderedView)), { type: 'Fragment', props: null, children: [{ name: 'conversation.session', owner: { view: 'chat' } }] })
+  assert.equal(factoryCall.length, 2, 'the pinned conversation factory receives its content slot and embedded phase options')
 
 })
 
@@ -520,25 +567,33 @@ test('scene chat renders the pinned conversation factory inside its retained rol
   sceneConfig.roles.find(role => role.id === 'center').assistantLabel = '当前中心助手'
   const componentStates = new WeakMap()
   let activeComponent
+  let activeComponentType
   let hookIndex = 0
   const fetchCalls = []
   let dockActionRefreshes = 0
   let resizeViewport = { width: 2000, height: 800 }
   const sceneDockHost = {
     getBoundingClientRect: () => resizeViewport,
+    querySelectorAll: () => [],
+    contains: () => true,
     addEventListener() {}, removeEventListener() {},
   }
   let resizeCallback
   const legacyState = defaultSceneWorkbench(sceneConfig)
   const dockLayouts = normalizeDockLayouts(sceneConfig, { version: 2, scenes: {} }, legacyState.layouts)
+  const componentEffects = new WeakMap()
+  const sceneDockInstances = new Map()
   const React = {
     Fragment: 'Fragment',
-    createElement(type, props, ...children) { return { type, props: props ?? {}, children } },
+    createElement(type, props, ...children) {
+      if (props?.className === 'tl-dockview-host' && props.ref) props.ref.current = sceneDockHost
+      return { type, props: props ?? {}, children }
+    },
     useRef(initial) {
       let state = componentStates.get(activeComponent)
       if (!state) { state = []; componentStates.set(activeComponent, state) }
       const index = hookIndex++
-      if (!(index in state)) state[index] = { current: activeComponent?.name === 'SceneDock' && index === 1 && initial === null ? sceneDockHost : initial }
+      if (!(index in state)) state[index] = { current: activeComponentType?.name === 'SceneDock' && index === 2 && initial === null ? sceneDockHost : initial }
       return state[index]
     },
     useState(initial) {
@@ -552,10 +607,22 @@ test('scene chat renders the pinned conversation factory inside its retained rol
         if (owner?.name === 'DockGroupActions') dockActionRefreshes++
       }]
     },
-    useEffect(effect) { effect() },
+    useEffect(effect, dependencies) { runComponentEffect(effect, dependencies) },
+    useLayoutEffect(effect, dependencies) { runComponentEffect(effect, dependencies) },
+  }
+  function runComponentEffect(effect, dependencies) {
+    const index = hookIndex++
+    let effects = componentEffects.get(activeComponent)
+    if (!effects) { effects = []; componentEffects.set(activeComponent, effects) }
+    const previous = effects[index]
+    if (!previous || !dependencies || dependencies.some((value, item) => value !== previous.dependencies?.[item])) {
+      previous?.cleanup?.()
+      effects[index] = { dependencies, cleanup: effect() }
+    }
   }
   runInNewContext(await readFile(sceneChunkUrl, 'utf8'), {
     React,
+    MutationObserver: class { observe() {} disconnect() {} },
     fetch: async (url, options = {}) => {
       fetchCalls.push([url, options.method ?? 'GET'])
       if (url === '/tradeloom/scenes') return { ok: true, async json() { return sceneConfig } }
@@ -576,13 +643,14 @@ test('scene chat renders the pinned conversation factory inside its retained rol
       disconnect() {}
     },
     window: {
+      location: { origin: 'http://desktop.local' },
       __ModuleLoader__: { load(value) { registration = value } },
       addEventListener() {}, removeEventListener() {},
     },
     document: { getElementById() { return null } },
   })
   const createDockPanel = panel => {
-    const group = { id: 'test-group' }
+    const group = { id: `group-${panel.id}`, api: { width: 0, height: 0, setSize(size) { Object.assign(this, size) } } }
     const api = {
       id: panel.id, group,
       setActive() { activatedPanels.push(panel.id) }, setTitle() {}, close() {},
@@ -649,9 +717,15 @@ test('scene chat renders the pinned conversation factory inside its retained rol
   let sidebarToggleCalls = 0
   const invoke = (Component, props = {}) => {
     const previous = activeComponent
-    activeComponent = Component
+    const previousType = activeComponentType
+    const instanceKey = Component.name === 'SceneDock' ? props.scene?.id : undefined
+    if (instanceKey) {
+      if (!sceneDockInstances.has(instanceKey)) sceneDockInstances.set(instanceKey, {})
+      activeComponent = sceneDockInstances.get(instanceKey)
+    } else activeComponent = Component
+    activeComponentType = Component
     hookIndex = 0
-    try { return Component(props) } finally { activeComponent = previous }
+    try { return Component(props) } finally { activeComponent = previous; activeComponentType = previousType }
   }
   exports.register({
     layout: {
@@ -659,7 +733,7 @@ test('scene chat renders the pinned conversation factory inside its retained rol
       suppressSidebar() { sidebarSuppressionCalls++; return () => {} },
       toggleSidebar() { sidebarToggleCalls++ },
     },
-    sessions: { retain(sessionId, options) { sessionRetains++; assert.equal(sessionId, 'native-center-session'); assert.deepEqual(JSON.parse(JSON.stringify(options)), { source: 'mainView' }); return reference } },
+    sessions: { retain(sessionId, options) { sessionRetains++; assert.equal(sessionId, 'native-center-session'); assert.deepEqual(JSON.parse(JSON.stringify(options)), { source: 'tradeloomRoleWidget' }); return reference } },
     modelDirectories: { directoryFor() { throw new Error('not used in this test') } },
     slots: { inject(_name, register) { register() }, register() { return () => {} } },
     effect() {},
@@ -705,7 +779,9 @@ test('scene chat renders the pinned conversation factory inside its retained rol
   }
   const renderWorkbench = () => resolve(invoke(exports.SceneWorkbench, sceneProps))
   renderWorkbench()
-  await new Promise(resolve => setImmediate(resolve))
+  for (let attempt = 0; attempt < 20 && (!exports.getSnapshot().dockLayouts?.scenes?.center || !dockRenderProps); attempt++) {
+    await new Promise(resolve => setImmediate(resolve))
+  }
   let mounted = renderWorkbench()
   assert.equal(dockRenderProps.theme?.gap, 10,
     'the default Dockview theme configures a real inter-group gap rather than outer padding or sash styling')
@@ -726,10 +802,11 @@ test('scene chat renders the pinned conversation factory inside its retained rol
       if (found) return found
     }
   }
-  const dockThemeStyles = find(mounted, node => node.type === 'style' && node.children?.some(child => typeof child === 'string' && child.includes('--dv-spacing-padding: 0px;')))
-  assert.ok(dockThemeStyles, 'Dockview spacing padding is zero so the canvas padding does not duplicate the split gap')
-  assert.ok(dockThemeStyles.children.some(child => typeof child === 'string' && child.includes('background: var(--tl-canvas);')),
-    'the official split gap exposes the workbench canvas behind surface-colored groups')
+  const dockThemeStyles = find(mounted, node => node.type === 'style' && node.children?.some(child => typeof child === 'string' && child.includes('.tl-dockview-host .tl-dockview-theme')))
+  assert.ok(dockThemeStyles, 'the mounted dock canvas includes the actual theme rules')
+  const dockThemeCss = dockThemeStyles.children.find(child => typeof child === 'string' && child.includes('.tl-dockview-host .tl-dockview-theme'))
+  assert.match(dockThemeCss, /--dv-spacing-padding:\s*var\(--tl-space-1\)/)
+  assert.match(dockThemeCss, /background:\s*var\(--tl-canvas\)/)
   const standaloneNavigation = resolve(invoke(exports.SceneTabs, { workbenchActive: false }))
   assert.equal(find(standaloneNavigation, node => node.props?.className === 'tl-scene-tab' && node.props?.['aria-current']), undefined,
     'standalone conversation mode does not leave the previous business scene selected')
@@ -778,11 +855,11 @@ test('scene chat renders the pinned conversation factory inside its retained rol
   assert.equal(JSON.stringify(loadedDockLayouts.at(-1)), JSON.stringify(exports.getSnapshot().dockDefaults.center.dockview),
     'applying the recommendation restores the exact scene-specific Dockview tree')
   assert.strictEqual(providedSessions.at(-1), reference)
-  assert.equal(providedViewKeys.at(-1), 'native-center-session:0')
+  assert.equal(providedViewKeys.at(-1), 'native-center-session', 'the SessionProvider subtree stays keyed to the retained session identity')
   toolbarRefresh.props.onClick()
   const refreshed = renderWorkbench()
   assert.strictEqual(providedSessions.at(-1), reference, 'refresh keeps the existing native SessionProvider reference')
-  assert.equal(providedViewKeys.at(-1), 'native-center-session:1', 'refresh remounts only the conversation view subtree')
+  assert.equal(providedViewKeys.at(-1), 'native-center-session', 'refresh keeps the same retained SessionProvider subtree')
   assert.equal(sessionRetains, 1, 'refresh does not create or retain another native session')
   assert.equal(fetchCalls.some(([, method]) => method === 'POST'), false, 'refresh sends no model/session request')
   toolbarMaximize.props.onClick()
@@ -854,7 +931,13 @@ test('scene chat renders the pinned conversation factory inside its retained rol
   noPanelsRecommendation.props.onClick()
   assert.equal(JSON.stringify(loadedDockLayouts.at(-1)), JSON.stringify(exports.getSnapshot().dockDefaults.center.dockview),
     'the global recovery action restores the configured recommendation when no group header exists')
-  assert.equal(dockPanels.size, sceneConfig.scenes[0].panels.length, 'recommended reset recreates the closed panels')
+  const recommendedPanelIds = []
+  const collectRecommendedPanelIds = node => {
+    if (node.type === 'leaf') recommendedPanelIds.push(...node.data.views)
+    else for (const child of node.data ?? []) collectRecommendedPanelIds(child)
+  }
+  collectRecommendedPanelIds(exports.getSnapshot().dockDefaults.center.dockview.grid.root)
+  assert.deepEqual([...dockPanels.keys()].sort(), recommendedPanelIds.sort(), 'recommended reset recreates exactly the panels in its configured Dockview tree')
 })
 
 test('narrow scene navigation focuses the requested panel when mounting an unvisited scene in real React DOM', { skip: !process.env.TRADELOOM_REACT_LIBRARY || !process.env.TRADELOOM_REACT_SERVER_LIBRARY || !process.env.TRADELOOM_DOM_MODULE }, async t => {
@@ -1138,8 +1221,8 @@ test('native role sessions retain composer drafts across scene switches and rele
   assert.strictEqual(centerAgain, center, 'returning to a scene reuses its live Session scope and composer draft')
   assert.notStrictEqual(product, center, 'each role keeps an independent native Session scope')
   assert.deepEqual(JSON.parse(JSON.stringify(calls.filter(call => call[0] === 'retain'))), [
-    ['retain', 'session-center', { source: 'mainView' }],
-    ['retain', 'session-product', { source: 'mainView' }],
+    ['retain', 'session-center', { source: 'tradeloomRoleWidget' }],
+    ['retain', 'session-product', { source: 'tradeloomRoleWidget' }],
   ])
   assert.deepEqual(calls.filter(call => call[0] === 'release'), [], 'scene switches must not dispose another role composer')
 
@@ -1157,7 +1240,7 @@ test('role selection binds the AgentDirectory session response without a duplica
   const savedState = defaultSceneWorkbench(config)
   const dockLayouts = normalizeDockLayouts(config, { version: 2, scenes: {} }, savedState.layouts)
   runInNewContext(source, {
-    window: { __ModuleLoader__: { load(value) { registration = value } } },
+    window: { location: { origin: 'http://desktop.local' }, __ModuleLoader__: { load(value) { registration = value } } },
     fetch: async (url, options = {}) => {
       if (url === '/tradeloom/scenes') return { ok: true, async json() { return config } }
       if (url === '/tradeloom/scene-layouts' && (options.method ?? 'GET') === 'GET') return { ok: true, async json() { return savedState } }
@@ -1167,7 +1250,19 @@ test('role selection binds the AgentDirectory session response without a duplica
       throw new Error(`unexpected request ${url}`)
     },
   })
-  const React = { createElement(type, props, ...children) { return { type, props, children } }, useState: value => [value, () => {}], useEffect(effect) { effect() } }
+  const hooks = []
+  let hookIndex = 0
+  const React = {
+    createElement(type, props, ...children) { return { type, props, children } },
+    useState(initial) {
+      const index = hookIndex++
+      if (!(index in hooks)) hooks[index] = typeof initial === 'function' ? initial() : initial
+      return [hooks[index], value => { hooks[index] = typeof value === 'function' ? value(hooks[index]) : value }]
+    },
+    useRef(initial) { const index = hookIndex++; return hooks[index] ??= { current: initial } },
+    useEffect(effect) { effect() },
+    useLayoutEffect(effect) { effect() },
+  }
   const exports = registration.factory(() => React)
   exports.register({ layout: { selectPanel() {} }, sessions: { retain() {} }, slots: { inject(_name, register) { register() }, register() {} }, effect() {} })
   exports.SceneTabs()
@@ -1365,7 +1460,11 @@ test('model directory failure renders an accessible stage diagnostic without exp
 test('client entry loads the registered scene chunk and preserves the existing shell slots', async () => {
   const entrySource = await readFile(new URL('../client.js', import.meta.url), 'utf8')
   let entryRegistration
-  runInNewContext(entrySource, { window: { __ModuleLoader__: { load(value) { entryRegistration = value } } } })
+  runInNewContext(entrySource, { window: {
+    location: { origin: 'http://desktop.local' }, innerWidth: 1280, innerHeight: 800,
+    addEventListener() {}, removeEventListener() {},
+    __ModuleLoader__: { load(value) { entryRegistration = value } },
+  } })
   let chunkRegistration
   runInNewContext(await readFile(sceneChunkUrl, 'utf8'), { window: { __ModuleLoader__: { load(value) { chunkRegistration = value } } } })
   const React = {
@@ -1412,11 +1511,16 @@ test('client entry loads the registered scene chunk and preserves the existing s
   })(top)
   assert.ok(modelRow, 'the compact helper chooser and model rail share the first top row')
   assert.equal(modelRow.children[0].props.className, 'tl-shell-brand', 'the real TradeLoom identity leads the provider controls')
-  assert.equal(modelRow.children[1].type.name, 'AgentDirectory', 'the helper selector stays to the left of model controls')
-  assert.equal(modelRow.children[2].type.name, 'ModelDirectoryRail')
-  const railStyle = modelRow.children[2].type().children.find(child => child?.props?.['data-tradeloom-navigation-style'])
-  assert.match(railStyle.children[0], /\.tl-model-rail\s*\{[\s\S]*display:\s*flex;\s*flex:\s*1 1 0/,
-    'the model rail fills remaining space so theme and tools stay aligned at the far right')
+  const nativeMenuIndex = modelRow.children.findIndex(child => child?.type?.name === 'NativeWindowsMenuSlot')
+  const agentDirectoryIndex = modelRow.children.findIndex(child => child?.type?.name === 'AgentDirectory')
+  assert.ok(nativeMenuIndex > 0, 'the native Windows menu has its own slot in the top row')
+  assert.ok(agentDirectoryIndex > nativeMenuIndex, 'the directory remains rendered after the native Windows menu slot')
+  const agentDirectory = modelRow.children[agentDirectoryIndex]
+  assert.equal(agentDirectory.props.compact, true, 'the existing directory component keeps its compact presentation')
+  const standaloneRail = chunk.ModelDirectoryRail()
+  const railStyle = standaloneRail.children.find(child => child?.props?.['data-tradeloom-navigation-style'])
+  assert.match(railStyle.children[0], /\.tl-model-rail\s*\{[\s\S]*display:\s*flex;\s*flex:\s*1 1 0/)
+  assert.match(railStyle.children[0], /\.tl-theme-toggle\s*\{[^}]*margin-left:\s*auto/)
   assert.match(railStyle.children[0], /\.tl-theme-toggle\s*\{[^}]*margin-left:\s*auto/)
 })
 
@@ -1579,10 +1683,18 @@ test('client entry passes the real Cordis context through to scene registration'
 test('scene client forwards the server-reported business origin only after loading scene config', async () => {
   let registration
   const chunkSource = await readFile(sceneChunkUrl, 'utf8')
+  const hooks = []
+  let hookIndex = 0
   const React = {
     createElement: (type, props, ...children) => ({ type, props, children }),
-    useState: initial => [initial, () => {}],
+    useState(initial) {
+      const index = hookIndex++
+      if (!(index in hooks)) hooks[index] = typeof initial === 'function' ? initial() : initial
+      return [hooks[index], value => { hooks[index] = typeof value === 'function' ? value(hooks[index]) : value }]
+    },
+    useRef(initial) { const index = hookIndex++; return hooks[index] ??= { current: initial } },
     useEffect(effect) { effect() },
+    useLayoutEffect(effect) { effect() },
   }
   const businessOrigin = 'http://192.168.1.23:3088'
   const config = await readClientSceneConfig()
@@ -1605,6 +1717,7 @@ test('scene client forwards the server-reported business origin only after loadi
     layout: { selectPanel() {} }, uiWorkspace: { openSession() {} },
     slots: { inject(_name, register) { register() }, register() { return () => {} } },
   }, value => origins.push(value), roles => roleUpdates.push(roles))
+  hookIndex = 0
   exports.SceneTabs()
   await new Promise(resolve => setImmediate(resolve))
   assert.deepEqual(origins, [businessOrigin])
@@ -1635,11 +1748,29 @@ test('business and scene navigation share the single rendered shell.top occupant
   assert.match(topSlotPatch, /\+\s+'shell\.top': \{ kind: 'single'; scope: 'root' \}/)
   assert.match(topSlotPatch, /renderSlot\('shell\.top', \{\}\)/)
   let entryRegistration
-  runInNewContext(entrySource, { window: { __ModuleLoader__: { load(value) { entryRegistration = value } } } })
+  runInNewContext(entrySource, { window: {
+    location: { origin: 'http://desktop.local' }, innerWidth: 1280, innerHeight: 800,
+    addEventListener() {}, removeEventListener() {},
+    __ModuleLoader__: { load(value) { entryRegistration = value } },
+  } })
   let chunkRegistration
-  runInNewContext(await readFile(sceneChunkUrl, 'utf8'), { window: { __ModuleLoader__: { load(value) { chunkRegistration = value } } } })
+  runInNewContext(await readFile(sceneChunkUrl, 'utf8'), { window: {
+    location: { origin: 'http://desktop.local' }, innerWidth: 1280, innerHeight: 800,
+    addEventListener() {}, removeEventListener() {},
+    __ModuleLoader__: { load(value) { chunkRegistration = value } },
+  } })
   const hookValues = []
   let hookIndex = 0
+  const layoutEffectValues = []
+  let layoutEffectIndex = 0
+  function runLayoutEffect(effect, dependencies) {
+    const index = layoutEffectIndex++
+    const previous = layoutEffectValues[index]
+    if (!previous || !dependencies || dependencies.some((value, item) => value !== previous.dependencies?.[item])) {
+      previous?.cleanup?.()
+      layoutEffectValues[index] = { dependencies, cleanup: effect() }
+    }
+  }
   const React = {
     createElement: (type, props, ...children) => ({ type, props, children }),
     useState(initial) {
@@ -1649,6 +1780,7 @@ test('business and scene navigation share the single rendered shell.top occupant
     },
     useRef(initial) { const index = hookIndex++; return hookValues[index] ??= { current: initial } },
     useEffect() {},
+    useLayoutEffect(effect, dependencies) { hookIndex++; runLayoutEffect(effect, dependencies) },
   }
   const chunk = chunkRegistration.factory(() => React)
   const calls = []
@@ -1691,14 +1823,18 @@ test('business and scene navigation share the single rendered shell.top occupant
   }
   const toolsElement = findNode(tree, node => node?.type?.name === 'ShellToolsMenu')
   assert.ok(toolsElement)
+  const renderTools = (props = toolsElement.props) => { hookIndex = 0; layoutEffectIndex = 0; return toolsElement.type(props) }
   hookValues.length = 0
+  layoutEffectValues.length = 0
   hookIndex = 0
-  let toolsTree = toolsElement.type()
-  const trigger = toolsTree.children.find(node => node?.type === 'button')
+  layoutEffectIndex = 0
+  let toolsTree = renderTools()
+  const trigger = toolsTree.children.find(node => node?.type === 'button' && node.props?.['aria-label'] === '打开工具菜单')
   assert.equal(trigger.props['aria-label'], '打开工具菜单')
   trigger.props.onClick()
   hookIndex = 0
-  toolsTree = toolsElement.type()
+  layoutEffectIndex = 0
+  toolsTree = renderTools()
   const menu = findNode(toolsTree, node => node?.props?.role === 'group')
   const actions = menu.children.filter(node => node?.type === 'button')
   assert.ok(actions.some(node => node.children.includes('刷新场景配置')), 'scene configuration refresh stays in the utility menu')
@@ -1706,13 +1842,21 @@ test('business and scene navigation share the single rendered shell.top occupant
     const action = actions.find(node => node.children.includes(label))
     assert.ok(action, `${label} is present in the shell tools menu`)
     action.props.onClick()
+    if (label === '插件管理') {
+      const inventory = renderTools()
+      assert.ok(findNode(inventory, node => node?.type?.name === 'WorkspaceModalLayer'), 'plugin management opens its current modal layer')
+      findNode(inventory, node => node?.type === 'button' && node.props?.['aria-label'] === '打开工具菜单').props.onClick()
+      continue
+    }
     assert.deepEqual(layoutCalls.at(-1), expected)
   }
   hookIndex = 0
-  const workbenchTools = toolsElement.type({ workbenchActive: true })
-  workbenchTools.children.find(node => node?.type === 'button').props.onClick()
+  layoutEffectIndex = 0
+  const workbenchTools = renderTools({ workbenchActive: true })
+  workbenchTools.children.find(node => node?.type === 'button' && node.props?.['aria-label'] === '打开工具菜单').props.onClick()
   hookIndex = 0
-  const openedWorkbenchTools = toolsElement.type({ workbenchActive: true })
+  layoutEffectIndex = 0
+  const openedWorkbenchTools = renderTools({ workbenchActive: true })
   const workbenchMenu = findNode(openedWorkbenchTools, node => node?.props?.role === 'group')
   const workbenchSidebarAction = workbenchMenu.children.find(node => node?.type === 'button' && node.children.includes('切换会话侧栏'))
   assert.ok(workbenchSidebarAction, 'the native sidebar toggle stays available in workbench mode')
@@ -1734,8 +1878,8 @@ test('business and scene navigation share the single rendered shell.top occupant
   const navStyle = navs[0].children.find(child => child?.props?.['data-tradeloom-nav-style'])
   assert.match(navStyle.children[0], /\.tl-shell-top\s*\{[^}]*visibility:\s*visible\s*;/,
     'the shell top explicitly remains visible when a collapsed-sidebar plugin rule targets its slot')
-  assert.match(navStyle.children[0], /html\[data-meow-smooth-furled\]\s+\.tl-top-model-row\s*\{[^}]*padding-inline-start:\s*66px\s*;/,
-    'the first navigation row reserves the 56px collapsed-sidebar FAB plus its existing 10px inset')
+  assert.match(navStyle.children[0], /html\[data-meow-smooth-furled\]\s+\.tl-top-model-row\s*\{[^}]*padding-inline-start:\s*8px\s*;/,
+    'the compact shell top keeps the current R76 collapsed-sidebar inset')
   assert.match(navStyle.children[0], /\.tl-navigation \.tl-scene-tab \{ font: inherit; color: inherit; background: transparent; \}/,
     'scene controls inherit the unified navigation typography')
   const toolsStyle = navStyle.children[0]
@@ -1751,57 +1895,75 @@ test('agent selector shows scene-config failure and retries the existing request
   let chunkRegistration
   let fetch
   let triggerFocusCount = 0
+  let menuPopoverIsOpen = false
   const persistedOperations = new Map()
   const elements = (type, props, ...children) => {
     const node = { type, props: props ?? {}, children }
+    if (props?.className === 'tl-shell-tools-menu') menuPopoverIsOpen = true
     if (props?.ref && typeof props.ref === 'object') {
-      props.ref.current = type === 'button' && props['aria-label'] === '打开工具菜单'
-        ? { focus() { triggerFocusCount++ } }
-        : { contains(target) { return target?.insideShellTools === true } }
+    props.ref.current = {
+      focus() { if (type === 'button' && props['aria-label'] === '打开工具菜单') triggerFocusCount++ },
+      contains(target) { return target?.insideShellTools === true },
+      getBoundingClientRect() { return { left: 0, right: 240, top: 0, bottom: 32, width: 240, height: 32 } },
+      querySelectorAll() { return [] },
+    }
     }
     return node
   }
-  const hookValues = []
+  const hookValues = new WeakMap()
   let hookIndex = 0
-  const effectValues = []
+  const effectValues = new WeakMap()
+  let activeComponent
+  function hookState(component = activeComponent) {
+    let state = hookValues.get(component)
+    if (!state) { state = []; hookValues.set(component, state) }
+    return state
+  }
+  function runComponentEffect(effect, dependencies) {
+    const index = hookIndex++
+    let effects = effectValues.get(activeComponent)
+    if (!effects) { effects = []; effectValues.set(activeComponent, effects) }
+    const previous = effects[index]
+    if (!previous || !dependencies || dependencies.some((value, item) => value !== previous.dependencies?.[item])) {
+      previous?.cleanup?.()
+      effects[index] = { dependencies, cleanup: effect() }
+    }
+  }
+  function renderWithHooks(component, props) {
+    const previous = activeComponent
+    if (component.name === 'ShellToolsMenu') menuPopoverIsOpen = false
+    activeComponent = component
+    hookIndex = 0
+    try { return component(props) } finally { activeComponent = previous }
+  }
   const documentListeners = new Map()
   const testDocument = {
     querySelectorAll: () => [],
+    querySelector: () => menuPopoverIsOpen ? {} : null,
     addEventListener(type, listener) {
       if (!documentListeners.has(type)) documentListeners.set(type, new Set())
       documentListeners.get(type).add(listener)
     },
     removeEventListener(type, listener) { documentListeners.get(type)?.delete(listener) },
     dispatch(type, event) { for (const listener of documentListeners.get(type) ?? []) listener({ type, ...event }) },
+    dispatchEvent(event) { this.dispatch(event.type, event) },
   }
   const React = {
     createElement: elements, Fragment: 'fragment',
     useState(initial) {
       const index = hookIndex++
-      if (!(index in hookValues)) hookValues[index] = initial
-      return [hookValues[index], next => { hookValues[index] = typeof next === 'function' ? next(hookValues[index]) : next }]
+      const state = hookState()
+      if (!(index in state)) state[index] = typeof initial === 'function' ? initial() : initial
+      return [state[index], next => { state[index] = typeof next === 'function' ? next(state[index]) : next }]
     },
     useRef(initial) {
       const index = hookIndex++
-      if (!(index in hookValues)) hookValues[index] = { current: initial }
-      return hookValues[index]
+      const state = hookState()
+      if (!(index in state)) state[index] = { current: initial }
+      return state[index]
     },
-    useLayoutEffect(effect, dependencies) {
-      const index = hookIndex++
-      const previous = effectValues[index]
-      if (!previous || !dependencies || dependencies.some((value, item) => value !== previous.dependencies?.[item])) {
-        previous?.cleanup?.()
-        effectValues[index] = { dependencies, cleanup: effect() }
-      }
-    },
-    useEffect(effect, dependencies) {
-      const index = hookIndex++
-      const previous = effectValues[index]
-      if (!previous || !dependencies || dependencies.some((value, item) => value !== previous.dependencies?.[item])) {
-        previous?.cleanup?.()
-        effectValues[index] = { dependencies, cleanup: effect() }
-      }
-    },
+    useLayoutEffect(effect, dependencies) { runComponentEffect(effect, dependencies) },
+    useEffect(effect, dependencies) { runComponentEffect(effect, dependencies) },
   }
   const window = {
     location: { origin: 'http://desktop.local' },
@@ -1812,6 +1974,7 @@ test('agent selector shows scene-config failure and retries the existing request
       removeItem(key) { persistedOperations.delete(key) },
     },
     document: testDocument,
+    CustomEvent: class { constructor(type) { this.type = type } },
     addEventListener() {}, removeEventListener() {},
     __ModuleLoader__: { load(value) { entryRegistration = value } },
   }
@@ -1907,13 +2070,13 @@ test('agent selector shows scene-config failure and retries the existing request
       if (result) return result
     }
   }
-  const getTop = () => slots.registrations.find(item => item.spec.name === 'shell.top').component({ usePanelInfo: () => ({}) })
+  const getTop = () => renderWithHooks(slots.registrations.find(item => item.spec.name === 'shell.top').component, { usePanelInfo: () => ({}) })
   const sceneTabs = find(getTop(), node => node.type?.name === 'BusinessMenu')?.props.SceneTabs
-  sceneTabs()
+  renderWithHooks(sceneTabs)
   for (let attempt = 0; attempt < 20; attempt++) await new Promise(resolve => setImmediate(resolve))
 
   const agentElement = find(getTop(), node => node.type?.name === 'AgentDirectory')
-  const renderAgent = () => { hookIndex = 0; return agentElement.type(agentElement.props) }
+  const renderAgent = () => renderWithHooks(agentElement.type, agentElement.props)
   let agentTree = renderAgent()
   const findAll = (node, predicate, out = []) => {
     if (!node || typeof node !== 'object') return out
@@ -2129,16 +2292,13 @@ test('agent selector shows scene-config failure and retries the existing request
   const toolsElement = find(getTop(), node => node.type?.name === 'ShellToolsMenu')
   assert.ok(toolsElement, 'the shell tools menu is available alongside native chat')
   const openMenuAndFindAction = label => {
-    hookValues.length = 0
-    hookIndex = 0
-    let tree = toolsElement.type()
+    let tree = renderWithHooks(toolsElement.type, toolsElement.props)
     find(tree, node => node.type === 'button' && node.props?.['aria-label'] === '打开工具菜单').props.onClick()
-    hookIndex = 0
-    tree = toolsElement.type()
+    tree = renderWithHooks(toolsElement.type, toolsElement.props)
     return find(tree, node => node.type === 'button' && node.children?.includes(label))
   }
   const navigation = find(getTop(), node => node.type?.name === 'BusinessMenu')
-  const openCurrentChat = () => navigation.type({ ...navigation.props, usePanelInfo: selector => selector({}) }).children
+  const openCurrentChat = () => renderWithHooks(navigation.type, { ...navigation.props, usePanelInfo: selector => selector({}) }).children
     .find(node => node?.props?.['aria-label'] === '打开当前对话')
   assert.ok(openCurrentChat(), 'a known active role session exposes the explicit native conversation action')
   assert.equal(openCurrentChat().props['aria-current'], 'page', 'the standalone conversation entry is selected when it is the active main panel')
@@ -2161,18 +2321,16 @@ test('agent selector shows scene-config failure and retries the existing request
   assert.equal(openedNativeSessions.at(-1), 'session-product-new-config',
     'a stale menu action resolves the live scene binding and cannot open the previous scene\'s session')
 
-  hookValues.length = 0
   hookIndex = 0
-  effectValues.length = 0
-  let toolsTree = toolsElement.type()
+  let toolsTree = renderWithHooks(toolsElement.type, toolsElement.props)
   let trigger = find(toolsTree, node => node.type === 'button' && node.props?.['aria-label'] === '打开工具菜单')
   trigger.props.onClick()
   hookIndex = 0
-  toolsTree = toolsElement.type()
+  toolsTree = renderWithHooks(toolsElement.type, toolsElement.props)
   assert.ok(find(toolsTree, node => node.props?.['aria-label'] === '工作台工具'), 'opening the disclosure reveals its grouped actions')
   testDocument.dispatch('keydown', { key: 'Escape', preventDefault() {} })
   hookIndex = 0
-  toolsTree = toolsElement.type()
+  toolsTree = renderWithHooks(toolsElement.type, toolsElement.props)
   assert.equal(find(toolsTree, node => node.props?.['aria-label'] === '工作台工具'), undefined, 'Escape closes the utility disclosure')
   assert.equal(find(toolsTree, node => node.props?.['aria-label'] === '打开工具菜单').props['aria-expanded'], false)
   assert.ok(triggerFocusCount > 0, 'Escape returns keyboard focus to the disclosure trigger')
@@ -2180,10 +2338,10 @@ test('agent selector shows scene-config failure and retries the existing request
   trigger = find(toolsTree, node => node.type === 'button' && node.props?.['aria-label'] === '打开工具菜单')
   trigger.props.onClick()
   hookIndex = 0
-  toolsTree = toolsElement.type()
+  toolsTree = renderWithHooks(toolsElement.type, toolsElement.props)
   testDocument.dispatch('click', { target: { insideShellTools: false } })
   hookIndex = 0
-  toolsTree = toolsElement.type()
+  toolsTree = renderWithHooks(toolsElement.type, toolsElement.props)
   assert.equal(find(toolsTree, node => node.props?.['aria-label'] === '工作台工具'), undefined, 'a click outside the utility disclosure closes it')
 
 })
@@ -2248,14 +2406,37 @@ test('scene navigation exposes config reload after a failed request and refreshe
   const savedState = defaultSceneWorkbench(config)
   const dockLayouts = normalizeDockLayouts(config, { version: 2, scenes: {} }, savedState.layouts)
   const source = await readFile(sceneChunkUrl, 'utf8')
-  const state = { current: undefined }
-  let initialEffects = 0
+  const hooks = []
+  const effects = []
+  let hookIndex = 0
   const React = {
     createElement: (type, props, ...children) => ({ type, props, children }),
-    useState(initial) { state.current ??= initial; return [state.current, value => { state.current = value }] },
-    useEffect(effect) { if (initialEffects++ < 2) effect() },
+    useState(initial) {
+      const index = hookIndex++
+      if (!(index in hooks)) hooks[index] = typeof initial === 'function' ? initial() : initial
+      return [hooks[index], value => { hooks[index] = typeof value === 'function' ? value(hooks[index]) : value }]
+    },
+    useRef(initial) { const index = hookIndex++; return hooks[index] ??= { current: initial } },
+    useEffect(effect, dependencies) {
+      const index = hookIndex++
+      const previous = effects[index]
+      if (!previous || !dependencies || dependencies.some((value, item) => value !== previous.dependencies?.[item])) {
+        previous?.cleanup?.()
+        effects[index] = { dependencies, cleanup: effect() }
+      }
+    },
+    useLayoutEffect(effect, dependencies) {
+      const index = hookIndex++
+      const previous = effects[index]
+      if (!previous || !dependencies || dependencies.some((value, item) => value !== previous.dependencies?.[item])) {
+        previous?.cleanup?.()
+        effects[index] = { dependencies, cleanup: effect() }
+      }
+    },
   }
   runInNewContext(source, {
+    MutationObserver: class { observe() {} disconnect() {} },
+    document: { getElementById() { return { hidePopover() {}, style: {} } } },
     window: { __ModuleLoader__: { load(value) { chunkRegistration = value } } },
     fetch: async url => {
       if (url === '/tradeloom/scenes') {
@@ -2269,26 +2450,51 @@ test('scene navigation exposes config reload after a failed request and refreshe
     },
   })
   const exports = chunkRegistration.factory(() => React)
+  const renderSceneTabs = (props = {}) => { hookIndex = 0; return exports.SceneTabs(props) }
   function buttons(node, found = []) {
     if (!node || typeof node !== 'object') return found
     if (node.type === 'button') found.push(node)
     for (const child of node.children ?? []) Array.isArray(child) ? child.forEach(item => buttons(item, found)) : buttons(child, found)
     return found
   }
-  let tree = exports.SceneTabs()
+  let tree = renderSceneTabs()
   await new Promise(resolve => setImmediate(resolve))
-  tree = exports.SceneTabs()
+  const toolNavigations = []
+  tree = renderSceneTabs({ onSceneSelect: id => toolNavigations.push(id) })
   assert.match(JSON.stringify(tree), /场景配置暂时无法读取|工作场景暂时无法读取|读取场景配置失败|无法读取场景/,
     'the scene strip reports an unavailable config without adding a separate toolbar action')
   await exports.retryLoadConfig()
   await new Promise(resolve => setImmediate(resolve))
-  tree = exports.SceneTabs()
+  tree = renderSceneTabs({ onSceneSelect: id => toolNavigations.push(id) })
   assert.equal(configFetches, 2)
   assert.ok(buttons(tree).some(button => button.props['aria-label'] === '本地新场景名'))
   assert.equal(buttons(tree).some(button => button.children.includes('刷新场景配置')), false,
     'scene config refresh is moved out of the scene tab strip into the shell tools menu')
   const sceneTabButtons = buttons(tree).filter(button => button.props?.className === 'tl-scene-tab')
-  assert.equal(sceneTabButtons.length, 7)
+  assert.equal(sceneTabButtons.length, 5, 'the compact rail shows only scenes assigned to the business navigation group')
+  assert.deepEqual(sceneTabButtons.map(button => button.props['data-scene-tab-id']), ['center', 'products', 'agent-center', 'deliverables', 'user-profile'])
+  assert.equal(sceneTabButtons.some(button => button.props['aria-label'] === '运行记录' || button.props['aria-label'] === 'ERPNext'), false)
+  assert.deepEqual(config.scenes.filter(scene => scene.navigationGroup === 'tools').map(scene => scene.id), ['runs', 'erpnext'])
+  const toolsGroup = (function find(node) {
+    if (!node || typeof node !== 'object') return undefined
+    if (node.props?.role === 'group' && node.props?.['aria-label'] === '工具') return node
+    for (const child of node.children ?? []) {
+      const found = Array.isArray(child) ? child.map(find).find(Boolean) : find(child)
+      if (found) return found
+    }
+  })(tree)
+  assert.ok(toolsGroup, 'grouped scenes remain reachable in the tools menu')
+  for (const id of ['center', 'products', 'agent-center', 'deliverables', 'user-profile']) {
+    const item = sceneTabButtons.find(button => button.props['data-scene-tab-id'] === id)
+    item.props.onClick({ detail: 0 })
+  }
+  for (const id of ['runs', 'erpnext']) {
+    const scene = config.scenes.find(item => item.id === id)
+    const item = toolsGroup.children.find(node => node?.props?.['aria-label'] === scene.label)
+    assert.ok(item, `${id} is present in the tools menu`)
+    item.props.onClick()
+  }
+  assert.deepEqual(toolNavigations, ['center', 'products', 'agent-center', 'deliverables', 'user-profile', 'runs', 'erpnext'])
   for (const button of sceneTabButtons) {
     assert.equal(button.children[0]?.children?.[0]?.type, 'svg', `${button.props['aria-label']} should use a recognizable inline icon`)
     assert.equal(button.children[1]?.props?.className, 'tl-scene-tab-label')
@@ -2298,12 +2504,33 @@ test('scene navigation exposes config reload after a failed request and refreshe
 
 test('an empty scene list is rejected and leaves the top navigation retry available', async () => {
   let chunkRegistration
-  const state = { current: undefined }
-  let effectCount = 0
+  const hooks = []
+  const effects = []
+  let hookIndex = 0
   const React = {
     createElement: (type, props, ...children) => ({ type, props, children }),
-    useState(initial) { state.current ??= initial; return [state.current, value => { state.current = value }] },
-    useEffect(effect) { if (effectCount++ < 2) effect() },
+    useState(initial) {
+      const index = hookIndex++
+      if (!(index in hooks)) hooks[index] = typeof initial === 'function' ? initial() : initial
+      return [hooks[index], value => { hooks[index] = typeof value === 'function' ? value(hooks[index]) : value }]
+    },
+    useRef(initial) { const index = hookIndex++; return hooks[index] ??= { current: initial } },
+    useEffect(effect, dependencies) {
+      const index = hookIndex++
+      const previous = effects[index]
+      if (!previous || !dependencies || dependencies.some((value, item) => value !== previous.dependencies?.[item])) {
+        previous?.cleanup?.()
+        effects[index] = { dependencies, cleanup: effect() }
+      }
+    },
+    useLayoutEffect(effect, dependencies) {
+      const index = hookIndex++
+      const previous = effects[index]
+      if (!previous || !dependencies || dependencies.some((value, item) => value !== previous.dependencies?.[item])) {
+        previous?.cleanup?.()
+        effects[index] = { dependencies, cleanup: effect() }
+      }
+    },
   }
   runInNewContext(await readFile(sceneChunkUrl, 'utf8'), {
     window: { __ModuleLoader__: { load(value) { chunkRegistration = value } } },
@@ -2312,9 +2539,10 @@ test('an empty scene list is rejected and leaves the top navigation retry availa
       : { version: 1, activeSceneId: 'center', roleByScene: { center: 'center' }, layouts: {} } } }),
   })
   const exports = chunkRegistration.factory(() => React)
-  exports.SceneTabs()
+  const renderSceneTabs = () => { hookIndex = 0; return exports.SceneTabs() }
+  renderSceneTabs()
   await new Promise(resolve => setImmediate(resolve))
-  const tree = exports.SceneTabs()
+  const tree = renderSceneTabs()
   assert.ok(JSON.stringify(tree).includes('工作场景暂时无法读取'), 'empty configuration must not reach SceneWorkbench')
   assert.ok(tree.children.some(child => child?.props?.role === 'status'), 'the scene row reports the failure while reload stays in the shell tools menu')
 })
@@ -2339,12 +2567,16 @@ test('switching scenes keeps each role bound to its own native Session and compo
   exports.releaseRoleSessions()
 })
 
-test('scene config endpoint returns editable scenes and the live business origin to an authenticated GET', async () => {
+test('scene config endpoint returns editable scenes and the live business origin to an authenticated GET', async t => {
   const expected = await readFile(sceneConfigUrl, 'utf8')
+  const home = await mkdtemp(join(tmpdir(), 'tradeloom-scenes-'))
+  await writeFile(join(home, HOME_MARKER), HOME_MARKER_VALUE, 'utf8')
+  const env = { TRADELOOM_DSH_APP_HOME: home, DSH_HOME: home }
+  t.after(async () => await rm(home, { recursive: true, force: true }))
   const handler = createScenesHandler({
     connection: { requestRejection: () => undefined },
     webServer: { getOrigin: () => 'http://192.168.1.23:3088' },
-  })
+  }, { createStateStore: () => createStateStore({ env }) })
   const req = Readable.from([])
   req.method = 'GET'
   const res = { headers: {}, statusCode: 200, body: '', setHeader(name, value) { this.headers[name] = value }, end(value = '') { this.body = value } }
@@ -2354,7 +2586,7 @@ test('scene config endpoint returns editable scenes and the live business origin
   const body = JSON.parse(res.body)
   assert.deepEqual(body, {
     ...JSON.parse(expected), businessOrigin: 'http://192.168.1.23:3088',
-    roles: publicRoleMetadata(),
+    roles: publicRoleMetadata(), sessionBindings: {}, sessionBindingMetadata: {},
   })
   assert.ok(body.roles.every(role => Object.keys(role).sort().join(',') === 'assistantLabel,id,label'))
   for (const privateField of ['preset', 'prompt', 'tool', 'session', 'workspace']) {

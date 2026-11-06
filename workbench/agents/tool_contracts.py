@@ -73,6 +73,176 @@ _readiness_product = _object(
     {**_validation["properties"], "status": _string},
     [*_validation["required"], "status"],
 )
+_nullable_string = {"type": ["string", "null"]}
+_customer_alias = _object(
+    {
+        "id": _string,
+        "customer_id": _nullable_string,
+        "source_candidate_id": _nullable_string,
+        "raw_text": _string,
+        "normalized_text": _string,
+        "decision": _string,
+        "created_at": _string,
+        "updated_at": _string,
+    },
+    [
+        "id",
+        "customer_id",
+        "source_candidate_id",
+        "raw_text",
+        "normalized_text",
+        "decision",
+        "created_at",
+        "updated_at",
+    ],
+)
+_customer_profile = _object(
+    {
+        "id": _string,
+        "display_name": _string,
+        "created_at": _string,
+        "updated_at": _string,
+        "aliases": {"type": "array", "items": _customer_alias},
+    },
+    ["id", "display_name", "created_at", "updated_at", "aliases"],
+)
+_customer_event = _object(
+    {
+        "id": _string,
+        "customer_id": _string,
+        "alias_id": _string,
+        "source_candidate_id": _string,
+        "event_type": _string,
+        "occurred_on": _string,
+        "payload": {"type": "object"},
+        "source_refs": {"type": "object"},
+        "created_at": _string,
+    },
+    [
+        "id",
+        "customer_id",
+        "alias_id",
+        "source_candidate_id",
+        "event_type",
+        "occurred_on",
+        "payload",
+        "source_refs",
+        "created_at",
+    ],
+)
+_customer_metric = _object(
+    {
+        "id": _string,
+        "customer_id": _string,
+        "metric_key": _string,
+        "metric_version": _string,
+        "as_of": _string,
+        "window_start": _string,
+        "window_end": _string,
+        "value": _nullable_string,
+        "unit": _string,
+        "formula": _string,
+        "coverage": {"type": "object"},
+        "input_event_ids": _string_array,
+        "inputs_hash": _string,
+        "created_at": _string,
+    },
+    [
+        "id",
+        "customer_id",
+        "metric_key",
+        "metric_version",
+        "as_of",
+        "window_start",
+        "window_end",
+        "value",
+        "unit",
+        "formula",
+        "coverage",
+        "input_event_ids",
+        "inputs_hash",
+        "created_at",
+    ],
+)
+_customer_prediction = _object(
+    {
+        "id": _string,
+        "customer_id": _string,
+        "prediction_type": _string,
+        "predicted_on": _string,
+        "horizon_days": {"type": "integer"},
+        "result": _string,
+        "rule_id": _string,
+        "rule_version": _string,
+        "input_snapshot": {"type": "object"},
+        "inputs_hash": _string,
+        "outcome": _string,
+        "resolved_at": _nullable_string,
+        "created_at": _string,
+    },
+    [
+        "id",
+        "customer_id",
+        "prediction_type",
+        "predicted_on",
+        "horizon_days",
+        "result",
+        "rule_id",
+        "rule_version",
+        "input_snapshot",
+        "inputs_hash",
+        "outcome",
+        "resolved_at",
+        "created_at",
+    ],
+)
+_customer_action = _object(
+    {
+        "id": _string,
+        "customer_id": _string,
+        "prediction_id": _string,
+        "action_type": _string,
+        "suggestion": _string,
+        "due_on": _nullable_string,
+        "status": _string,
+        "note": _string,
+        "decided_at": _nullable_string,
+        "created_at": _string,
+        "updated_at": _string,
+    },
+    [
+        "id",
+        "customer_id",
+        "prediction_id",
+        "action_type",
+        "suggestion",
+        "due_on",
+        "status",
+        "note",
+        "decided_at",
+        "created_at",
+        "updated_at",
+    ],
+)
+
+
+def _customer_tool_input(*, with_limit: bool = False) -> dict[str, Any]:
+    properties: dict[str, Any] = {
+        "customer_id": {"type": "string", "minLength": 1, "pattern": r".*\S.*"},
+    }
+    if with_limit:
+        properties["limit"] = {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 20,
+        }
+    return {
+        "type": "object",
+        "properties": properties,
+        "required": ["customer_id"],
+        "additionalProperties": False,
+    }
 
 
 TOOL_CONTRACTS: dict[str, tuple[str, dict[str, Any], dict[str, Any]]] = {
@@ -138,6 +308,31 @@ TOOL_CONTRACTS: dict[str, tuple[str, dict[str, Any], dict[str, Any]]] = {
             },
             ["status", "quality_scope", "data_readiness", "artifacts_generated", "scope", "checks", "products"],
         ),
+    ),
+    "read_customer_profile": (
+        "读取指定客户的档案及全部别名，不修改客户资料。",
+        _customer_tool_input(),
+        _customer_profile,
+    ),
+    "read_customer_events": (
+        "按数量上限读取指定客户的事件及来源引用。",
+        _customer_tool_input(with_limit=True),
+        {"type": "array", "items": _customer_event},
+    ),
+    "read_customer_metrics": (
+        "按数量上限读取指定客户已保存的指标快照及输入事件和覆盖范围。",
+        _customer_tool_input(with_limit=True),
+        {"type": "array", "items": _customer_metric},
+    ),
+    "read_customer_predictions": (
+        "按数量上限读取指定客户已保存的推测及输入快照，不执行评估。",
+        _customer_tool_input(with_limit=True),
+        {"type": "array", "items": _customer_prediction},
+    ),
+    "read_customer_actions": (
+        "按数量上限读取指定客户已保存的行动建议，不改变行动状态。",
+        _customer_tool_input(with_limit=True),
+        {"type": "array", "items": _customer_action},
     ),
     "compose_generation_intent": (
         "读取固定的生成意图清单，包含产物类型、格式、状态和是否已生成标记。",

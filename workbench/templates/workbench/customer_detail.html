@@ -1,0 +1,146 @@
+{% extends "workbench/base.html" %}
+{% load business_urls %}
+{% block page_eyebrow %}客户洞察 / 可追溯分析{% endblock %}
+{% block page_title %}{{ customer.display_name }}{% endblock %}
+{% block content %}
+<div class="page-stack" id="customer-detail-page" data-customer-id="{{ customer.id }}">
+  <section class="panel">
+    <div class="detail-heading">
+      <div>
+        <a class="text-button back-link" href="{% business_path '/customers' %}">← 返回客户列表</a>
+        <div class="title-line"><h2>{{ customer.display_name }}</h2><span class="tag">客户知识对象</span></div>
+        <p class="mono">{{ customer.id }}</p>
+      </div>
+      <form id="customer-evaluation-form" class="button-row" data-customer-id="{{ customer.id }}">
+        <label class="sr-only" for="evaluate-as-of">评估日期</label>
+        <input id="evaluate-as-of" name="as_of" type="date" value="{{ as_of }}" required>
+        <button class="button primary" type="submit" data-testid="evaluate-customer">生成 / 刷新建议</button>
+      </form>
+    </div>
+    {% if date_error %}<p class="inline-alert warning">{{ date_error }}</p>{% endif %}
+    <div class="stat-grid">
+      <div class="stat-card"><span class="stat-label">已入账事件</span><strong class="stat-value" data-testid="analysis-event-count">{{ analysis.activity.event_count }}</strong><span class="stat-note">截至 {{ analysis.as_of }}</span></div>
+      <div class="stat-card"><span class="stat-label">订单</span><strong class="stat-value">{{ analysis.activity.order_count }}</strong><span class="stat-note">最近 {{ analysis.activity.last_order_on|default:"—" }}</span></div>
+      <div class="stat-card"><span class="stat-label">沉默天数</span><strong class="stat-value">{{ analysis.activity.silence_days|default:"—" }}</strong><span class="stat-note">没有订单时保持未知</span></div>
+      <div class="stat-card"><span class="stat-label">下单间隔中位数</span><strong class="stat-value">{{ analysis.order_intervals.median_days|default:"—" }}</strong><span class="stat-note">范围 {{ analysis.order_intervals.min_days|default:"—" }}–{{ analysis.order_intervals.max_days|default:"—" }} 天</span></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-heading"><div><h2>身份与客户合并</h2><p>别名改派只影响新事件；客户合并保留原记录，并在当前客户下汇总整个客户族的历史视图。</p></div></div>
+    {% if merged_sources %}<p class="inline-alert warning">当前客户已合并：{% for source in merged_sources %}{{ source.display_name }}{% if not forloop.last %}、{% endif %}{% endfor %}。原事件和推测仍保留原主键。</p>{% endif %}
+    <div class="customer-analysis-grid">
+      <div>
+        <h3>已确认别名</h3>
+        {% if aliases %}{% for alias in aliases %}
+        <article class="alias-resolve-card" data-testid="confirmed-alias-{{ alias.id }}">
+          <div><strong>{{ alias.raw_text }}</strong><span class="cell-subtitle mono">{{ alias.id }}</span></div>
+          <form class="identity-operation-form" data-url="/api/customer-aliases/{{ alias.id }}/reassign">
+            <div class="field"><label for="reassign-{{ alias.id }}">改派到</label><select id="reassign-{{ alias.id }}" name="customer_id" required><option value="">选择客户</option>{% for option in customer_options %}<option value="{{ option.id }}">{{ option.display_name }}</option>{% endfor %}</select></div>
+            <div class="field"><label for="reassign-note-{{ alias.id }}">改派依据</label><input id="reassign-note-{{ alias.id }}" name="note" maxlength="500" placeholder="只影响改派后的新事件"></div>
+            <button class="button secondary small" type="submit" {% if not customer_options %}disabled{% endif %}>改派别名</button>
+          </form>
+        </article>
+        {% endfor %}{% else %}<p class="muted-text">暂无已确认别名。</p>{% endif %}
+      </div>
+      <div>
+        <h3>把另一个客户合并到当前客户</h3>
+        <form id="customer-merge-form" class="identity-operation-form" data-url="/api/customers/{{ customer.id }}/merge" data-testid="customer-merge-form">
+          <div class="field"><label for="merge-source">源客户</label><select id="merge-source" name="source_customer_id" required><option value="">选择要合并的客户</option>{% for option in customer_options %}<option value="{{ option.id }}">{{ option.display_name }}</option>{% endfor %}</select></div>
+          <div class="field"><label for="merge-note">合并依据</label><input id="merge-note" name="note" maxlength="500" placeholder="例如：同一企业的两个历史名称"></div>
+          <button class="button primary" type="submit" {% if not customer_options %}disabled{% endif %}>确认合并</button>
+        </form>
+        {% if merge_history %}<dl class="status-list">{% for merge in merge_history %}<div><dt>{{ merge.created_at|date:"Y-m-d H:i" }}</dt><dd>{{ merge.source_customer.display_name }} 已合并到当前客户。{{ merge.note }}</dd></div>{% endfor %}</dl>{% endif %}
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-heading"><div><h2>跟进建议</h2><p>建议只由规则生成；采纳、完成与放弃均由人决定，系统不会自动联系客户。</p></div></div>
+    {% if actions %}
+    <div class="customer-action-list">
+    {% for action in actions %}
+      <article class="customer-action-card" data-testid="action-{{ action.id }}">
+        <div class="panel-heading">
+          <div><span class="status-pill {{ action.status }}">{{ action.status_label }}</span><h3>{{ action.suggestion }}</h3><p>建议日期 {{ action.prediction.predicted_on|date:"Y-m-d" }} · 截止 {{ action.due_on|date:"Y-m-d"|default:"—" }} · 规则 {{ action.prediction.rule_version }}</p></div>
+        </div>
+        <form class="customer-action-form" data-action-id="{{ action.id }}">
+          <div class="field"><label for="action-note-{{ action.id }}">处理备注</label><input id="action-note-{{ action.id }}" name="note" maxlength="1000" value="{{ action.note }}" placeholder="由操作者填写，不作为模型结论"></div>
+          <div class="button-row">
+            {% if action.can_accept %}<button class="button primary small customer-action-decision" type="button" data-decision="accept">采纳</button>{% endif %}
+            {% if action.can_complete %}<button class="button primary small customer-action-decision" type="button" data-decision="complete">完成</button>{% endif %}
+            {% if action.can_dismiss %}<button class="button secondary small customer-action-decision" type="button" data-decision="dismiss">放弃</button>{% endif %}
+          </div>
+        </form>
+      </article>
+    {% endfor %}
+    </div>
+    {% else %}<div class="empty-state"><h3>当前没有行动建议</h3><p>样本不足或沉默时间未超过规则阈值时，不会生成建议。</p></div>{% endif %}
+  </section>
+
+  <div class="customer-analysis-grid">
+    <section class="panel">
+      <div class="panel-heading"><div><h2>事件构成</h2><p>只统计已确认归属的事件，不推算报价转化。</p></div></div>
+      <dl class="status-list">
+      {% for item in event_breakdown %}<div><dt>{{ item.label }}</dt><dd class="count-badge">{{ item.count }}</dd></div>{% endfor %}
+      </dl>
+    </section>
+    <section class="panel">
+      <div class="panel-heading"><div><h2>近 12 个月活动</h2><p>柱高为全部事件数，标签同时标出订单数。</p></div></div>
+      <div class="customer-activity-chart" data-testid="monthly-activity">
+      {% for row in analysis.monthly_activity %}
+        <div class="activity-column" title="{{ row.month }}：{{ row.event_count }} 个事件，{{ row.order_count }} 笔订单">
+          <span class="activity-count">{{ row.event_count }}</span>
+          <div class="activity-bar-track"><div class="activity-bar" style="height: {{ row.bar_height }}%"></div></div>
+          <span class="activity-month">{{ row.month|slice:"2:" }}</span><span class="activity-orders">单 {{ row.order_count }}</span>
+        </div>
+      {% endfor %}
+      </div>
+    </section>
+  </div>
+
+  <section class="panel">
+    <div class="panel-heading"><div><h2>来源覆盖与处理状态</h2><p>覆盖率描述资料完整度，不代表业务事实已经外部核验。</p></div></div>
+    <div class="stat-grid stat-grid-three">
+      <div class="stat-card"><span class="stat-label">来源工作簿快照</span><strong class="stat-value">{{ analysis.source_coverage.source_snapshot_count }}</strong><span class="stat-note">事件 {{ analysis.source_coverage.event_count }} 条</span></div>
+      <div class="stat-card"><span class="stat-label">含单据号事件</span><strong class="stat-value">{{ analysis.source_coverage.document_reference_event_count }}</strong><span class="stat-note">覆盖比例 {{ analysis.source_coverage.document_reference_coverage|default:"未知" }}</span></div>
+      <div class="stat-card"><span class="stat-label">操作者补录日期</span><strong class="stat-value">{{ analysis.source_coverage.operator_supplemented_date_count }}</strong><span class="stat-note">与单据提取值分开标记</span></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-heading"><div><h2>历史回测</h2><p>逐点截断历史输入；观察不足记为 censored。描述性回测不证明跟进建议与下单之间存在因果。</p></div></div>
+    <form id="customer-backtest-form" class="filter-form" data-customer-id="{{ customer.id }}">
+      <div class="filter-field"><label for="backtest-start">开始日期</label><input id="backtest-start" name="start" type="date" value="{{ backtest_start }}" required></div>
+      <div class="filter-field"><label for="backtest-end">结束日期</label><input id="backtest-end" name="end" type="date" value="{{ as_of }}" required></div>
+      <div class="filter-field"><label for="backtest-step">间隔（天）</label><input id="backtest-step" name="step_days" type="number" min="1" max="366" value="30" required></div>
+      <div class="filter-actions"><button class="button primary" type="submit" data-testid="run-backtest">运行回测</button></div>
+    </form>
+    <div id="backtest-result" data-testid="backtest-result" hidden>
+      <p id="backtest-summary" class="count-note"></p>
+      <div class="table-wrap"><table><thead><tr><th>评估日</th><th>当时结论</th><th>订单数</th><th>沉默 / 阈值</th><th>观察结果</th></tr></thead><tbody id="backtest-rows"></tbody></table></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-heading">
+      <div><h2>推测与结果回填</h2><p>只有出现观察期内订单，或观察窗已经结束，才回填结果；其余保持等待观察。</p></div>
+      <form id="customer-reconcile-form" class="button-row" data-customer-id="{{ customer.id }}"><input name="as_of" type="date" value="{{ as_of }}" required aria-label="结果观察截止日期"><button class="button secondary" type="submit">回填结果</button></form>
+    </div>
+    {% if predictions %}
+    <div class="table-wrap"><table><thead><tr><th>推测日</th><th>当时结论</th><th>沉默 / 阈值</th><th>观察结果</th><th>规则</th></tr></thead><tbody>
+    {% for prediction in predictions %}<tr><td class="mono">{{ prediction.predicted_on|date:"Y-m-d" }}</td><td>{{ prediction.result_label }}</td><td class="mono">{{ prediction.input_snapshot.metrics.silence_days.value|default:"—" }} / {{ prediction.input_snapshot.rule.threshold_days|default:"—" }}</td><td>{{ prediction.outcome_label }}</td><td class="mono">{{ prediction.rule_id }} · {{ prediction.rule_version }}</td></tr>{% endfor %}
+    </tbody></table></div>
+    {% else %}<div class="empty-state"><h3>还没有已保存推测</h3><p>使用上方“生成 / 刷新建议”后，推测及其输入快照会保存在这里。</p></div>{% endif %}
+  </section>
+
+  <section class="panel">
+    <div class="panel-heading"><div><h2>事件与来源</h2><p>每条事件保留原候选单据和工作簿定位；事件类型与日期来源单独标明。</p></div></div>
+    {% if events %}<div class="timeline">
+    {% for event in events %}<article class="timeline-item" data-testid="event-{{ event.id }}"><span class="timeline-dot" aria-hidden="true"></span><div><strong>{{ event.type_label }} · {{ event.occurred_on|date:"Y-m-d" }}</strong><p>{{ event.source_summary }}</p><details><summary>查看来源与补录标记</summary><dl class="status-list"><div><dt>候选单据</dt><dd class="mono">{{ event.source_candidate_id }}</dd></div><div><dt>事件类型来源</dt><dd>{{ event.source_refs.event_type_source }}</dd></div><div><dt>日期来源</dt><dd>{{ event.source_refs.occurred_on_source }}</dd></div></dl></details></div></article>{% endfor %}
+    </div>{% else %}<div class="empty-state"><h3>还没有客户事件</h3><p>先在客户列表完成候选单据入账与身份确认。</p></div>{% endif %}
+  </section>
+  <p id="customer-page-error" class="inline-alert error" role="alert" hidden></p>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ '/static/workbench/customers.js'|business_url }}" defer></script>{% endblock %}

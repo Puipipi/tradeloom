@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token }}">
     <title>织贸助手（TradeWeave） · 产品资料工作台</title>
-    {% block stylesheets %}<link rel="stylesheet" href="{{ '/static/workbench/styles.css?v=business-ui-scrollbars12'|business_url }}">{% endblock %}
+    {% block stylesheets %}<link rel="stylesheet" href="{{ '/static/workbench/styles.css?v=business-ui-scrollbars12-customer-ui1'|business_url }}">{% endblock %}
   </head>
   <body>
     <a class="skip-link" href="#main-content">跳到主要内容</a>
@@ -28,6 +28,7 @@
           <a class="nav-link secondary {% if page == 'tasks' %}active{% endif %}" href="{% business_path '/' %}" data-testid="nav-tasks" {% if page == 'tasks' %}aria-current="page"{% endif %}>任务列表</a>
           <a class="nav-link secondary {% if page == 'new' %}active{% endif %}" href="{% business_path '/tasks/new' %}" data-testid="nav-new" {% if page == 'new' %}aria-current="page"{% endif %}>新建任务</a>
           <a class="nav-link secondary {% if page == 'agents' %}active{% endif %}" href="{% business_path '/agents' %}" data-testid="nav-agents" {% if page == 'agents' %}aria-current="page"{% endif %}>Agent 能力</a>
+          <a class="nav-link secondary {% if page == 'customers' %}active{% endif %}" href="{% business_path '/customers' %}" data-testid="nav-customers" {% if page == 'customers' %}aria-current="page"{% endif %}>客户洞察</a>
         </nav>
         <div class="sidebar-note" data-testid="mode-note">
           <span class="mode-dot" aria-hidden="true"></span>
@@ -50,6 +51,12 @@
           </div>
         </header>{% endif %}
         <main class="content-area" id="main-content">
+          {% if page == 'products' or page == 'customers' %}
+          <nav class="customer-context-nav" aria-label="产品与客户">
+            <a class="customer-context-link {% if page == 'products' %}is-active{% endif %}" href="{% business_path '/products' %}" {% if page == 'products' %}aria-current="page"{% endif %}>产品资料</a>
+            <a class="customer-context-link {% if page == 'customers' %}is-active{% endif %}" href="{% business_path '/customers' %}" data-testid="customer-context-customers" {% if page == 'customers' %}aria-current="page"{% endif %}>客户洞察</a>
+          </nav>
+          {% endif %}
           {% block content %}{% endblock %}
         </main>
       </div>
