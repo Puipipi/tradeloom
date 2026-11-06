@@ -113,11 +113,13 @@ test('registers bounded business tools with native ToolRuntime definitions and n
   assert.deepEqual([...tools.keys()], [
     'tradeloom_read_products', 'tradeloom_read_workflow_task', 'tradeloom_read_deliverables',
     'tradeloom_preview_workflow_intent', 'tradeloom_dispatch_workflow_subtask',
+    'tradeloom_begin_native_workflow_assignment', 'tradeloom_bind_native_workflow_expert',
     'tradeloom_intake_sources', 'tradeloom_narrative_sources', 'tradeloom_narrative_excerpt',
     'tradeloom_intake_candidates', 'tradeloom_intake_candidate', 'tradeloom_read_execution_plan',
     'tradeloom_erpnext_status', 'tradeloom_erpnext_list', 'tradeloom_erpnext_detail',
     'tradeloom_erpnext_create_quotation_draft', 'tradeloom_erpnext_update_quotation_draft',
     'tradeloom_erpnext_read_quotation_draft_operation',
+    'tradeloom_dispatch_create', 'tradeloom_dispatch_list', 'tradeloom_dispatch_claim', 'tradeloom_dispatch_receipt',
   ])
   for (const definition of tools.values()) {
     assert.equal(typeof definition.execute, 'function')
@@ -126,7 +128,7 @@ test('registers bounded business tools with native ToolRuntime definitions and n
   }
   const module = await import('../business-tools.js')
   assert.equal('default' in module, false)
-  assert.deepEqual(module.inject, ['tools', 'webServer'])
+  assert.deepEqual(module.inject, ['tools', 'webServer', 'agents'])
   assert.equal(typeof module.apply, 'function')
   const toolsLibrary = process.env.TRADELOOM_DSH_TOOLS_LIBRARY
   if (toolsLibrary) {
@@ -141,7 +143,7 @@ test('registers bounded business tools with native ToolRuntime definitions and n
       }
       assert.equal(typeof ToolRuntime.prototype.register.call(runtime, definition), 'function')
     }
-    assert.equal(registrations.length, 17)
+    assert.equal(registrations.length, 23)
   }
 })
 
@@ -150,14 +152,16 @@ test('preset configuration limits registered tools to the center, product, and d
     'tradeloom-center': [
       'tradeloom_read_products', 'tradeloom_read_workflow_task', 'tradeloom_read_deliverables',
       'tradeloom_preview_workflow_intent', 'tradeloom_dispatch_workflow_subtask',
+      'tradeloom_begin_native_workflow_assignment', 'tradeloom_bind_native_workflow_expert',
       'tradeloom_intake_sources', 'tradeloom_narrative_sources', 'tradeloom_narrative_excerpt',
       'tradeloom_intake_candidates', 'tradeloom_intake_candidate', 'tradeloom_read_execution_plan',
       'tradeloom_erpnext_status', 'tradeloom_erpnext_list', 'tradeloom_erpnext_detail',
       'tradeloom_erpnext_create_quotation_draft', 'tradeloom_erpnext_update_quotation_draft',
       'tradeloom_erpnext_read_quotation_draft_operation',
+      'tradeloom_dispatch_create', 'tradeloom_dispatch_list', 'tradeloom_dispatch_claim', 'tradeloom_dispatch_receipt',
     ],
-    'tradeloom-product': ['tradeloom_read_products', 'tradeloom_intake_sources', 'tradeloom_intake_candidates', 'tradeloom_intake_candidate', 'tradeloom_erpnext_status', 'tradeloom_erpnext_list', 'tradeloom_erpnext_detail'],
-    'tradeloom-delivery': ['tradeloom_read_workflow_task', 'tradeloom_read_deliverables', 'tradeloom_intake_sources', 'tradeloom_intake_candidates', 'tradeloom_intake_candidate', 'tradeloom_read_execution_plan', 'tradeloom_erpnext_status', 'tradeloom_erpnext_list', 'tradeloom_erpnext_detail'],
+    'tradeloom-product': ['tradeloom_read_products', 'tradeloom_read_workflow_task', 'tradeloom_submit_native_workflow_advice', 'tradeloom_intake_sources', 'tradeloom_intake_candidates', 'tradeloom_intake_candidate', 'tradeloom_erpnext_status', 'tradeloom_erpnext_list', 'tradeloom_erpnext_detail', 'tradeloom_dispatch_create', 'tradeloom_dispatch_list', 'tradeloom_dispatch_claim', 'tradeloom_dispatch_receipt'],
+    'tradeloom-delivery': ['tradeloom_read_workflow_task', 'tradeloom_read_deliverables', 'tradeloom_submit_native_workflow_advice', 'tradeloom_intake_sources', 'tradeloom_intake_candidates', 'tradeloom_intake_candidate', 'tradeloom_read_execution_plan', 'tradeloom_erpnext_status', 'tradeloom_erpnext_list', 'tradeloom_erpnext_detail', 'tradeloom_dispatch_create', 'tradeloom_dispatch_list', 'tradeloom_dispatch_claim', 'tradeloom_dispatch_receipt'],
   }
   for (const [preset, names] of Object.entries(expected)) {
     const registered = []
