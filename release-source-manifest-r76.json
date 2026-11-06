@@ -1,0 +1,3558 @@
+{
+  "schemaVersion": 1,
+  "kind": "relative-source-adoption-map-r76",
+  "sourceRepository": {
+    "remote": "Puipipi/tradeloom",
+    "branchAtPreparation": "main",
+    "head": "f73118c6e8866ea31ab81e2d4276842ad69f89ec",
+    "adoptionBranch": "delivery/ui18-r76-20261106",
+    "workingTreeCleanAtPreparation": true,
+    "localCoreAutocrlf": false
+  },
+  "sourceTrees": {
+    "r24Backend": {
+      "files": 139,
+      "bytes": 1546479,
+      "treeSha256": "31df6b019251c569e2aca05107a14af4c5c7e79c7e95e37f839fc2237b55d79f",
+      "provenance": "R24 installed-source freeze; exact 139 code files only, excludes 14 backend/data assets"
+    },
+    "r75BusinessShell": {
+      "files": 57,
+      "bytes": 2589539,
+      "treeSha256": "0566e92704d91d415e93672227d0776f62c7364512cde6c84c77470ff5c13784",
+      "provenance": "R75 output external business-shell; 57-file canonical package tree"
+    },
+    "r75AsarRuntime": {
+      "files": 96,
+      "bytes": 20657202,
+      "sourceAsarSha256": "E86597AA3FE799C7F69C8B80A2C4CD3A0B45DCE1E76749322CD2024BBF2C0C8D",
+      "sourceAsarBytes": 172823311,
+      "canonicalLauncherFiles": 8,
+      "acceptedRuntimeOverlayFiles": 88
+    },
+    "r76BusinessShell": {
+      "files": 57,
+      "bytes": 2589497,
+      "treeSha256": "375fa7a53b7b004537351cc1c5dd5d66b2d980e8217d9982de8a1adfeae76558",
+      "provenance": "R75 external business-shell with the single R76 toast palette adapter change; 57-file canonical package tree"
+    }
+  },
+  "releaseInputs": {
+    "baseAsar": {
+      "id": "R74-release-base",
+      "bytes": 172819677,
+      "sha256": "1B1E56467E5FB682A7DE176385B38E63937D32DE5ED2D289BF29B4AB95D6DA15"
+    },
+    "baseDeployment": {
+      "id": "R74-release-deployment",
+      "bytes": 75753,
+      "sha256": "659DE9699911BAFEB6C52F71FF67F20EB6289BECEBA9E88D04727E603F6B61C7"
+    },
+    "outputAsar": {
+      "id": "R75-validated-output-reused-unchanged-by-R76",
+      "bytes": 172823311,
+      "sha256": "E86597AA3FE799C7F69C8B80A2C4CD3A0B45DCE1E76749322CD2024BBF2C0C8D"
+    },
+    "outputDeployment": {
+      "id": "R76-source-build-output",
+      "bytes": 75753,
+      "sha256": "82c06b270620a22d31682c92da65fd776c7f3bb3d0d433f2066751c021a825d6",
+      "changedDeploymentLeavesFromR74": [
+        "sourceBuild.appMainSha256",
+        "resources.businessShell.bytes",
+        "resources.businessShell.sha256"
+      ]
+    },
+    "unpackedSidecar": {
+      "entries": 1583,
+      "source": "R74/R75 exact resource sidecar baseline; retained unchanged"
+    },
+    "dshVendorBase": {
+      "source": "R74 base ASAR vendor subtree",
+      "policy": "retain pinned vendor base; no full SDK TypeScript rebuild claim"
+    },
+    "pluginProgramSeed": {
+      "source": "release-only R75 program seed input",
+      "gitTracked": false,
+      "files": 25170,
+      "bytes": 933546613,
+      "treeSha256": "fec8b9f630e4517fb4f2e727f3229c2757aaeaa51b2ee4b98d8b37a1824e7107",
+      "manifestSha256": "CD845169201FE28D194929A0D865AA8B0E1C4F34438C86439C8705C05AA4E89E"
+    },
+    "compiledPortableLauncher": {
+      "bytes": 9728,
+      "sha256": "E6E5BE730BDFA8120E27E6BB33897B75977003860558321E027FAAAA1FE990D5",
+      "repositorySourceTarget": "apps/tradeloom-launcher/portable/Program.cs",
+      "launcherConfigTarget": "apps/tradeloom-launcher/portable/launcher.json"
+    },
+    "r75AdapterPreimage": {
+      "repositoryPath": "apps/tradeloom-launcher/accepted-build-inputs/r75/client.replica-palette.js",
+      "bytes": 6749,
+      "sha256": "d1ad47c2a8241a0f968016f69a6768a0177d19cc3487c56d016e2832ec56d5bc",
+      "purpose": "restore-the-fixed-R75-program-tree-before-applying-R76-overlays"
+    },
+    "outputBusinessShell": {
+      "files": 57,
+      "bytes": 2589497,
+      "sha256": "375fa7a53b7b004537351cc1c5dd5d66b2d980e8217d9982de8a1adfeae76558"
+    }
+  },
+  "adoptions": [
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "config/__init__.py",
+      "targetPath": "config/__init__.py",
+      "bytes": 32,
+      "sha256": "89e49c2e55a46b2162540f5185cdeccf8bd522340f7678ac0fbf3ba19561bb4a",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 32,
+        "sha256": "89e49c2e55a46b2162540f5185cdeccf8bd522340f7678ac0fbf3ba19561bb4a"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "config/asgi.py",
+      "targetPath": "config/asgi.py",
+      "bytes": 203,
+      "sha256": "3746306695f40d558181d7e0ec20253f63cbd546a97007d67b3c1ff490dc6579",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 203,
+        "sha256": "3746306695f40d558181d7e0ec20253f63cbd546a97007d67b3c1ff490dc6579"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "config/business_embed.py",
+      "targetPath": "config/business_embed.py",
+      "bytes": 505,
+      "sha256": "cdf70c5a29a96da28ccbebb4bb811e598d2baeaa30ad1106587ebfdf015df591",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 505,
+        "sha256": "cdf70c5a29a96da28ccbebb4bb811e598d2baeaa30ad1106587ebfdf015df591"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "config/settings.py",
+      "targetPath": "config/settings.py",
+      "bytes": 4418,
+      "sha256": "29936333d23f9a456fec74f412055a126cdd5bb7af57405c6b2626fbca419dc1",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 4418,
+        "sha256": "29936333d23f9a456fec74f412055a126cdd5bb7af57405c6b2626fbca419dc1"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "config/urls.py",
+      "targetPath": "config/urls.py",
+      "bytes": 312,
+      "sha256": "ef87e2f678a3f0c8d776386ff2d935d91cc42f06b4a419595e2c10a3dd6cc0b5",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 312,
+        "sha256": "ef87e2f678a3f0c8d776386ff2d935d91cc42f06b4a419595e2c10a3dd6cc0b5"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "config/wsgi.py",
+      "targetPath": "config/wsgi.py",
+      "bytes": 203,
+      "sha256": "dab7872b3518394af30d939ca3bf01bbe24a1b79df3f79a635a713121fd8702a",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 203,
+        "sha256": "dab7872b3518394af30d939ca3bf01bbe24a1b79df3f79a635a713121fd8702a"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "manage.py",
+      "targetPath": "manage.py",
+      "bytes": 318,
+      "sha256": "3bf7f95cc622093dee3e0c0e7a757f979b0598147863ca2b444383edbb676b2a",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 318,
+        "sha256": "3bf7f95cc622093dee3e0c0e7a757f979b0598147863ca2b444383edbb676b2a"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "requirements-workbench.txt",
+      "targetPath": "requirements-workbench.txt",
+      "bytes": 93,
+      "sha256": "181ac4be83822a5e2627059fb67ccfd1bdc669bdd29ac790f4a403e3779c9df4",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 93,
+        "sha256": "181ac4be83822a5e2627059fb67ccfd1bdc669bdd29ac790f4a403e3779c9df4"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/__init__.py",
+      "targetPath": "workbench/__init__.py",
+      "bytes": 38,
+      "sha256": "84c77cd67036f1a774556cec5eda07046e01762919f88fc66c25e5e54fe66fc3",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 38,
+        "sha256": "84c77cd67036f1a774556cec5eda07046e01762919f88fc66c25e5e54fe66fc3"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/agents/__init__.py",
+      "targetPath": "workbench/agents/__init__.py",
+      "bytes": 51,
+      "sha256": "0a37450a6aa3813468861feee7f61e523cb8fafdea599deaed7eb91bb0ec26fb",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 51,
+        "sha256": "0a37450a6aa3813468861feee7f61e523cb8fafdea599deaed7eb91bb0ec26fb"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/agents/adapters.py",
+      "targetPath": "workbench/agents/adapters.py",
+      "bytes": 2045,
+      "sha256": "50791b67f93fe5b196c6c664f4b62f44678da690a3db1927fd345b260b58ae26",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 2045,
+        "sha256": "50791b67f93fe5b196c6c664f4b62f44678da690a3db1927fd345b260b58ae26"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/agents/agentarts.py",
+      "targetPath": "workbench/agents/agentarts.py",
+      "bytes": 6756,
+      "sha256": "223a74d6d201633eb54b147db895db29ad84234ca02ee8e3b157f51ab232aa09",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 6756,
+        "sha256": "223a74d6d201633eb54b147db895db29ad84234ca02ee8e3b157f51ab232aa09"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/agents/center.py",
+      "targetPath": "workbench/agents/center.py",
+      "bytes": 9707,
+      "sha256": "b5dad360b84020f84a70f33f29f10e83527c8f1bf45009d89ecc4858d77e5de2",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 9707,
+        "sha256": "b5dad360b84020f84a70f33f29f10e83527c8f1bf45009d89ecc4858d77e5de2"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/agents/collaboration.py",
+      "targetPath": "workbench/agents/collaboration.py",
+      "bytes": 2763,
+      "sha256": "965db91d9ec81a8bb616644cb34f2111ee14e1e0435df00ae9950a5d07f4bd44",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 2763,
+        "sha256": "965db91d9ec81a8bb616644cb34f2111ee14e1e0435df00ae9950a5d07f4bd44"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/agents/context.py",
+      "targetPath": "workbench/agents/context.py",
+      "bytes": 29831,
+      "sha256": "0f0755e3de21f9bd41b5962c342325e62bc78e5ae60b23d5f4e785c8506b5f06",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 29831,
+        "sha256": "0f0755e3de21f9bd41b5962c342325e62bc78e5ae60b23d5f4e785c8506b5f06"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/agents/contracts.py",
+      "targetPath": "workbench/agents/contracts.py",
+      "bytes": 1105,
+      "sha256": "5811ac2ed0ef50f48e6f59718fb5631e3a3976f92d120bea5c2e599a57e01a71",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 1105,
+        "sha256": "5811ac2ed0ef50f48e6f59718fb5631e3a3976f92d120bea5c2e599a57e01a71"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/agents/delivery_agent.py",
+      "targetPath": "workbench/agents/delivery_agent.py",
+      "bytes": 6217,
+      "sha256": "5428be3dce54582a36c8dd3f52b1b5bb981ffd9f14004f7f795b0f28e35c3013",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 6217,
+        "sha256": "5428be3dce54582a36c8dd3f52b1b5bb981ffd9f14004f7f795b0f28e35c3013"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/agents/local.py",
+      "targetPath": "workbench/agents/local.py",
+      "bytes": 954,
+      "sha256": "99098b41aca431bc3ce2f443d03857f8d11702349b9294fa79f283365f70eb6a",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 954,
+        "sha256": "99098b41aca431bc3ce2f443d03857f8d11702349b9294fa79f283365f70eb6a"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/agents/mock_runtime.py",
+      "targetPath": "workbench/agents/mock_runtime.py",
+      "bytes": 4580,
+      "sha256": "47581eae15bee0815674d9fd8b45ec044dfbce06c10f6e96a5f08b9c2c0d8262",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 4580,
+        "sha256": "47581eae15bee0815674d9fd8b45ec044dfbce06c10f6e96a5f08b9c2c0d8262"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/agents/placeholders.py",
+      "targetPath": "workbench/agents/placeholders.py",
+      "bytes": 1465,
+      "sha256": "0ff80b7bd0c66b7c6a9ff7f061d7b7380fbd70273f693703e301b7bd834f85a2",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 1465,
+        "sha256": "0ff80b7bd0c66b7c6a9ff7f061d7b7380fbd70273f693703e301b7bd834f85a2"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/agents/product_agent.py",
+      "targetPath": "workbench/agents/product_agent.py",
+      "bytes": 4612,
+      "sha256": "1288a3e34880a478c9938d805b6d44c63144d49a53f4a4ed87824b3ca99a0152",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 4612,
+        "sha256": "1288a3e34880a478c9938d805b6d44c63144d49a53f4a4ed87824b3ca99a0152"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/agents/registry.py",
+      "targetPath": "workbench/agents/registry.py",
+      "bytes": 3613,
+      "sha256": "f11e8f11bb3c70c07adef146d23355414c97cd606291cc20bb60559ed1dbee85",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 3613,
+        "sha256": "f11e8f11bb3c70c07adef146d23355414c97cd606291cc20bb60559ed1dbee85"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/agents/result_contracts.py",
+      "targetPath": "workbench/agents/result_contracts.py",
+      "bytes": 1636,
+      "sha256": "0044ff405146ee71f8ab8abf985e58ac94135adb4143bb799200e694dcd5db1d",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 1636,
+        "sha256": "0044ff405146ee71f8ab8abf985e58ac94135adb4143bb799200e694dcd5db1d"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/agents/runtime.py",
+      "targetPath": "workbench/agents/runtime.py",
+      "bytes": 1699,
+      "sha256": "2b5b7d8a2ada1ced96f8783d16fb0a3e8eb358ae0403466e60e61a19056519a0",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 1699,
+        "sha256": "2b5b7d8a2ada1ced96f8783d16fb0a3e8eb358ae0403466e60e61a19056519a0"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/agents/schema_validation.py",
+      "targetPath": "workbench/agents/schema_validation.py",
+      "bytes": 517,
+      "sha256": "586c853bc6124bdba90bf78ed2505c576c93c921fd5461c0ff6f624e246249b5",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 517,
+        "sha256": "586c853bc6124bdba90bf78ed2505c576c93c921fd5461c0ff6f624e246249b5"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/agents/tool_contracts.py",
+      "targetPath": "workbench/agents/tool_contracts.py",
+      "bytes": 7349,
+      "sha256": "733083d8e5ceac2fd10ef7f2078dca6c2709cd11f15ff795454e449587ec9e63",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 7349,
+        "sha256": "733083d8e5ceac2fd10ef7f2078dca6c2709cd11f15ff795454e449587ec9e63"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/agents/workflow_contracts.py",
+      "targetPath": "workbench/agents/workflow_contracts.py",
+      "bytes": 4632,
+      "sha256": "5795ba1d5d4c1804a6d01b849743bc934ca9b1cfe5ef1fbedeba3699a17b3c87",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 3650,
+        "sha256": "adba8f84bccd019f20beaadbac2d36e6b6c95038fc498b679e809adc308cd79e"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/api.py",
+      "targetPath": "workbench/api.py",
+      "bytes": 50430,
+      "sha256": "8ac1086d2308d541117caeb7fc82c3a4f5cf5ccffaf0c079f908e182b90b0a10",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 40400,
+        "sha256": "0b8263a4dd3b2c464e2a7df8a2b564a5765e977686094ade43528ec9ba4ff8d7"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/apps.py",
+      "targetPath": "workbench/apps.py",
+      "bytes": 150,
+      "sha256": "073697315dc594ede922ad2d66f7975f0aab92e7b88cec4c986de660c31f074a",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 150,
+        "sha256": "073697315dc594ede922ad2d66f7975f0aab92e7b88cec4c986de660c31f074a"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/business_urls.py",
+      "targetPath": "workbench/business_urls.py",
+      "bytes": 1259,
+      "sha256": "3cd96eec76cf5ce9118290ea78ae0e16bbdf76536abb3c1791efdbaf85c571a4",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 1259,
+        "sha256": "3cd96eec76cf5ce9118290ea78ae0e16bbdf76536abb3c1791efdbaf85c571a4"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/canvas_workflow_api.py",
+      "targetPath": "workbench/canvas_workflow_api.py",
+      "bytes": 4864,
+      "sha256": "cbf9a23c8de87df6ff179007a93b5fa003c4428becce7cf6157d577d689c11f1",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/delivery/__init__.py",
+      "targetPath": "workbench/delivery/__init__.py",
+      "bytes": 79,
+      "sha256": "0fa919fa71d268251979e427df9a3da855fe959ca0cdb7796bc0e8cf0ab61f78",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 79,
+        "sha256": "0fa919fa71d268251979e427df9a3da855fe959ca0cdb7796bc0e8cf0ab61f78"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/delivery/catalog.py",
+      "targetPath": "workbench/delivery/catalog.py",
+      "bytes": 5477,
+      "sha256": "c8e4b030e87e763db347ad4e684d4e950152e1d1632059a97b84ff83b14f198e",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 5477,
+        "sha256": "c8e4b030e87e763db347ad4e684d4e950152e1d1632059a97b84ff83b14f198e"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/delivery/checklist.py",
+      "targetPath": "workbench/delivery/checklist.py",
+      "bytes": 1720,
+      "sha256": "eb516757fcec81e22be83fe4c1d75291033e0c14a48ded1001511a997034960d",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 1720,
+        "sha256": "eb516757fcec81e22be83fe4c1d75291033e0c14a48ded1001511a997034960d"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/delivery/quality.py",
+      "targetPath": "workbench/delivery/quality.py",
+      "bytes": 5089,
+      "sha256": "b431209a98ebf470b3b299901ff0e208e7eafb0389baf83306caf3d26f7b43ab",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 5089,
+        "sha256": "b431209a98ebf470b3b299901ff0e208e7eafb0389baf83306caf3d26f7b43ab"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/delivery/service.py",
+      "targetPath": "workbench/delivery/service.py",
+      "bytes": 56922,
+      "sha256": "4369f20b66d6742843bf11b0c5b0bbe2c0d60d751fc2185b4a24feb5a2c2a177",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 56282,
+        "sha256": "a3f913d4bf58102bd9eea45c437947064e871a33b65648a9263a5cbaaf1c3b73"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/delivery/storage.py",
+      "targetPath": "workbench/delivery/storage.py",
+      "bytes": 7708,
+      "sha256": "836266f609bbec3dcd12a8b7f3e3221b70f4b66cfe2fb18a08175306630c49ff",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 6979,
+        "sha256": "37f77e5cfd6f092cd4cf1f6b17246e650ba5749e6fbbb1dfe6522ac410095f73"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/diagnostics.py",
+      "targetPath": "workbench/diagnostics.py",
+      "bytes": 3419,
+      "sha256": "4f58e463d2e4629b2bc6c803fdbc2df45bcc3556a420685e89b10f6f6c22a657",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 3419,
+        "sha256": "4f58e463d2e4629b2bc6c803fdbc2df45bcc3556a420685e89b10f6f6c22a657"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/erpnext/__init__.py",
+      "targetPath": "workbench/erpnext/__init__.py",
+      "bytes": 350,
+      "sha256": "abfbcb98a9be06df34a50c829dc236f68e0daf42bea59e2ffcca174dd1fe8f84",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 350,
+        "sha256": "abfbcb98a9be06df34a50c829dc236f68e0daf42bea59e2ffcca174dd1fe8f84"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/erpnext/api.py",
+      "targetPath": "workbench/erpnext/api.py",
+      "bytes": 11754,
+      "sha256": "a354b491399dc0823732f37b23a32f47f1c5c34f801417bc600c1bbab3d2070e",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 11754,
+        "sha256": "a354b491399dc0823732f37b23a32f47f1c5c34f801417bc600c1bbab3d2070e"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/erpnext/client.py",
+      "targetPath": "workbench/erpnext/client.py",
+      "bytes": 17638,
+      "sha256": "74de2c455aa6b8950779b7795495b9d0f7edb25ec68b710a0f6270349fb49aab",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 17638,
+        "sha256": "74de2c455aa6b8950779b7795495b9d0f7edb25ec68b710a0f6270349fb49aab"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/erpnext/drafts.py",
+      "targetPath": "workbench/erpnext/drafts.py",
+      "bytes": 23738,
+      "sha256": "2ae27804bb7cb21ebe3418bc53165917fa3dc8ca2297809dd0d204dbf5039a3b",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 23738,
+        "sha256": "2ae27804bb7cb21ebe3418bc53165917fa3dc8ca2297809dd0d204dbf5039a3b"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/erpnext/dto.py",
+      "targetPath": "workbench/erpnext/dto.py",
+      "bytes": 344,
+      "sha256": "916161582a79d6bfd58c3e606a4348d278d808d39db727c0f23bc9bf13e481fa",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 344,
+        "sha256": "916161582a79d6bfd58c3e606a4348d278d808d39db727c0f23bc9bf13e481fa"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/erpnext/service.py",
+      "targetPath": "workbench/erpnext/service.py",
+      "bytes": 14234,
+      "sha256": "6916cb1cce2d577ce79b10c27f76fe16006fb5e0b61df29aa934f846e796a1dd",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 14234,
+        "sha256": "6916cb1cce2d577ce79b10c27f76fe16006fb5e0b61df29aa934f846e796a1dd"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/execution_plans/api.py",
+      "targetPath": "workbench/execution_plans/api.py",
+      "bytes": 8077,
+      "sha256": "00f60bb7f6801650a4d4424949af30bdff5361b85f4bf0df2b280ed703b78bb1",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 8077,
+        "sha256": "00f60bb7f6801650a4d4424949af30bdff5361b85f4bf0df2b280ed703b78bb1"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/execution_plans/schemas.py",
+      "targetPath": "workbench/execution_plans/schemas.py",
+      "bytes": 8308,
+      "sha256": "550b06d88ba105e329063453c2aa98ff59c717e149fa231f733e61b588ec7099",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 6365,
+        "sha256": "88c345411cdbfadaef4f5f83f176def6cd2502516d2113a43d49ae03557c02ab"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/execution_plans/service.py",
+      "targetPath": "workbench/execution_plans/service.py",
+      "bytes": 8206,
+      "sha256": "6738be72be714fed69825ecbade1f7dad06b8c7a3d13e54f04ec6b6d91ee5b36",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 2766,
+        "sha256": "0709925145f4a717fe31d914d4f6e260f65a95d0ba1d8f076bcc61361d02d7fa"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/intake/__init__.py",
+      "targetPath": "workbench/intake/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/intake/api.py",
+      "targetPath": "workbench/intake/api.py",
+      "bytes": 56911,
+      "sha256": "e2e4c35c3129fb7abba7ccf9c8fa7fafa6dc5965c2cbe177980f7335cb03e079",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 52617,
+        "sha256": "005b0f0de281a68b7ef010367386231bc55cdd8d443dc18984780a7ba2881db1"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/intake/limits.py",
+      "targetPath": "workbench/intake/limits.py",
+      "bytes": 269,
+      "sha256": "ec7ccff1f38d900a73bc1b559ea881a87631ac7e22651127a38bd06d1de52e2e",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 269,
+        "sha256": "ec7ccff1f38d900a73bc1b559ea881a87631ac7e22651127a38bd06d1de52e2e"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/intake/mapping.py",
+      "targetPath": "workbench/intake/mapping.py",
+      "bytes": 5706,
+      "sha256": "9ec8a4a05a3a56db2ed13485b9ae1d3c325020c8f1de95c6e9405bc71801e20a",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 5706,
+        "sha256": "9ec8a4a05a3a56db2ed13485b9ae1d3c325020c8f1de95c6e9405bc71801e20a"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/intake/narrative_annotations.py",
+      "targetPath": "workbench/intake/narrative_annotations.py",
+      "bytes": 3420,
+      "sha256": "f6a1f013979b85e34bc8889ee001e0b0bf23a244fe9204c7ac018c330c3235d2",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 3419,
+        "sha256": "fdcc4e3c6f49cc1721b409f8a2ed02e93992ace98053299f3a0ec625dd523c57"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/intake/narrative_storage.py",
+      "targetPath": "workbench/intake/narrative_storage.py",
+      "bytes": 7046,
+      "sha256": "d8eecdcccfd27496daaca196c17336de8c046c4dfc01098ddbf9ddfbaa893046",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 7046,
+        "sha256": "d8eecdcccfd27496daaca196c17336de8c046c4dfc01098ddbf9ddfbaa893046"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/intake/ooxml_richdata.py",
+      "targetPath": "workbench/intake/ooxml_richdata.py",
+      "bytes": 16393,
+      "sha256": "612d29ee0fd21cba4d9d6c763b4f259719ad09ca2d76e37abd9c7f766390718c",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 16393,
+        "sha256": "612d29ee0fd21cba4d9d6c763b4f259719ad09ca2d76e37abd9c7f766390718c"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/intake/parser.py",
+      "targetPath": "workbench/intake/parser.py",
+      "bytes": 12424,
+      "sha256": "068a3e13f00cd263d341c5d0a47986f7727f1103c1306b4b6a014e51692aec02",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 12423,
+        "sha256": "6c4eabb56d23b7329817cf6a1cfe82b1553846cf693ef7a718ff76611ed89393"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/intake/product_application.py",
+      "targetPath": "workbench/intake/product_application.py",
+      "bytes": 17599,
+      "sha256": "a257ec5e4b9f4f990428e9c1ce7f362bd66b01abc9f8d03376a7fb29948da7cc",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/intake/schemas.py",
+      "targetPath": "workbench/intake/schemas.py",
+      "bytes": 3823,
+      "sha256": "052f4777bbc0b9920a7fee76adda5b865d8e9f8029770aa91b8c77159c46bd72",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 3823,
+        "sha256": "052f4777bbc0b9920a7fee76adda5b865d8e9f8029770aa91b8c77159c46bd72"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/intake/snapshots.py",
+      "targetPath": "workbench/intake/snapshots.py",
+      "bytes": 4216,
+      "sha256": "c450b5ee5462b35d02b30a0ea58bb5a980a591a8d854cc2b9ed36a5f3dcc06d7",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 4216,
+        "sha256": "c450b5ee5462b35d02b30a0ea58bb5a980a591a8d854cc2b9ed36a5f3dcc06d7"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/intake/storage.py",
+      "targetPath": "workbench/intake/storage.py",
+      "bytes": 10545,
+      "sha256": "f08f7eb149e0f6f292dddd43d364879dfa67b2aa60964e1aad90924671f5334a",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 10545,
+        "sha256": "f08f7eb149e0f6f292dddd43d364879dfa67b2aa60964e1aad90924671f5334a"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/intent/__init__.py",
+      "targetPath": "workbench/intent/__init__.py",
+      "bytes": 78,
+      "sha256": "9ea02190f084ec913bbcbee44096607b64b0449c81caa7b86346205d1409f175",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 78,
+        "sha256": "9ea02190f084ec913bbcbee44096607b64b0449c81caa7b86346205d1409f175"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/intent/parser.py",
+      "targetPath": "workbench/intent/parser.py",
+      "bytes": 15294,
+      "sha256": "47f0675da5f57959ca24ced48005856b31cc6e7d795b20723668c7148e8f4af9",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 13853,
+        "sha256": "8e7448a9b1719e52328110df9a8af78537b02f242ccd380c33a0c2f6682b3489"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/intent/prompt.md",
+      "targetPath": "workbench/intent/prompt.md",
+      "bytes": 637,
+      "sha256": "8d622fb7b377093118f990211ed8177c74ac018076320a429ea10a23e8be012e",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 637,
+        "sha256": "8d622fb7b377093118f990211ed8177c74ac018076320a429ea10a23e8be012e"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/intent/rules.json",
+      "targetPath": "workbench/intent/rules.json",
+      "bytes": 1239,
+      "sha256": "0d31e42d9e539dc2cb0eb55a4bdcf1d70b64d27fefc55987a9b5a9d198c21352",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 1239,
+        "sha256": "0d31e42d9e539dc2cb0eb55a4bdcf1d70b64d27fefc55987a9b5a9d198c21352"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/management/__init__.py",
+      "targetPath": "workbench/management/__init__.py",
+      "bytes": 1,
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 1,
+        "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/management/commands/__init__.py",
+      "targetPath": "workbench/management/commands/__init__.py",
+      "bytes": 1,
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 1,
+        "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/management/commands/backfill_product_revisions.py",
+      "targetPath": "workbench/management/commands/backfill_product_revisions.py",
+      "bytes": 947,
+      "sha256": "9768551cf62c5c5b4885f6bbf5c7e25f3e7a4484d7627f0a52ae15dac9506e05",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 947,
+        "sha256": "9768551cf62c5c5b4885f6bbf5c7e25f3e7a4484d7627f0a52ae15dac9506e05"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/management/commands/migrate_legacy_sqlite.py",
+      "targetPath": "workbench/management/commands/migrate_legacy_sqlite.py",
+      "bytes": 5226,
+      "sha256": "9eeaad9d8edc50a1934a9cc811902b66aea28c46dd1b464cd0b7de1eb1888290",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 5226,
+        "sha256": "9eeaad9d8edc50a1934a9cc811902b66aea28c46dd1b464cd0b7de1eb1888290"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/migrations/__init__.py",
+      "targetPath": "workbench/migrations/__init__.py",
+      "bytes": 1,
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 1,
+        "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/migrations/0001_initial.py",
+      "targetPath": "workbench/migrations/0001_initial.py",
+      "bytes": 4902,
+      "sha256": "6a4374c57c04d59a1b7b5e738775c7d5522ca1f7cae9a7e5e2d1bd7a3dc592a9",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 4902,
+        "sha256": "6a4374c57c04d59a1b7b5e738775c7d5522ca1f7cae9a7e5e2d1bd7a3dc592a9"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/migrations/0002_workflow_domain.py",
+      "targetPath": "workbench/migrations/0002_workflow_domain.py",
+      "bytes": 10024,
+      "sha256": "45d0e6171c0acd4f0c30d9ea2eade6c8f1486f8ed85fd476bea91e0367931a00",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 10024,
+        "sha256": "45d0e6171c0acd4f0c30d9ea2eade6c8f1486f8ed85fd476bea91e0367931a00"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/migrations/0003_workflow_create_idempotency.py",
+      "targetPath": "workbench/migrations/0003_workflow_create_idempotency.py",
+      "bytes": 850,
+      "sha256": "eb44f45507274322f9e6bbb078c211a220488910df5c4649d7aa6dd1783a4f3e",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 850,
+        "sha256": "eb44f45507274322f9e6bbb078c211a220488910df5c4649d7aa6dd1783a4f3e"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/migrations/0004_erpnext_draft_operation.py",
+      "targetPath": "workbench/migrations/0004_erpnext_draft_operation.py",
+      "bytes": 2955,
+      "sha256": "753ca376b9e500c8103d4d10b1279d704255869c32c691a8ef801d7a56c952cf",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 2955,
+        "sha256": "753ca376b9e500c8103d4d10b1279d704255869c32c691a8ef801d7a56c952cf"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/migrations/0005_intake_sources.py",
+      "targetPath": "workbench/migrations/0005_intake_sources.py",
+      "bytes": 6468,
+      "sha256": "c8ea0fd38d368be88d443267cc1c20e0e6811c595cb11d7e73efac622537e169",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 6467,
+        "sha256": "042697da3def6e0f5f7480760f14418f28e87a9e6504328ab310e40e84036d50"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/migrations/0006_intake_staging.py",
+      "targetPath": "workbench/migrations/0006_intake_staging.py",
+      "bytes": 6371,
+      "sha256": "4dd0a9a046d05f0ff75f09928d04ed8fdebe841b9fefd37511df493554fafd6c",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 6249,
+        "sha256": "ecce0e9fa3198d4f617e10ca296cb985ae654ed213511d27129da40661e07047"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/migrations/0007_narrative_evidence_sources.py",
+      "targetPath": "workbench/migrations/0007_narrative_evidence_sources.py",
+      "bytes": 4009,
+      "sha256": "9bf0f80b8c1a9bff964d83e5026d398d0ffa7d927bfdcd6e0049eea4dfb758f2",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 3944,
+        "sha256": "3dfd4f4a7db63d173098fe86b454dad6afe9ed0a7504e272659ec50d09baeacc"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/migrations/0008_production_requirement_drafts.py",
+      "targetPath": "workbench/migrations/0008_production_requirement_drafts.py",
+      "bytes": 4617,
+      "sha256": "6ac74d6b1e1ee8cd85fe3535eb6707b5f89ee251ceece4d960607e024ff24c20",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 4617,
+        "sha256": "6ac74d6b1e1ee8cd85fe3535eb6707b5f89ee251ceece4d960607e024ff24c20"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/migrations/0009_execution_plan_revision.py",
+      "targetPath": "workbench/migrations/0009_execution_plan_revision.py",
+      "bytes": 2034,
+      "sha256": "a61d1b985ecb3a58058f8860d49fef7fb4dd3f03cc894b2a99add58d5bd0f207",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 2034,
+        "sha256": "a61d1b985ecb3a58058f8860d49fef7fb4dd3f03cc894b2a99add58d5bd0f207"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/migrations/0010_intake_candidate_link_history.py",
+      "targetPath": "workbench/migrations/0010_intake_candidate_link_history.py",
+      "bytes": 377,
+      "sha256": "562fc381cc88771caa45b01297569c191c175a6c918dbef52e10719b9ad14c28",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 377,
+        "sha256": "562fc381cc88771caa45b01297569c191c175a6c918dbef52e10719b9ad14c28"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/migrations/0011_narrative_annotation_revision.py",
+      "targetPath": "workbench/migrations/0011_narrative_annotation_revision.py",
+      "bytes": 2316,
+      "sha256": "503918a12568b1f83ed22418d2a0e694d764cabe74dae62b7ec78bc6c66acb4a",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 2315,
+        "sha256": "7d65a9ba0ee531f3cd34c490c296143ee650949914bb848cf655682ecd816b2d"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/migrations/0012_canvas_workflow_run.py",
+      "targetPath": "workbench/migrations/0012_canvas_workflow_run.py",
+      "bytes": 1240,
+      "sha256": "3484014c1f7f34b1be4bf2f8e04a8c4f38fc1f0e8744f1f44426ab20059abf13",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/migrations/0013_native_artifact_version.py",
+      "targetPath": "workbench/migrations/0013_native_artifact_version.py",
+      "bytes": 1705,
+      "sha256": "740e7ce666430211bd53ffc388ea4b64ba2aaddede0a6b9522c6d9b1474f9ae6",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/models.py",
+      "targetPath": "workbench/models.py",
+      "bytes": 41241,
+      "sha256": "2780774ff29d28bc15549822102956befe296630b93e9e7fb4d322fc56eaa99c",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 38787,
+        "sha256": "e38427c6544cd808b18905bda70b22a2b5ca6178099f7cf42e393f72ad4ee4d6"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/native_artifact_api.py",
+      "targetPath": "workbench/native_artifact_api.py",
+      "bytes": 7603,
+      "sha256": "260d1e48e52fe3e3598dc3d37b7104b7ad1d67c27cba5ec69cec105b50de2bd3",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/native_artifact_service.py",
+      "targetPath": "workbench/native_artifact_service.py",
+      "bytes": 4662,
+      "sha256": "297b0274f2e4f9256262557b5db4aafce4e7ccae758984837c2e63517ac8a272",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/native_artifact_validator.mjs",
+      "targetPath": "workbench/native_artifact_validator.mjs",
+      "bytes": 2177,
+      "sha256": "110e1e6b1c30e2677d762578f59dec473812e4707b58858f164a9945bfb30d16",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/native_artifact_validator.py",
+      "targetPath": "workbench/native_artifact_validator.py",
+      "bytes": 4261,
+      "sha256": "bdf13af7ac72c64b54b8af4bc4bc62d3e375f61c3deb7548d71bea20e7a232d3",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/products/__init__.py",
+      "targetPath": "workbench/products/__init__.py",
+      "bytes": 289,
+      "sha256": "f1b6375dfc4962ec14ba8139aeba07dff41ffe8f8f088f040efef4b00ba51a00",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 289,
+        "sha256": "f1b6375dfc4962ec14ba8139aeba07dff41ffe8f8f088f040efef4b00ba51a00"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/products/query.py",
+      "targetPath": "workbench/products/query.py",
+      "bytes": 3439,
+      "sha256": "53036417fc7c6680096ed2e5524ec6f4048543078345b06c50bd72cff23f3ae0",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 3300,
+        "sha256": "876107a96f00d3f9f039238aa10eb6bea84ffdad03adace7c5b570c37f79571b"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/products/versions.py",
+      "targetPath": "workbench/products/versions.py",
+      "bytes": 9246,
+      "sha256": "8b4057dd2703bf1645ab0605c58250510572e68e00b815e712192725b1df0cea",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 9246,
+        "sha256": "8b4057dd2703bf1645ab0605c58250510572e68e00b815e712192725b1df0cea"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/requirements/__init__.py",
+      "targetPath": "workbench/requirements/__init__.py",
+      "bytes": 58,
+      "sha256": "c323632b45aa841d0feb3912bbe975aebb9e2e6bc9cdd70dbc4e26eb7401dd61",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 58,
+        "sha256": "c323632b45aa841d0feb3912bbe975aebb9e2e6bc9cdd70dbc4e26eb7401dd61"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/requirements/api.py",
+      "targetPath": "workbench/requirements/api.py",
+      "bytes": 25496,
+      "sha256": "8beecf5bf946c18d1ece93f8759c18d79be6399220ed261d72e2c7f97345001f",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 25496,
+        "sha256": "8beecf5bf946c18d1ece93f8759c18d79be6399220ed261d72e2c7f97345001f"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/requirements/calculations.py",
+      "targetPath": "workbench/requirements/calculations.py",
+      "bytes": 2137,
+      "sha256": "e78af072838aed290554dcd828f07cda957d9bae918c50d1840e9c9ed421cf37",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 2137,
+        "sha256": "e78af072838aed290554dcd828f07cda957d9bae918c50d1840e9c9ed421cf37"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/requirements/schemas.py",
+      "targetPath": "workbench/requirements/schemas.py",
+      "bytes": 3375,
+      "sha256": "f875e420ab36c9488e9247e2fe0a4f0b60b3e27bcfccf89c067400038830c102",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 3375,
+        "sha256": "f875e420ab36c9488e9247e2fe0a4f0b60b3e27bcfccf89c067400038830c102"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/requirements/service.py",
+      "targetPath": "workbench/requirements/service.py",
+      "bytes": 9273,
+      "sha256": "17630fdb30cb8cf20e2aa6743ef054b6be54e6757dcd6fee1ec83689fc3167d6",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 9273,
+        "sha256": "17630fdb30cb8cf20e2aa6743ef054b6be54e6757dcd6fee1ec83689fc3167d6"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/services.py",
+      "targetPath": "workbench/services.py",
+      "bytes": 20722,
+      "sha256": "89892d248b7df67e64ed550c28c0009474b24574ebaae9c7d5647b5373e37c11",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 20722,
+        "sha256": "89892d248b7df67e64ed550c28c0009474b24574ebaae9c7d5647b5373e37c11"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/static/workbench/agent-run-receipts.js",
+      "targetPath": "workbench/static/workbench/agent-run-receipts.js",
+      "bytes": 3160,
+      "sha256": "554f127a2dc0e007ab01ad56b36d3bc4ad8907732ca99d99ca74c975a3194116",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 3160,
+        "sha256": "554f127a2dc0e007ab01ad56b36d3bc4ad8907732ca99d99ca74c975a3194116"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/static/workbench/app.js",
+      "targetPath": "workbench/static/workbench/app.js",
+      "bytes": 49263,
+      "sha256": "ab4ac277655e1b7da91aa283b95538e892747a7658dd7e8348fbebac665dbc69",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 45626,
+        "sha256": "d917fa39568124630baafb23e55050eeab4d23e20ea3a6fbfb8a8f47c31ee78d"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/static/workbench/artifact-browser.js",
+      "targetPath": "workbench/static/workbench/artifact-browser.js",
+      "bytes": 42137,
+      "sha256": "3b2a11908d3ca9f8d7e5c0219ac22f099313804c13eb3a40eef90e69575a7c16",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/static/workbench/business-url.js",
+      "targetPath": "workbench/static/workbench/business-url.js",
+      "bytes": 3644,
+      "sha256": "b306096449ba4d135926b017eb45b8999b6d94ea951fa51a0c9d1d8f94845b0a",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 1338,
+        "sha256": "144feefe01f27fffa0d28f04d40824ff55c1eceba280874586972ed02a7a68a7"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/static/workbench/execution-plans.js",
+      "targetPath": "workbench/static/workbench/execution-plans.js",
+      "bytes": 32959,
+      "sha256": "94aa0203bb0fd8810aba86af57a535cee586a62b7efdcd1b57a858cdd89ab0f1",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 19267,
+        "sha256": "3a6c0462389f3b1a7be007c2ca3de1df8af52a9169321a976d47e1129317fb61"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/static/workbench/intake-links.js",
+      "targetPath": "workbench/static/workbench/intake-links.js",
+      "bytes": 15262,
+      "sha256": "c787e8fc684667a794ebd688fbcd3bc6e02f52624a6102335c0e9306ff387a87",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 15262,
+        "sha256": "c787e8fc684667a794ebd688fbcd3bc6e02f52624a6102335c0e9306ff387a87"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/static/workbench/intake-product-application.js",
+      "targetPath": "workbench/static/workbench/intake-product-application.js",
+      "bytes": 17025,
+      "sha256": "f6e0fe83b1ba6aff972fed6f9bc7fecebbaa5f73ec75e6ab10e89d3bb24259a4",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/static/workbench/intake.js",
+      "targetPath": "workbench/static/workbench/intake.js",
+      "bytes": 86564,
+      "sha256": "38527823b3b7c2e81ab89bed6cb55d359fdbb0e34e697b7017bd0d9f0b8fcb6b",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 78967,
+        "sha256": "1e9f0dbf8c126bc61825a7c4153ed678f2c9c26841ad3ae450b454c3fb1edef8"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/static/workbench/run-filters.js",
+      "targetPath": "workbench/static/workbench/run-filters.js",
+      "bytes": 2182,
+      "sha256": "2695f8f16edb726513da3b62e51e237cea2b6b0bbadc09f911c4091d02e7758c",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/static/workbench/runs-health.css",
+      "targetPath": "workbench/static/workbench/runs-health.css",
+      "bytes": 11063,
+      "sha256": "846443fd4651a77347e09fc267099d0c6cc98dbc492a0b5b2d10051debbfe3c5",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/static/workbench/styles.css",
+      "targetPath": "workbench/static/workbench/styles.css",
+      "bytes": 123255,
+      "sha256": "03b21aba04f6dee51db6b1f07b0b5803215a627c30b61aa1154e78001c191020",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 46535,
+        "sha256": "b1fa1657b5bfa012adc0e1cab472b128180dd1205aa11ef085ec514931fc433d"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/static/workbench/workflow-graph.css",
+      "targetPath": "workbench/static/workbench/workflow-graph.css",
+      "bytes": 30352,
+      "sha256": "6a7ccc927f57586fa6a36b2d091b4524a1849f4e00ab1731a0c307d376fe5904",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/static/workbench/workflow-graph.js",
+      "targetPath": "workbench/static/workbench/workflow-graph.js",
+      "bytes": 49825,
+      "sha256": "f2db6446910fd73efdf8999f95b10b4b68dd9847204e872c4f61889ea7fa1b2a",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/templates/workbench/agent_center.html",
+      "targetPath": "workbench/templates/workbench/agent_center.html",
+      "bytes": 10781,
+      "sha256": "a7aa288442910404689e6c2bd37c677c9560fb2dd02b92cd5cb731c85b301742",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 8457,
+        "sha256": "a7a69a7aae6da769aeea4c06d598611e26e1d6afd3e1aa71ba9bbe24690735b1"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/templates/workbench/agents.html",
+      "targetPath": "workbench/templates/workbench/agents.html",
+      "bytes": 4104,
+      "sha256": "19ddddae2967b49df39151296b816af4f28efb7d9e5a8e22b4d8c2dcd61b5463",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 4104,
+        "sha256": "19ddddae2967b49df39151296b816af4f28efb7d9e5a8e22b4d8c2dcd61b5463"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/templates/workbench/artifacts.html",
+      "targetPath": "workbench/templates/workbench/artifacts.html",
+      "bytes": 25964,
+      "sha256": "863c26422206cec61a91ca24d49844f89670b1bcca2af1d4fbda570f2b2e6613",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 19589,
+        "sha256": "58c98cd115e1050df537015d78401aabdf55f6b08b5054c9784a4529eaad6efa"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/templates/workbench/base.html",
+      "targetPath": "workbench/templates/workbench/base.html",
+      "bytes": 4600,
+      "sha256": "e1490bd196202662e6f6acaca241ba4a25eb1c5f5c574d3d3446fb83bcce3e55",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 4525,
+        "sha256": "149d9020c9a4f8aa1f7a742dd471eb22ab2176e9692fd88271a9d11e2c9a1ddb"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/templates/workbench/home.html",
+      "targetPath": "workbench/templates/workbench/home.html",
+      "bytes": 6185,
+      "sha256": "5b21ff4d6e2569f8459a71a62a6c19404e02902c1490aab59621148cfba4310f",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 5170,
+        "sha256": "2abdf52dc055e0317eb26ed5d85387001b1f392634c62354d61b58ca9da59e03"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/templates/workbench/new_task.html",
+      "targetPath": "workbench/templates/workbench/new_task.html",
+      "bytes": 1766,
+      "sha256": "752e7b79164375307127f78ddb66bf904aec73ff834c6c60eb159201c905974b",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 1766,
+        "sha256": "752e7b79164375307127f78ddb66bf904aec73ff834c6c60eb159201c905974b"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/templates/workbench/products.html",
+      "targetPath": "workbench/templates/workbench/products.html",
+      "bytes": 6331,
+      "sha256": "4452c9773f9340eac0d27ceaa21a866bce4e0eb327801226331673a0bf6c17ad",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 6331,
+        "sha256": "4452c9773f9340eac0d27ceaa21a866bce4e0eb327801226331673a0bf6c17ad"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/templates/workbench/runs.html",
+      "targetPath": "workbench/templates/workbench/runs.html",
+      "bytes": 12472,
+      "sha256": "27459ccacdaced26e0d968bc1dc799863ccc60c15a10224003af31df4b686690",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 5411,
+        "sha256": "629476aee8b4b68b9d0e5e76aaac094060709c7d039599627085cd7e79eb0bf3"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/templates/workbench/sample_checklist_preview.html",
+      "targetPath": "workbench/templates/workbench/sample_checklist_preview.html",
+      "bytes": 2141,
+      "sha256": "766cc7f676f740cd653360485137b248a9307db4e7589dea8cf611af783ff80f",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 1973,
+        "sha256": "db054e78f1ebc529737e475deab274156812c1981f5c54f4364e73aa70235ab2"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/templates/workbench/task_detail.html",
+      "targetPath": "workbench/templates/workbench/task_detail.html",
+      "bytes": 4578,
+      "sha256": "6efe9562b2b891d766bfcc8d7da3626ea1eefabf8d655f81c792d9dd39b078ce",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 4578,
+        "sha256": "6efe9562b2b891d766bfcc8d7da3626ea1eefabf8d655f81c792d9dd39b078ce"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/templates/workbench/task_list.html",
+      "targetPath": "workbench/templates/workbench/task_list.html",
+      "bytes": 1630,
+      "sha256": "0425d1759ef90cfb995781bf7c44002eb2dac09fbd380a9c6b6ea417f5bd5436",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 1630,
+        "sha256": "0425d1759ef90cfb995781bf7c44002eb2dac09fbd380a9c6b6ea417f5bd5436"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/templates/workbench/workflow_detail.html",
+      "targetPath": "workbench/templates/workbench/workflow_detail.html",
+      "bytes": 42041,
+      "sha256": "da6cdc0438cda0fd29d7465cd6d5ad2cc8c96f61b2b950ba5cc765cf1fb73c34",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 31398,
+        "sha256": "54526384e4676cef82c815a59df08b793481cdef17975a8c1baeeb8c628a3486"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/templates/workbench/workflow_reference_rows.html",
+      "targetPath": "workbench/templates/workbench/workflow_reference_rows.html",
+      "bytes": 142,
+      "sha256": "54f221deb5ea52d85e355ac90803e2c3c1cbc6a97dd1ff2f37bd7f9c07c74a2a",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 142,
+        "sha256": "54f221deb5ea52d85e355ac90803e2c3c1cbc6a97dd1ff2f37bd7f9c07c74a2a"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/templates/workbench/workflow_review_image_uploads.html",
+      "targetPath": "workbench/templates/workbench/workflow_review_image_uploads.html",
+      "bytes": 2030,
+      "sha256": "5833819ad7a3be50ff57af39678268bd168bf4fe11b8d93472b94bc4db263185",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 2030,
+        "sha256": "5833819ad7a3be50ff57af39678268bd168bf4fe11b8d93472b94bc4db263185"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/templatetags/__init__.py",
+      "targetPath": "workbench/templatetags/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/templatetags/business_urls.py",
+      "targetPath": "workbench/templatetags/business_urls.py",
+      "bytes": 291,
+      "sha256": "e91398c69e18630d0f8b8a155d26f8c15cfa7cc7ebce88cd776f882741d2d8a6",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 291,
+        "sha256": "e91398c69e18630d0f8b8a155d26f8c15cfa7cc7ebce88cd776f882741d2d8a6"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/testing.py",
+      "targetPath": "workbench/testing.py",
+      "bytes": 1399,
+      "sha256": "326c0d90c382f2342aa8aa6abd2cde1eb2a7fe39debc3db3440dd274de2dd5c8",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 1399,
+        "sha256": "326c0d90c382f2342aa8aa6abd2cde1eb2a7fe39debc3db3440dd274de2dd5c8"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/urls.py",
+      "targetPath": "workbench/urls.py",
+      "bytes": 6581,
+      "sha256": "c79828d141b4fcfeb7abf34271a5cff7e35eb74951eb86ccf596e0e6348a6f85",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 5730,
+        "sha256": "fc0069bc11361787124948c6852a806abbeee1a00dff8e265468dc4daec8b591"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/views.py",
+      "targetPath": "workbench/views.py",
+      "bytes": 18795,
+      "sha256": "374930713af0b805591834ae8dde97f8b79084525ae62c440eaabed6ee9f1359",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 16332,
+        "sha256": "b57cc6c5530347953339a6fb88165aa386000ce5676653c4fb4046985ff4c9c3"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/workflow_views.py",
+      "targetPath": "workbench/workflow_views.py",
+      "bytes": 41553,
+      "sha256": "3fdb78180f7e32bcf5dfa79dad8f4e572224af037586bd8077e2dd44501e54de",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 30333,
+        "sha256": "10f622970065e38bc318bb852bd314259c4a87c2a7839146a1cf8a8fc6a3a0a4"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/workflows/__init__.py",
+      "targetPath": "workbench/workflows/__init__.py",
+      "bytes": 115,
+      "sha256": "432d8818c4445b8610b0e58cc588ac4cb19b5d8ac9254067bf3d279698a277fa",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 115,
+        "sha256": "432d8818c4445b8610b0e58cc588ac4cb19b5d8ac9254067bf3d279698a277fa"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/workflows/dispatch_target.py",
+      "targetPath": "workbench/workflows/dispatch_target.py",
+      "bytes": 3632,
+      "sha256": "dd1b1f5469bdb9ac163ec03b2ef79254434efb1d943bfad82a7268a5d32c6b7e",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 3632,
+        "sha256": "dd1b1f5469bdb9ac163ec03b2ef79254434efb1d943bfad82a7268a5d32c6b7e"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/workflows/events.py",
+      "targetPath": "workbench/workflows/events.py",
+      "bytes": 964,
+      "sha256": "60ad26da3367c409bbad3aab35429249ca8b1bf0bf76d06ba830b245cc33426c",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 964,
+        "sha256": "60ad26da3367c409bbad3aab35429249ca8b1bf0bf76d06ba830b245cc33426c"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/workflows/execution.py",
+      "targetPath": "workbench/workflows/execution.py",
+      "bytes": 4881,
+      "sha256": "6407b177bd835eedf1fc62bee9631200996bbea64920b45930828883e82704dd",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 3916,
+        "sha256": "ace616e2938fe85e7589eda1a2a1460ef293799d1785e6c7871ba8a2aab64e1a"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/workflows/fact_application.py",
+      "targetPath": "workbench/workflows/fact_application.py",
+      "bytes": 40502,
+      "sha256": "da3e0141d94b3e6021da1d4daea9e87e2a991e07f53f278b5b8066522a1ecd80",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 39217,
+        "sha256": "ef1bfce0b2f26fb2744dfd8de6965c96d270d54e189dd0a32340294000191601"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/workflows/orchestrator.py",
+      "targetPath": "workbench/workflows/orchestrator.py",
+      "bytes": 81664,
+      "sha256": "9a0e75bb97e31ace17adbb638fcb4666fae321f914034b335014735749084801",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 38293,
+        "sha256": "4092b49e4f1ec9ebaf64661f50d124239abdd91ae3b933b79fa23ece1a82e7e3"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/workflows/prepare.py",
+      "targetPath": "workbench/workflows/prepare.py",
+      "bytes": 11164,
+      "sha256": "66eaec2915170c9b3e2cdff4ddc41e07013d693c5e978b1038ceec7e971e1f3a",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 9660,
+        "sha256": "267e7ffa8173d56ea223676db915a6855214e04c923c73ef52428c703417c0fa"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/workflows/review_images.py",
+      "targetPath": "workbench/workflows/review_images.py",
+      "bytes": 20014,
+      "sha256": "0f71f89e956b5072572d9a99cbbfbc8c0ac27d36e4e845dc45891a67882c8aa7",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 20014,
+        "sha256": "0f71f89e956b5072572d9a99cbbfbc8c0ac27d36e4e845dc45891a67882c8aa7"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/workflows/reviews.py",
+      "targetPath": "workbench/workflows/reviews.py",
+      "bytes": 19868,
+      "sha256": "a356ba162021480cd5664ee67744900c452a7f90ffb6a525c6e0b00f2929bfc8",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 19868,
+        "sha256": "a356ba162021480cd5664ee67744900c452a7f90ffb6a525c6e0b00f2929bfc8"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/workflows/states.py",
+      "targetPath": "workbench/workflows/states.py",
+      "bytes": 2219,
+      "sha256": "b440c7f45103d341a03ab4c44df89013542c888a4b657cb515f89d8682182c0c",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 2219,
+        "sha256": "b440c7f45103d341a03ab4c44df89013542c888a4b657cb515f89d8682182c0c"
+      }
+    },
+    {
+      "sourceRoot": "r24-backend-freeze",
+      "sourcePath": "workbench/workflows/validation.py",
+      "targetPath": "workbench/workflows/validation.py",
+      "bytes": 32338,
+      "sha256": "c9efa2d8e52e90edd9471ecbdc6fa0827560805f51237af538077d30bf214a39",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 30823,
+        "sha256": "53899b6980004b1d6b0e29f6f9b9f464bb254d87a4f76365d8dab80f645bfe69"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "agent-configuration.js",
+      "targetPath": "packages/tradeloom-shell/agent-configuration.js",
+      "bytes": 31501,
+      "sha256": "89743308fcd5bf213abde0dd20c8a394adc65a49cb72066139e058e16cf49f6c",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 31501,
+        "sha256": "89743308fcd5bf213abde0dd20c8a394adc65a49cb72066139e058e16cf49f6c"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "assets/tradeloom-mark.svg",
+      "targetPath": "packages/tradeloom-shell/assets/tradeloom-mark.svg",
+      "bytes": 961,
+      "sha256": "7e2cdb6592de4456295d455056a1d5ca500cf8ef3c759aef90ceba66c76b5849",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 961,
+        "sha256": "7e2cdb6592de4456295d455056a1d5ca500cf8ef3c759aef90ceba66c76b5849"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "business-tools.js",
+      "targetPath": "packages/tradeloom-shell/business-tools.js",
+      "bytes": 113470,
+      "sha256": "8c5feb7a24a9110f44991952b788e2a9653c003e302d5ebbfa6505192e5f3974",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 80375,
+        "sha256": "f98a255a8f355019731b0d72855ea1832f4509b62cf46492571f9aab2c7172d2"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "capabilities.js",
+      "targetPath": "packages/tradeloom-shell/capabilities.js",
+      "bytes": 6821,
+      "sha256": "c4b5b17a63ba44795f14a76f8ccb2c3b03f3fa3e41fed719a1cc8f408b3d47c8",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 6717,
+        "sha256": "85903ce0220f03b7329b025c72d8ae84817e2853e2f87e2a71fb6f44c0ce5cb2"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "client.dockview.js",
+      "targetPath": "packages/tradeloom-shell/client.dockview.js",
+      "bytes": 978001,
+      "sha256": "63f1a125d08d469895d1e55cf54bad9fc76f97ddd94f7370eb69385c438bbc9b",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 978001,
+        "sha256": "63f1a125d08d469895d1e55cf54bad9fc76f97ddd94f7370eb69385c438bbc9b"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "client.js",
+      "targetPath": "packages/tradeloom-shell/client.js",
+      "bytes": 238594,
+      "sha256": "5daf35db51f9b37017224bc10483cad2b5204bf1847b1398d01582fbc45ce8e9",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 69558,
+        "sha256": "0f2a32ecd619e853494646e832b1fdae6a39fd0c85db17b122b3647b01fce616"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "client.mobile-qr.js",
+      "targetPath": "packages/tradeloom-shell/client.mobile-qr.js",
+      "bytes": 57681,
+      "sha256": "dd1e38ed79c19ef4d642bd9913ce73b42f27a3881a84f830929f1c914fcc468d",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r76-business-shell-patch",
+      "sourcePath": "client.replica-palette.js",
+      "targetPath": "packages/tradeloom-shell/client.replica-palette.js",
+      "bytes": 6707,
+      "sha256": "a086140cbb7a241a0cab30a797472bb42e707cba89c9d4e17321e454aef90b69",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 6749,
+        "sha256": "d1ad47c2a8241a0f968016f69a6768a0177d19cc3487c56d016e2832ec56d5bc"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "client.scenes.js",
+      "targetPath": "packages/tradeloom-shell/client.scenes.js",
+      "bytes": 398685,
+      "sha256": "ad681903bacaa29554290e49d420ffb6c104aad5ce4df20bcc2dc30154c99daf",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 129811,
+        "sha256": "06032197e745a2c2aeb16bebd97760f5aecb6dca3e9432fbccd234e93e3209cb"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "client.source-native.js",
+      "targetPath": "packages/tradeloom-shell/client.source-native.js",
+      "bytes": 23288,
+      "sha256": "3d2d66a16c1c403fa649b2f405b076f25a766384cbf036867b12f6a11e53f29c",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "client.workflow.js",
+      "targetPath": "packages/tradeloom-shell/client.workflow.js",
+      "bytes": 99510,
+      "sha256": "8fcd156119c273f4429180dcbb9a72eb3630d989d61d018b4d4543fb91ddb4bb",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "cordis.patch.yml",
+      "targetPath": "packages/tradeloom-shell/cordis.patch.yml",
+      "bytes": 13338,
+      "sha256": "f4e2090c0c7161d63ed26a9a3cbd084f7a0668e31b1ee9dfda521281b7130995",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 8015,
+        "sha256": "90dc05974c4e21d15fc68863c949abc1fcd1cba4d8830c7f009212135d0ed7b6"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "dock-layout.js",
+      "targetPath": "packages/tradeloom-shell/dock-layout.js",
+      "bytes": 24305,
+      "sha256": "25e672da39a2c5e7cc975bd8751b312722c3555e6393ce846dd26a14676c88f6",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 15965,
+        "sha256": "c5933642fcc70daab90c112fff313469bcfd6aaf39da845e23e00f7aa1bad9cd"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "host.js",
+      "targetPath": "packages/tradeloom-shell/host.js",
+      "bytes": 41482,
+      "sha256": "2ab2225d0f26862b9fb8ec8c9b6aec66ef472493860653e072254fec9ce207f8",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 25974,
+        "sha256": "d792244f0b4b687d4ac968f93d1d875382f132d0cf807cc97b1659aadf7e04a1"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "native-import-authorization.js",
+      "targetPath": "packages/tradeloom-shell/native-import-authorization.js",
+      "bytes": 846,
+      "sha256": "ae98685c7601a03b5ff07fcc4b06574e1a1bccebb0790bc78fb88517eceeb71a",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "package.json",
+      "targetPath": "packages/tradeloom-shell/package.json",
+      "bytes": 3189,
+      "sha256": "03b9b47ffed3ee340f06fa7f2b2b297d75beb81bfa58e8fab367fadc299f5efe",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 1639,
+        "sha256": "6b6a9d845875982fe28e0563f47eb1b36a580a57ed444df0f89768fe17b50768"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "policy.js",
+      "targetPath": "packages/tradeloom-shell/policy.js",
+      "bytes": 13276,
+      "sha256": "146364db031fe97aa350503e7823dfadc024b08452d0a0cd992ecda92d985e89",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 12981,
+        "sha256": "9c455cf1358b875c2caaa91999eeee71a1c53607cd89292c7d6ddbad698a8b0c"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "profile-tool.js",
+      "targetPath": "packages/tradeloom-shell/profile-tool.js",
+      "bytes": 1368,
+      "sha256": "6a6ddb71a2e777d0a59fae6b19ddb60e167ac54ebdc68eb3507cd6e4a8848d3b",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 1368,
+        "sha256": "6a6ddb71a2e777d0a59fae6b19ddb60e167ac54ebdc68eb3507cd6e4a8848d3b"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "proxy.js",
+      "targetPath": "packages/tradeloom-shell/proxy.js",
+      "bytes": 9039,
+      "sha256": "c6452b89dd2e8493d67e3ad1692038af6b016d7c232d05d07c3d655c66c4ba63",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 7855,
+        "sha256": "a3755c4445ccc9685352d517f4bb9fbc71973906b7c3c85e96403c43c23a9167"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "roles.js",
+      "targetPath": "packages/tradeloom-shell/roles.js",
+      "bytes": 1824,
+      "sha256": "d1f67e79c5aca73e3d82e4a71b083aa830d87a6d98815deef128a5971abf05bb",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 1824,
+        "sha256": "d1f67e79c5aca73e3d82e4a71b083aa830d87a6d98815deef128a5971abf05bb"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "scene-layout.js",
+      "targetPath": "packages/tradeloom-shell/scene-layout.js",
+      "bytes": 10195,
+      "sha256": "ff182a94980a24b1ab135d30d408743fc080286b087f468cef10fd2519bbe767",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 8030,
+        "sha256": "0a0cdfe1743fdf8432aeeef7cd0d42fc2201196e98e9247446b62346e57b9356"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "scenes.json",
+      "targetPath": "packages/tradeloom-shell/scenes.json",
+      "bytes": 16892,
+      "sha256": "f621e8789e9b4abf19431335d6aa2ab7b0cb1a7549b0c7f70c259932d873fc23",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 6112,
+        "sha256": "c6c4a0b2a5a5d65dd241dfb5ee315bad54bc593201f6250ca8aef724d8acd9b8"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "scripts/build-dockview-chunk.mjs",
+      "targetPath": "packages/tradeloom-shell/scripts/build-dockview-chunk.mjs",
+      "bytes": 3577,
+      "sha256": "d022e79da41d2896e060c7f09f7f258e7e0cec74892a678573cd84b0a64ce37c",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 3577,
+        "sha256": "d022e79da41d2896e060c7f09f7f258e7e0cec74892a678573cd84b0a64ce37c"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "scripts/build-mobile-qr-chunk.mjs",
+      "targetPath": "packages/tradeloom-shell/scripts/build-mobile-qr-chunk.mjs",
+      "bytes": 1745,
+      "sha256": "f8080af52d25e86f8199c02923b7806ab792321f80bd72f1f9dea4ffcba3ced8",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "skills/wf-planner/SKILL.md",
+      "targetPath": "packages/tradeloom-shell/skills/wf-planner/SKILL.md",
+      "bytes": 4983,
+      "sha256": "aaec14bd5ec85d4252aebf905a95f017f52f8dd56a6ecacce47d853b590811d6",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "skills-open.js",
+      "targetPath": "packages/tradeloom-shell/skills-open.js",
+      "bytes": 6606,
+      "sha256": "abd3ebbb8b30fa333467469c832b96c08f291ca8ea41bd4f05d2a9f41429d38d",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "state.js",
+      "targetPath": "packages/tradeloom-shell/state.js",
+      "bytes": 9670,
+      "sha256": "a69bcfa8455456fa97201419ad88d5c4c14fc11b049f462e0c094821437d6a09",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 5739,
+        "sha256": "6d6a000e42cf2aab1dfbcc558750a0cef782f12340cbd1a178116da9feab750b"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "step-policy.js",
+      "targetPath": "packages/tradeloom-shell/step-policy.js",
+      "bytes": 479,
+      "sha256": "9749399b874a3599548d0b2e21d299611750991ea5297497126a6cb24f930cce",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 479,
+        "sha256": "9749399b874a3599548d0b2e21d299611750991ea5297497126a6cb24f930cce"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "tool-policy.js",
+      "targetPath": "packages/tradeloom-shell/tool-policy.js",
+      "bytes": 997,
+      "sha256": "b706267219c78486e16a1e77179b3709640ffda3f736d51fe1abc7ce6ccf535e",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 997,
+        "sha256": "b706267219c78486e16a1e77179b3709640ffda3f736d51fe1abc7ce6ccf535e"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "tool-schemas.js",
+      "targetPath": "packages/tradeloom-shell/tool-schemas.js",
+      "bytes": 2212,
+      "sha256": "4514f4396bb22ac07db32786dcbf3878d96a6b0c75a86e17502c0a17239c09f0",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "vendor/dockview-entry.ts",
+      "targetPath": "packages/tradeloom-shell/vendor/dockview-entry.ts",
+      "bytes": 330,
+      "sha256": "26c0e668bb56be72aa3c4d5a42450a0fe7b7318edeef8d8bae8b95e8d174c54a",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 330,
+        "sha256": "26c0e668bb56be72aa3c4d5a42450a0fe7b7318edeef8d8bae8b95e8d174c54a"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "vendor/dockview-package-lock.json",
+      "targetPath": "packages/tradeloom-shell/vendor/dockview-package-lock.json",
+      "bytes": 1608,
+      "sha256": "b05d55ac0d0723da236cf7b0dcbb401a0e98434bcdc8943c5f241b6a0e948422",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 1608,
+        "sha256": "b05d55ac0d0723da236cf7b0dcbb401a0e98434bcdc8943c5f241b6a0e948422"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "vendor/dockview.css",
+      "targetPath": "packages/tradeloom-shell/vendor/dockview.css",
+      "bytes": 159552,
+      "sha256": "72a757b4d2d0d0f1e38b928b1343c85a7b09766bb2dc2c16c9e3c880f231545d",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 159552,
+        "sha256": "72a757b4d2d0d0f1e38b928b1343c85a7b09766bb2dc2c16c9e3c880f231545d"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "vendor/LICENSE.dockview-react",
+      "targetPath": "packages/tradeloom-shell/vendor/LICENSE.dockview-react",
+      "bytes": 1063,
+      "sha256": "1d56757fdc06c9b33c0f80821efe4f4b11960dd7fb6544232cff61752101f513",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 1063,
+        "sha256": "1d56757fdc06c9b33c0f80821efe4f4b11960dd7fb6544232cff61752101f513"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "vendor/LICENSE.qrcode-generator",
+      "targetPath": "packages/tradeloom-shell/vendor/LICENSE.qrcode-generator",
+      "bytes": 1071,
+      "sha256": "3a850fa5f08101db6f40676c2786e10bd2cd5fff7b12ffdf1e0c434d4e49d90c",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "vendor/qrcode-generator-2.0.4.js",
+      "targetPath": "packages/tradeloom-shell/vendor/qrcode-generator-2.0.4.js",
+      "bytes": 56694,
+      "sha256": "79ec86f82856005b1c887905cfccfcfbec3821ca61c7fd5a952faa5f778f791c",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "webai-file-tools.js",
+      "targetPath": "packages/tradeloom-shell/webai-file-tools.js",
+      "bytes": 15189,
+      "sha256": "3687c4a121c0e879260af5d0d2fd9b447018562ac13b7587d2d0edb160f0b776",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "webai-local-directory.js",
+      "targetPath": "packages/tradeloom-shell/webai-local-directory.js",
+      "bytes": 3002,
+      "sha256": "999223c857882931fab15fb5b40ca4263f6298586f9cea23f553b5ac70d165ba",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "webai-runtime-files.js",
+      "targetPath": "packages/tradeloom-shell/webai-runtime-files.js",
+      "bytes": 16051,
+      "sha256": "2b59a172ada13571fa72912307bda879e85ab86bd598b2187f1901a05aab8859",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "webai-tool-envelope.js",
+      "targetPath": "packages/tradeloom-shell/webai-tool-envelope.js",
+      "bytes": 10730,
+      "sha256": "fe041243b330d6edca796449f4690b5310fb06e38f7dbd7e31bd458531ff71d9",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "workflow-artifact-source.js",
+      "targetPath": "packages/tradeloom-shell/workflow-artifact-source.js",
+      "bytes": 2510,
+      "sha256": "7d3a35c0a03a7cf456e767b9b491dbecde71adfeff815abd8a5cc99d3caddbf4",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "workflow-definition.js",
+      "targetPath": "packages/tradeloom-shell/workflow-definition.js",
+      "bytes": 1534,
+      "sha256": "93488f40fec5e30b77e3fcd4b3c10212f0bb30ec724f65b773bfb39ae583d28d",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "workflow-engine.js",
+      "targetPath": "packages/tradeloom-shell/workflow-engine.js",
+      "bytes": 8069,
+      "sha256": "f75b774274178fd91928d699de55a680d7452808743768a2617107a0931c542f",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "workflow-native-artifact-http.js",
+      "targetPath": "packages/tradeloom-shell/workflow-native-artifact-http.js",
+      "bytes": 19128,
+      "sha256": "ddaa238692f98e5db54da7974dc83963ef9b163013e75d61ba6c086e2cccc00a",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "workflow-native-binding.js",
+      "targetPath": "packages/tradeloom-shell/workflow-native-binding.js",
+      "bytes": 10875,
+      "sha256": "5447d8f01ebd32dfe533c0c2e143d1961e6513ebf1f80c5e617f9388ef7be751",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "workflow-native-command-attribution.js",
+      "targetPath": "packages/tradeloom-shell/workflow-native-command-attribution.js",
+      "bytes": 10853,
+      "sha256": "802760c9d30e1402602c1725d58984bedebcb4437b943175a97eddd59d06b8f4",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "workflow-native-executor.js",
+      "targetPath": "packages/tradeloom-shell/workflow-native-executor.js",
+      "bytes": 24204,
+      "sha256": "fbf8b3cd941fdb12618f329446412833b868ddaf9c2840e954874009db77455f",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "workflow-native-graph.js",
+      "targetPath": "packages/tradeloom-shell/workflow-native-graph.js",
+      "bytes": 1423,
+      "sha256": "adda5456aa445e70275abb96164739e3da645967d4f8335ee07ac1d2bea278a9",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "workflow-native-service.js",
+      "targetPath": "packages/tradeloom-shell/workflow-native-service.js",
+      "bytes": 27049,
+      "sha256": "674c1e636f062d43e93d93975d1a429573590d84c7260d99a30dfc3a37d527ba",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "workflow-native-task-authority.js",
+      "targetPath": "packages/tradeloom-shell/workflow-native-task-authority.js",
+      "bytes": 2785,
+      "sha256": "e6fab4458622f351bc7f9312356e9c1baa8da8749c5e5916c88bfd0202728d85",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "workflow-native-tools.js",
+      "targetPath": "packages/tradeloom-shell/workflow-native-tools.js",
+      "bytes": 9619,
+      "sha256": "353c9fa7bf620a4278a124fd3477d26a9a80fbdc1c192a774b2e2ff7c9b3f4e6",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "workflow-native-ui-gate.js",
+      "targetPath": "packages/tradeloom-shell/workflow-native-ui-gate.js",
+      "bytes": 3307,
+      "sha256": "e4cdda6e4d50ec80c639c71a78c7135e36ab569ee4f3ea633dc0fa8b81d52b7e",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "workflow-native-ui.js",
+      "targetPath": "packages/tradeloom-shell/workflow-native-ui.js",
+      "bytes": 20670,
+      "sha256": "60c68d2efbd273657c8879cb9e28f83c07869338062dcbefb8395f1fb653f59b",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "workflow-postgres.js",
+      "targetPath": "packages/tradeloom-shell/workflow-postgres.js",
+      "bytes": 5412,
+      "sha256": "abf02cce243c0db444c079a6d6cb9714b4529f1d1845a38389f7835915ab0238",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "workflow-run-journal.js",
+      "targetPath": "packages/tradeloom-shell/workflow-run-journal.js",
+      "bytes": 35887,
+      "sha256": "9c61b3ad8d6927711414eacbc95e22ac2dfb85077cae84419c24672734fdd542",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "workflow-schema.js",
+      "targetPath": "packages/tradeloom-shell/workflow-schema.js",
+      "bytes": 8959,
+      "sha256": "c1d6c993d2d76f76b0e607d8b0c3781d36e5a3b0f50a0b6746ca1d4c9a3dd07e",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r75-business-shell",
+      "sourcePath": "workflow-tools.js",
+      "targetPath": "packages/tradeloom-shell/workflow-tools.js",
+      "bytes": 10681,
+      "sha256": "e279172f4e053cb0247a446e8209ce6fe22c76f40d17b7f903cc76416fbb7d4d",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "lib/deepseek-account-bootstrap.mjs",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/lib/deepseek-account-bootstrap.mjs",
+      "bytes": 40004,
+      "sha256": "d35815eaf7b411133963dd7ad96edb2b1e12c39bb43441d876fa7c8d49ed7a03",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "lib/doubao-account-bootstrap.mjs",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/lib/doubao-account-bootstrap.mjs",
+      "bytes": 27032,
+      "sha256": "4f5a4a467408c199b7bc2acbf404d277368540cf8207d1869e6d96b883464d56",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "lib/fixed-account-entry-probe-r2.mjs",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/lib/fixed-account-entry-probe-r2.mjs",
+      "bytes": 14971,
+      "sha256": "0913ca57be60240892bc1969591fccf39d8f7443c3fb2b0cfc782f8d016c0f22",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "lib/main-location-validator.mjs",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/lib/main-location-validator.mjs",
+      "bytes": 333571,
+      "sha256": "7c44601ef31709571c913e03f463ed5caca49454c039b033be6ac5337bf14fb5",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "lib/main.js",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/lib/main.js",
+      "bytes": 749426,
+      "sha256": "5707d9e47febe6ce7c4b369cca13797e69f630eb6b76662c52f8e7a1fa254a07",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "lib/preload-app.cjs",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/lib/preload-app.cjs",
+      "bytes": 46166,
+      "sha256": "b544e56b82c019c836f1cd3d9d9d2a717965b35bff1feaf1199dfcda3c05ff2f",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "lib/preload-mandatory.cjs",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/lib/preload-mandatory.cjs",
+      "bytes": 1033,
+      "sha256": "1d1df2edd1b50e051cae606019081731a5939ab7b4313567029fdaa97ee59273",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "lib/preload-platform-account.cjs",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/lib/preload-platform-account.cjs",
+      "bytes": 2083,
+      "sha256": "bf997c17dfc71885e8fa01e75c75a527c0863877ca995c6f7e943a288ea90f3c",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "lib/preload-update-dialog.cjs",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/lib/preload-update-dialog.cjs",
+      "bytes": 1108,
+      "sha256": "65856af44fbd11bca80df7ac065ac118611c6d060d745d39efa7d18544648483",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "lib/preload-welcome.cjs",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/lib/preload-welcome.cjs",
+      "bytes": 21168,
+      "sha256": "b1c81eb3dc4265bde32f237b16dd3a17ca38861c187ef330ff823c1a0d0c2107",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "lib/tradeloom/bootstrap-core.mjs",
+      "targetPath": "apps/tradeloom-launcher/bootstrap-core.mjs",
+      "bytes": 17168,
+      "sha256": "cd0c614c967e1fff9b28b513eab90e021f7984beca0fd38376a723219eff57df",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 16530,
+        "sha256": "634ece02b45dd50df8682bbcb99e46dd41749924152462916cfa276428c162be"
+      },
+      "treatment": "canonical-launcher-runtime"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "lib/tradeloom/bootstrap-entry.mjs",
+      "targetPath": "apps/tradeloom-launcher/bootstrap-entry.mjs",
+      "bytes": 7487,
+      "sha256": "3033d5308626946ae2999dd65ca5dda1c69704fd80c41e6d1b1ac77b979acfa4",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 6998,
+        "sha256": "e3737168257ef45ed885fa4725e848f88de97b8568d06a873bec0fe7b34c0d1e"
+      },
+      "treatment": "canonical-launcher-runtime"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "lib/tradeloom/core.mjs",
+      "targetPath": "apps/tradeloom-launcher/core.mjs",
+      "bytes": 15170,
+      "sha256": "5177d356626b1659a0a4e3306dc025609b8b95d7014f20077895127e0a5be194",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 13131,
+        "sha256": "abd5f3a2b19161c4ca61973988879d0479517e90276d0a27a9079f58133b90d7"
+      },
+      "treatment": "canonical-launcher-runtime"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "lib/tradeloom/desktop-receipt.mjs",
+      "targetPath": "apps/tradeloom-launcher/desktop-receipt.mjs",
+      "bytes": 8896,
+      "sha256": "9560e2f94fa32c7aaa243b1393edb019bf977a70ca6b2bbfcfc9d7783711ab59",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 5947,
+        "sha256": "a0418eeecf60f2363b2d9f9ccadb39cc09f38a582fc9c17ec49ed8bd16a0e84b"
+      },
+      "treatment": "canonical-launcher-runtime"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "lib/tradeloom/installed-bootstrap.mjs",
+      "targetPath": "apps/tradeloom-launcher/installed-bootstrap.mjs",
+      "bytes": 51066,
+      "sha256": "4050f03f7dc7d3304e3635218fece485b604bed803b4885f162040a1c0c86f66",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 39905,
+        "sha256": "cf63f36bb83d12878e88472b567105a08f2d2ca820e5f5713eaf4b858b957d57"
+      },
+      "treatment": "canonical-launcher-runtime"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "lib/tradeloom/plugin-seed.mjs",
+      "targetPath": "apps/tradeloom-launcher/plugin-seed.mjs",
+      "bytes": 14596,
+      "sha256": "3a714fcd18fbdb74b91f0906cbc01ddeca2a243c350d4638b0e2d60932a0286a",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "canonical-launcher-runtime"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "lib/tradeloom/prepare-profile.mjs",
+      "targetPath": "apps/tradeloom-launcher/prepare-profile.mjs",
+      "bytes": 10752,
+      "sha256": "0e6592a1738234b2c76fca6cdcfc805ef155a65e434df2674d17ad2c97ff29dd",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 10752,
+        "sha256": "82b0a9a627c16a8c1d5d6fe09142b2af8dce01f7d42509a1750ac223e383a122"
+      },
+      "treatment": "canonical-launcher-runtime"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "lib/tradeloom/receipt-writer.mjs",
+      "targetPath": "apps/tradeloom-launcher/receipt-writer.mjs",
+      "bytes": 3439,
+      "sha256": "958035500235b0e764e905842f320fa14224302d5cea0421f1ed11c16bd2a90d",
+      "targetBefore": {
+        "state": "present",
+        "bytes": 3439,
+        "sha256": "958035500235b0e764e905842f320fa14224302d5cea0421f1ed11c16bd2a90d"
+      },
+      "treatment": "canonical-launcher-runtime"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "lib/tradeloom-source-shell/source-core-controller.mjs",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/lib/tradeloom-source-shell/source-core-controller.mjs",
+      "bytes": 89501,
+      "sha256": "0636255c17e62f1bf30211b34d8663f316c543adbec4edc7643883a849e4dd6b",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "lib/tradeloom-source-shell/source-preload.cjs",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/lib/tradeloom-source-shell/source-preload.cjs",
+      "bytes": 8470,
+      "sha256": "fd64711a8d01502629871ae95d85d169347ad85b220f2ada03192489d1b885cb",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "lib/tradeloom-source-shell/source-shell-controller.mjs",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/lib/tradeloom-source-shell/source-shell-controller.mjs",
+      "bytes": 117228,
+      "sha256": "c430762a913e166de625fa34b1994235b1368e3381176810206c2ac6462aa503",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "lib/tradeloom-source-shell/surface-owner.mjs",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/lib/tradeloom-source-shell/surface-owner.mjs",
+      "bytes": 4927,
+      "sha256": "f59a854677872d4b8919e1c47a468cb85d59e212b311fcd368e2bcfc092fa6a8",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "lib/webai-account-trigger-main-r2.mjs",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/lib/webai-account-trigger-main-r2.mjs",
+      "bytes": 4725,
+      "sha256": "4d2f7954073aef0466cd2b4e59ca5c74380a865c7232b385d193cb6b170b3766",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "lib/webai-account-trigger-probe-r2.mjs",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/lib/webai-account-trigger-probe-r2.mjs",
+      "bytes": 21601,
+      "sha256": "db97d21c222739a452451451654fa5a12276fe42e91d7cb75542938a02d15b26",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "lib/welcome/Montserrat-OFL.txt",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/lib/welcome/Montserrat-OFL.txt",
+      "bytes": 4400,
+      "sha256": "861d64229728cd65a98d119612c12769582574d1a092f0b63c8b0fd474e7065f",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "lib/welcome/brand-font.css",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/lib/welcome/brand-font.css",
+      "bytes": 554,
+      "sha256": "d0733ee69620e686561800ac788e54fc0bb9e02af5294c8b6f74c109132210cf",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "lib/welcome/montserrat-light.woff2",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/lib/welcome/montserrat-light.woff2",
+      "bytes": 61548,
+      "sha256": "da25f1327eb1dcc70c193897b5d7e00d31821d9518c0a49e073ff50d97a3f10a",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "lib/welcome/montserrat-medium.woff2",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/lib/welcome/montserrat-medium.woff2",
+      "bytes": 62148,
+      "sha256": "8a81ca6f05cb6831d5487e4b287ce5a625a718c39226b736f155900adc394166",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "lib/welcome/montserrat-regular.woff2",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/lib/welcome/montserrat-regular.woff2",
+      "bytes": 62008,
+      "sha256": "0f4a15e29a9535af580a64db967929a8d6b202fad9a467be390619a591d2c4c5",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "lib/welcome/welcome.css",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/lib/welcome/welcome.css",
+      "bytes": 37440,
+      "sha256": "9f4aec541875ac2ea693bf942cdf7a1d42632aa4b2d06164bc7535fb94312018",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "lib/welcome/welcome.js",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/lib/welcome/welcome.js",
+      "bytes": 154711,
+      "sha256": "0f89f8692107b4763fbc3956c737f074f0e588ac6bbfbf76d6c18c365e0e178e",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/assets/welcome-brand.svg",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/assets/welcome-brand.svg",
+      "bytes": 1582,
+      "sha256": "a6a33cbc374629b4ff61c75db587724903acae764d7892f2be8ca7860f1afdfd",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/assets/window-material.css",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/assets/window-material.css",
+      "bytes": 529,
+      "sha256": "f1709d565f57db4cf0207b7e4e348f72380665124b7bd711cab92581808855e2",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/mandatory-update-frame.js",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/mandatory-update-frame.js",
+      "bytes": 1683,
+      "sha256": "ea6ba51f277ce9ae18f972c76d6a23025bd1da62c1758526ec4f87be9eee06fb",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/mandatory-update.css",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/mandatory-update.css",
+      "bytes": 1237,
+      "sha256": "a1c1340b3c6050d1fe4253ff8d49a7d9709fe18cbcb7d0e4cfd785d611cdfdad",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/mandatory-update.html",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/mandatory-update.html",
+      "bytes": 1759,
+      "sha256": "17039f20594cadcfe09bf4500e45e1ab4fc57b205525a7f43e199ea4d12d4bc4",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/mandatory-update.js",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/mandatory-update.js",
+      "bytes": 7160,
+      "sha256": "982d1ded29841061422174355ca41eaf33f475e5377bcd045f3f7955385ad156",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/policy-login-loading.html",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/policy-login-loading.html",
+      "bytes": 1734,
+      "sha256": "5129e856f96a21a29adfa96f393c98087c120cdd6f65ca0adaf7b17ae5b381f6",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/account-window.css",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/account-window.css",
+      "bytes": 3007,
+      "sha256": "80e933dafb77ef4519e169e3c891d9a864f5661f8d1b2f3f92e6a13a5eafafb9",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/account-window.html",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/account-window.html",
+      "bytes": 1513,
+      "sha256": "5b66ec1d4802a4e65d90bb61c94465c44a4ec24d0bb77cef1f703e4d06c8ff37",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/account-window.js",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/account-window.js",
+      "bytes": 11545,
+      "sha256": "aa7c369e237027ae951bd6047ca74071633e935101f6992d00e1ce585b52584c",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/assets/bilibili-icon.ico",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/assets/bilibili-icon.ico",
+      "bytes": 4286,
+      "sha256": "2681561eb24e7435fea1acf26f3af95e4efc9f7d451587b58bef62f030f337e9",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/assets/bilibili-icon.png",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/assets/bilibili-icon.png",
+      "bytes": 2833,
+      "sha256": "9a931e013b9e049e92f2f6ed8f0da8c1c1110241c95267eb268c3741f7497b91",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/assets/bilibili-icon.svg",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/assets/bilibili-icon.svg",
+      "bytes": 1923,
+      "sha256": "dbbdb511357980f234e65f71301713d64c65a4b8fb1e65b611fad817e705e945",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/assets/blender-icon.png",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/assets/blender-icon.png",
+      "bytes": 1311,
+      "sha256": "5643979402711bb06b48a53449f6cb26ddb10e022bcbaf8b89c439b25b77c872",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/assets/boot-video-720p.mp4",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/assets/boot-video-720p.mp4",
+      "bytes": 2594993,
+      "sha256": "1d6b3b618008bc4f6bcb8708d55dc51c33316e2ab69203a6de57bca61ed2a801",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/assets/boot-video.mp4",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/assets/boot-video.mp4",
+      "bytes": 13364807,
+      "sha256": "fc9555880082904a1ad1b5f5168cf37d4620b1a75a15c8c80a720d93eac78693",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/assets/danghui.png",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/assets/danghui.png",
+      "bytes": 13975,
+      "sha256": "8c3f5efbf62fcadfa9bfb57acd7a358bf1560fd30a42c2bf2376e9a519924865",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/assets/deepseek-whale.png",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/assets/deepseek-whale.png",
+      "bytes": 6370,
+      "sha256": "cba0168e484cf74016847e09aff47c839f4198000a52f19e76f44a73dafe24e4",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/assets/douyin-icon.png",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/assets/douyin-icon.png",
+      "bytes": 821,
+      "sha256": "65eeadaba260aae870a0a8402e02be52090c1edc23ba48006e0f7904adc9bc2f",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/assets/hithink-icon.png",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/assets/hithink-icon.png",
+      "bytes": 961,
+      "sha256": "9dfae1ba3f7dd6b387ec042bd3204306c41505091f04692b47c3076ae299904d",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/assets/ideal-emblem.png",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/assets/ideal-emblem.png",
+      "bytes": 17044,
+      "sha256": "b91aa6c37c045eff07917c9528e996b839ce22e109d700fe11d247e023781857",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/assets/stock-icon-96.png",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/assets/stock-icon-96.png",
+      "bytes": 9599,
+      "sha256": "4d7415976befd652033f01ae1ef8c5efa7e319e14d439fe1a0efde794a183fa2",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/assets/webai/chatglm.png",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/assets/webai/chatglm.png",
+      "bytes": 2217,
+      "sha256": "94e48956654f0b02d7a113628cdea50819579c6bccecec8888928f321c0f997d",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/assets/webai/deepseek.png",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/assets/webai/deepseek.png",
+      "bytes": 7384,
+      "sha256": "547ead56dcb71424315ba53bf8f4c35e745efeaece106b9fb7e4dcdfa19c1a7a",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/assets/webai/doubao.png",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/assets/webai/doubao.png",
+      "bytes": 8216,
+      "sha256": "f4467b1b14a9588a40ccf2f312c2a2c9d285d69d9f7ab8c20eea375a547d5ea5",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/assets/webai/kimi.png",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/assets/webai/kimi.png",
+      "bytes": 21645,
+      "sha256": "6c14f9c3062e953b3ed57ae3e19db931c1c1bba38d4d8d55550544f31d55e469",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/assets/webai/tongyi.png",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/assets/webai/tongyi.png",
+      "bytes": 1658,
+      "sha256": "cd9390bc4209c319121d111f3a1f535b3c7dd909b8f860d41acc9744138d58df",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/customer-start.js",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/customer-start.js",
+      "bytes": 1894,
+      "sha256": "52d21812adeda9472b0adfef4d83e69680b4d8d278e030f5e2a62f247e9c5c16",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/index.html",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/index.html",
+      "bytes": 9227,
+      "sha256": "c22a7e00ee608e7ff2195c974b315e55590a4c9078145d80dd4bfc3e3350a186",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/mcp-panel.js",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/mcp-panel.js",
+      "bytes": 29850,
+      "sha256": "842bdb3c4cd3ef3ddc2e473ed1e6da4158cf5a98b1981a426fadc41d835cde69",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/public-clean.js",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/public-clean.js",
+      "bytes": 1347,
+      "sha256": "77788918a1ebf2ddce4dbf3f32b3b1aae9c51655073481dc79d80bcec3717955",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/public-links.js",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/public-links.js",
+      "bytes": 1234,
+      "sha256": "2995eb621aec5511fae18f7e0ab87157d93095237c4752d19cfbf1f46dcdfc13",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/renderer.js",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/renderer.js",
+      "bytes": 74299,
+      "sha256": "7e7beb5a8aa57b5e850e91b7b2be2d3b1bb8a0e6459e27964f4d9c695c1978a6",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/renderers.js",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/renderers.js",
+      "bytes": 1116363,
+      "sha256": "f1fd9a77a73d5cfac95bc99acd280d3b353eebd366a48800a8bb78ad7a18897b",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/replica-ui/assets/deepseek.svg",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/replica-ui/assets/deepseek.svg",
+      "bytes": 3642,
+      "sha256": "90d7e400ca261d28dfb7982bfade335912b3a27a620faee9a787f8a52164fd43",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/replica-ui/assets/doubao.png",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/replica-ui/assets/doubao.png",
+      "bytes": 6520,
+      "sha256": "967f66980a35f2187841193d625693d233d7c451774ecffaebfa19e8884c3257",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/replica-ui/assets/tradeloom-mark.svg",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/replica-ui/assets/tradeloom-mark.svg",
+      "bytes": 961,
+      "sha256": "7e2cdb6592de4456295d455056a1d5ca500cf8ef3c759aef90ceba66c76b5849",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/replica-ui/business-bridge.css",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/replica-ui/business-bridge.css",
+      "bytes": 1296,
+      "sha256": "1499740df594f510ac8398090481fceecd386c2332522a2a647f49012784d05a",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/replica-ui/business-bridge.js",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/replica-ui/business-bridge.js",
+      "bytes": 69328,
+      "sha256": "839a9673de3a53c27207f5b955b59cb2111e6130c0d6aed19dd24b5b5cb9a549",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/replica-ui/business-file-bridge.js",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/replica-ui/business-file-bridge.js",
+      "bytes": 13570,
+      "sha256": "05157d2f2d231306f4c80a8a013e626925e66d5821b753c07971365c15c38435",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/replica-ui/index.html",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/replica-ui/index.html",
+      "bytes": 3353,
+      "sha256": "b8aad9f96f16e5c6f50d0b94c41708a50fea755ba350ec17e6d3ae2c5f8780e9",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/replica-ui/native-account-controls.css",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/replica-ui/native-account-controls.css",
+      "bytes": 2180,
+      "sha256": "33d43ca494dabc88143c085a5429e17365fd7c901e7e67a896bcc15c5a1cabc4",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/replica-ui/native-account-controls.js",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/replica-ui/native-account-controls.js",
+      "bytes": 9310,
+      "sha256": "6d4001ed9fee59af5a209eedd25f035136431e866557fcb41cf1d2390e8e6c45",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/replica-ui/palette-tokens.css",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/replica-ui/palette-tokens.css",
+      "bytes": 13570,
+      "sha256": "2f9de244fe9347040227e444e51b8ab7f3d25f6796dd9d2dc37fe0660d2ba240",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/replica-ui/palette.css",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/replica-ui/palette.css",
+      "bytes": 7541,
+      "sha256": "79c8eb54adcbaea1022084a2273d16e88bf22e7f9c1885211fcc25537c7b3c88",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/replica-ui/panel-interactions.css",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/replica-ui/panel-interactions.css",
+      "bytes": 4420,
+      "sha256": "0795c794cd9eb44beb12533cc67390451ea44989ae76394abf59b0734becfc93",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/replica-ui/panel-interactions.js",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/replica-ui/panel-interactions.js",
+      "bytes": 70558,
+      "sha256": "dccc6d956babcc20596b6899cc2990c0c9ba76b9c823d8e1575d0529a9a261ce",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/replica-ui/renderer.js",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/replica-ui/renderer.js",
+      "bytes": 109000,
+      "sha256": "99aa1f9f928396b82768f580521f8037686b891b21f950d90a38afe257cd7c2f",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/replica-ui/replica-adapter.js",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/replica-ui/replica-adapter.js",
+      "bytes": 111663,
+      "sha256": "a8af143109690c507ba01080711df3dad41692e040de090ee631bcc4b0bc58b0",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/replica-ui/scenes-data.js",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/replica-ui/scenes-data.js",
+      "bytes": 5999,
+      "sha256": "cf9f0c116ddc05d5e927fb698c4d14236a4c94f7ef9c6ecaec6f9bac46720b6f",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/replica-ui/scenes.json",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/replica-ui/scenes.json",
+      "bytes": 5894,
+      "sha256": "1855228680120c458bfa0695bb47f92f8d6f31c1bd776cb55f5b48866334c34f",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/replica-ui/style.css",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/replica-ui/style.css",
+      "bytes": 37880,
+      "sha256": "ee9830bd6211aede4e59de7f76d9f76c65191f9700b310d44893ce6f9baf2b6f",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/replica-ui/tradeloom-mark.svg",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/replica-ui/tradeloom-mark.svg",
+      "bytes": 961,
+      "sha256": "7e2cdb6592de4456295d455056a1d5ca500cf8ef3c759aef90ceba66c76b5849",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/sector-data.js",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/sector-data.js",
+      "bytes": 172346,
+      "sha256": "914b1832a5d6ea00fdc09e81ff588e89e7a3b163ee8b1b4470e5ffb10246730e",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/source-entry.html",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/source-entry.html",
+      "bytes": 8448,
+      "sha256": "8ea994f3ac4267b3d7d776a06c35dfb00b2be458de17ad2acb5d084eb22a69d7",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/styles.css",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/styles.css",
+      "bytes": 294106,
+      "sha256": "de711a5f76a66e58b0d0cb77b564ebeea9e9187622c03ad9d19197b5b72dfc42",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/topbar-status.js",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/topbar-status.js",
+      "bytes": 100041,
+      "sha256": "021cacc2b2051ad0ed0f262071d6bb477ab962d906b50ef7117e3389e2142199",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/us-sector-data.js",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/us-sector-data.js",
+      "bytes": 139888,
+      "sha256": "f3f5f43b5ff5e462b0386eac60b123d9c02c54b89e5dddaf10814b124a2cf9e9",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/source-shell/webai-bridge.js",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/webai-bridge.js",
+      "bytes": 129678,
+      "sha256": "3a26fa7e41ae13718a2a12b4ea03a83bdb1383a491811f8e556aa93b6fb02f7f",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/update-close.svg",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/update-close.svg",
+      "bytes": 449,
+      "sha256": "1a1931528c542a460d1db6fde84d82d1a03a06155485265d43634031273b20d5",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/update-dialog.css",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/update-dialog.css",
+      "bytes": 2414,
+      "sha256": "a3828fc86b274a6ee31711ecaf721fcf929e389c421d3c3a291f197512d84e91",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/update-dialog.html",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/update-dialog.html",
+      "bytes": 985,
+      "sha256": "8e9fd9e60cc8be41f59d930dbec59ec0f77e7b9bb720fbaa530df27f53b08cd7",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/update-dialog.js",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/update-dialog.js",
+      "bytes": 2728,
+      "sha256": "669588e0f094c6616001d2bda37caee2f96680de8326647b854326ee2e20b7fd",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/welcome.css",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/welcome.css",
+      "bytes": 7425,
+      "sha256": "d625b4775d44f218105bebcadeeeee2d8f806eecbe6f2f4bbc6cfdd472cbf91c",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "r75-accepted-asar-runtime",
+      "sourcePath": "renderer/welcome.html",
+      "targetPath": "apps/tradeloom-launcher/accepted-runtime/renderer/welcome.html",
+      "bytes": 645,
+      "sha256": "02a6b02c152e6bd93d079597151ddc1d45b6ee349cbe83690af779467fdc9813",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "treatment": "accepted-runtime-overlay"
+    },
+    {
+      "sourceRoot": "portable-c10-launcher-source",
+      "sourcePath": "Program.cs",
+      "targetPath": "apps/tradeloom-launcher/portable/Program.cs",
+      "bytes": 8090,
+      "sha256": "ce169b4aa5b441335a9bf5ef7912ea3643145a34c12306dc02241c07c057b937",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "portable-c10-launcher-source",
+      "sourcePath": "launcher.json",
+      "targetPath": "apps/tradeloom-launcher/portable/launcher.json",
+      "bytes": 125,
+      "sha256": "3761a3bc498f35824ee895d8a4ea1b26ccc3c659ba02080be5ec332294354573",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r75-plugin-program-seed",
+      "sourcePath": "loose/cache-sandbox/index.mjs",
+      "targetPath": "apps/tradeloom-launcher/accepted-plugin-overrides/loose/cache-sandbox/index.mjs",
+      "bytes": 1193,
+      "sha256": "75fef61ec27422288a4c0c5f809e9bd4595588454ea6b472b981c3badc9e25a5",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r75-plugin-program-seed",
+      "sourcePath": "p/202/lib/index.js",
+      "targetPath": "apps/tradeloom-launcher/accepted-plugin-overrides/p/202/lib/index.js",
+      "bytes": 266538,
+      "sha256": "b5d12df27d57e82ad7f09311c8c55391eb23c4da57b9962e456f716f1b431284",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r75-plugin-program-seed",
+      "sourcePath": "p/202/assets/whale-widget.js",
+      "targetPath": "apps/tradeloom-launcher/accepted-plugin-overrides/p/202/assets/whale-widget.js",
+      "bytes": 1144418,
+      "sha256": "677c2e2b6417b33ed97b13ce4490070af006839ff9ff2ed93fbf610625fcd1f6",
+      "targetBefore": {
+        "state": "absent"
+      }
+    },
+    {
+      "sourceRoot": "r75-sdk-runtime-snapshot",
+      "sourcePath": "dsh/node_modules/@deepseek-ai/dsh-client-ui-conversation/lib/client.js",
+      "targetPath": "apps/tradeloom-launcher/accepted-sdk-overrides/@deepseek-ai/dsh-client-ui-conversation/lib/client.js",
+      "bytes": 803113,
+      "sha256": "95012b388d5ceb6f42ed7170e6c86bfc068340a6094aef301d8969993d2af93a",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "asarMember": "dsh/node_modules/@deepseek-ai/dsh-client-ui-conversation/lib/client.js"
+    },
+    {
+      "sourceRoot": "r75-sdk-runtime-snapshot",
+      "sourcePath": "dsh/node_modules/@deepseek-ai/dsh-client-ui-attachment/lib/client.js",
+      "targetPath": "apps/tradeloom-launcher/accepted-sdk-overrides/@deepseek-ai/dsh-client-ui-attachment/lib/client.js",
+      "bytes": 48137,
+      "sha256": "45bbf05ccec67706085d77f6b0ab0b0be5e1ed785d24de98f71884a357cfdf85",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "asarMember": "dsh/node_modules/@deepseek-ai/dsh-client-ui-attachment/lib/client.js"
+    },
+    {
+      "sourceRoot": "r75-sdk-runtime-snapshot",
+      "sourcePath": "dsh/node_modules/@deepseek-ai/dsh-client-ui-layout/lib/client.js",
+      "targetPath": "apps/tradeloom-launcher/accepted-sdk-overrides/@deepseek-ai/dsh-client-ui-layout/lib/client.js",
+      "bytes": 43858,
+      "sha256": "dec71b532b4c9b0d4ccfca0cc89097f318e28b5fbd90ccd2c4bf5033a7c2da7d",
+      "targetBefore": {
+        "state": "absent"
+      },
+      "asarMember": "dsh/node_modules/@deepseek-ai/dsh-client-ui-layout/lib/client.js"
+    }
+  ],
+  "snapshotCounts": {
+    "pluginProgramOverrides": 3,
+    "sdkCompatibilitySnapshots": 3
+  },
+  "sourceCrossChecks": [
+    {
+      "sourceRoot": "r74-portable-seed-source",
+      "sourcePath": "installed-bootstrap.mjs",
+      "bytes": 51066,
+      "sha256": "4050f03f7dc7d3304e3635218fece485b604bed803b4885f162040a1c0c86f66",
+      "alsoAsarMember": "lib/tradeloom/installed-bootstrap.mjs",
+      "note": "same canonical target is already adopted once from the exact R75 ASAR member"
+    },
+    {
+      "sourceRoot": "r74-portable-seed-source",
+      "sourcePath": "plugin-seed.mjs",
+      "bytes": 14596,
+      "sha256": "3a714fcd18fbdb74b91f0906cbc01ddeca2a243c350d4638b0e2d60932a0286a",
+      "alsoAsarMember": "lib/tradeloom/plugin-seed.mjs",
+      "note": "same canonical target is already adopted once from the exact R75 ASAR member"
+    }
+  ],
+  "nonAdopted": [
+    "dsh/** SDK/vendor sources remain the pinned R74 base ASAR; backend/data/** is excluded from the 139-file source subset; the 927 MB plugin program seed is a release ZIP input and is not committed."
+  ],
+  "sourcePatches": [
+    {
+      "id": "r75-to-r76-toast-palette",
+      "targetPath": "packages/tradeloom-shell/client.replica-palette.js",
+      "before": {
+        "bytes": 6749,
+        "sha256": "d1ad47c2a8241a0f968016f69a6768a0177d19cc3487c56d016e2832ec56d5bc",
+        "repositoryPath": "apps/tradeloom-launcher/accepted-build-inputs/r75/client.replica-palette.js"
+      },
+      "after": {
+        "bytes": 6707,
+        "sha256": "a086140cbb7a241a0cab30a797472bb42e707cba89c9d4e17321e454aef90b69"
+      },
+      "intent": "Remove only the toast background alias override so the SDK default dark toast background remains paired with its white label."
+    }
+  ]
+}
