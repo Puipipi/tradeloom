@@ -14,7 +14,7 @@ The frozen R76 Windows x64 portable candidate passed full archive readback and a
 
 When the R76 release page is available, extract its complete ZIP to a short path such as `C:/Apps/TradeLoom`, then run `启动工作台.exe`. The package includes Electron, Node, Python, PostgreSQL, Django/backend, and the pure program plugin seed; it excludes personal profiles, credentials, databases, and chats. External services such as ERPNext must be provided separately.
 
-The [desktop16 portable release](https://github.com/Puipipi/tradeloom/releases/tag/desktop16-portable-20261026) is an older historical release. Its hash is b973c6bf742979ef3875819a4b7729ef0ba1a3f2018dbc7b28d536cc6b13660.
+The [desktop16 portable release](https://github.com/Puipipi/tradeloom/releases/tag/desktop16-portable-20261026) is an older historical release. Its hash is `ab973c6bf742979ef3875819a4b7729ef0ba1a3f2018dbc7b28d536cc6b13660`.
 
 ## Features and status
 
@@ -31,7 +31,7 @@ The [desktop16 portable release](https://github.com/Puipipi/tradeloom/releases/t
 
 Start with [quick start](docs/quick-start.md) and [runtime preparation and upgrades](docs/upgrade-harness.md). Cloning the source does not provide the external runtime or configured services. These documents contain earlier environment records: verify the applicable runtime before using their commands.
 
-The published R75 release and local R76 candidate are versioned separately. R76 source and artifact evidence is summarized in [the release validation record](docs/releases/ui18-r76-validation.md); runtime and vendor inputs are version-pinned there.
+The R75 validation baseline and local R76 candidate are documented separately. R76 source and artifact evidence is summarized in [the release validation record](docs/releases/ui18-r76-validation.md); runtime and vendor inputs are version-pinned there.
 
 ## Documentation
 

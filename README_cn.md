@@ -14,7 +14,7 @@ R76 Windows x64 便携包候选已冻结，逐项 ZIP 读回和隔离 QA 原生�
 
 R76 Release 页面可用后，可将完整便携包解压到短路径（例如 `C:/Apps/TradeLoom`），然后双击 `启动工作台.exe`。包内包含 Electron、Node、Python、PostgreSQL、Django/backend 及纯程序插件 seed；不包含个人 profile、登录凭据、数据库或聊天记录。ERPNext 等外部服务仍需单独提供。
 
-[desktop16 便携包](https://github.com/Puipipi/tradeloom/releases/tag/desktop16-portable-20261026) 是历史版本。旧版 SHA-256：b973c6bf742979ef3875819a4b7729ef0ba1a3f2018dbc7b28d536cc6b13660。
+[desktop16 便携包](https://github.com/Puipipi/tradeloom/releases/tag/desktop16-portable-20261026) 是历史版本。旧版 SHA-256：`ab973c6bf742979ef3875819a4b7729ef0ba1a3f2018dbc7b28d536cc6b13660`。
 
 ## 功能与状态
 
@@ -31,7 +31,7 @@ R76 Release 页面可用后，可将完整便携包解压到短路径（例如 `
 
 先读[快速开始](docs/quick-start.md)和[运行时准备与升级](docs/upgrade-harness.md)。克隆源码不会附带外置 runtime 或已配置服务。这些文档含早期环境记录，使用命令前请核对适用的 runtime。
 
-公开 R75 发布包与本地 R76 候选分别管理。R76 源码与程序工件证据见[发布验证记录](docs/releases/ui18-r76-validation.md)；runtime 与 vendor 输入均按版本固定。
+R75 历史验证基线与本地 R76 候选分别记录。R76 源码与程序工件证据见[发布验证记录](docs/releases/ui18-r76-validation.md)；runtime 与 vendor 输入均按版本固定。
 
 ## 文档导航
 
