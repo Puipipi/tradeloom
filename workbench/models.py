@@ -11,6 +11,29 @@ def hex_uuid() -> str:
     return uuid.uuid4().hex
 
 
+class CanvasWorkflowRun(models.Model):
+    """Durable visual-workflow receipt; distinct from confirmed business tasks."""
+
+    id = models.UUIDField(primary_key=True, editable=False)
+    workflow_id = models.CharField(max_length=48, db_index=True)
+    revision = models.PositiveIntegerField(default=1)
+    status = models.CharField(max_length=20)
+    execution_mode = models.CharField(max_length=20)
+    snapshot = models.JSONField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["workflow_id"],
+                condition=models.Q(status__in=["running", "waiting"]),
+                name="canvas_one_active_workflow_run",
+            )
+        ]
+
+
 class Task(models.Model):
     id = models.CharField(
         primary_key=True,
@@ -935,3 +958,32 @@ class ErpNextDraftOperation(models.Model):
 
     def delete(self, *args, **kwargs):
         raise ValidationError("ERPNext 草稿操作记录不可删除。")
+
+class NativeArtifactVersion(models.Model):
+    """Immutable registered bytes with frozen native terminal provenance."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    run = models.ForeignKey(CanvasWorkflowRun, on_delete=models.PROTECT, related_name="native_artifacts")
+    node_id = models.CharField(max_length=128)
+    attempt = models.PositiveIntegerField()
+    child_session_id = models.CharField(max_length=256)
+    native_run_id = models.CharField(max_length=256)
+    request_id = models.CharField(max_length=256)
+    tool_call_id = models.CharField(max_length=256)
+    parent_agent_id = models.CharField(max_length=256)
+    parent_session_id = models.CharField(max_length=256)
+    binding_revision = models.CharField(max_length=128)
+    definition_revision = models.CharField(max_length=128)
+    source_session_seq = models.PositiveBigIntegerField()
+    file_index = models.PositiveIntegerField()
+    present_call_id = models.CharField(max_length=256)
+    source_turn = models.PositiveBigIntegerField()
+    grant_root_scope = models.CharField(max_length=256)
+    display_name = models.CharField(max_length=255)
+    mime_type = models.CharField(max_length=128)
+    byte_size = models.PositiveBigIntegerField()
+    sha256 = models.CharField(max_length=64)
+    storage_key = models.CharField(max_length=500, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['run', 'node_id', 'attempt', 'source_session_seq', 'file_index'], name='uniq_native_artifact_coordinate')]

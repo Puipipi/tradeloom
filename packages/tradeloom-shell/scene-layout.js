@@ -1,9 +1,11 @@
 import { ROLE_IDS } from './roles.js'
 
 export const BUSINESS_ROUTE_PATHS = Object.freeze(['/home', '/products', '/agent-center', '/artifacts', '/runs'])
-export const PANEL_TYPES = Object.freeze(['business-iframe', 'placeholder', 'native-chat', 'erpnext-status'])
+export const PANEL_TYPES = Object.freeze(['business-iframe', 'placeholder', 'native-chat', 'native-workspace', 'erpnext-status'])
 const ROLE_ID_SET = new Set(ROLE_IDS)
 const BUSINESS_PATHS = new Set(BUSINESS_ROUTE_PATHS)
+const BUSINESS_PATH_VARIANTS = new Set(['/artifacts#sources', '/artifacts#deliverables', '/artifacts#files', '/artifacts#preview'])
+const isBusinessPagePath = value => BUSINESS_PATHS.has(value) || BUSINESS_PATH_VARIANTS.has(value)
 const DOCK_LAYOUT_PROFILES = Object.freeze({
   assistant_lead: [1000, 360],
   collaboration_grid: [960, 560],
@@ -38,17 +40,26 @@ export function validateSceneConfig(config, panelTypes = PANEL_TYPES) {
     for (const panel of scene.panels) {
       if (!object(panel) || typeof panel.id !== 'string' || !/^[a-z0-9-]{1,48}$/.test(panel.id)
         || panelIds.has(panel.id) || typeof panel.title !== 'string' || panel.title.length > 100
+        || panel.roleId !== undefined && !ROLE_ID_SET.has(panel.roleId)
+        || panel.optional !== undefined && typeof panel.optional !== 'boolean'
+        || panel.optional === true && panel.type !== 'native-workspace'
+          && (panel.type !== 'native-chat' || typeof panel.roleId !== 'string')
         || !panelTypes.includes(panel.type)) fail('panel identity or type is invalid')
       panelIds.add(panel.id)
       for (const key of ['col', 'row', 'w', 'h']) if (!integer(panel[key]) || panel[key] < 1 || panel[key] > 4) fail('panel grid coordinates must be integers from 1 to 4')
       if (panel.col + panel.w - 1 > 4 || panel.row + panel.h - 1 > 4) fail('panel is outside the 4x4 grid')
-      if (panel.type === 'business-iframe' && (!BUSINESS_PATHS.has(panel.path) || typeof panel.path !== 'string')) fail('business iframe path is not allowlisted')
+      if (panel.type === 'business-iframe' && (typeof panel.path !== 'string' || !isBusinessPagePath(panel.path))) fail('business iframe path is not allowlisted')
       if (panel.type === 'placeholder' && (typeof panel.text !== 'string' || panel.text.length > 500)) fail('placeholder text is invalid')
     }
-    if (scene.panels.filter(panel => panel.type === 'native-chat').length !== 1) fail('each scene must define exactly one native chat panel')
+    if (scene.panels.filter(panel => panel.type === 'native-chat' && panel.optional !== true).length < 1) fail('each scene must define at least one required native chat panel')
     if (scene.defaultBusinessRoute !== undefined
       && (!BUSINESS_PATHS.has(scene.defaultBusinessRoute) || config.businessRoutes?.[scene.defaultBusinessRoute]?.sceneId !== scene.id)) {
       fail('scene default business route is not mapped to that scene')
+    }
+    if (scene.defaultBusinessPath !== undefined) {
+      const mainPath = scene.panels.find(panel => panel.id === 'business-main' && panel.type === 'business-iframe')?.path
+      if (!isBusinessPagePath(scene.defaultBusinessPath) || scene.defaultBusinessPath !== mainPath
+        || scene.defaultBusinessRoute !== undefined && scene.defaultBusinessRoute !== mainPath?.split('#')[0]) fail('scene default business path must match its main panel')
     }
   }
   if (!object(config.businessRoutes) || JSON.stringify(Object.keys(config.businessRoutes).sort()) !== JSON.stringify([...BUSINESS_ROUTE_PATHS].sort())) fail('business route map must contain the five existing routes')
@@ -82,11 +93,24 @@ function normalizePanel(scene, panel, saved) {
 
 export function normalizeSceneLayout(scene, savedLayout = {}) {
   if (!object(savedLayout) || Object.keys(savedLayout).some(key => !['panels', 'expandedPanel'].includes(key))) fail('scene layout contains unsupported fields')
-  const savedPanels = savedLayout.panels ?? {}
-  if (!object(savedPanels)) fail('saved panels must be an object')
-  const panelIds = new Set(scene.panels.map(panel => panel.id))
-  if (Object.keys(savedPanels).some(id => !panelIds.has(id))) fail('saved layout contains an unknown panel')
-  const expandedPanel = savedLayout.expandedPanel ?? ''
+  const inputPanels = savedLayout.panels ?? {}
+  if (!object(inputPanels)) fail('saved panels must be an object')
+  const savedPanels = { ...inputPanels }
+  const configuredPanelIds = new Set(scene.panels.map(panel => panel.id))
+  // Keep pre-files/preview v1 layouts readable only in scenes that adopted the new IDs.
+  if (configuredPanelIds.has('files') && !Object.hasOwn(savedPanels, 'files') && Object.hasOwn(savedPanels, 'auxiliary')) {
+    savedPanels.files = savedPanels.auxiliary
+    delete savedPanels.auxiliary
+  }
+  if (configuredPanelIds.has('preview') && !Object.hasOwn(savedPanels, 'preview') && Object.hasOwn(savedPanels, 'reference')) {
+    savedPanels.preview = savedPanels.reference
+    delete savedPanels.reference
+  }
+  const panelIds = configuredPanelIds
+  const unknownPanels = Object.keys(savedPanels).filter(id => !panelIds.has(id))
+  if (unknownPanels.length) fail(`saved layout contains an unknown panel in ${scene.id}: ${unknownPanels.join(',')}`)
+  const expandedPanel = savedLayout.expandedPanel === 'auxiliary' && panelIds.has('files') ? 'files'
+    : savedLayout.expandedPanel === 'reference' && panelIds.has('preview') ? 'preview' : savedLayout.expandedPanel ?? ''
   if (expandedPanel !== '' && !panelIds.has(expandedPanel)) fail('expanded panel is unknown')
   return {
     expandedPanel,
@@ -101,7 +125,7 @@ export function defaultSceneWorkbench(config) {
     version: 1,
     activeSceneId: scene.id,
     roleByScene: Object.fromEntries(config.scenes.map(item => [item.id, item.roleId])),
-    businessPath: scene.defaultBusinessRoute ?? null,
+    businessPath: scene.defaultBusinessPath ?? scene.defaultBusinessRoute ?? null,
     layouts: Object.fromEntries(config.scenes.map(item => [item.id, normalizeSceneLayout(item)])),
   }
 }
@@ -117,9 +141,11 @@ export function validateSceneWorkbench(config, value) {
     || !ROLE_ID_SET.has(value.roleByScene[id]))) fail('saved scene role is unknown')
   const scene = config.scenes.find(item => item.id === value.activeSceneId)
   const mainBusinessPath = scene.panels.find(panel => panel.id === 'business-main' && panel.type === 'business-iframe')?.path
+  const mainBusinessBasePath = typeof mainBusinessPath === 'string' ? mainBusinessPath.split('#')[0] : mainBusinessPath
+  const businessBasePath = typeof value.businessPath === 'string' ? value.businessPath.split('#')[0] : value.businessPath
   if (value.businessPath !== null
-    && (!BUSINESS_PATHS.has(value.businessPath)
-      || (config.businessRoutes[value.businessPath]?.sceneId !== scene.id && mainBusinessPath !== value.businessPath))) {
+    && (!isBusinessPagePath(value.businessPath)
+      || (config.businessRoutes[businessBasePath]?.sceneId !== scene.id && mainBusinessBasePath !== businessBasePath))) {
     fail('business route does not belong to the selected scene')
   }
   if (Object.keys(value.layouts).some(id => !config.scenes.some(item => item.id === id))) fail('saved layout names an unknown scene')

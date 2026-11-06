@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token }}">
     <title>织贸助手（TradeWeave） · 产品资料工作台</title>
-    {% block stylesheets %}<link rel="stylesheet" href="{{ '/static/workbench/styles.css?v=iframe-density3'|business_url }}">{% endblock %}
+    {% block stylesheets %}<link rel="stylesheet" href="{{ '/static/workbench/styles.css?v=business-ui-scrollbars12'|business_url }}">{% endblock %}
   </head>
   <body>
     <a class="skip-link" href="#main-content">跳到主要内容</a>
@@ -19,7 +19,7 @@
         <nav class="main-nav" aria-label="五个主板块" data-testid="main-nav">
           <a class="nav-link {% if page == 'home' %}active{% endif %}" href="{% business_path '/home' %}" data-testid="nav-home" {% if page == 'home' %}aria-current="page"{% endif %}>首页</a>
           <a class="nav-link {% if page == 'products' %}active{% endif %}" href="{% business_path '/products' %}" data-testid="nav-products" {% if page == 'products' %}aria-current="page"{% endif %}>产品资料</a>
-          <a class="nav-link {% if page == 'agent_center' %}active{% endif %}" href="{% business_path '/agent-center' %}" data-testid="nav-agent-center" {% if page == 'agent_center' %}aria-current="page"{% endif %}>Agent 中心</a>
+          <a class="nav-link {% if page == 'agent_center' %}active{% endif %}" href="{% business_path '/agent-center' %}" data-testid="nav-agent-center" {% if page == 'agent_center' %}aria-current="page"{% endif %}>工作流</a>
           <a class="nav-link {% if page == 'artifacts' %}active{% endif %}" href="{% business_path '/artifacts' %}" data-testid="nav-artifacts" {% if page == 'artifacts' %}aria-current="page"{% endif %}>交付物</a>
           <a class="nav-link {% if page == 'runs' %}active{% endif %}" href="{% business_path '/runs' %}" data-testid="nav-runs" {% if page == 'runs' %}aria-current="page"{% endif %}>运行记录</a>
         </nav>
@@ -38,26 +38,25 @@
         </div>
       </aside>{% endif %}
       <div class="workspace">
-        <header class="topbar">
+        {% if not business_embed %}<header class="topbar">
           <div>
             <p class="eyebrow">{% block page_eyebrow %}织贸助手 · 产品资料工作台{% endblock %}</p>
             <h1>{% block page_title %}织贸助手{% endblock %}</h1>
           </div>
           <div class="runtime-status" data-testid="mode-badge">
-            <span class="connection-dot online"></span>
             <span class="mono">{{ planning_mode }}</span>
             <span class="runtime-divider" aria-hidden="true"></span>
             <span>{{ planning_status }}</span>
           </div>
-        </header>
+        </header>{% endif %}
         <main class="content-area" id="main-content">
           {% block content %}{% endblock %}
         </main>
       </div>
     </div>
     <script src="{{ '/static/workbench/agent-run-receipts.js'|business_url }}" defer></script>
-    <script src="{{ '/static/workbench/business-url.js'|business_url }}" defer></script>
-    <script src="{{ '/static/workbench/app.js?v=iframe-density3'|business_url }}" defer></script>
+    <script src="{{ '/static/workbench/business-url.js?v=popout-bridge1'|business_url }}" defer></script>
+    <script src="{{ '/static/workbench/app.js?v=business-popout-bridge1'|business_url }}" defer></script>
     {% block scripts %}{% endblock %}
   </body>
 </html>

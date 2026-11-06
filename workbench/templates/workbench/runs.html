@@ -1,28 +1,104 @@
 {% extends "workbench/base.html" %}
-{% block page_eyebrow %}运行记录 / 真实调用{% endblock %}
+{% load business_urls %}
+{% block stylesheets %}{{ block.super }}<link rel="stylesheet" href="{{ '/static/workbench/runs-health.css?v=business-ui-density4'|business_url }}">{% endblock %}
+{% block page_eyebrow %}业务执行 / 状态记录{% endblock %}
 {% block page_title %}运行记录{% endblock %}
 {% block content %}
 <div class="runs-layout">
+  <aside class="panel platform-card" data-testid="platform-status">
+    <h2>平台状态</h2>
+    <p>查看本地运行依赖、工作流模式与外部服务接入情况。</p>
+    <div class="health-tree" data-testid="platform-health-tree">
+      <details class="health-group" open>
+        <summary class="health-summary">
+          <span class="health-icon" aria-hidden="true">▦</span>
+          <span class="health-copy"><strong>本地数据与配置</strong><small>数据库连接与意图规则</small></span>
+          <span class="health-state {% if diagnostics.dependencies.database.status == 'degraded' or diagnostics.dependencies.intent_config.status == 'degraded' %}is-warning{% elif diagnostics.dependencies.database.status == 'ok' and diagnostics.dependencies.intent_config.status == 'ok' %}is-ok{% endif %}">{% if diagnostics.dependencies.database.status == 'degraded' or diagnostics.dependencies.intent_config.status == 'degraded' %}需关注{% elif diagnostics.dependencies.database.status == 'ok' and diagnostics.dependencies.intent_config.status == 'ok' %}正常{% else %}未知{% if diagnostics.status %} · {{ diagnostics.status }}{% endif %}{% endif %}</span>
+        </summary>
+        <div class="health-children">
+          <div class="health-row">
+            <span class="health-row-icon" aria-hidden="true">◉</span><span class="health-copy"><strong>数据库</strong><small>本地业务数据</small></span>
+            <span class="health-state {% if diagnostics.dependencies.database.status == 'ok' %}is-ok{% elif diagnostics.dependencies.database.status == 'degraded' %}is-warning{% endif %}" title="{{ diagnostics.dependencies.database.status|default:'unknown' }}">{% if diagnostics.dependencies.database.status == 'ok' %}正常{% elif diagnostics.dependencies.database.status == 'degraded' %}需关注{% elif diagnostics.dependencies.database.status == 'not_checked' %}未检查{% elif diagnostics.dependencies.database.status == 'not_configured' %}未配置{% else %}未知{% if diagnostics.dependencies.database.status %} · {{ diagnostics.dependencies.database.status }}{% endif %}{% endif %}</span>
+          </div>
+          <div class="health-row">
+            <span class="health-row-icon" aria-hidden="true">◇</span><span class="health-copy"><strong>意图配置</strong><small>任务目标识别规则</small></span>
+            <span class="health-state {% if diagnostics.dependencies.intent_config.status == 'ok' %}is-ok{% elif diagnostics.dependencies.intent_config.status == 'degraded' %}is-warning{% endif %}" title="{{ diagnostics.dependencies.intent_config.status|default:'unknown' }}">{% if diagnostics.dependencies.intent_config.status == 'ok' %}正常{% elif diagnostics.dependencies.intent_config.status == 'degraded' %}需关注{% elif diagnostics.dependencies.intent_config.status == 'not_checked' %}未检查{% elif diagnostics.dependencies.intent_config.status == 'not_configured' %}未配置{% else %}未知{% if diagnostics.dependencies.intent_config.status %} · {{ diagnostics.dependencies.intent_config.status }}{% endif %}{% endif %}</span>
+          </div>
+          {% if intent %}
+          <details class="health-technical" data-testid="current-intent-config">
+            <summary>查看规则版本与校验值</summary>
+            <dl>
+              <div><dt>规则版本</dt><dd>{{ intent.rules_version }}</dd></div>
+              <div><dt>规则 SHA-256</dt><dd class="mono">{{ intent.rules_sha256 }}</dd></div>
+              <div><dt>Prompt 版本</dt><dd>{{ intent.prompt_version }}</dd></div>
+              <div><dt>Prompt SHA-256</dt><dd class="mono">{{ intent.prompt_sha256 }}</dd></div>
+            </dl>
+            <small>当前本地配置，不代表历史运行时版本。</small>
+          </details>
+          {% else %}<p class="health-note">意图配置暂不可用，详细错误已隐藏。</p>{% endif %}
+        </div>
+      </details>
+
+      <details class="health-group" open>
+        <summary class="health-summary">
+          <span class="health-icon" aria-hidden="true">⌘</span>
+          <span class="health-copy"><strong>工作流运行</strong><small>{{ planning_status }} · {% with mode=runtime_health.execution_mode|default:local_executor_mode %}{% if mode == 'local_mock' %}本地模拟{% elif mode == 'simulated_rules' %}规则模拟{% else %}{{ mode }}{% endif %}{% endwith %}</small></span>
+          <span class="health-state {% if diagnostics.dependencies.runtime.health_status == 'ok' %}is-ok{% elif diagnostics.dependencies.runtime.health_status == 'partial' or diagnostics.dependencies.runtime.status == 'degraded' %}is-warning{% endif %}" title="{{ diagnostics.dependencies.runtime.health_status|default:diagnostics.dependencies.runtime.status|default:'unknown' }}">{% if diagnostics.dependencies.runtime.health_status == 'ok' %}可用{% elif diagnostics.dependencies.runtime.health_status == 'partial' %}部分可用{% elif diagnostics.dependencies.runtime.status == 'degraded' %}需关注{% elif diagnostics.dependencies.runtime.health_status == 'not_checked' or diagnostics.dependencies.runtime.status == 'not_checked' %}未检查{% elif diagnostics.dependencies.runtime.health_status == 'not_configured' or diagnostics.dependencies.runtime.status == 'not_configured' %}未配置{% elif diagnostics.dependencies.runtime.health_status %}未知 · {{ diagnostics.dependencies.runtime.health_status }}{% elif diagnostics.dependencies.runtime.status == 'ok' %}未知{% elif diagnostics.dependencies.runtime.status %}未知 · {{ diagnostics.dependencies.runtime.status }}{% else %}未知{% endif %}</span>
+        </summary>
+        <div class="health-children">
+          <div class="health-row">
+            <span class="health-row-icon" aria-hidden="true">↳</span><span class="health-copy"><strong>规划方式</strong><small>{{ runtime_health.planning_mode|default:planning_mode }}</small></span>
+            <span class="health-state is-neutral">{{ planning_status }}</span>
+          </div>
+          <div class="health-row">
+            <span class="health-row-icon" aria-hidden="true">↳</span><span class="health-copy"><strong>产品资料处理</strong><small>本地工作流</small></span>
+            <span class="health-state is-neutral" title="{{ runtime_health.execution_mode|default:local_executor_mode }}">{% with mode=runtime_health.execution_mode|default:local_executor_mode %}{% if mode == 'local_mock' %}本地模拟{% elif mode == 'simulated_rules' %}规则模拟{% else %}{{ mode }}{% endif %}{% endwith %}</span>
+          </div>
+        </div>
+      </details>
+
+      <details class="health-group" open>
+        <summary class="health-summary">
+          <span class="health-icon" aria-hidden="true">⧉</span>
+          <span class="health-copy"><strong>外部服务接入</strong><small>AgentArts 与外部 Provider</small></span>
+          <span class="health-state is-neutral">接入情况</span>
+        </summary>
+        <div class="health-children">
+          <div class="health-row">
+            <span class="health-row-icon" aria-hidden="true">◈</span><span class="health-copy"><strong>AgentArts</strong><small>{{ agentarts_label }}</small></span>
+            <span class="health-state is-neutral" title="{{ agentarts_status }}">{% if agentarts_status == 'not_configured' %}未配置{% elif agentarts_status == 'not_checked' %}未检查{% else %}{{ agentarts_status }}{% endif %}</span>
+          </div>
+          <div class="health-row">
+            <span class="health-row-icon" aria-hidden="true">◈</span><span class="health-copy"><strong>外部 Provider</strong><small>尚未调用或验证外部模型</small></span>
+            <span class="health-state is-neutral" title="{{ diagnostics.dependencies.external_provider.status|default:'not_checked' }}">{% if diagnostics.dependencies.external_provider.status == 'not_configured' %}未配置{% elif diagnostics.dependencies.external_provider.status == 'not_checked' or not diagnostics.dependencies.external_provider.status %}未检查{% else %}{{ diagnostics.dependencies.external_provider.status }}{% endif %}</span>
+          </div>
+        </div>
+      </details>
+    </div>
+  </aside>
   <div class="page-stack">
-    <section class="panel">
+    <section class="panel runs-records" data-run-records>
       <div class="panel-heading">
         <div>
           <h2>Agent 运行</h2>
           <p>{{ run_count }} 条运行记录；只展示调用摘要，不展示原始输出或内部推理。</p>
         </div>
-        <span class="tag demo-tag mono">{{ local_executor_mode }}</span>
+        <span class="tag demo-tag" title="{{ local_executor_mode }}">{% if local_executor_mode == 'local_mock' %}本地模拟{% elif local_executor_mode == 'simulated_rules' %}规则模拟{% else %}{{ local_executor_mode }}{% endif %}</span>
       </div>
       <p class="timezone-note">时间均为上海时间（UTC+8）。</p>
       {% if runs %}
+      <div class="runs-filter-controls" data-run-filters role="group" aria-label="筛选当前加载的运行记录" hidden></div>
+      <p class="runs-filter-summary" data-run-filter-summary role="status" aria-live="polite" hidden></p>
+      <p class="empty-state compact" data-run-filter-empty hidden>当前分类没有运行记录。</p>
       <div class="table-wrap">
-        <table data-testid="runs-table" aria-label="Agent 运行记录">
+        <table id="run-records-table" data-testid="runs-table" aria-label="Agent 运行记录">
           <thead><tr><th>能力</th><th>状态</th><th>批次</th><th>开始</th><th>结束</th></tr></thead>
           <tbody>
             {% for run in runs %}
-            <tr data-testid="run-{{ run.run_id }}">
+            <tr data-testid="run-{{ run.run_id }}" data-run-status="{{ run.status }}">
               <td>
                 <strong>{{ run.capability_label }}</strong>
-                <span class="cell-subtitle mono">{{ run.run_id|slice:":12" }}</span>
+                <details class="technical-details"><summary>运行 ID</summary><span class="mono">{{ run.run_id }}</span></details>
               </td>
               <td><span class="status-pill {{ run.status }}">{{ run.status_label }}</span>{% if run.safe_error_summary %}<span class="cell-subtitle">{{ run.safe_error_summary }}</span>{% endif %}</td>
               <td>{{ run.task.title }}</td>
@@ -36,7 +112,7 @@
       {% if run_count > run_list_limit %}<p class="list-limit-note">仅显示最近 {{ run_list_limit }} 条，共 {{ run_count }} 条。</p>{% endif %}
       <p class="scroll-hint">表格可横向滚动查看完整列。</p>
       {% else %}
-      <div class="empty-state compact"><h3>暂无运行记录</h3><p>本地产品资料执行器运行后会在这里留下摘要。</p></div>
+      <div class="empty-state compact runs-empty" data-testid="runs-empty">暂无运行记录 · 本地产品资料执行器运行后会在这里留下摘要。</div>
       {% endif %}
     </section>
 
@@ -48,7 +124,7 @@
         </div>
       </div>
       {% if events %}
-      <div class="timeline">
+      <div class="timeline runs-event-scroll" data-testid="runs-events-scroll">
         {% for event in events %}
         <article class="timeline-item">
           <span class="timeline-dot" aria-hidden="true"></span>
@@ -67,28 +143,7 @@
     </section>
   </div>
 
-  <aside class="panel platform-card" data-testid="platform-status">
-    <h2>平台状态</h2>
-    <p>当前只启用基础数据与本地产品资料执行器。</p>
-    <dl class="status-list">
-      <div><dt>本地诊断</dt><dd><span class="mono">{{ diagnostics.status }}</span> · 数据库 {{ diagnostics.dependencies.database.status }} · 意图配置 {{ diagnostics.dependencies.intent_config.status }} · Runtime 检查 {{ diagnostics.dependencies.runtime.status }} / 能力 {{ diagnostics.dependencies.runtime.health_status|default:"unavailable" }}</dd></div>
-      <div><dt>规划模式</dt><dd><span class="mono">{{ runtime_health.planning_mode|default:planning_mode }}</span> · {{ planning_status }}</dd></div>
-      <div><dt>业务编排</dt><dd>{{ agent_orchestration }}</dd></div>
-      <div><dt>产品资料整理</dt><dd>Web 工作流当前使用本地 Mock；仅执行本地健康检查（<span class="mono">{{ runtime_health.execution_mode|default:local_executor_mode }}</span>）</dd></div>
-      <div><dt>AgentArts</dt><dd><span class="mono">{{ agentarts_status }}</span> · {{ agentarts_label }}</dd></div>
-      <div><dt>外部 Provider</dt><dd><span class="mono">not_checked</span> · 未调用或验证外部模型</dd></div>
-    </dl>
-    {% if intent %}
-    <h3>当前意图配置</h3>
-    <dl class="status-list" data-testid="current-intent-config">
-      <div><dt>规则版本</dt><dd><span class="mono">{{ intent.rules_version }}</span></dd></div>
-      <div><dt>规则文件 SHA-256</dt><dd class="mono">{{ intent.rules_sha256 }}</dd></div>
-      <div><dt>Prompt 版本</dt><dd><span class="mono">{{ intent.prompt_version }}</span></dd></div>
-      <div><dt>Prompt 文件 SHA-256</dt><dd class="mono">{{ intent.prompt_sha256 }}</dd></div>
-    </dl>
-    <p class="muted-text">以上为当前本地配置，不代表历史运行时版本；文件校验基于实际文件字节。</p>
-    {% else %}<p class="muted-text">当前意图配置无法读取，详细错误已隐藏。</p>{% endif %}
-    <p class="muted-text">运行状态仅覆盖本地数据库、意图配置和 Runtime 健康方法；AgentArts 未配置，外部 Provider 未检查。</p>
-  </aside>
+
 </div>
 {% endblock %}
+{% block scripts %}{{ block.super }}<script src="{{ '/static/workbench/run-filters.js?v=1'|business_url }}" defer></script>{% endblock %}

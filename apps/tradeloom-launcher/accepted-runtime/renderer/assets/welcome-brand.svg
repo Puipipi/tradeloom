@@ -1,0 +1,18 @@
+<svg width="472" height="40" viewBox="0 0 472 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+<style>
+  :root { --dsw-alias-label-primary: #17313A; --dsw-alias-label-primary-inverted: #F7FAFA; }
+  @media (prefers-color-scheme: dark) {
+    :root { --dsw-alias-label-primary: #F7FAFA; --dsw-alias-label-primary-inverted: #17313A; }
+  }
+</style>
+<svg x="2" y="2" width="36" height="36" viewBox="0 0 1024 1024">
+  <rect x="32" y="32" width="960" height="960" rx="256" fill="#F7FAFA" stroke="#D9E5E5" stroke-width="24"/>
+  <path d="M224 384h150c82 0 82 128 164 128s82 128 164 128h98" fill="none" stroke="#F7FAFA" stroke-width="204" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M384 224v150c0 82 128 82 128 164s128 82 128 164v98" fill="none" stroke="#F7FAFA" stroke-width="204" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M224 384h150c82 0 82 128 164 128s82 128 164 128h98" fill="none" stroke="#263D70" stroke-width="160" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M384 224v150c0 82 128 82 128 164s128 82 128 164v98" fill="none" stroke="#0B6B67" stroke-width="160" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M512 434v156" stroke="#F7FAFA" stroke-width="30" stroke-linecap="round"/>
+</svg>
+<text x="52" y="19" fill="var(--dsw-alias-label-primary)" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="600">织贸助手</text>
+<text x="52" y="33" fill="var(--dsw-alias-label-primary)" font-family="Segoe UI, Arial, sans-serif" font-size="9" font-weight="600" letter-spacing="1.4">TradeLoom</text>
+</svg>

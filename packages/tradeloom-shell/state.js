@@ -8,9 +8,82 @@ export const HOME_MARKER = '.tradeloom-owned'
 export const HOME_MARKER_VALUE = 'tradeloom-dsh-apphome-v1\n'
 export { ROLE_IDS } from './roles.js'
 
-const initialState = () => ({ version: 1, roles: {}, budgets: {}, sessionCreateOperations: {}, pendingSessionCreateByRole: {}, userProfile: { displayName: '演示资料（待配置）', notes: '' }, sceneWorkbench: null, dockLayouts: { version: 2, scenes: {} } })
+const initialState = () => ({ version: 1, roles: {}, roleBindingRevisions: Object.fromEntries(ROLE_IDS.map(role => [role, '0'])), budgets: {}, sessionCreateOperations: {}, pendingSessionCreateByRole: {}, userProfile: { displayName: '演示资料（待配置）', notes: '' }, sceneWorkbench: null, dockLayouts: { version: 2, scenes: {} } })
 const samePath = (left, right) => resolve(left).toLocaleLowerCase('en-US') === resolve(right).toLocaleLowerCase('en-US')
 const writeQueues = new Map()
+const ROLE_BINDING_REVISION = /^(?:0|[1-9][0-9]{0,63})$/
+
+function roleBindingTuple(binding) {
+  if (!binding || typeof binding !== 'object' || Array.isArray(binding)
+    || typeof binding.sessionId !== 'string' || binding.sessionId.length === 0) return null
+  return JSON.stringify([
+    binding.sessionId,
+    binding.workspaceId ?? null,
+    binding.workspacePath ?? null,
+    binding.agentPreset ?? null,
+  ])
+}
+
+function initialRoleBindingRevision(binding) {
+  return roleBindingTuple(binding) === null ? '0' : '1'
+}
+
+function normalizedRoleBindingRevisions(state) {
+  const stored = state.roleBindingRevisions
+  if (stored !== undefined && (stored === null || typeof stored !== 'object' || Array.isArray(stored))) {
+    throw new Error('TradeLoom state file has an invalid role binding revision map')
+  }
+  return Object.fromEntries(ROLE_IDS.map(role => {
+    if (stored === undefined) return [role, initialRoleBindingRevision(state.roles?.[role])]
+    if (!Object.hasOwn(stored, role) || typeof stored[role] !== 'string' || !ROLE_BINDING_REVISION.test(stored[role])) {
+      throw new Error('TradeLoom state file has an invalid role binding revision')
+    }
+    const revision = stored[role]
+    return [role, revision === '0' && roleBindingTuple(state.roles?.[role]) !== null ? '1' : revision]
+  }))
+}
+
+function nextRoleBindingRevision(revision) {
+  const next = (BigInt(revision) + 1n).toString()
+  if (!ROLE_BINDING_REVISION.test(next)) throw new Error('TradeLoom role binding revision is exhausted')
+  return next
+}
+
+function stripRoleBindingRevisionFields(state) {
+  for (const role of ROLE_IDS) {
+    const binding = state.roles?.[role]
+    if (binding && typeof binding === 'object' && !Array.isArray(binding)) delete binding.bindingRevision
+  }
+}
+
+/** Read the stable persisted revision, or the deterministic legacy seed for an unmigrated state. */
+export function getRoleBindingRevision(state, role) {
+  if (!ROLE_IDS.includes(role)) throw new Error('unknown TradeLoom role')
+  const revision = state?.roleBindingRevisions?.[role]
+  if (typeof revision === 'string' && ROLE_BINDING_REVISION.test(revision)) {
+    return revision === '0' && roleBindingTuple(state?.roles?.[role]) !== null ? '1' : revision
+  }
+  return initialRoleBindingRevision(state?.roles?.[role])
+}
+
+/** Replace one Host-owned role binding and return its transaction-local revision. */
+export function replaceRoleBinding(state, role, binding) {
+  if (!ROLE_IDS.includes(role)) throw new Error('unknown TradeLoom role')
+  if (!binding || typeof binding !== 'object' || Array.isArray(binding)) throw new Error('invalid TradeLoom role binding')
+  const revisions = normalizedRoleBindingRevisions(state)
+  const previousTuple = roleBindingTuple(state.roles?.[role])
+  const replacement = {
+    sessionId: binding.sessionId,
+    workspaceId: binding.workspaceId ?? null,
+    workspacePath: binding.workspacePath ?? null,
+    agentPreset: binding.agentPreset ?? null,
+  }
+  const changed = previousTuple !== roleBindingTuple(replacement)
+  const revision = changed ? nextRoleBindingRevision(revisions[role]) : revisions[role]
+  state.roles[role] = replacement
+  state.roleBindingRevisions = { ...revisions, [role]: revision }
+  return revision
+}
 
 async function assertNoLinks(path, stopAt) {
   const target = resolve(path)
@@ -76,6 +149,8 @@ export async function createStateStore(options = {}) {
       throw new Error('TradeLoom state file has an unsupported or corrupt format')
     }
     if (value.dockLayouts === undefined) value.dockLayouts = { version: 2, scenes: {} }
+    stripRoleBindingRevisionFields(value)
+    value.roleBindingRevisions = normalizedRoleBindingRevisions(value)
     return value
   }
 
@@ -92,7 +167,16 @@ export async function createStateStore(options = {}) {
       await previous
       try {
         const state = await read()
+        const previousTuples = Object.fromEntries(ROLE_IDS.map(role => [role, roleBindingTuple(state.roles?.[role])]))
+        const previousRevisions = { ...state.roleBindingRevisions }
         const result = await mutator(state)
+        stripRoleBindingRevisionFields(state)
+        state.roleBindingRevisions = Object.fromEntries(ROLE_IDS.map(role => [
+          role,
+          previousTuples[role] === roleBindingTuple(state.roles?.[role])
+            ? previousRevisions[role]
+            : nextRoleBindingRevision(previousRevisions[role]),
+        ]))
         const temporary = join(directory, `.state-${randomUUID()}.tmp`)
         await assertNoLinks(temporary, home)
         const handle = await open(temporary, 'wx', 0o600)

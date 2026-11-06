@@ -1,29 +1,137 @@
 {% extends "workbench/base.html" %}
 {% load business_urls %}
-{% block page_eyebrow %}Agent / 工作流详情{% endblock %}
+{% block stylesheets %}{{ block.super }}<link rel="stylesheet" href="{{ '/static/workbench/workflow-graph.css?v=workflow-graph5'|business_url }}">{% endblock %}
+{% block page_eyebrow %}工作流 / 计划详情{% endblock %}
 {% block page_title %}业务计划详情{% endblock %}
 {% block content %}
-<div class="page-stack" data-testid="workflow-detail" data-workflow-id="{{ workflow.id }}">
-  <section class="panel workflow-overview">
+<div class="page-stack workflow-detail-layout" data-testid="workflow-detail" data-workflow-id="{{ workflow.id }}">
+  <nav class="workflow-page-navigation" aria-label="计划导航">
+    <a class="button secondary small" href="{% business_path '/agent-center' %}#workflow-list-heading">返回工作流</a>
+    <a class="button secondary small" href="#workflow-plan">计划画布</a>
+    <a class="button secondary small" href="#workflow-overview">计划信息</a>
+    <a class="button secondary small" href="#steps-heading">步骤轨迹</a>
+    <a class="button secondary small" href="#reviews-heading">人工确认</a>
+    <a class="button secondary small" href="#workflow-delivery-actions">交付文件</a>
+  </nav>
+  <section id="workflow-plan" class="panel workflow-plan-panel" aria-labelledby="plan-heading">
+    <div class="panel-heading"><div><h2 id="plan-heading">{{ batch.title }} · 计划画布</h2><p>{{ classification_summary }} · 仅连接已保存的任务关系</p></div><span class="status-pill {{ workflow.status }}">{{ status_label }}</span></div>
+    {% if workflow.plan.subtasks or workflow.subtasks %}
+    <div class="workflow-graph" data-workflow-graph data-create-href="{% business_path '/agent-center' %}#workflow-create-form">
+      {{ workflow_graph_plan|json_script:"workflow-plan-graph-data" }}
+      {{ workflow_graph_subtasks|json_script:"workflow-subtasks-graph-data" }}
+      {{ workflow_graph_steps|json_script:"workflow-steps-graph-data" }}
+      {{ workflow_graph_reviews|json_script:"workflow-reviews-graph-data" }}
+      {{ workflow_graph_artifacts|json_script:"workflow-artifacts-graph-data" }}
+      {{ dispatch_target|json_script:"workflow-dispatch-graph-data" }}
+      <div class="workflow-graph-toolbar" role="toolbar" aria-label="计划图工具">
+        <div class="workflow-graph-mode" role="group" aria-label="计划显示方式">
+          <button type="button" class="workflow-graph-control is-active" data-graph-mode="graph" aria-pressed="true">节点图</button>
+          <button type="button" class="workflow-graph-control" data-graph-mode="list" aria-pressed="false">列表</button>
+        </div>
+        <span class="workflow-graph-separator" aria-hidden="true"></span>
+        <button type="button" class="workflow-graph-control" data-graph-action="fit">适应画布</button>
+        <button type="button" class="workflow-graph-control" data-graph-action="zoom-out" aria-label="缩小">−</button>
+        <output class="workflow-graph-zoom" data-graph-zoom aria-live="polite">100%</output>
+        <button type="button" class="workflow-graph-control" data-graph-action="zoom-in" aria-label="放大">＋</button>
+        <span class="workflow-graph-separator" aria-hidden="true"></span>
+        <button type="button" class="workflow-graph-control" data-graph-action="arrange">整理</button>
+        <span class="workflow-graph-legend" aria-label="节点类别图例">
+          <span class="legend-plan">计划</span><span class="legend-execution">执行</span><span class="legend-review">人审</span><span class="legend-artifact">交付</span>
+        </span>
+        <span class="workflow-graph-count" data-graph-count></span>
+        <a class="workflow-graph-template-link" href="{% business_path '/agent-center' %}#workflow-create-form" aria-label="创建业务计划">创建计划</a>
+        <span class="workflow-graph-template-kind">业务类型：{{ task_type_label }}</span>
+      </div>
+      <p class="workflow-graph-notice" data-graph-notice role="status" hidden></p>
+      <div class="workflow-graph-layout">
+        <div class="workflow-graph-stage" data-graph-stage tabindex="0" aria-label="业务计划节点图。拖动空白处平移，拖动节点整理布局，使用按钮缩放，按方向键切换节点。">
+          <div class="workflow-graph-world" data-graph-world>
+            <svg class="workflow-graph-edges" data-graph-edges aria-hidden="true"></svg>
+            <div class="workflow-graph-nodes" data-graph-nodes></div>
+          </div>
+          <p class="workflow-graph-hint">拖动空白处平移 · 拖动节点整理 · 滚轮缩放</p>
+        </div>
+        <aside class="workflow-graph-details" data-graph-details aria-label="所选计划节点详情" aria-live="polite">
+          <p class="workflow-graph-detail-empty">选择一个节点查看业务详情。</p>
+        </aside>
+      </div>
+      <div class="workflow-graph-list" data-graph-list hidden></div>
+      <p class="workflow-graph-bridge-status" data-graph-bridge-status role="status" aria-live="polite" hidden></p>
+      <dialog class="workflow-graph-review-dialog" data-graph-review-dialog aria-labelledby="workflow-graph-review-title">
+        <div class="workflow-graph-review-shell">
+          <header class="workflow-graph-review-header">
+            <div><p>人工核验</p><h2 id="workflow-graph-review-title" data-graph-review-title></h2></div>
+            <button class="workflow-graph-review-close" type="button" data-graph-review-close aria-label="关闭核验窗口">×</button>
+          </header>
+          <div class="workflow-graph-review-body" data-graph-review-body></div>
+        </div>
+      </dialog>
+      <noscript><p class="workflow-graph-noscript">节点图需要启用 JavaScript；已保存计划和执行记录仍可在下方步骤轨迹与子任务列表中查看。</p></noscript>
+    </div>
+    {% else %}<div class="empty-state compact"><p>当前工作流没有已保存的计划或子任务。</p></div>{% endif %}
+    {% if workflow.plan.source_summary %}
+    <dl class="workflow-meta workflow-plan-source-summary">
+      <div><dt>产品数</dt><dd>{{ workflow.plan.source_summary.product_count }}</dd></div>
+      <div><dt>当前版本数</dt><dd>{{ workflow.plan.source_summary.current_revision_count }}</dd></div>
+      <div><dt>已确认版本数</dt><dd>{{ workflow.plan.source_summary.confirmed_current_revision_count }}</dd></div>
+      <div><dt>无当前版本产品数</dt><dd>{{ workflow.plan.source_summary.products_without_current_revision }}</dd></div>
+    </dl>
+    {% endif %}
+  </section>
+
+
+  <section id="workflow-overview" class="panel workflow-overview">
     <div class="panel-heading">
       <div>
         <p class="eyebrow">{{ task_type_label }}</p>
         <h2>{{ batch.title }}</h2>
         <p class="workflow-goal">{{ workflow.user_goal }}</p>
       </div>
-      <span class="status-pill">{{ status_label }}</span>
+      <div class="workflow-state-badges">
+        <span class="status-pill {{ workflow.status }}">{{ status_label }}</span>
+      </div>
     </div>
     <dl class="workflow-meta">
-      <div><dt>批次 ID</dt><dd class="mono">{{ workflow.batch_id }}</dd></div>
-      <div><dt>工作流 ID</dt><dd class="mono">{{ workflow.id }}</dd></div>
-      <div><dt>执行模式</dt><dd class="mono">{{ workflow.execution_mode }} · {{ workflow.planning_mode }}</dd></div>
-      <div><dt>AgentArts</dt><dd>{{ workflow.agentarts }}</dd></div>
-      <div><dt>人审待填写</dt><dd>{{ workflow.pending_review_count }}</dd></div>
-      <div><dt>人审未核验</dt><dd>{{ workflow.unresolved_review_count }}</dd></div>
+      <div><dt>待人工填写</dt><dd>{{ workflow.pending_review_count }}</dd></div>
+      <div><dt>待应用核验</dt><dd>{{ workflow.unresolved_review_count }}</dd></div>
     </dl>
-    <p class="workflow-boundary">计划与子任务已保存；保存不会执行。点击按钮只运行一个本地模拟子任务。</p>
-    {% if dispatch_target %}
-    <form class="workflow-dispatch-form" data-testid="workflow-dispatch" data-dispatch-url="{{ dispatch_target.url|business_url }}">
+    <details class="workflow-technical-details">
+      <summary>工作流标识与技术信息</summary>
+      <dl class="workflow-meta">
+        <div><dt>批次 ID</dt><dd class="mono">{{ workflow.batch_id }}</dd></div>
+        <div><dt>工作流 ID</dt><dd class="mono">{{ workflow.id }}</dd></div>
+        <div><dt>执行与计划模式</dt><dd class="mono">{{ workflow.execution_mode }} · {{ workflow.planning_mode }}</dd></div>
+        <div><dt>AgentArts</dt><dd>{{ workflow.agentarts }}</dd></div>
+      </dl>
+    </details>
+    {% if native_dsh %}
+    <details class="workflow-technical-details">
+      <summary>原生专家执行说明</summary>
+      <p class="workflow-boundary">已保存为原生 DSH 模式。工作流详情页不会调用本地模拟派发；由中心助手读取已保存任务并申请原生专家 assignment。</p>
+    </details>
+    {% else %}
+    <details class="workflow-technical-details">
+      <summary>执行范围说明</summary>
+      <p class="workflow-boundary">计划与子任务已保存；保存不会执行。点击按钮只运行一个本地模拟子任务。</p>
+    </details>
+    {% endif %}
+    {% if native_dsh and dispatch_target %}
+    <details class="workflow-technical-details workflow-native-dispatch-details" data-testid="native-expert-dispatch-details">
+      <summary>中心助手派发信息 · 下一步已就绪</summary>
+      <section class="workflow-boundary" data-testid="native-expert-dispatch">
+        <h3>由中心助手派发原生专家</h3>
+        <p>请在中心对话中读取此工作流并让中心助手按服务端下一步授权派发。未知或重放状态不会自动再次启动专家。</p>
+        <p>工作流引用（可选择复制）：<input aria-label="工作流引用" readonly value="{{ workflow.id }}"></p>
+        <p>下一子任务引用（可选择复制）：<input aria-label="下一子任务引用" readonly value="{{ dispatch_target.subtask_id }}"></p>
+      </section>
+    </details>
+    {% elif native_dsh %}
+    <details class="workflow-technical-details workflow-native-dispatch-details">
+      <summary>中心助手派发状态</summary>
+      <p class="workflow-boundary" data-testid="native-expert-dispatch-blocked">当前没有可由中心助手派发的下一子任务：{{ dispatch_blocked_reason }}</p>
+    </details>
+    {% elif dispatch_target %}
+    <form id="workflow-dispatch-form" class="workflow-dispatch-form" data-testid="workflow-dispatch" data-dispatch-url="{{ dispatch_target.url|business_url }}">
       <input type="hidden" name="subtask_id" value="{{ dispatch_target.subtask_id }}">
       <input type="hidden" name="idempotency_key" value="{{ dispatch_target.idempotency_key }}">
       <button class="button primary" type="submit">执行下一步（本地模拟）</button>
@@ -31,11 +139,16 @@
       <a class="button secondary" data-dispatch-refresh href="{% business_path '/workflow-tasks/' workflow.id %}" hidden>刷新状态</a>
     </form>
     {% else %}
-    <p class="workflow-boundary" data-testid="workflow-dispatch-blocked">{{ dispatch_blocked_reason }}</p>
+    <details class="workflow-technical-details">
+      <summary>下一步暂不可执行</summary>
+      <p class="workflow-boundary" data-testid="workflow-dispatch-blocked">{{ dispatch_blocked_reason }}</p>
+    </details>
     {% endif %}
   </section>
 
-  <section class="panel" aria-labelledby="deliverables-heading">
+  <details class="workflow-secondary-disclosure">
+    <summary>交付文件与审核 · {{ deliverables.workflow_status }}</summary>
+  <section id="workflow-delivery-actions" class="panel workflow-deliverables-panel" aria-labelledby="deliverables-heading">
     <div class="panel-heading"><div><h2 id="deliverables-heading">交付文件</h2><p>文件按产品版本冻结并完成落盘质检；审核决定只针对这组文件。</p></div><span class="status-pill">{{ deliverables.workflow_status }}</span></div>
     {% if english_name_hints %}
     <aside class="workflow-boundary" data-testid="english-name-hints" aria-label="当前产品资料英文名缺项">
@@ -58,7 +171,7 @@
       <p class="form-error" data-pending-error role="alert" aria-live="polite" hidden></p>
     </form>
     {% if generation_available %}
-    <form class="delivery-generate-form" data-url="{% business_path '/api/workflow-tasks/' workflow.id '/deliverables' %}" data-key="{{ generation_key }}">
+    <form id="workflow-delivery-generate-form" class="delivery-generate-form" data-url="{% business_path '/api/workflow-tasks/' workflow.id '/deliverables' %}" data-key="{{ generation_key }}">
       {% if latest_generation and latest_generation.status == "failed" and workflow.current_step == "generate_deliverables_failed" %}
       <button class="button primary" type="submit">错误重试（剩余 {{ generation_retry_remaining }} 次）</button>
       {% else %}
@@ -78,7 +191,7 @@
     {% endif %}
     {% if generation_takeover_available %}
     <p class="workflow-boundary">接管会将本次尝试标记为结果未知并封存，不会停止旧进程，也不会判断超时进程已经结束。</p>
-    <form class="generation-takeover-form" data-execution-url="{{ generation_takeover_url|business_url }}" data-expected-step-id="{{ latest_generation.id }}" data-idempotency-key="{{ generation_takeover_key }}">
+    <form id="workflow-delivery-takeover-form" class="generation-takeover-form" data-execution-url="{{ generation_takeover_url|business_url }}" data-expected-step-id="{{ latest_generation.id }}" data-idempotency-key="{{ generation_takeover_key }}">
       <input type="hidden" name="decision" value="outcome_unknown">
       <div class="field"><label for="generation-takeover-operator-{{ latest_generation.id }}">操作人标签</label><input id="generation-takeover-operator-{{ latest_generation.id }}" name="operator_label" maxlength="120" required></div>
       <div class="field"><label for="generation-takeover-note-{{ latest_generation.id }}">接管说明</label><textarea id="generation-takeover-note-{{ latest_generation.id }}" name="note" maxlength="1000" rows="2"></textarea></div>
@@ -89,7 +202,7 @@
     {% endif %}
     {% if review_available %}
     <p class="workflow-boundary">此处仅批准或驳回交付文件，不批准产品事实。</p>
-    <form class="delivery-review-form" data-url="{% business_path '/api/workflow-tasks/' workflow.id '/deliverables/' deliverables.generation_step_id '/review' %}">
+    <form id="workflow-delivery-review-form" class="delivery-review-form" data-url="{% business_path '/api/workflow-tasks/' workflow.id '/deliverables/' deliverables.generation_step_id '/review' %}">
       <div class="field"><label for="delivery-reviewer">审核人标签</label><input id="delivery-reviewer" name="reviewer" maxlength="120" required></div>
       <div class="field"><label for="delivery-note">审核说明</label><textarea id="delivery-note" name="note" maxlength="1000" rows="2"></textarea></div>
       <div class="workflow-form-actions"><button class="button primary" name="decision" value="approve" type="submit">批准交付文件</button><button class="button secondary" name="decision" value="reject" type="submit">驳回并重新生成</button></div>
@@ -98,7 +211,7 @@
     </form>
     {% endif %}
     {% if complete_available %}
-    <form class="delivery-complete-form" data-url="{% business_path '/api/workflow-tasks/' workflow.id '/complete' %}">
+    <form id="workflow-delivery-complete-form" class="delivery-complete-form" data-url="{% business_path '/api/workflow-tasks/' workflow.id '/complete' %}">
       <button class="button primary" type="submit">完成工作流</button>
       <p class="form-error" data-delivery-error role="alert" aria-live="polite" hidden></p>
       <a class="button secondary" data-delivery-refresh href="{% business_path '/workflow-tasks/' workflow.id %}" hidden>刷新状态</a>
@@ -112,56 +225,43 @@
     {% if deliverables.artifacts %}
     <div class="workflow-track">
       {% for artifact in deliverables.artifacts %}
-      <article class="workflow-record"><h3>{{ artifact.artifact_type }} · 当前 v{{ artifact.current_version }}</h3><span class="status-pill">{{ artifact.status }}</span>
-        {% for version in artifact.versions %}<p>v{{ version.version }} · {{ version.status }} · SHA-256 <span class="mono">{{ version.sha256 }}</span></p>
-        <p>来源版本：{% for source in version.source_product_versions %}<span class="mono">{{ source.product_id }} / {{ source.revision_id }} v{{ source.version }}</span>{% if not forloop.last %}、{% endif %}{% empty %}—{% endfor %}</p>
-        <p>{% if version.preview_url %}<a href="{{ version.preview_url|business_url }}" rel="noopener">预览</a> · {% endif %}<a href="{{ version.download_url|business_url }}">下载</a></p>{% endfor %}
+      <article class="workflow-record"><div class="workflow-record-heading"><h3>{{ artifact.artifact_type }} · 当前 v{{ artifact.current_version }}</h3><span class="status-pill {{ artifact.status }}">{{ artifact.status_label|default:artifact.status }}</span></div>
+        {% for version in artifact.versions %}<div class="workflow-version-row"><div class="artifact-version-primary"><strong>v{{ version.version }}</strong><span class="status-pill {{ version.status }}">{{ version.status_label|default:version.status }}</span></div>
+          <div class="artifact-version-actions">{% if version.preview_url %}<a href="{{ version.preview_url|business_url }}" rel="noopener">预览</a> · {% endif %}<a href="{{ version.download_url|business_url }}">下载</a></div>
+          <details class="technical-details"><summary>来源与校验信息</summary><p>SHA-256 <span class="mono">{{ version.sha256 }}</span></p>
+            <p>来源版本：{% for source in version.source_product_versions %}<span class="mono">{{ source.product_id }} / {{ source.revision_id }} v{{ source.version }}</span>{% if not forloop.last %}、{% endif %}{% empty %}—{% endfor %}</p>
+          </details>
+        </div>{% endfor %}
       </article>
       {% endfor %}
     </div>
     {% else %}<div class="empty-state compact"><p>尚无登记的交付文件。</p></div>{% endif %}
   </section>
+  </details>
 
-  <section class="panel" aria-labelledby="plan-heading">
-    <div class="panel-heading"><div><h2 id="plan-heading">已保存计划概述</h2><p>{{ classification_summary }}</p></div></div>
-    {% if workflow.plan.subtasks %}
-    <div class="compact-list">
-      {% for item in workflow.plan.subtasks %}
-      <article class="compact-row">
-        <strong>{{ item.order }} · {{ item.role_label }}</strong>
-        <span>依赖：{% if item.depends_on %}{{ item.depends_on|join:"、" }}{% else %}无{% endif %}</span>
-      </article>
-      {% endfor %}
-    </div>
-    {% else %}<div class="empty-state compact"><p>当前工作流没有已保存的计划摘要。</p></div>{% endif %}
-    {% if workflow.plan.source_summary %}
-    <dl class="workflow-meta">
-      <div><dt>产品数</dt><dd>{{ workflow.plan.source_summary.product_count }}</dd></div>
-      <div><dt>当前版本数</dt><dd>{{ workflow.plan.source_summary.current_revision_count }}</dd></div>
-      <div><dt>已确认版本数</dt><dd>{{ workflow.plan.source_summary.confirmed_current_revision_count }}</dd></div>
-      <div><dt>无当前版本产品数</dt><dd>{{ workflow.plan.source_summary.products_without_current_revision }}</dd></div>
-    </dl>
-    {% endif %}
-  </section>
-
-  <section class="panel" aria-labelledby="steps-heading">
+  <details class="workflow-secondary-disclosure">
+    <summary>步骤轨迹 · {{ workflow.steps|length }} 条记录</summary>
+  <section class="panel workflow-steps-panel" aria-labelledby="steps-heading">
     <div class="panel-heading"><div><h2 id="steps-heading">步骤轨迹</h2><p>显示已保存的步骤尝试、起止时间与短错误。</p></div><span class="count-badge">{{ workflow.steps|length }}</span></div>
     {% if workflow.steps %}
     <div class="workflow-track">
       {% for step in workflow.steps %}
-      <article class="workflow-record">
-        <div class="workflow-record-heading"><h3>{{ step.step_label }}</h3><span class="status-pill">{{ step.status_label }}</span></div>
-        <p>尝试 {{ step.attempt }} · <span class="mono">{{ step.id }}</span></p>
+      <article class="workflow-record" id="workflow-step-{{ step.id }}">
+        <div class="workflow-record-heading"><h3>{{ step.step_label }}</h3><span class="status-pill {{ step.status }}">{{ step.status_label }}</span></div>
+        <p>尝试 {{ step.attempt }}</p>
+        <details class="workflow-technical-details"><summary>步骤 ID</summary><span class="mono">{{ step.id }}</span></details>
         <p>开始：{{ step.started_at_display }} · 结束：{{ step.finished_at_display }}</p>
         {% if step.error_summary %}<p class="workflow-error">错误：{{ step.error_summary }}</p>{% endif %}
         {% if step.input_source_rows %}<details><summary>输入来源引用</summary>{% include "workbench/workflow_reference_rows.html" with rows=step.input_source_rows %}</details>{% endif %}
         {% if step.output_source_rows %}<details><summary>输出来源引用</summary>{% include "workbench/workflow_reference_rows.html" with rows=step.output_source_rows %}</details>{% endif %}
-        {% if step.retry_available %}
+        {% if step.retry_available and not native_dsh %}
         <form class="workflow-retry-form" data-testid="workflow-retry" data-execution-url="{{ step.retry_url|business_url }}" data-idempotency-key="{{ step.retry_key }}" data-expected-step-id="{{ step.id }}">
           <button class="button primary" type="submit">错误重试（剩余 {{ step.retry_remaining }} 次额度）</button>
           <p class="form-error" data-execution-error role="alert" aria-live="polite" hidden></p>
           <a class="button secondary" data-execution-refresh href="{% business_path '/workflow-tasks/' workflow.id %}" hidden>刷新状态</a>
         </form>
+        {% elif step.retry_available and native_dsh %}
+        <p class="workflow-boundary" data-testid="native-retry-route">此原生专家步骤不能走本地模拟重试。请由中心助手先读取状态，并只在服务端返回新的授权 assignment 时派发。</p>
         {% elif step.status == "failed" and step.retry_remaining == 0 %}
         <p class="workflow-boundary">2次错误重试额度耗尽，请人工排查。</p>
         {% endif %}
@@ -180,16 +280,19 @@
     </div>
     {% else %}<div class="empty-state compact"><p>尚无步骤记录。</p></div>{% endif %}
   </section>
+  </details>
 
-  <section class="panel" aria-labelledby="subtasks-heading">
+  <details class="workflow-secondary-disclosure">
+    <summary>子任务记录 · {{ workflow.subtasks|length }} 项</summary>
+  <section class="panel workflow-subtasks-panel" aria-labelledby="subtasks-heading">
     <div class="panel-heading"><div><h2 id="subtasks-heading">子任务</h2><p>显示角色、状态、依赖、来源引用和结构化结果摘要。</p></div><span class="count-badge">{{ workflow.subtasks|length }}</span></div>
     {% if workflow.subtasks %}
     <div class="workflow-track">
       {% for subtask in workflow.subtasks %}
-      <article class="workflow-record">
-        <div class="workflow-record-heading"><h3>{{ subtask.role_label }}</h3><span class="status-pill">{{ subtask.status_label }}</span></div>
-        <p class="mono">子任务 ID：{{ subtask.id }}</p>
+      <article class="workflow-record" id="workflow-subtask-{{ subtask.id }}">
+        <div class="workflow-record-heading"><h3>{{ subtask.role_label }}</h3><span class="status-pill {{ subtask.status }}">{{ subtask.status_label }}</span></div>
         <p>依赖 ID：{% if subtask.depends_on %}{{ subtask.depends_on|join:"、" }}{% else %}无{% endif %}</p>
+        <details class="workflow-technical-details"><summary>子任务 ID</summary><span class="mono">{{ subtask.id }}</span></details>
         {% if subtask.error_summary %}<p class="workflow-error">错误：{{ subtask.error_summary }}</p>{% endif %}
         {% if subtask.result_summary %}<dl class="reference-list">{% for row in subtask.result_summary %}<div><dt>{{ row.label }}</dt><dd>{{ row.value }}</dd></div>{% endfor %}</dl>{% endif %}
         {% if subtask.input_source_rows %}<details><summary>输入来源引用</summary>{% include "workbench/workflow_reference_rows.html" with rows=subtask.input_source_rows %}</details>{% endif %}
@@ -199,8 +302,11 @@
     </div>
     {% else %}<div class="empty-state compact"><p>尚无子任务记录。</p></div>{% endif %}
   </section>
+  </details>
 
-  <section class="panel" aria-labelledby="reviews-heading">
+  <details class="workflow-secondary-disclosure">
+    <summary>人审队列 · {{ workflow.reviews|length }} 项</summary>
+  <section class="panel workflow-reviews-panel" aria-labelledby="reviews-heading">
     <div class="panel-heading"><div><h2 id="reviews-heading">人审队列</h2><p>提交说明会形成待核验回执，不代表批准或事实应用。</p></div><span class="count-badge">{{ workflow.reviews|length }}</span></div>
     {% if workflow.reviews %}
     <div class="workflow-track">
@@ -209,6 +315,20 @@
         <div class="workflow-record-heading"><h3>{{ review.item_ref }}</h3><span class="status-pill">{% if review.status == "pending" %}待填写{% elif review.ui_unapplied %}已提交待应用{% elif review.status == "approved" %}已核验{% else %}已提交待核验{% endif %}</span></div>
         <p>{{ review.question }}</p>
         {% if review.options_display %}<ul class="review-options">{% for option in review.options_display %}<li>{{ option }}</li>{% endfor %}</ul>{% endif %}
+        {% if review.native_advice %}
+        <details class="native-expert-advice" data-testid="native-expert-advice">
+          <summary>专家未核实建议</summary>
+          <p class="muted-text">以下内容来自原生专家的未核实建议，仅供人工参考；不会自动填写或应用。</p>
+          {% for advice in review.native_advice %}
+          <div class="review-native-advice-item">
+            {% if advice.label %}<p><strong>{{ advice.label }}</strong></p>{% endif %}
+            {% if advice.suggested_value %}<p>建议值：{{ advice.suggested_value }}</p>{% endif %}
+            <p>说明：{{ advice.note }}</p>
+            {% if advice.source_rows %}<details><summary>建议来源引用</summary>{% include "workbench/workflow_reference_rows.html" with rows=advice.source_rows %}</details>{% endif %}
+          </div>
+          {% endfor %}
+        </details>
+        {% endif %}
         <p class="muted-text">创建于 {{ review.created_at_display }}</p>
         {% if review.source_rows %}<details><summary>来源引用</summary>{% include "workbench/workflow_reference_rows.html" with rows=review.source_rows %}</details>{% endif %}
         {% if review.status == "pending" and review.ui_kind == "image_selection" %}
@@ -319,13 +439,18 @@
     </form>
     {% endif %}
   </section>
+  </details>
 
-  <section class="panel" aria-labelledby="events-heading">
+  <details class="workflow-secondary-disclosure">
+    <summary>工作流事件历史 · {{ events|length }} 条</summary>
+  <section class="panel workflow-events-panel" aria-labelledby="events-heading">
     <div class="panel-heading"><div><h2 id="events-heading">工作流事件历史</h2><p>按发生时间和事件 ID 排序。</p></div><span class="count-badge">{{ events|length }}</span></div>
-    {% if events %}<div class="table-wrap"><table class="workflow-events"><thead><tr><th>时间</th><th>事件</th><th>记录者</th><th>摘要</th><th>事件 ID</th></tr></thead><tbody>{% for event in events %}<tr><td>{{ event.created_at_display }}</td><td>{{ event.event_type }}</td><td>{{ event.actor }}</td><td>{{ event.summary|default:"—" }}</td><td class="mono">{{ event.id }}</td></tr>{% endfor %}</tbody></table></div>
+  {% if events %}<div class="table-wrap"><table class="workflow-events"><thead><tr><th>时间</th><th>事件</th><th>记录者</th><th>摘要</th><th>技术信息</th></tr></thead><tbody>{% for event in events %}<tr><td>{{ event.created_at_display }}</td><td>{{ event.event_type }}</td><td>{{ event.actor }}</td><td>{{ event.summary|default:"—" }}</td><td><details class="workflow-technical-details"><summary>事件详情</summary><span class="mono">{{ event.id }}</span></details></td></tr>{% endfor %}</tbody></table></div>
     {% else %}<div class="empty-state compact"><p>尚无事件记录。</p></div>{% endif %}
   </section>
+  </details>
   <p><a class="button secondary" href="{% business_path '/agent-center' %}">返回 Agent 中心</a></p>
   <p id="workflow-detail-error" class="form-error" role="alert" aria-live="polite" hidden></p>
 </div>
 {% endblock %}
+{% block scripts %}{{ block.super }}<script src="{{ '/static/workbench/workflow-graph.js?v=workflow-graph5'|business_url }}" defer></script>{% endblock %}
