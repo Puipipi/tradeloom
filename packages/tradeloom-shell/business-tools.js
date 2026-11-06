@@ -3,13 +3,24 @@ import { isIPv4 } from 'node:net'
 import { ROLE_PRESETS } from './roles.js'
 
 export const name = '@tradeloom/dsh-business-shell/business-tools'
-export const inject = ['tools', 'webServer']
+export const inject = ['tools', 'webServer', 'agents']
 
 const DJANGO_HOST = '127.0.0.1'
-const DJANGO_PORT = 3090
+function djangoPort() {
+  const raw = process.env.TRADELOOM_DJANGO_PORT
+  if (raw === undefined) return 3090
+  if (!/^[1-9][0-9]*$/.test(raw) || Number(raw) > 65535) throw new TypeError('invalid Django port')
+  return Number(raw)
+}
 const CSRF_PATH = '/'
 const MAX_RESPONSE_BYTES = 1024 * 1024
 const REQUEST_TIMEOUT_MS = 30_000
+const NATIVE_BRIDGE_HEADER = 'x-tradeloom-native-bridge'
+const NATIVE_BRIDGE_TOOLS = new Set([
+  'tradeloom_begin_native_workflow_assignment',
+  'tradeloom_bind_native_workflow_expert',
+  'tradeloom_submit_native_workflow_advice',
+])
 const KNOWN_PRESETS = new Set(Object.values(ROLE_PRESETS))
 const ERP_DOCTYPES = Object.freeze(['Item', 'Customer', 'Supplier', 'Warehouse', 'Bin', 'Sales Order', 'Purchase Order'])
 const INTAKE_CANDIDATE_TYPES = Object.freeze(['product_identity', 'commercial_source', 'production_instruction', 'labor_analysis'])
@@ -50,10 +61,13 @@ const INTAKE_MAX_FIELD_VALUES = 10
 const INTAKE_MAX_TEXT = 160
 const TOOL_ACCESS = Object.freeze({
   tradeloom_read_products: new Set([ROLE_PRESETS.center, ROLE_PRESETS.product]),
-  tradeloom_read_workflow_task: new Set([ROLE_PRESETS.center, ROLE_PRESETS.delivery]),
+  tradeloom_read_workflow_task: new Set([ROLE_PRESETS.center, ROLE_PRESETS.product, ROLE_PRESETS.delivery]),
   tradeloom_read_deliverables: new Set([ROLE_PRESETS.center, ROLE_PRESETS.delivery]),
   tradeloom_preview_workflow_intent: new Set([ROLE_PRESETS.center]),
   tradeloom_dispatch_workflow_subtask: new Set([ROLE_PRESETS.center]),
+  tradeloom_begin_native_workflow_assignment: new Set([ROLE_PRESETS.center]),
+  tradeloom_bind_native_workflow_expert: new Set([ROLE_PRESETS.center]),
+  tradeloom_submit_native_workflow_advice: new Set([ROLE_PRESETS.product, ROLE_PRESETS.delivery]),
   tradeloom_erpnext_status: new Set([ROLE_PRESETS.center, ROLE_PRESETS.product, ROLE_PRESETS.delivery]),
   tradeloom_erpnext_list: new Set([ROLE_PRESETS.center, ROLE_PRESETS.product, ROLE_PRESETS.delivery]),
   tradeloom_erpnext_detail: new Set([ROLE_PRESETS.center, ROLE_PRESETS.product, ROLE_PRESETS.delivery]),
@@ -99,26 +113,32 @@ function failure(code) {
   return { ok: false, data: '', requires_human_confirmation: false, business_ui_url: '', error_code: code }
 }
 
-function authority(webServer) {
+export function trustedBusinessAuthority(webServer) {
   const { protocol, host, port } = webServer ?? {}
+  const configuredPort = process.env.TRADELOOM_DSH_BIND_PORT ?? '3088'
+  if (!/^[1-9][0-9]*$/.test(configuredPort) || Number(configuredPort) > 65535) throw new Error('TradeLoom trusted business port is unavailable')
   const octets = typeof host === 'string' && isIPv4(host) ? host.split('.').map(Number) : []
   const privateLanAddress = octets[0] === 10
     || (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31)
     || (octets[0] === 192 && octets[1] === 168)
-  if (protocol !== 'http:' || !privateLanAddress || Number(port) !== 3088) {
+  if (protocol !== 'http:' || !privateLanAddress || Number(port) !== Number(configuredPort)) {
     throw new Error('TradeLoom trusted business authority is unavailable')
   }
   const origin = webServer.getOrigin?.()
   const parsed = typeof origin === 'string' ? new URL(origin) : undefined
-  if (!parsed || parsed.origin !== origin || parsed.protocol !== protocol || parsed.hostname !== host
-    || parsed.port !== '3088' || parsed.pathname !== '/' || parsed.search || parsed.hash
+  const canonicalOrigin = `http://${host}${configuredPort === '80' ? '' : ':' + configuredPort}`
+  const acceptedOrigin = origin === canonicalOrigin || (configuredPort === '80' && origin === `http://${host}:80`)
+  if (!parsed || !acceptedOrigin || parsed.origin !== canonicalOrigin || parsed.protocol !== protocol || parsed.hostname !== host
+    || Number(parsed.port || 80) !== Number(configuredPort) || parsed.pathname !== '/' || parsed.search || parsed.hash
     || parsed.username || parsed.password) {
     throw new Error('TradeLoom trusted business origin is unavailable')
   }
-  return { host, origin: parsed.origin, hostHeader: `${host}:3088` }
+  return { host, origin: parsed.origin, hostHeader: parsed.host }
 }
 
-function requestJson({ path, method, body, authority: trusted, port = DJANGO_PORT, request = http.request, cookie = '', csrfToken = '', signal, timeoutMs = REQUEST_TIMEOUT_MS }) {
+const authority = trustedBusinessAuthority
+
+export function requestBusinessJson({ path, method, body, authority: trusted, port = djangoPort(), request = http.request, cookie = '', csrfToken = '', nativeBridgeKey, signal, timeoutMs = REQUEST_TIMEOUT_MS, maxResponseBytes = MAX_RESPONSE_BYTES }) {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
       const error = new Error('Tool request was cancelled')
@@ -134,6 +154,7 @@ function requestJson({ path, method, body, authority: trusted, port = DJANGO_POR
     }
     if (cookie) headers.cookie = cookie
     if (csrfToken) headers['x-csrftoken'] = csrfToken
+    if (nativeBridgeKey) headers[NATIVE_BRIDGE_HEADER] = nativeBridgeKey
     if (payload) {
       headers['content-type'] = 'application/json'
       headers['content-length'] = String(payload.byteLength)
@@ -158,7 +179,7 @@ function requestJson({ path, method, body, authority: trusted, port = DJANGO_POR
       let size = 0
       response.on('data', chunk => {
         size += chunk.byteLength
-        if (size > MAX_RESPONSE_BYTES) {
+        if (size > maxResponseBytes) {
           upstream.destroy(new Error('Django response exceeded the tool limit'))
           return
         }
@@ -181,6 +202,8 @@ function requestJson({ path, method, body, authority: trusted, port = DJANGO_POR
   })
 }
 
+const requestJson = requestBusinessJson
+
 function csrfCookie(setCookies) {
   const cookies = Array.isArray(setCookies) ? setCookies : [setCookies]
   const value = cookies.find(item => typeof item === 'string' && /^csrftoken=[^;]+(?:;|$)/i.test(item))
@@ -193,9 +216,15 @@ async function djangoRequest(ctx, toolName, exec, path, method = 'GET', body, de
   if (!exec?.agent?.session?.header) return failure('agent_session_required')
   const preset = exec.agent.session.header.agentPreset
   if (!TOOL_ACCESS[toolName]?.has(preset)) return failure('role_not_authorized')
+  const needsNativeBridge = method === 'POST' && NATIVE_BRIDGE_TOOLS.has(toolName)
+  const nativeBridgeKey = needsNativeBridge
+    ? dependencies.nativeBridgeKey ?? process.env.TRADELOOM_NATIVE_BRIDGE_KEY
+    : undefined
+  if (needsNativeBridge && !/^[a-f0-9]{64}$/.test(nativeBridgeKey ?? '')) return failure('native_bridge_unavailable')
 
   let trusted
-  try { trusted = authority(ctx.webServer) } catch { return failure('business_authority_unavailable') }
+  try { trusted = dependencies.authorityResolver ? dependencies.authorityResolver(ctx.webServer) : authority(ctx.webServer) }
+  catch { return failure('business_authority_unavailable') }
 
   try {
     let csrf = { cookie: '', token: '' }
@@ -204,7 +233,7 @@ async function djangoRequest(ctx, toolName, exec, path, method = 'GET', body, de
         path: CSRF_PATH,
         method: 'GET',
         authority: trusted,
-        port: dependencies.port ?? DJANGO_PORT,
+        port: dependencies.port ?? djangoPort(),
         request: dependencies.request ?? http.request,
         signal: exec.signal,
         timeoutMs: dependencies.timeoutMs,
@@ -218,12 +247,13 @@ async function djangoRequest(ctx, toolName, exec, path, method = 'GET', body, de
       method,
       body,
       authority: trusted,
-      port: dependencies.port ?? DJANGO_PORT,
+      port: dependencies.port ?? djangoPort(),
       request: dependencies.request ?? http.request,
       signal: exec.signal,
       timeoutMs: dependencies.timeoutMs,
       cookie: csrf.cookie,
       csrfToken: csrf.token,
+      nativeBridgeKey,
     })
     if ((response.status < 200 || response.status >= 300) && !acceptedStatuses.includes(response.status)) return failure(`django_http_${response.status}`)
     let value
@@ -238,6 +268,114 @@ async function djangoRequest(ctx, toolName, exec, path, method = 'GET', body, de
 
 function boundedString(value, max = 4000) {
   return typeof value === 'string' ? value.slice(0, max) : ''
+}
+
+function observedAgentIdentity(exec) {
+  const agent = exec?.agent
+  const header = agent?.session?.header
+  if (typeof agent?.id !== 'string' || !agent.id.trim() || !header || typeof header !== 'object') return null
+  if (typeof header.agentPreset !== 'string' || !header.agentPreset.trim()) return null
+  const depth = header.delegationDepth
+  const parentSession = header.parentSession
+  if (!Number.isInteger(depth) || depth < 0 || (parentSession !== null && typeof parentSession !== 'string')) return null
+  return {
+    agent_id: agent.id,
+    agent_preset: header.agentPreset,
+    parent_session: parentSession,
+    delegation_depth: depth,
+  }
+}
+
+function validNativeAdvice(preset, advice) {
+  if (!advice || typeof advice !== 'object' || Array.isArray(advice)
+    || Object.keys(advice).some(key => !['schema_version', 'observations'].includes(key))
+    || advice.schema_version !== 'native-expert-advice.v1'
+    || !Array.isArray(advice.observations) || advice.observations.length > 20) return false
+  if (preset === ROLE_PRESETS.product) {
+    const fields = new Set(['sku', 'name', 'category', 'material', 'size', 'color', 'english_name'])
+    return advice.observations.every(item => item && typeof item === 'object' && !Array.isArray(item)
+      && ['product_id', 'field', 'note', 'suggested_value'].every(key => Object.hasOwn(item, key) || key !== 'suggested_value')
+      && Object.keys(item).every(key => ['product_id', 'field', 'source_refs', 'note', 'suggested_value'].includes(key))
+      && typeof item.product_id === 'string' && item.product_id.length > 0 && item.product_id.length <= 80
+      && item.source_refs && typeof item.source_refs === 'object' && !Array.isArray(item.source_refs)
+      && Object.keys(item.source_refs).length === 3
+      && Object.keys(item.source_refs).every(key => ['product_id', 'revision_id', 'task_file_ids'].includes(key))
+      && item.source_refs.product_id === item.product_id
+      && (item.source_refs.revision_id === null || (typeof item.source_refs.revision_id === 'string' && item.source_refs.revision_id.length > 0 && item.source_refs.revision_id.length <= 80))
+      && Array.isArray(item.source_refs.task_file_ids) && item.source_refs.task_file_ids.length <= 30
+      && item.source_refs.task_file_ids.every(id => typeof id === 'string' && id.length > 0 && id.length <= 80)
+      && fields.has(item.field) && typeof item.note === 'string' && item.note.trim().length > 0 && item.note.length <= 500
+      && (item.suggested_value === undefined || (typeof item.suggested_value === 'string' && item.suggested_value.length <= 500)))
+  }
+  if (preset === ROLE_PRESETS.delivery) {
+    return advice.observations.every(item => item && typeof item === 'object' && !Array.isArray(item)
+      && ['check_code', 'note'].every(key => Object.hasOwn(item, key))
+      && Object.keys(item).every(key => ['check_code', 'product_id', 'note', 'source_refs'].includes(key))
+      && typeof item.check_code === 'string' && item.check_code.length > 0 && item.check_code.length <= 80
+      && item.source_refs && typeof item.source_refs === 'object' && !Array.isArray(item.source_refs)
+      && Object.keys(item.source_refs).length === 3
+      && Object.keys(item.source_refs).every(key => ['workflow_task_id', 'batch_id', 'product_ids'].includes(key))
+      && typeof item.source_refs.workflow_task_id === 'string' && item.source_refs.workflow_task_id.length > 0 && item.source_refs.workflow_task_id.length <= 80
+      && typeof item.source_refs.batch_id === 'string' && item.source_refs.batch_id.length > 0 && item.source_refs.batch_id.length <= 80
+      && Array.isArray(item.source_refs.product_ids) && item.source_refs.product_ids.length <= 1000
+      && item.source_refs.product_ids.every(id => typeof id === 'string' && id.length > 0 && id.length <= 80)
+      && typeof item.note === 'string' && item.note.trim().length > 0 && item.note.length <= 500
+      && (item.product_id === undefined || (typeof item.product_id === 'string' && item.product_id.length > 0 && item.product_id.length <= 80)))
+  }
+  return false
+}
+
+function boundedNativeAdviceContext(role, value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)
+    || value.schema_version !== 'native-advice-context.v1' || value.role !== role) return null
+  if (role === 'product_profile' && Array.isArray(value.products) && value.products.length <= 100) {
+    const fields = new Set(['sku', 'name', 'category', 'material', 'size', 'color', 'english_name'])
+    const products = []
+    for (const item of value.products) {
+      const refs = item?.source_refs
+      if (typeof item?.product_id !== 'string' || !item.product_id || item.product_id.length > 80 || !Array.isArray(item.fields)
+        || item.fields.length > fields.size || !item.fields.every(field => fields.has(field))
+        || !refs || typeof refs !== 'object' || Array.isArray(refs)
+        || refs.product_id !== item.product_id || refs.product_id.length > 80
+        || !(refs.revision_id === null || (typeof refs.revision_id === 'string' && refs.revision_id.length <= 80))
+        || !Array.isArray(refs.task_file_ids) || refs.task_file_ids.length > 30
+        || !refs.task_file_ids.every(id => typeof id === 'string' && id.length > 0 && id.length <= 80)) return null
+      products.push({
+        product_id: boundedString(item.product_id, 80),
+        fields: [...new Set(item.fields)],
+        source_refs: {
+          product_id: boundedString(refs.product_id, 80),
+          revision_id: refs.revision_id === null ? null : boundedString(refs.revision_id, 80),
+          task_file_ids: refs.task_file_ids.map(id => boundedString(id, 80)),
+        },
+      })
+    }
+    return { schema_version: 'native-advice-context.v1', role, products }
+  }
+  if (role === 'delivery_quality' && Array.isArray(value.checks) && value.checks.length <= 100) {
+    const checks = []
+    for (const item of value.checks) {
+      const refs = item?.source_refs
+      if (typeof item?.check_code !== 'string' || !item.check_code || item.check_code.length > 80
+        || !refs || typeof refs !== 'object' || Array.isArray(refs)
+        || typeof refs.workflow_task_id !== 'string' || !refs.workflow_task_id || refs.workflow_task_id.length > 80
+        || typeof refs.batch_id !== 'string' || !refs.batch_id || refs.batch_id.length > 80
+        || !Array.isArray(refs.product_ids) || refs.product_ids.length > 1000
+        || !refs.product_ids.every(id => typeof id === 'string' && id.length > 0 && id.length <= 80)
+        || (item.product_id !== undefined && (typeof item.product_id !== 'string' || !item.product_id || item.product_id.length > 80))) return null
+      checks.push({
+        check_code: boundedString(item.check_code, 80),
+        ...(item.product_id ? { product_id: boundedString(item.product_id, 80) } : {}),
+        source_refs: {
+          workflow_task_id: boundedString(refs.workflow_task_id, 80),
+          batch_id: boundedString(refs.batch_id, 80),
+          product_ids: refs.product_ids.map(id => boundedString(id, 80)),
+        },
+      })
+    }
+    return { schema_version: 'native-advice-context.v1', role, checks }
+  }
+  return null
 }
 
 function boundedPageInteger(value, fallback, maximum) {
@@ -552,11 +690,71 @@ function projectExecutionPlan(response, requestedId) {
     return [{ field_key: row.field_key, evidence_ids: validIds }]
     })
   }
+  const SOURCE_TYPES = new Set(['commercial_source', 'labor_analysis'])
+  const SOURCE_FIELDS = new Set(['document_reference', 'party_text', 'item_description', 'quantity', 'unit', 'unit_price',
+    'amount', 'currency', 'notes', 'process', 'observed_seconds', 'observed_quantity', 'observed_unit',
+    'estimated_hourly_rate', 'estimated_efficiency', 'estimated_capacity', 'estimated_piece_rate'])
+  const SOURCE_STATES = new Set(['present', 'empty', 'type_mismatch', 'formula_error', 'formula_cache_missing', 'formula_cache_empty'])
+  const supportingSources = rows => {
+    if (!Array.isArray(rows)) { truncated = true; return [] }
+    if (rows.length > 20) truncated = true
+    return rows.slice(0, 20).flatMap(source => {
+      if (!source || !INTAKE_OPAQUE_ID.test(source.candidate_id ?? '') || !SOURCE_TYPES.has(source.candidate_type)
+        || !INTAKE_OPAQUE_ID.test(source.evidence_id ?? '') || !SOURCE_FIELDS.has(source.field_key)) {
+        truncated = true
+        return []
+      }
+      const typed = source.typed_value && typeof source.typed_value === 'object' && !Array.isArray(source.typed_value)
+        ? source.typed_value : {}
+      const state = SOURCE_STATES.has(typed.state) ? typed.state : 'unknown'
+      if (state === 'unknown' || typed.state !== state) truncated = true
+      const typedValue = { state }
+      if (['text', 'decimal', 'date'].includes(typed.type)) typedValue.type = typed.type
+      else if (typed.type !== undefined) truncated = true
+      if (typed.value === null || typeof typed.value === 'boolean' || (typeof typed.value === 'number' && Number.isFinite(typed.value))) {
+        typedValue.value = typed.value
+      } else if (typeof typed.value === 'string') {
+        typedValue.value = safeText(typed.value, 2_000)
+      } else if (typed.value !== undefined) truncated = true
+      if (typed.truncated === true) { typedValue.truncated = true; truncated = true }
+      const refs = Array.isArray(source.value_refs) ? source.value_refs : []
+      if (!Array.isArray(source.value_refs)) truncated = true
+      if (refs.length > 20) truncated = true
+      const valueRefs = refs.slice(0, 20).flatMap(ref => {
+        if (!ref || !INTAKE_OPAQUE_ID.test(ref.cell_id ?? '') || !INTAKE_OPAQUE_ID.test(ref.snapshot_id ?? '')
+          || !Number.isInteger(ref.sheet_index) || ref.sheet_index < 1 || !INTAKE_COORDINATE.test(ref.coordinate ?? '')) {
+          truncated = true
+          return []
+        }
+        return [{ cell_id: ref.cell_id, snapshot_id: ref.snapshot_id, sheet_index: ref.sheet_index, coordinate: ref.coordinate }]
+      })
+      const boundedName = safeText(source.source_display_name, 200)
+      const projected = {
+        candidate_id: source.candidate_id, candidate_type: source.candidate_type,
+        source_display_name: boundedName,
+        source_display_name_truncated: source.source_display_name_truncated === true || boundedName !== source.source_display_name,
+        source_id: INTAKE_OPAQUE_ID.test(source.source_id ?? '') ? source.source_id : null,
+        source_sha256: /^[a-f0-9]{64}$/.test(source.source_sha256 ?? '') ? source.source_sha256 : null,
+        mapping_id: INTAKE_OPAQUE_ID.test(source.mapping_id ?? '') ? source.mapping_id : null,
+        mapping_revision: Number.isInteger(source.mapping_revision) && source.mapping_revision > 0 ? source.mapping_revision : null,
+        snapshot_id: INTAKE_OPAQUE_ID.test(source.snapshot_id ?? '') ? source.snapshot_id : null,
+        field_key: source.field_key, evidence_id: source.evidence_id,
+        evidence_status: source.evidence_status === 'unverified' ? 'unverified' : 'unknown',
+        sheet_index: Number.isInteger(source.sheet_index) && source.sheet_index > 0 ? source.sheet_index : null,
+        coordinate: INTAKE_COORDINATE.test(source.coordinate ?? '') ? source.coordinate : null,
+        typed_value: typedValue, value_refs: valueRefs,
+      }
+      if (projected.source_id === null || projected.source_sha256 === null || projected.mapping_id === null
+        || projected.mapping_revision === null || projected.snapshot_id === null || projected.evidence_status === 'unknown'
+        || projected.sheet_index === null || projected.coordinate === null) truncated = true
+      return [projected]
+    })
+  }
   const materials = plan.materials.slice(0, 200).flatMap(item => item?.resolution === 'unresolved' && item?.item_ref === null
-    ? [{ resolution: 'unresolved', item_ref: null, proposal: projectMaterialProposal(item.proposal, safeText), supporting_requirement_inputs: evidenceRefs(item.supporting_requirement_inputs || [], 20) }]
+    ? [{ resolution: 'unresolved', item_ref: null, proposal: projectMaterialProposal(item.proposal, safeText), supporting_requirement_inputs: evidenceRefs(item.supporting_requirement_inputs || [], 20), supporting_sources: supportingSources(item.supporting_sources || []) }]
     : (truncated = true, []))
   const operations = plan.operations.slice(0, 100).flatMap(item => item?.resolution === 'unresolved' && item?.operation_ref === null
-    ? [{ resolution: 'unresolved', operation_ref: null, proposal: projectOperationProposal(item.proposal, safeText), supporting_requirement_inputs: evidenceRefs(item.supporting_requirement_inputs || [], 20) }]
+    ? [{ resolution: 'unresolved', operation_ref: null, proposal: projectOperationProposal(item.proposal, safeText), supporting_requirement_inputs: evidenceRefs(item.supporting_requirement_inputs || [], 20), supporting_sources: supportingSources(item.supporting_sources || []) }]
     : (truncated = true, []))
   if (plan.materials.length > 200 || plan.operations.length > 100) truncated = true
   return {
@@ -615,7 +813,32 @@ function projectProduct(product) {
   }
 }
 
-function projectWorkflow(workflow, includeDispatchTarget) {
+function projectWorkflow(workflow, viewerPreset) {
+  const rolePreset = { product_profile: ROLE_PRESETS.product, delivery_quality: ROLE_PRESETS.delivery }
+  const projectSubtask = subtask => {
+    const role = boundedString(subtask.agent_role, 120)
+    const projected = {
+      id: boundedString(subtask.id, 80), agent_role: role, status: boundedString(subtask.status, 80),
+      retry_count: subtask.retry_count ?? 0, depends_on: Array.isArray(subtask.depends_on) ? subtask.depends_on.map(item => boundedString(item, 80)).slice(0, 100) : [],
+      error_summary: boundedString(subtask.error_summary, 500),
+    }
+    if (viewerPreset === ROLE_PRESETS.center || rolePreset[role] === viewerPreset) {
+      const input = subtask.input_refs && typeof subtask.input_refs === 'object' && !Array.isArray(subtask.input_refs)
+        ? subtask.input_refs : {}
+      const fields = role === 'product_profile'
+        ? ['workflow_task_id', 'batch_id', 'scope', 'product_ids', 'product_revision_ids']
+        : ['workflow_task_id', 'batch_id', 'scope', 'all_product_ids', 'all_revision_ids', 'confirmed_revision_ids', 'unconfirmed_product_ids']
+      const refs = {}
+      for (const field of fields) {
+        const value = input[field]
+        if (typeof value === 'string' && value.length <= 80) refs[field] = value
+        else if (Array.isArray(value) && value.length <= 500 && value.every(item => typeof item === 'string' && item.length <= 80)) refs[field] = value.slice()
+        else if (field === 'scope' && value === 'full_batch') refs[field] = value
+      }
+      if (Object.keys(refs).length) projected.source_refs = refs
+    }
+    return projected
+  }
   return {
     id: boundedString(workflow.id, 80),
     batch_id: boundedString(workflow.batch_id, 80),
@@ -623,6 +846,7 @@ function projectWorkflow(workflow, includeDispatchTarget) {
     task_type: boundedString(workflow.task_type, 120),
     status: boundedString(workflow.status, 100),
     current_step: boundedString(workflow.current_step, 160),
+    execution_mode: workflow.execution_mode === 'native_dsh' ? 'native_dsh' : 'local_mock',
     mode: boundedString(workflow.mode, 80),
     execution: boundedString(workflow.execution, 80),
     error_summary: boundedString(workflow.error_summary, 500),
@@ -630,11 +854,7 @@ function projectWorkflow(workflow, includeDispatchTarget) {
       id: boundedString(step.id, 80), step_key: boundedString(step.step_key, 160), status: boundedString(step.status, 80),
       attempt: step.attempt ?? 0, error_summary: boundedString(step.error_summary, 500),
     })) : [],
-    subtasks: Array.isArray(workflow.subtasks) ? workflow.subtasks.slice(0, 100).map(subtask => ({
-      id: boundedString(subtask.id, 80), agent_role: boundedString(subtask.agent_role, 120), status: boundedString(subtask.status, 80),
-      retry_count: subtask.retry_count ?? 0, depends_on: Array.isArray(subtask.depends_on) ? subtask.depends_on.map(item => boundedString(item, 80)).slice(0, 100) : [],
-      error_summary: boundedString(subtask.error_summary, 500),
-    })) : [],
+    subtasks: Array.isArray(workflow.subtasks) ? workflow.subtasks.slice(0, 100).map(projectSubtask) : [],
     reviews: Array.isArray(workflow.reviews) ? workflow.reviews.slice(0, 100).map(review => ({
       id: boundedString(review.id, 80), review_key: boundedString(review.review_key, 160), item_ref: boundedString(review.item_ref, 240),
       question: boundedString(review.question, 1000), options: Array.isArray(review.options) ? review.options.map(item => boundedString(item, 500)).slice(0, 30) : [],
@@ -643,7 +863,7 @@ function projectWorkflow(workflow, includeDispatchTarget) {
     reviews_scope: boundedString(workflow.reviews_scope, 40) || 'business_facts',
     pending_review_count: Number.isFinite(workflow.pending_review_count) ? workflow.pending_review_count : 0,
     unresolved_review_count: Number.isFinite(workflow.unresolved_review_count) ? workflow.unresolved_review_count : 0,
-    ...(includeDispatchTarget && workflow.dispatch_target && typeof workflow.dispatch_target === 'object' ? { dispatch_target: {
+    ...(viewerPreset === ROLE_PRESETS.center && workflow.dispatch_target && typeof workflow.dispatch_target === 'object' ? { dispatch_target: {
       subtask_id: boundedString(workflow.dispatch_target.subtask_id, 80),
       idempotency_key: boundedString(workflow.dispatch_target.idempotency_key, 200),
       blocked_reason: boundedString(workflow.dispatch_target.blocked_reason, 500),
@@ -967,7 +1187,7 @@ export function registerBusinessTools(ctx, config = {}, dependencies = {}) {
         const result = await djangoRequest(ctx, 'tradeloom_read_workflow_task', exec, `/api/workflow-tasks/${id}`, 'GET', undefined, dependencies)
         if (result?.ok === false) return failure(result.error_code)
         if (!result || typeof result !== 'object' || Array.isArray(result)) return failure('invalid_workflow_dto')
-        return success(projectWorkflow(result, exec.agent.session.header.agentPreset === ROLE_PRESETS.center))
+        return success(projectWorkflow(result, exec.agent.session.header.agentPreset))
       },
     },
     {
@@ -1046,6 +1266,269 @@ export function registerBusinessTools(ctx, config = {}, dependencies = {}) {
             attempt: result.step.attempt ?? 0,
           } : null,
         }, { business_ui_url: `/business/workflow-tasks/${workflowId}` })
+      },
+    },
+    {
+      name: 'tradeloom_begin_native_workflow_assignment',
+      description: 'Persist the next native expert assignment and return a bounded server-derived advice context before the center starts a direct DSH subagent. Pass that context unchanged to the bound child; this does not start or claim that child has completed.',
+      parameters: schema({
+        workflow_id: wireString('Existing confirmed native workflow ID.'),
+        subtask_id: wireString('Existing server-selected subtask ID.'),
+      }),
+      async execute(args, exec) {
+        if (!exactArgs(args, ['workflow_id', 'subtask_id'], ['workflow_id', 'subtask_id'])) return failure('invalid_arguments')
+        if (args.workflow_id.length > 80 || args.subtask_id.length > 80) return failure('invalid_arguments')
+        const identity = observedAgentIdentity(exec)
+        if (!identity) return failure('host_identity_unavailable')
+        if (identity.agent_preset !== ROLE_PRESETS.center || identity.parent_session !== null || identity.delegation_depth !== 0) {
+          return failure('root_center_required')
+        }
+        const workflowId = encodeURIComponent(args.workflow_id)
+        const subtaskId = encodeURIComponent(args.subtask_id)
+        const current = await djangoRequest(ctx, 'tradeloom_begin_native_workflow_assignment', exec,
+          `/api/workflow-tasks/${workflowId}`, 'GET', undefined, dependencies)
+        if (current?.ok === false) return failure(current.error_code)
+        const subtask = Array.isArray(current.subtasks)
+          ? current.subtasks.find(item => item?.id === args.subtask_id)
+          : null
+        const expertPreset = subtask?.agent_role === 'product_profile'
+          ? ROLE_PRESETS.product
+          : subtask?.agent_role === 'delivery_quality'
+            ? ROLE_PRESETS.delivery
+            : ''
+        if (!expertPreset) return failure('unsupported_native_role')
+        const existingStep = Array.isArray(current.steps)
+          ? current.steps
+            .filter(step => step?.step_key === `subtask:${args.subtask_id}`
+              && step?.input_refs?.subtask_id === args.subtask_id
+              && step?.input_refs?.execution_mode === 'native_dsh'
+              && step?.input_refs?.native_assignment?.assignment_id === step?.id)
+            .sort((left, right) => (right.attempt ?? -1) - (left.attempt ?? -1))[0]
+          : null
+        const target = current?.dispatch_target
+        const hasNewAuthorizedAttempt = existingStep?.status === 'completed'
+          && target?.subtask_id === args.subtask_id
+          && typeof target.idempotency_key === 'string'
+          && target.idempotency_key.length > 0
+          && target.idempotency_key !== existingStep.idempotency_key
+        if (existingStep) {
+          const assignment = existingStep.input_refs.native_assignment
+          const center = assignment.center
+          if (assignment.expected_expert_preset !== expertPreset
+            || center?.agent_preset !== ROLE_PRESETS.center
+            || center?.agent_id !== identity.agent_id
+            || center?.parent_session !== null
+            || center?.delegation_depth !== 0) return failure('native_assignment_conflict')
+        }
+        if (existingStep && ['running', 'completed'].includes(existingStep.status) && !hasNewAuthorizedAttempt) {
+          const assignment = existingStep.input_refs.native_assignment
+          const savedReceipt = existingStep.output_refs?.native_submission?.receipt
+          const completed = existingStep.status === 'completed'
+          return success({
+            assignment_id: boundedString(assignment.assignment_id, 80),
+            step_id: boundedString(existingStep.id, 80),
+            workflow_id: boundedString(current.id, 80),
+            subtask_id: args.subtask_id,
+            batch_id: boundedString(current.batch_id, 80),
+            agent_role: boundedString(subtask.agent_role, 80),
+            attempt: Number.isInteger(existingStep.attempt) ? existingStep.attempt : 0,
+            status: completed ? 'accepted' : 'existing_unconfirmed',
+            result_status: completed ? boundedString(savedReceipt?.result_status, 80) : '',
+            advice_context: boundedNativeAdviceContext(subtask.agent_role, assignment.advice_context),
+            provider: 'unknown',
+            model: 'unknown',
+            child_lifecycle: 'not_observed',
+            already_persisted: true,
+            spawn_allowed: false,
+            notice: completed
+              ? '该assignment已有已接受的结果；不会再次启动子代理。'
+              : '该assignment已持久化，但无法确认子代理是否已启动或完成；不会自动重试。',
+          }, { requires_human_confirmation: false, business_ui_url: `/business/workflow-tasks/${workflowId}` })
+        }
+        if (!target || target.subtask_id !== args.subtask_id || typeof target.idempotency_key !== 'string' || !target.idempotency_key) {
+          return success({ status: 'blocked', reason: boundedString(target?.blocked_reason || '该子任务不是服务端授权的下一步。', 300) })
+        }
+        const result = await djangoRequest(ctx, 'tradeloom_begin_native_workflow_assignment', exec,
+          `/api/workflow-tasks/${workflowId}/subtasks/${subtaskId}/native-assignment`, 'POST', {
+            idempotency_key: target.idempotency_key,
+            expected_expert_preset: expertPreset,
+            center_identity: identity,
+          }, dependencies)
+        if (result?.ok === false) return failure(result.error_code)
+        if (!result || typeof result !== 'object' || Array.isArray(result)
+          || result.workflow_id !== args.workflow_id
+          || result.subtask_id !== args.subtask_id
+          || typeof result.assignment_id !== 'string'
+          || typeof result.step_id !== 'string'
+          || result.status !== 'awaiting_expert') return failure('invalid_native_assignment_dto')
+        const adviceContext = boundedNativeAdviceContext(subtask.agent_role, result.advice_context)
+        if (!adviceContext) return failure('invalid_native_advice_context')
+        return success({
+          assignment_id: boundedString(result.assignment_id, 80),
+          step_id: boundedString(result.step_id, 80),
+          workflow_id: boundedString(result.workflow_id, 80),
+          subtask_id: boundedString(result.subtask_id, 80),
+          batch_id: boundedString(result.batch_id, 80),
+          agent_role: boundedString(result.agent_role, 80),
+          attempt: Number.isInteger(result.attempt) ? result.attempt : 0,
+          status: 'awaiting_expert',
+          advice_context: adviceContext,
+          provider: 'unknown',
+          model: 'unknown',
+          already_persisted: false,
+          spawn_allowed: true,
+          notice: 'assignment已持久化；尚不能证明DSH子代理已完成。',
+        }, { requires_human_confirmation: false, business_ui_url: `/business/workflow-tasks/${workflowId}` })
+      },
+    },
+    {
+      name: 'tradeloom_bind_native_workflow_expert',
+      description: 'After a successful native subagent activation, bind its Host-observed direct-child identity to the saved assignment before asking it to submit. This does not report child completion.',
+      parameters: schema({
+        workflow_id: wireString('Existing workflow ID from the saved assignment.'),
+        assignment_id: wireString('Persisted native assignment ID.'),
+        child_agent_id: wireString('The child ID returned by the native subagent activation tool.'),
+      }),
+      async execute(args, exec) {
+        if (!exactArgs(args, ['workflow_id', 'assignment_id', 'child_agent_id'], ['workflow_id', 'assignment_id', 'child_agent_id'])
+          || [args.workflow_id, args.assignment_id, args.child_agent_id].some(value => value.length > 80)) return failure('invalid_arguments')
+        const centerIdentity = observedAgentIdentity(exec)
+        if (!centerIdentity) return failure('host_identity_unavailable')
+        if (centerIdentity.agent_preset !== ROLE_PRESETS.center
+          || centerIdentity.parent_session !== null
+          || centerIdentity.delegation_depth !== 0) return failure('root_center_required')
+        const workflowId = encodeURIComponent(args.workflow_id)
+        const current = await djangoRequest(ctx, 'tradeloom_bind_native_workflow_expert', exec,
+          `/api/workflow-tasks/${workflowId}`, 'GET', undefined, dependencies)
+        if (current?.ok === false) return failure(current.error_code)
+        const step = Array.isArray(current?.steps)
+          ? current.steps.find(item => item?.id === args.assignment_id
+            && item?.input_refs?.execution_mode === 'native_dsh'
+            && item?.input_refs?.native_assignment?.assignment_id === args.assignment_id)
+          : null
+        const assignment = step?.input_refs?.native_assignment
+        if (!assignment || assignment.center?.agent_id !== centerIdentity.agent_id
+          || assignment.center?.agent_preset !== ROLE_PRESETS.center
+          || assignment.center?.parent_session !== null
+          || assignment.center?.delegation_depth !== 0) return failure('native_assignment_conflict')
+        const expectedPreset = assignment.expected_expert_preset
+        if (![ROLE_PRESETS.product, ROLE_PRESETS.delivery].includes(expectedPreset)) return failure('unsupported_native_role')
+        let child
+        try { child = await ctx?.agents?.get?.(args.child_agent_id) } catch { return failure('host_child_unavailable') }
+        const childExec = { agent: child }
+        const childIdentity = observedAgentIdentity(childExec)
+        if (!childIdentity || childIdentity.agent_id !== args.child_agent_id
+          || childIdentity.agent_preset !== expectedPreset
+          || childIdentity.parent_session !== centerIdentity.agent_id
+          || childIdentity.delegation_depth !== 1) return failure('direct_expert_child_required')
+        const result = await djangoRequest(ctx, 'tradeloom_bind_native_workflow_expert', exec,
+          `/api/workflow-tasks/${workflowId}/native-assignments/${encodeURIComponent(args.assignment_id)}/bind`, 'POST', {
+            assignment_id: args.assignment_id,
+            step_id: args.assignment_id,
+            center_identity: centerIdentity,
+            child_identity: childIdentity,
+          }, dependencies)
+        if (result?.ok === false) return failure(result.error_code)
+        if (!result || result.status !== 'bound' || result.assignment_id !== args.assignment_id
+          || result.step_id !== args.assignment_id || result.child_agent_id !== args.child_agent_id) return failure('invalid_native_binding_receipt')
+        return success({
+          assignment_id: args.assignment_id,
+          child_agent_id: args.child_agent_id,
+          status: 'bound',
+          child_lifecycle: 'not_observed',
+          notice: '已绑定Host观察到的直接专家。现在可通知该专家提交typed建议；绑定不表示专家已完成。',
+        }, { requires_human_confirmation: false, business_ui_url: `/business/workflow-tasks/${workflowId}` })
+      },
+    },
+    {
+      name: 'tradeloom_submit_native_workflow_advice',
+      description: 'Submit bounded expert observations for a saved native assignment. Django rechecks current sources and computes the canonical role result; advice is never a business fact or approval.',
+      parameters: schema({
+        workflow_id: wireString('Existing workflow ID from the saved assignment.'),
+        assignment_id: wireString('Persisted native assignment ID.'),
+        step_id: wireString('Persisted WorkflowStep ID from the assignment.'),
+        advice: {
+          type: 'object', additionalProperties: false, required: ['schema_version', 'observations'],
+          properties: {
+            schema_version: { type: 'string', const: 'native-expert-advice.v1' },
+            observations: {
+              type: 'array',
+              items: preset === ROLE_PRESETS.product
+                ? {
+                  type: 'object', additionalProperties: false, required: ['product_id', 'field', 'source_refs', 'note'],
+                  properties: {
+                    product_id: wireString('Product ID from this workflow.'),
+                    field: { type: 'string', enum: ['sku', 'name', 'category', 'material', 'size', 'color', 'english_name'] },
+                    source_refs: {
+                      type: 'object', additionalProperties: false, required: ['product_id', 'revision_id', 'task_file_ids'],
+                      properties: {
+                        product_id: wireString('Must match the reviewed product ID.'),
+                        revision_id: { oneOf: [{ type: 'string' }, { type: 'null' }] },
+                        task_file_ids: { type: 'array', items: wireString('Current source file ID.') },
+                      },
+                    },
+                    note: wireString('Unverified expert note for the human review card.'),
+                    suggested_value: wireString('Optional unverified suggestion, never applied automatically.'),
+                  },
+                }
+                : {
+                  type: 'object', additionalProperties: false, required: ['check_code', 'source_refs', 'note'],
+                  properties: {
+                    check_code: wireString('Existing deterministic readiness check code.'),
+                    product_id: wireString('Optional product ID covered by this check.'),
+                    source_refs: {
+                      type: 'object', additionalProperties: false, required: ['workflow_task_id', 'batch_id', 'product_ids'],
+                      properties: {
+                        workflow_task_id: wireString('Current workflow ID.'),
+                        batch_id: wireString('Current batch ID.'),
+                        product_ids: { type: 'array', items: wireString('Current product ID.') },
+                      },
+                    },
+                    note: wireString('Unverified expert note for the human review card.'),
+                  },
+                },
+            },
+          },
+        },
+      }),
+      async execute(args, exec) {
+        const allowed = ['workflow_id', 'assignment_id', 'step_id', 'advice']
+        if (!args || typeof args !== 'object' || Array.isArray(args)
+          || Object.keys(args).some(key => !allowed.includes(key))
+          || !['workflow_id', 'assignment_id', 'step_id'].every(key => typeof args[key] === 'string' && args[key].length > 0 && args[key].length <= 80)
+          || !validNativeAdvice(preset, args.advice)) return failure('invalid_arguments')
+        const identity = observedAgentIdentity(exec)
+        if (!identity) return failure('host_identity_unavailable')
+        if (identity.agent_preset !== preset || typeof identity.parent_session !== 'string' || identity.delegation_depth !== 1) {
+          return failure('direct_expert_child_required')
+        }
+        const workflowId = encodeURIComponent(args.workflow_id)
+        const assignmentId = encodeURIComponent(args.assignment_id)
+        const result = await djangoRequest(ctx, 'tradeloom_submit_native_workflow_advice', exec,
+          `/api/workflow-tasks/${workflowId}/native-assignments/${assignmentId}/submit`, 'POST', {
+            assignment_id: args.assignment_id,
+            step_id: args.step_id,
+            child_identity: identity,
+            advice: args.advice,
+          }, dependencies)
+        if (result?.ok === false) return failure(result.error_code)
+        if (!result || typeof result !== 'object' || Array.isArray(result)
+          || result.assignment_id !== args.assignment_id
+          || result.step_id !== args.step_id
+          || result.status !== 'accepted'
+          || result.execution_mode !== 'native_dsh') return failure('invalid_native_submission_receipt')
+        return success({
+          assignment_id: boundedString(result.assignment_id, 80),
+          step_id: boundedString(result.step_id, 80),
+          status: 'accepted',
+          result_status: boundedString(result.result_status, 80),
+          subtask_status: boundedString(result.subtask_status, 80),
+          execution_mode: 'native_dsh',
+          provider: 'unknown',
+          model: 'unknown',
+          child_lifecycle: 'not_observed',
+          notice: '建议已由服务端确定性复核并按现有流程记录；这不证明子代理已停止。',
+        }, { requires_human_confirmation: result.subtask_status === 'waiting_human', business_ui_url: `/business/workflow-tasks/${workflowId}` })
       },
     },
     {

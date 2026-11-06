@@ -89,17 +89,24 @@ function installSourceQuitHandler(stopOwnedServices) {
 }
 
 async function runPackagedBootstrap() {
-  const { bootstrapInstalledDesktop } = await import('./installed-bootstrap.mjs')
+  const { bootstrapInstalledDesktop, parsePackagedPortFlags, acquireElectronSingleInstanceLock } = await import('./installed-bootstrap.mjs')
+  const fs = await import('node:fs/promises')
+  const ports = parsePackagedPortFlags(process.argv.slice(1))
   const startup = await bootstrapInstalledDesktop({
-    env: process.env, processEnv: process.env, appPath: app.getAppPath(), resourcesPath: process.resourcesPath, platform: process.platform,
+    env: process.env, processEnv: process.env, appPath: app.getAppPath(), resourcesPath: process.resourcesPath, platform: process.platform, ports,
     deps: {
-      fs: await import('node:fs/promises'), getDefaultPaths, ensureOwnedDirectory, ensureOwnedHome, buildChildEnvironment,
+      fs, getDefaultPaths, ensureOwnedDirectory, ensureOwnedHome, buildChildEnvironment,
       launcherPipeName, reserveNamedPipe, startOwnedChild, assertPortsAvailable,
       networkCandidates, chooseAddress, readNetworkAdapters: readWindowsNetworkAdapters, chooseNetworkAddress,
+      acquireSingleInstanceLock: (userDataPath, root) => acquireElectronSingleInstanceLock({ app, root, userDataPath, fs }),
       delay, connect, readyTimeoutMs: 60_000, installQuitHandler: installInstalledQuitHandler,
       waitForDesktopReady, importMain: () => import('../main.js'),
     },
   })
+  if (startup.kind === 'existing-owner') {
+    app.exit(0)
+    return
+  }
   void startup.ready.catch(error => {
     console.error(`织贸助手桌面服务启动失败：${error instanceof Error ? error.message : String(error)}`)
     app.exit(1)

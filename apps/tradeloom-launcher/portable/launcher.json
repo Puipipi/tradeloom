@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "dataDirectory": "data-ui-r2",
+  "hostPort": 3088,
+  "djangoPort": 3090,
+  "postgresPort": 55432
+}

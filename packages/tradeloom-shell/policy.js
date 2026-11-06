@@ -145,10 +145,10 @@ function makeAttributor() {
       }).catch(() => undefined)
       return reservation
     },
-    inherit(storeFactory, parentAgent, childId) {
+    inherit(storeFactory, parentAgent, childId, taskScopes) {
       const current = active.get(parentAgent)
-      let scopes = current?.scopes
-      const unowned = current?.unowned === true
+      let scopes = taskScopes ?? current?.scopes
+      const unowned = taskScopes === undefined ? current?.unowned === true : !validScopeList(taskScopes) || taskScopes.length === 0
       const reservation = Promise.resolve().then(async () => {
         const store = await storeFactory()
         if (!unowned && (!validScopeList(scopes) || scopes.length === 0)) {
@@ -250,7 +250,7 @@ export function apply(ctx, dependencies = {}) {
     agent.ctx.on('subagent/start', info => {
       if (ctx.agents.get(info.id)?.session?.header?.parentSession !== agent.id) return
       // Reserve synchronously: @mode emit does not await async listeners.
-      void attribution.inherit(storeFactory, agent, info.id).catch(() => {
+      void attribution.inherit(storeFactory, agent, info.id, dependencies.taskAttribution?.scopesForChild(agent, info.id)).catch(() => {
         // The child's first pre-step will fail closed if attribution is absent.
       })
     }, { global: true })
@@ -272,9 +272,11 @@ export function apply(ctx, dependencies = {}) {
       return { kind: 'deny', reason: 'TradeLoom budget state is unavailable; the tool call was refused.' }
     }
     const current = exec?.agent && attribution.active.get(exec.agent)
-    const decision = await chargeToolAttempt(store, exec, current?.unowned ? [] : current?.scopes)
+    const task = dependencies.taskAttribution?.attributionFor(exec)
+    const decision = await chargeToolAttempt(store, exec, task ? task.scopes : current?.unowned ? [] : current?.scopes)
     if (decision?.budgetExceeded) {
-      exec.agent.cancel({ kind: 'hook', reason: 'execution budget exhausted' }, { keepInbox: true })
+      if (task) task.abort()
+      else exec.agent.cancel({ kind: 'hook', reason: 'execution budget exhausted' }, { keepInbox: true })
       return { kind: 'deny', reason: decision.reason }
     }
     if (decision !== null) return decision

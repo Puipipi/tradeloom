@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>织贸工作台</title>
+<link rel="stylesheet" href="replica-ui/style.css">
+<link rel="stylesheet" href="replica-ui/panel-interactions.css">
+<link rel="stylesheet" href="replica-ui/business-bridge.css">
+<link rel="stylesheet" href="replica-ui/native-account-controls.css">
+</head>
+<body>
+  <!-- 自定义标题栏（无边框窗口，结构照搬 12-源码照搬/外壳/renderer/index.html） -->
+  <header id="titlebar">
+    <div class="titlebar-drag">
+      <span class="brand">
+        <img class="brand-mark" src="replica-ui/assets/tradeloom-mark.svg" alt="">
+        <span class="brand-name">织贸工作台</span>
+        <!-- 悬停左上角小圆点显示版本卡 -->
+        <span class="brand-tip" id="brand-tip" role="tooltip">
+          <span class="brand-tip-line brand-tip-title">织贸工作台 <b>UI 预览</b></span>
+          <span class="brand-tip-line">独立界面 <b>纯前端</b></span>
+          <span class="brand-tip-line">布局与组件交互示例</span>
+          <span class="brand-tip-line brand-tip-dim">不连接业务服务或用户数据</span>
+        </span>
+      </span>
+      <div class="webai-shortcuts titlebar-ai" role="group" aria-label="网页 AI 独立窗口">
+        <button class="webai-shortcut" id="btn-deepseek" type="button" title="在新窗口打开 DeepSeek" aria-label="打开 DeepSeek 网页窗口" data-auth-state="unknown">
+          <img class="webai-logo webai-logo-deepseek" src="replica-ui/assets/deepseek.svg" alt="" aria-hidden="true">
+          <span class="webai-status-dot" aria-hidden="true"></span>
+        </button>
+        <button class="webai-shortcut" id="btn-doubao" type="button" title="在新窗口打开豆包" aria-label="打开豆包网页窗口" data-auth-state="unknown">
+          <img class="webai-logo webai-logo-doubao" src="replica-ui/assets/doubao.png" alt="" aria-hidden="true">
+          <span class="webai-status-dot" aria-hidden="true"></span>
+        </button>
+      </div>
+    </div>
+    <div class="titlebar-controls" id="titlebar-controls">
+      <div class="titlebar-action-controls" id="titlebar-action-controls">
+      <button class="tb-btn" id="btn-theme" title="外观：深色 / 浅色 / 跟随系统" aria-label="切换外观" data-theme-icon="dark" data-theme-effective="dark">
+        <svg class="theme-icon theme-icon-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20.3 15.4A8.5 8.5 0 0 1 8.6 3.7 8.6 8.6 0 1 0 20.3 15.4Z"/></svg>
+        <svg class="theme-icon theme-icon-light" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg>
+        <span class="theme-auto-badge" aria-hidden="true">A</span>
+      </button>
+      <span class="tb-sep"></span>
+      <button class="tb-btn tb-btn-compact" id="btn-mobile" title="手机连接" aria-label="手机连接"><svg width="14" height="18" viewBox="0 0 14 18" aria-hidden="true" focusable="false"><rect x="2" y="1.5" width="10" height="15" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M5.5 13.8h3" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></button>
+      <button class="tb-btn tb-btn-compact" id="btn-settings" title="设置" aria-label="设置">⚙</button>
+      <button class="tb-btn" id="btn-refresh" title="刷新当前场景（热更新渲染器）">⟳</button>
+      <button class="tb-btn" id="btn-plugins" title="插件目录">🧩</button>
+      <button class="tb-btn" id="btn-skills" title="当前助手的 Skill">⚡</button>
+      <button class="tb-btn" id="btn-tools" title="工作台工具">🛠</button>
+      <button class="tb-btn" id="btn-models" title="模型与提供方">🤖</button>
+      <span class="tb-sep"></span>
+      </div>
+      <button class="tb-btn toolbar-overflow-trigger" id="btn-toolbar-overflow" type="button" aria-label="更多工具栏操作" title="更多操作" aria-haspopup="menu" aria-expanded="false" aria-controls="toolbar-overflow-menu" hidden>
+        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><circle cx="3" cy="8" r="1" fill="currentColor"/><circle cx="8" cy="8" r="1" fill="currentColor"/><circle cx="13" cy="8" r="1" fill="currentColor"/></svg>
+      </button>
+      <div class="titlebar-overflow-menu" id="toolbar-overflow-menu" role="menu" aria-label="工具栏更多操作" hidden></div>
+      <div class="titlebar-window-controls" id="titlebar-window-controls" aria-label="窗口控制">
+      <button class="tb-btn tb-window-btn" id="btn-min" title="最小化">─</button>
+      <button class="tb-btn tb-window-btn" id="btn-max" title="最大化">□</button>
+      <button class="tb-btn tb-window-btn tb-close" id="btn-close" title="关闭">✕</button>
+      </div>
+    </div>
+  </header>
+
+  <button class="ui-sidebar-toggle" id="ui-sidebar-toggle" type="button" aria-label="打开侧栏" aria-expanded="false" title="打开侧栏">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false"><path d="M13.5 1.5H2.5C1.94772 1.5 1.5 1.94772 1.5 2.5V13.5C1.5 14.0523 1.94772 14.5 2.5 14.5H13.5C14.0523 14.5 14.5 14.0523 14.5 13.5V2.5C14.5 1.94772 14.0523 1.5 13.5 1.5Z" stroke="currentColor"/><path d="M5.5 1.5V14.5" stroke="currentColor"/></svg>
+  </button>
+  <div class="ui-sidebar-backdrop" id="ui-sidebar-backdrop" hidden></div>
+  <aside class="ui-sidebar" id="ui-sidebar" aria-hidden="true" aria-label="工作区侧栏">
+    <div class="ui-sidebar-head">
+      <img class="ui-sidebar-mark" src="replica-ui/assets/tradeloom-mark.svg" alt="">
+      <span>织贸工作台</span>
+      <button class="ui-sidebar-close" id="ui-sidebar-close" type="button" aria-label="关闭侧栏">×</button>
+    </div>
+    <div class="ui-sidebar-content">
+      <div class="ui-sidebar-label">当前界面</div>
+      <div class="ui-sidebar-current" id="ui-sidebar-current">工作台</div>
+      <div class="ui-sidebar-actions" role="group" aria-label="工作台入口">
+        <button class="ui-sidebar-action ui-sidebar-action-primary" type="button" data-sidebar-action="new-session">＋ 新建会话</button>
+        <div class="ui-sidebar-section">
+          <div class="ui-sidebar-label">会话</div>
+          <div class="ui-sidebar-empty" id="ui-sidebar-session-empty" aria-live="polite">暂无会话</div>
+          <button class="ui-sidebar-action ui-sidebar-archive" id="ui-sidebar-archive" type="button" aria-pressed="false">显示归档</button>
+        </div>
+        <button class="ui-sidebar-action" type="button" data-sidebar-action="workspaces">工作区</button>
+        <button class="ui-sidebar-action" type="button" data-sidebar-action="automations">自动化</button>
+        <button class="ui-sidebar-action" type="button" data-sidebar-action="settings">设置</button>
+      </div>
+      <div class="ui-sidebar-note">独立 UI 预览 · 不连接会话或业务服务</div>
+    </div>
+    <div class="ui-sidebar-foot">不连接账户或业务数据</div>
+  </aside>
+
+  <!-- 场景切换栏（独立组件） -->
+  <header id="scenebar">
+    <div class="scenebar-inner">
+      <nav id="scenario-tabs"></nav>
+    </div>
+  </header>
+
+  <!-- 本地渲染场景 -->
+  <section id="scenario-view" class="view active">
+    <div id="grid"></div>
+  </section>
+
+  <!-- 插件 / 模型 弹窗 -->
+  <div id="modal-mask" class="modal-mask" style="display:none">
+    <div class="modal">
+      <div class="modal-head">
+        <span id="modal-title" class="modal-title"></span>
+        <button class="modal-close" id="modal-close" title="关闭">✕</button>
+      </div>
+      <div id="modal-body" class="modal-body"></div>
+    </div>
+  </div>
+
+  <script src="replica-ui/scenes-data.js"></script>
+  <script src="replica-ui/business-file-bridge.js"></script>
+  <script src="replica-ui/business-bridge.js"></script>
+  <script src="replica-ui/renderer.js"></script>
+  <script src="replica-ui/panel-interactions.js"></script>
+  <script src="replica-ui/native-account-controls.js"></script>
+</body>
+</html>

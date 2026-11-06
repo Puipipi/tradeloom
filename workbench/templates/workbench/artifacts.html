@@ -1,17 +1,22 @@
 {% extends "workbench/base.html" %}
 {% load business_urls %}
-{% block page_eyebrow %}交付物 / 版本{% endblock %}
-{% block page_title %}交付物{% endblock %}
+{% block stylesheets %}<link rel="stylesheet" href="{{ '/static/workbench/styles.css?v=business-ui-density12'|business_url }}">{% endblock %}
+{% block page_eyebrow %}来源资料 / 生产要求 / 交付核验{% endblock %}
+{% block page_title %}资料与交付核验{% endblock %}
 {% block content %}
 <div class="page-stack">
-  <section class="panel intake-workbench" data-testid="intake-workbench"
+  <section class="panel intake-workbench" id="source-intake" data-testid="intake-workbench"
     data-sources-url="{% business_path '/api/intake/sources' %}"
+    data-source-download-url="{% business_path '/api/intake/sources/__SOURCE__/download' %}"
     data-source-preview-url="{% business_path '/api/intake/sources/__SOURCE__/previews' %}"
     data-preview-url="{% business_path '/api/intake/previews/__SNAPSHOT__' %}"
     data-mapping-url="{% business_path '/api/intake/previews/__SNAPSHOT__/mappings' %}"
     data-candidate-create-url="{% business_path '/api/intake/mappings/__MAPPING__/candidates' %}"
     data-candidates-url="{% business_path '/api/intake/candidates' %}"
     data-candidate-url="{% business_path '/api/intake/candidates/__CANDIDATE__' %}"
+    data-candidate-apply-url="{% business_path '/api/intake/candidates/__CANDIDATE__/apply' %}"
+    data-tasks-url="{% business_path '/api/tasks' %}"
+    data-products-url="{% business_path '/api/product-library' %}"
     data-candidate-links-url="{% business_path '/api/intake/candidates/__CANDIDATE__/links' %}"
     data-narratives-url="{% business_path '/api/intake/narratives' %}"
     data-narrative-lines-url="{% business_path '/api/intake/narratives/__NARRATIVE__/lines' %}"
@@ -22,16 +27,19 @@
     data-requirement-confirm-url="{% business_path '/api/production-requirements/__REQUIREMENT__/confirm' %}">
     <div class="panel-heading">
       <div>
-        <h2>来源资料整理</h2>
-        <p>保存 Excel 原件、查看来源单元格，并把人工选择的字段整理成待确认候选。</p>
+        <h2>来源资料与生产要求</h2>
+        <details class="intake-help">
+          <summary>导入与关联说明</summary>
+          <p>保存 Excel 原件、查看来源单元格，并把人工选择的字段整理成待确认候选。</p>
+          <p>只支持 .xlsx。上传与预览不会写入产品版本或 ERP；字段含义和资料候选之间的关联由你明确判断。</p>
+        </details>
       </div>
-      <span class="tag demo-tag">原件私有 · 不自动合并</span>
+      <span class="tag demo-tag">原件私有 · 人工核对</span>
     </div>
-    <p class="intake-note">只支持 .xlsx。上传与预览不会写入产品版本或 ERP；字段含义和资料候选之间的关联由你明确判断。</p>
     <div class="intake-task-tabs" role="tablist" aria-label="资料工作区">
-      <button type="button" role="tab" id="intake-task-tab-sources" data-intake-task-tab="sources" aria-controls="intake-task-panel-sources" aria-selected="true" tabindex="0">原件与预览</button>
-      <button type="button" role="tab" id="intake-task-tab-fields" data-intake-task-tab="fields" aria-controls="intake-task-panel-fields" aria-selected="false" tabindex="-1">字段整理</button>
-      <button type="button" role="tab" id="intake-task-tab-links" data-intake-task-tab="links" aria-controls="intake-task-panel-links" aria-selected="false" tabindex="-1">候选关联</button>
+      <button type="button" role="tab" id="intake-task-tab-sources" data-intake-task-tab="sources" aria-controls="intake-task-panel-sources" aria-selected="true" tabindex="0">来源资料</button>
+      <button type="button" role="tab" id="intake-task-tab-fields" data-intake-task-tab="fields" aria-controls="intake-task-panel-fields" aria-selected="false" tabindex="-1">字段核对</button>
+      <button type="button" role="tab" id="intake-task-tab-links" data-intake-task-tab="links" aria-controls="intake-task-panel-links" aria-selected="false" tabindex="-1">核对与关联</button>
       <button type="button" role="tab" id="intake-task-tab-narratives" data-intake-task-tab="narratives" aria-controls="intake-task-panel-narratives" aria-selected="false" tabindex="-1">访谈依据</button>
       <button type="button" role="tab" id="intake-task-tab-requirements" data-intake-task-tab="requirements" aria-controls="intake-task-panel-requirements" aria-selected="false" tabindex="-1">生产要求</button>
       <button type="button" role="tab" id="intake-task-tab-plans" data-intake-task-tab="plans" aria-controls="intake-task-panel-plans" aria-selected="false" tabindex="-1">物料与工序计划</button>
@@ -95,7 +103,7 @@
           <button class="button secondary small" type="button" data-intake-refresh-candidates>刷新</button>
         </div>
         <div class="intake-candidate-list" data-testid="intake-candidates"></div>
-        <pre class="intake-candidate-detail" data-intake-candidate-detail hidden></pre>
+        <section class="intake-candidate-detail" data-intake-candidate-detail hidden aria-live="polite"></section>
       </section>
     </div>
     </section>
@@ -202,10 +210,45 @@
     </section>
     {{ intake_field_schemas|json_script:"intake-field-schemas" }}
   </section>
-  <section class="panel">
+  {{ file_browser_rows|json_script:"file-browser-rows" }}
+  <section class="panel file-browser-panel" data-file-browser hidden aria-labelledby="file-browser-title">
+    <div class="panel-heading file-browser-heading">
+      <div><h2 id="file-browser-title">资料文件</h2><p>来源原件与已登记交付版本</p></div>
+    </div>
+    <div class="file-browser-layout">
+      <section class="file-list-pane" data-file-list-pane aria-label="资料文件">
+        <div class="file-pane-heading">
+          <div class="file-browser-toolbar">
+            <div class="file-location-row" title="业务资料集合：来源原件与已登记交付版本，不是本地目录">
+              <div class="file-scope-chip"><svg class="file-scope-icon" aria-hidden="true" viewBox="0 0 16 16"><path d="M1.5 4h5l1.5 1.5h6.5v8h-13zM1.5 4V2.5H6l1.5 1.5"/></svg><label class="file-scope-label" for="file-scope-filter">资料范围</label><select id="file-scope-filter" data-file-filter aria-label="资料范围"><option value="all">全部资料</option><option value="source">来源资料</option><option value="artifact">交付版本</option></select></div>
+              <button class="file-scope-reset" type="button" data-file-up hidden aria-label="返回全部资料" title="返回全部资料">全部</button>
+            </div>
+            <div class="file-pane-tools">
+              <div class="file-view-switch" role="group" aria-label="文件显示方式">
+                <button type="button" data-file-view="rows" aria-pressed="true" aria-label="列表视图" title="列表视图"><svg aria-hidden="true" viewBox="0 0 16 16"><path d="M5.5 3.5h8m-8 4.5h8m-8 4.5h8M2.5 3.5h.1m-.1 4.5h.1m-.1 4.5h.1"/></svg></button>
+                <button type="button" data-file-view="grid" aria-pressed="false" aria-label="缩略图视图" title="缩略图视图"><svg aria-hidden="true" viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="4.25" height="4.25" rx=".6"/><rect x="9.25" y="2.5" width="4.25" height="4.25" rx=".6"/><rect x="2.5" y="9.25" width="4.25" height="4.25" rx=".6"/><rect x="9.25" y="9.25" width="4.25" height="4.25" rx=".6"/></svg></button>
+              </div>
+              <button class="button secondary small" type="button" data-file-refresh aria-label="刷新文件列表" title="刷新文件列表"><svg aria-hidden="true" viewBox="0 0 16 16"><path d="M13 5.5A5.5 5.5 0 0 0 3.7 4L2.5 5.2M2.5 2.5v2.7h2.7M3 10.5A5.5 5.5 0 0 0 12.3 12l1.2-1.2m0 2.7v-2.7h-2.7"/></svg></button>
+            </div>
+          </div>
+        </div>
+        <div class="file-list-scroll" data-file-list aria-live="polite" aria-busy="true"><p class="intake-muted">正在读取来源资料…</p></div>
+      </section>
+      <section class="file-preview-pane" data-file-preview-pane aria-labelledby="file-preview-title">
+        <div class="file-pane-heading file-preview-heading" data-file-preview-heading hidden><div class="file-preview-title-group"><h3 id="file-preview-title">预览</h3><strong data-file-preview-name>未选择文件</strong><p data-file-preview-status>选择来源资料或交付版本。</p></div><div class="file-preview-tools"><div class="file-image-controls" data-image-controls hidden><button type="button" class="button secondary small" data-image-fit disabled>适应</button><button type="button" class="button secondary small" data-image-actual disabled>100%</button><button type="button" class="button secondary small" data-image-zoom-in disabled aria-label="放大图片">＋</button><button type="button" class="button secondary small" data-image-zoom-out disabled aria-label="缩小图片">－</button></div><a class="button secondary small" data-file-download hidden>下载</a></div></div>
+        <details class="file-preview-info" data-file-preview-info hidden><summary>文件信息</summary><div class="file-preview-metadata" data-file-preview-metadata hidden></div></details>
+        <details class="file-technical-details" data-file-technical-details hidden><summary>来源与校验信息</summary><div data-file-technical-content></div></details>
+        <iframe class="artifact-inline-preview" data-artifact-inline-preview title="交付版本预览" sandbox="" hidden></iframe>
+        <div class="file-image-viewer" data-file-image-viewer hidden><div class="file-image-strip" data-file-image-strip hidden></div><div class="file-image-stage" data-file-image-stage><img data-file-image alt="" hidden></div></div>
+        <div class="file-preview-source" data-file-source-preview></div>
+        <div class="empty-state compact file-preview-empty" data-file-preview-empty><h3>尚未选择文件</h3><p>在文件面板选择条目后查看可用预览。</p></div>
+      </section>
+    </div>
+  </section>
+  <section class="panel artifact-panel" data-deliverables-section aria-labelledby="deliverables-title">
     <div class="panel-heading">
       <div>
-        <h2>交付物</h2>
+        <h2 id="deliverables-title">交付版本</h2>
         <p>{{ artifact_count }} 个交付物 · {{ version_count }} 个版本记录。</p>
       </div>
       <span class="tag demo-tag">只读</span>
@@ -225,10 +268,13 @@
             <td class="mono">{{ artifact.updated_at|date:"Y-m-d H:i" }}</td>
           </tr>
           {% for version in artifact.version_rows %}
-          <tr><td colspan="5"><strong>v{{ version.version }}</strong> · {{ version.status }} · SHA-256 <span class="mono">{{ version.sha256 }}</span><br>
-            来源：{% for source in version.source_product_versions %}<span class="mono">{{ source.product_id }}/{{ source.revision_id }} v{{ source.version }}</span>{% if not forloop.last %}、{% endif %}{% empty %}—{% endfor %}<br>
-            {% if version.preview_url %}<a href="{{ version.preview_url|business_url }}" rel="noopener">{% if version.artifact_type_label == '样品清单 CSV' %}预览清单{% else %}预览{% endif %}</a> · {% endif %}<a href="{{ version.download_url|business_url }}">下载</a>
-          </td></tr>
+          <tr><td colspan="5"><div class="artifact-version-row">
+            <div class="artifact-version-primary"><strong>v{{ version.version }}</strong><span class="status-pill {{ version.status }}">{{ version.status_label|default:version.status }}</span></div>
+            <div class="artifact-version-actions">{% if version.preview_url %}<a href="{{ version.preview_url|business_url }}" rel="noopener">{% if version.artifact_type_label == '样品清单 CSV' %}预览清单{% else %}预览{% endif %}</a> · {% endif %}<a href="{{ version.download_url|business_url }}">下载</a></div>
+            <details class="technical-details"><summary>来源与校验信息</summary><p>SHA-256 <span class="mono">{{ version.sha256 }}</span></p>
+              <p>来源版本：{% for source in version.source_product_versions %}<span class="mono">{{ source.product_id }}/{{ source.revision_id }} v{{ source.version }}</span>{% if not forloop.last %}、{% endif %}{% empty %}—{% endfor %}</p>
+            </details>
+          </div></td></tr>
           {% endfor %}
           {% endfor %}
         </tbody>
@@ -245,4 +291,4 @@
   </section>
 </div>
 {% endblock %}
-{% block scripts %}<script src="{{ '/static/workbench/execution-plans.js'|business_url }}" defer></script><script src="{{ '/static/workbench/intake.js'|business_url }}" defer></script><script src="{{ '/static/workbench/intake-links.js'|business_url }}" defer></script>{% endblock %}
+{% block scripts %}<script src="{{ '/static/workbench/execution-plans.js?v=source-references1'|business_url }}" defer></script><script src="{{ '/static/workbench/intake-product-application.js?v=intake-application2'|business_url }}" defer></script><script src="{{ '/static/workbench/intake.js?v=intake-panel-route11'|business_url }}" defer></script><script src="{{ '/static/workbench/intake-links.js'|business_url }}" defer></script><script src="{{ '/static/workbench/artifact-browser.js?v=files-browser16'|business_url }}" defer></script>{% endblock %}

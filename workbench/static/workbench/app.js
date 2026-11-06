@@ -2,20 +2,40 @@
   const embeddedBusinessPage = document.documentElement?.dataset?.businessEmbed === "true";
   if (embeddedBusinessPage && window.parent !== window) {
     document.documentElement.dataset.businessIframe = "true";
+    const businessBridge = globalThis.TradeLoomBusiness;
     const onThemeMessage = (event) => {
       const value = event.data;
-      if (event.source !== window.parent || event.origin !== window.location.origin
+      if (!businessBridge?.isTrustedBridgeEvent?.(event)
         || !value || value.type !== "tradeloom:theme"
-        || Object.keys(value).sort().join(",") !== "colorScheme,palette,type"
+        || Object.keys(value).sort().join(",") !== "colorScheme,palette,type,ui"
         || !["light", "dark"].includes(value.colorScheme)) return;
-      const paletteKeys = ["accent", "border", "canvas", "header", "muted", "panel", "teal", "text"];
+      const paletteKeys = ["accent", "accentSoft", "accentStrong", "border", "buttonInk", "canvas", "danger", "dangerBackground", "dangerBorder", "header", "muted", "panel", "success", "successBackground", "teal", "text", "warning", "warningBackground", "warningBorder"];
       if (!value.palette || Object.keys(value.palette).sort().join(",") !== paletteKeys.join(",")
         || paletteKeys.some(key => typeof value.palette[key] !== "string" || !/^#[0-9a-f]{6}$/i.test(value.palette[key]))) return;
+      const uiKeys = ["controlHeight", "cornerRadius", "dockTabHeight", "fontBody", "fontCompact", "fontFamily", "iconSize", "lineHeight", "modelControl", "navHeight", "sceneTabHeight", "toolbarHeight", "topRowHeight"];
+      if (!value.ui || Object.keys(value.ui).sort().join(",") !== uiKeys.join(",")
+        || !Number.isFinite(value.ui.fontBody) || value.ui.fontBody < 10 || value.ui.fontBody > 22
+        || !Number.isFinite(value.ui.fontCompact) || value.ui.fontCompact < 10 || value.ui.fontCompact > value.ui.fontBody
+        || !Number.isFinite(value.ui.lineHeight) || value.ui.lineHeight < 1.1 || value.ui.lineHeight > 1.8
+        || typeof value.ui.fontFamily !== "string" || value.ui.fontFamily.length > 120
+        || !/^[\w\s,"'-]+$/.test(value.ui.fontFamily)
+        || ["controlHeight", "dockTabHeight", "modelControl", "navHeight", "sceneTabHeight", "toolbarHeight", "topRowHeight"].some(key => !Number.isInteger(value.ui[key]) || value.ui[key] < 16 || value.ui[key] > 96)
+        || !Number.isInteger(value.ui.iconSize) || value.ui.iconSize < 8 || value.ui.iconSize > 32
+        || !Number.isInteger(value.ui.cornerRadius) || value.ui.cornerRadius < 0 || value.ui.cornerRadius > 16) return;
       document.documentElement.dataset.colorScheme = value.colorScheme;
       for (const key of paletteKeys) document.documentElement.style.setProperty(`--wb-theme-${key}`, value.palette[key]);
+      document.documentElement.style.setProperty("--wb-font-body", `${value.ui.fontBody}px`);
+      document.documentElement.style.setProperty("--wb-font-compact", `${value.ui.fontCompact}px`);
+      document.documentElement.style.setProperty("--wb-ui-scale", String(value.ui.fontBody / 14));
+      document.documentElement.style.setProperty("--wb-font-family", value.ui.fontFamily);
+      document.documentElement.style.setProperty("--wb-line-height", value.ui.lineHeight);
+      for (const key of uiKeys) {
+        if (["fontBody", "fontCompact", "fontFamily", "lineHeight"].includes(key)) continue;
+        document.documentElement.style.setProperty(`--wb-${key.replace(/[A-Z]/g, char => `-${char.toLowerCase()}`)}`, `${value.ui[key]}px`);
+      }
     };
     window.addEventListener("message", onThemeMessage);
-    window.parent.postMessage({ type: "tradeloom:theme:request" }, window.location.origin);
+    businessBridge?.bridgeTarget?.()?.postMessage({ type: "tradeloom:theme:request" }, window.location.origin);
   }
 
   const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || "";
@@ -84,6 +104,7 @@
       const payload = {
         batch_id: workflowCreateForm.elements.batch_id.value,
         user_goal: workflowCreateForm.elements.user_goal.value,
+        execution_mode: workflowCreateForm.elements.execution_mode?.value || "local_mock",
       };
       if (proposedTaskType) payload.task_type = proposedTaskType;
       return payload;
@@ -92,7 +113,8 @@
     function sameWorkflowPayload(left, right) {
       return left?.batch_id === right?.batch_id
         && left?.user_goal === right?.user_goal
-        && left?.task_type === right?.task_type;
+        && left?.task_type === right?.task_type
+        && (left?.execution_mode || "local_mock") === (right?.execution_mode || "local_mock");
     }
 
     function persistDrafts() {
@@ -129,7 +151,7 @@
 
     function renderPreview(preview) {
       previewPanel.hidden = false;
-      previewMode.textContent = `${preview.mode || "local_mock"} · ${preview.execution || "simulated_rules"} · ${preview.model_provider || "not_configured"}`;
+      previewMode.textContent = `${preview.execution_mode || "local_mock"} · ${preview.execution || "simulated_rules"} · ${preview.model_provider || "not_configured"}`;
       previewReason.textContent = preview.classification?.reason || "";
       previewTaskType.textContent = preview.classification?.task_type
         ? `提案类型：${taskTypeLabels[preview.classification.task_type] || "不支持的类型"}`
@@ -216,7 +238,10 @@
       if (saved) {
         const draft = JSON.parse(saved);
         if (draft?.version === 2 && Array.isArray(draft.requests)) {
-          drafts = draft.requests.filter((item) => typeof item?.key === "string" && item.payload);
+          drafts = draft.requests.filter((item) => typeof item?.key === "string" && item.payload).map((item) => ({
+            ...item,
+            payload: { ...item.payload, execution_mode: item.payload.execution_mode || "local_mock" },
+          }));
           activeDraft = drafts.find((item) => item.key === draft.activeKey) || null;
         } else if (
           typeof draft?.key === "string" && draft.key
@@ -226,7 +251,7 @@
         ) {
           const legacy = {
             key: draft.key,
-            payload: { batch_id: draft.payload.batch_id, user_goal: draft.payload.user_goal },
+            payload: { batch_id: draft.payload.batch_id, user_goal: draft.payload.user_goal, execution_mode: "local_mock" },
             legacyReplayPayload: draft.payload,
             preview: { status: "legacy_retry", mode: "local_mock", execution: "simulated_rules", model_provider: "not_configured" },
           };
@@ -298,7 +323,7 @@
     workflowCreateForm.addEventListener("input", () => {
       shownPayload = null;
       hidePreview();
-      if (activeDraft?.payload?.task_type && !activeDraft.createAttempted) {
+      if (activeDraft && !activeDraft.createAttempted) {
         activeDraft.preview = null;
         persistDrafts();
         showDraftNotice("Agent提案字段已变化，旧预览已失效；请重新解析目标。");
@@ -307,7 +332,7 @@
     workflowCreateForm.addEventListener("change", () => {
       shownPayload = null;
       hidePreview();
-      if (activeDraft?.payload?.task_type && !activeDraft.createAttempted) {
+      if (activeDraft && !activeDraft.createAttempted) {
         activeDraft.preview = null;
         persistDrafts();
         showDraftNotice("Agent提案字段已变化，旧预览已失效；请重新解析目标。");

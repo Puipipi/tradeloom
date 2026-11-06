@@ -10,19 +10,11 @@
 
 ## 下载试用
 
-Windows x64 用户请使用 [desktop16 便携发布包](https://github.com/Puipipi/tradeloom/releases/tag/desktop16-portable-20261026)。仓库当前私有，下载需要访问权限。
+R75 Windows x64 便携包已完成逐项读回、解压和隔离目录首次启动验证。发布资产将在 [ui18-r75-portable-20261106](https://github.com/Puipipi/tradeloom/releases/tag/ui18-r75-portable-20261106) 页面列出；请以该页面确认可用性。验证摘要、程序树摘要和重建边界见 [R75 验证与重建说明](docs/releases/ui18-r75-validation.md)。
 
-1. 下载 `TradeLoom-desktop16-portable-win-x64.zip`（406,666,826 字节，约 388 MiB）。
-2. 完整解压到短路径，例如 `C:/Apps/TradeLoom`。
-3. 双击 `Start-TradeLoom.cmd`。
+发布资产可完整解压到短路径（例如 `C:/Apps/TradeLoom`），然后双击 `启动工作台.exe`。便携包包含程序运行所需的 Electron、Python、PostgreSQL、Django/backend 及纯程序插件 seed；不包含个人 profile、登录凭据、数据库或聊天记录。ERPNext 等外部服务仍需单独提供。
 
-SHA-256：
-
-```text
-ab973c6bf742979ef3875819a4b7729ef0ba1a3f2018dbc7b28d536cc6b13660
-```
-
-包内包含 Electron 44.7.0、Node、pnpm、Python 与固定 desktop16 界面，不含用户资料。Django、ERPNext、PostgreSQL 和模型账号不随包提供；业务面板需配置对应服务。Office 高级转换还需 Microsoft Visual C++ x64 运行库。
+[desktop16 便携包](https://github.com/Puipipi/tradeloom/releases/tag/desktop16-portable-20261026) 是旧版历史发布，不是当前 R75 包。旧版 SHA-256：`ab973c6bf742979ef3875819a4b7729ef0ba1a3f2018dbc7b28d536cc6b13660`。
 
 ## 功能与状态
 
@@ -30,7 +22,7 @@ ab973c6bf742979ef3875819a4b7729ef0ba1a3f2018dbc7b28d536cc6b13660
 |---|---|---|
 | 产品资料 | 整理产品事实、发现资料缺项 | 已实现流程有分项验收记录；业务规则仍待验证。 |
 | 交付物 | 生成产品目录、样品清单并进行人工审核 | 部分生成、预览与审核流程已验证；报价与完整业务闭环仍在推进。 |
-| AI 工作台 | 连接会话、文件与任务工作流 | 原生会话、草稿附件与网页文件桥仍在验收。 |
+| AI 工作台 | 连接会话、文件与任务工作流 | fresh 角色绑定与限定范围的原生附件预览已验证；业务端到端及更广文件流程仍待验收。 |
 | 持久化与执行 | 保存任务历史并恢复工作 | 真实 runner 与 PostgreSQL 重启恢复仍需端到端验收。 |
 | 生产与 ERP | 准备生产要求和执行计划 | 草稿框架；真实执行与 ERP 接入待验收。 |
 | 华为云 | 支撑赛题1的云上应用 | CodeArts 与云部署属于参赛要求；当前适配与证据待验。 |
@@ -39,7 +31,7 @@ ab973c6bf742979ef3875819a4b7729ef0ba1a3f2018dbc7b28d536cc6b13660
 
 先读[快速开始](docs/quick-start.md)和[运行时准备与升级](docs/upgrade-harness.md)。克隆源码不会附带外置 runtime 或已配置服务。这些文档含早期环境记录，使用命令前请核对适用的 runtime。
 
-`main` 源码、desktop16 固定发布包与较新的开发候选是不同快照。desktop19 已构建通过，但尚未部署，也未进入本次 `main` 更新。
+发布包与本地源码快照分别管理。R75 源码与程序工件证据见[发布验证记录](docs/releases/ui18-r75-validation.md)；runtime 与 vendor 输入均按版本固定。
 
 ## 文档导航
 
@@ -50,12 +42,13 @@ ab973c6bf742979ef3875819a4b7729ef0ba1a3f2018dbc7b28d536cc6b13660
 | [Agent 开发与接入](docs/agent-development.md) | 接入背景与开发契约 |
 | [架构说明](docs/architecture.md) | 技术结构与早期设计背景 |
 | [工作报告](docs/work-report.md) | 按日期记录的实现与验证 |
+| [R75 便携包验证](docs/releases/ui18-r75-validation.md) | 包身份、隔离首次启动证据与固定重建输入 |
 | [历史 README](README_legacy_20261026.md) | 原主页原样保留；旧路径、赛题二表述和状态不作为当前指引 |
 | [赛题二历史研究](docs/00-赛题二历史研究.md) | 保留的 AgentArts 研究，作为可选技术参考，不是当前参赛题目 |
 
 ## 当前限制
 
-便携包已通过 ZIP CRC、21,090 项文件哈希、新路径无系统 Node 启动预检及 23 项后台只读路由检查。最终修正后尚未重新进行 GUI 验收；这些检查不能证明真实模型与业务端到端已通过。
+R75 便携包已通过逐项 ZIP 读回、解压和隔离目录首次 C10 启动。fresh profile 未配置账号、未登录或发送消息；这些检查不证明真实模型业务端到端已通过。源码重建使用固定 R74 ASAR/sidecar 与固定 SDK/vendor 快照，不声称完整 DSH SDK TypeScript 可重建。发布可用性以对应 GitHub Release 页面为准。
 
 产品仍在开发。构建成功、模拟工作流或任务已提交，不等于业务结果已完成。比赛最终要求以华为最新官方规则为准。
 

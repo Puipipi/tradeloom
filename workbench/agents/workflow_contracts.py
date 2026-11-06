@@ -13,6 +13,24 @@ SIMULATED_MARKERS = {
     ),
 }
 
+
+def workflow_markers(execution_mode: str = "local_mock") -> dict[str, Any]:
+    """Return truthful bounded markers for the selected execution path."""
+    if execution_mode != "native_dsh":
+        return {**SIMULATED_MARKERS, "validation_mode": "server_deterministic"}
+    return {
+        "execution_mode": "native_dsh",
+        # Intent parsing and the saved two-role plan still use fixed local rules.
+        "planning_mode": "simulated_rules",
+        "model_provider": "unknown",
+        "agentarts": "not_configured",
+        "validation_mode": "server_deterministic",
+        "notice": (
+            "已选择原生 DSH 专家执行；子代理结果须提交为类型化建议并经服务端校验/人审。"
+            "此状态不证明子代理已结束，实际 provider/model 未观测。"
+        ),
+    }
+
 SUPPORTED_TASK_TYPES = frozenset(
     {
         "prepare_product_data",

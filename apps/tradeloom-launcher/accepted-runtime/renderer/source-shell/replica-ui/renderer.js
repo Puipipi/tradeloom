@@ -1,0 +1,2253 @@
+/* ============================================================
+   织贸工作台（独立 UI 预览）· 渲染器
+   外壳布局与交互照搬 upstream 12-源码照搬/外壳（renderer.js + renderers.js）
+   面板内容为中性界面示例，不连接业务服务、账户或真实数据
+   ============================================================ */
+const $ = s => document.querySelector(s)
+const grid = $('#grid')
+let data
+let currentTab = null
+let cleanups = new Map()
+let panelExpandStates = []
+let panelExpandZ = 100
+let activePanelDragCancel = null
+let sceneRequestVersion = 0
+let sceneHandledVersion = 0
+let requestedSceneId = null
+let initialSceneCommit
+let initialPaintMain = new URLSearchParams(location.search).get('solo') !== '1'
+let sceneLoadPromise
+const rendererScriptUrl = document.currentScript?.src || ''
+let businessBridgeLoad
+
+function ensureBusinessBridge() {
+  if (window.businessBridge) return Promise.resolve(window.businessBridge)
+  if (businessBridgeLoad) return businessBridgeLoad
+  businessBridgeLoad = new Promise(resolve => {
+    const script = document.createElement('script')
+    script.src = new URL('business-bridge.js', rendererScriptUrl || location.href).href
+    script.onload = () => resolve(window.businessBridge)
+    script.onerror = () => resolve(undefined)
+    document.head.append(script)
+  })
+  return businessBridgeLoad
+}
+
+const make = (tag, className, text) => {
+  const node = document.createElement(tag)
+  if (className) node.className = className
+  if (text !== undefined) node.textContent = text
+  return node
+}
+const el = (tag, className, ...children) => {
+  const node = make(tag, className)
+  for (const c of children) {
+    if (c == null) continue
+    node.append(c.nodeType ? c : document.createTextNode(String(c)))
+  }
+  return node
+}
+
+/* ---------------- 小组件（临摹内容用） ---------------- */
+function iconBtn(glyph, title, onClick, cls = '') {
+  const b = make('button', `icon-control ${cls}`, glyph)
+  b.type = 'button'; b.title = title; b.setAttribute('aria-label', title)
+  if (onClick) b.onclick = onClick
+  return b
+}
+function chip(text, cls = '') { return el('span', `chip ${cls}`, text) }
+function tag(text, cls = '') { return el('span', `tag ${cls}`, text) }
+function fileRow(icon, name, size, date, sel, lv = 0) {
+  return el('div', `frow ${sel ? 'sel' : ''} lv${lv}`,
+    el('span', `ic ${icon}`, icon === 'dir' ? '📁' : icon === 'md' ? '📄' : '📃'),
+    el('span', 'nm', name), el('span', `sz${size ? '' : ' empty'}`, size || ''),
+    el('span', `dt${date ? '' : ' empty'}`, date || ''))
+}
+
+function panelTabs(panel, onSelect) {
+  if (!Array.isArray(panel?.tabs) || panel.tabs.length === 0) return null
+  const row = el('div', 'file-tabs')
+  row.setAttribute('role', 'group')
+  row.setAttribute('aria-label', `${panel.title || '面板'}视图`)
+  if (!panel.tabs.includes(panel.activeTab)) panel.activeTab = panel.tabs[0]
+  const buttons = []
+  for (const label of panel.tabs) {
+    const button = make('button', `chip chip-tab ${label === panel.activeTab ? 'on' : ''}`, label)
+    button.type = 'button'
+    button.setAttribute('aria-pressed', String(label === panel.activeTab))
+    button.addEventListener('click', () => {
+      panel.activeTab = label
+      for (const item of buttons) {
+        const selected = item.dataset.tabLabel === label
+        item.classList.toggle('on', selected)
+        item.setAttribute('aria-pressed', String(selected))
+      }
+      onSelect?.(label)
+    })
+    button.dataset.tabLabel = label
+    buttons.push(button)
+    row.append(button)
+  }
+  return row
+}
+
+function renderNeutralTabContent(body, title, description) {
+  body.replaceChildren(
+    el('div', 'doc-line h1', `${title}（界面预览）`),
+    el('div', 'doc-line p', description),
+    el('div', 'sep'),
+    el('div', 'doc-line h2', '内容区域'),
+    el('div', 'doc-line p', '此处仅展示界面位置，不连接业务服务，也不读取或保存真实数据。'))
+}
+
+/* ============================================================
+   面板渲染器（静态界面示例，无业务连接）
+   ============================================================ */
+const rendererRegistry = {
+
+  /* ---- 文档预览 ---- */
+  doc(panel, content) {
+    if (typeof window.businessBridge?.renderBusinessPanel === 'function') return window.businessBridge.renderBusinessPanel(panel, content, panel.path)
+    const docName = el('span', 'doc-name', `${panel.title || '工作区说明'}.md`)
+    const docSub = el('span', 'doc-sub mono', '示例文档 · 仅用于界面预览')
+    const head = el('div', 'doc-meta',
+      docName, docSub)
+    const body = el('div', 'doc-body scroll')
+    const lines = [
+      ['# 工作区说明（界面示例）', 'h1'],
+      ['此内容仅演示文档面板的标题、正文与段落层级。', 'p'],
+      ['可以在这里展示说明、备注或普通文本。', 'p'],
+      ['示例内容不会读取或保存到真实文件。', 'p'],
+      ['---', 'hr'],
+      ['## 文档结构示例', 'h2'],
+      ['| 字段 | 示例值 | 说明 |', 'code'],
+      ['|---|---|---|', 'code'],
+      ['| 标题 | 工作区说明 | 当前文档名称 |', 'code'],
+      ['| 状态 | 示例 | 不代表已保存 |', 'code'],
+      ['| 位置 | 示例路径 | 不对应真实目录 |', 'code'],
+      ['---', 'hr'],
+      ['## 内容预览', 'h2'],
+      ['这里保留常见的标题、列表、分隔线与表格排版。', 'p'],
+      ['此独立预览不包含文档编辑或文件存储能力。', 'p'],
+    ]
+    for (const [text, kind] of lines) {
+      if (kind === 'hr') { body.append(el('div', 'sep')); continue }
+      body.append(el('div', `doc-line ${kind}`, text))
+    }
+    const ctx = el('div', 'doc-ctx',
+      el('div', 'ctx-title', '关联会话示例'),
+      el('div', 'ctx-item on', el('span', 'sdot'), '会话示例 A'),
+      el('div', 'ctx-item', el('span', 'sdot gray'), '会话示例 B'))
+    const tabDescriptions = {
+      '文件': '文件视图用于展示资料浏览区域；当前未连接文件系统。',
+      '来源资料': '来源资料视图用于展示资料内容区域；当前未连接资料服务。',
+      '交付物': '交付物视图用于展示输出区域；当前没有真实交付内容。',
+      '版本': '版本视图用于展示版本信息区域；当前没有真实版本记录。',
+    }
+    const tabs = panelTabs(panel, label => {
+      docName.textContent = `${label}.md`
+      docSub.textContent = '界面预览 · 未连接真实资料'
+      renderNeutralTabContent(body, label, tabDescriptions[label] || '此视图仅为中性界面示例。')
+    })
+    content.append(head)
+    if (tabs) {
+      content.append(tabs)
+      const label = panel.tabs.includes(panel.activeTab) ? panel.activeTab : panel.tabs[0]
+      docName.textContent = `${label}.md`
+      docSub.textContent = '界面预览 · 未连接真实资料'
+      renderNeutralTabContent(body, label, tabDescriptions[label] || '此视图仅为中性界面示例。')
+    }
+    content.append(body, ctx)
+    return () => content.replaceChildren()
+  },
+
+  /* ---- 文件面板（静态布局示例） ---- */
+  files(_panel, content) {
+    if (typeof window.businessBridge?.renderCompanion === 'function') return window.businessBridge.renderCompanion(_panel, content, 'files')
+    const tabs = el('div', 'file-tabs', chip('目录树', 'on'), chip('页签'), chip('网格'))
+    const head = el('div', 'file-head',
+      iconBtn('⌂', '主目录'), iconBtn('↑', '上级'), iconBtn('↻', '刷新'),
+      el('div', 'path', '示例工作区 / 文档'))
+    const list = el('div', 'ftree scroll')
+    const rows = [
+      ['dir', '文档', '', '', 0],
+      ['dir', '图片', '', '', 0],
+      ['dir', '项目资料', '', '', 0],
+      ['dir', '示例目录 A', '', '', 0],
+      ['dir', '示例目录 B', '', '', 0],
+      ['dir', '预览内容', '', '', 0],
+      ['dir', '归档', '', '', 0],
+      ['dir', '临时文件', '', '', 0],
+      ['md', '工作区说明.md', '示例', '', 1],
+      ['md', '会议记录.md', '示例', '', 0],
+      ['md', 'README.md', '示例', '', 0],
+    ]
+    for (const [ic, nm, sz, dt, sel] of rows) list.append(fileRow(ic, nm, sz, dt, sel))
+    content.append(tabs, head, list)
+    return () => content.replaceChildren()
+  },
+
+  /* ---- 聊天面板（消息动作 / 输入区 / 任务条） ---- */
+  chat(panel, content) {
+    if (typeof window.businessBridge?.renderRolePanel === 'function') return window.businessBridge.renderRolePanel(panel, content)
+    const fixedAgent = String(panel.title || '').includes('🔒')
+    const head = el('div', 'p-head',
+      el('span', 'name', panel.title),
+      fixedAgent ? null : el('span', 'tri', '▾'),
+      el('span', 'meta', '会话示例'),
+      el('div', 'right', tag('界面预览', 'info')))
+    const body = el('div', 'chat-body')
+    if (panel.taskbar) {
+      body.append(el('div', 'task-bar',
+        el('span', '', '任务状态示例'), el('span', 'tri', '▼')))
+    }
+    body.append(el('div', 'msg sys',
+      el('div', 'who', '系统示例'),
+      el('div', 'bubble', '这里展示系统提示或工具调用的消息样式。')))
+    body.append(el('div', 'msg sys',
+      el('div', 'who', '系统示例'),
+      el('div', 'bubble', '此处为一条独立的示例消息，不读取真实文件。')))
+    body.append(el('div', 'msg',
+      el('div', 'who', 'AI'),
+      el('div', 'bubble',
+        '这是一条用于展示消息排版的示例回复。',
+        el('br'),
+        '会话内容不会发送或保存。'),
+      el('div', 'mrow',
+        el('span', 'pill', '用量示例'), el('span', 'pill', '耗时示例'), el('span', 'pill', '时间示例')),
+      (() => {
+        const a = el('div', 'msg-actions')
+        for (const g of ['⧉', '👍', '👎', '⑂', '◔', '⏱']) a.append(iconBtn(g, '消息动作'))
+        return a
+      })()))
+    body.append(el('div', 'msg user', el('div', 'who', '我'), el('div', 'bubble', '请展示一段用户消息。')))
+    body.append(el('div', 'msg',
+      el('div', 'who', 'AI'),
+      el('div', 'bubble', '这里展示另一条示例回复与对话间距。')))
+    const composer = el('div', 'composer',
+      el('div', 'comp-box',
+        el('div', 'comp-ph', '输入消息（界面示例，不会发送）'),
+        el('div', 'comp-tools',
+          iconBtn('+', '添加示例'), chip('权限示例 ▾'),
+          el('div', 'right',
+            el('span', 'model-pick', '模型示例 ▾'),
+            el('div', 'round-btn send', '↑')))))
+    content.append(head, body, composer)
+    return () => content.replaceChildren()
+  },
+
+  /* ---- 网页内容区示例（静态，不加载真实网站） ---- */
+  webai(panel, content) {
+    const head = el('div', 'p-head',
+      el('span', 'name', '网页助手示例'),
+      el('span', 'meta', '静态界面预览'),
+      el('div', 'right',
+        el('span', 'row', el('span', 'sdot gray'), tag('未连接')),
+        iconBtn('↻', '刷新示例'), tag('网页区域示例')))
+    const web = el('div', 'web')
+    const side = el('div', 'web-side' + (panel.fold ? ' fold' : ''))
+    side.append(el('div', 'web-logo', el('span', '', '◉'), '网页预览'))
+    side.append(el('div', 'web-new', '＋ 新建示例'))
+    const hist = el('div', 'web-hist')
+    for (const [t, on] of [['最近', 0], ['会话示例 A', 1], ['会话示例 B', 0], ['文档预览示例', 0], ['工作流示例', 0], ['项目预览示例', 0], ['布局演示', 0]]) {
+      hist.append(el('div', `h ${on ? 'on' : ''}`, t))
+    }
+    side.append(hist)
+    side.append(el('div', 'web-logo', el('span', '', '○'), '预览账户'))
+    const main = el('div', 'web-main')
+    if (panel.welcome) {
+      main.append(el('div', 'web-welcome',
+          el('div', 'hi', '网页内容布局示例'),
+        (() => {
+          const box = el('div', 'web-input')
+          box.append(el('div', 'ph', '输入区域示例（不会发送）'))
+          box.append(el('div', 'tools', chip('模式示例'), chip('搜索示例'), el('div', 'round-blue', '↑')))
+          return box
+        })()))
+    } else {
+      const scroll = el('div', 'scroll')
+      scroll.append(el('div', 'msg', el('div', 'bubble', '这里是一条静态消息示例。')))
+      scroll.append(el('div', 'msg',
+        el('div', 'bubble',
+          '网页内容区用于展示消息正文和段落间距。此文字为示例，不代表真实模型回复。'),
+        el('div', 'bubble',
+          '可在此位置呈现多段文本或列表内容。'),
+        el('div', 'bubble',
+          '独立预览不会连接网页服务或加载账户历史。'),
+        el('div', 'mrow', el('span', 'pill', '引用示例'))))
+      const actions = el('div', 'msg-actions')
+      for (const g of ['⧉', '↻', '👍', '👎', '🔊', '↗']) actions.append(iconBtn(g, '消息动作'))
+      scroll.append(actions)
+      scroll.style.padding = '14px 18% 20px'
+      main.append(scroll)
+    }
+    web.append(side, main)
+    content.append(head, web)
+    return () => content.replaceChildren()
+  },
+
+  /* ---- 节点画布示例 ---- */
+  canvas(panel, content) {
+    if (typeof window.businessBridge?.renderWorkflowPanel === 'function') return window.businessBridge.renderWorkflowPanel(panel, content)
+    const tools = el('div', 'c-toolbar',
+      chip('⊞ 内容节点 ▾', 'on'), chip('⚙ 方式节点 ▾'), chip('🔧 工具节点 ▾'), chip('👁 看板点 ▾'),
+      chip('适应'), chip('整理'), chip('状态'), chip('Markdown'), chip('清空'))
+    const canvas = el('div', 'canvas')
+    const nodes = [
+      { x: 3, y: 22, t: '内容输入', av: '◉', lines: ['输入内容示例', '可连接后续步骤'], foot: '节点示例', sel: 0 },
+      { x: 30, y: 8, t: '处理步骤', av: '◇', lines: ['步骤说明示例', '参数配置示例'], foot: '节点示例' },
+      { x: 32, y: 44, t: '条件判断', av: '◈', lines: ['条件内容示例'], foot: '' },
+      { x: 62, y: 20, t: '工具步骤', av: '□', lines: ['未连接工具'], foot: '' },
+      { x: 60, y: 48, t: '输出预览', av: '▤', lines: ['输出内容示例', '尚未运行'], foot: '示例节点' },
+      { x: 4, y: 52, t: '资料节点', av: '▧', lines: ['资料引用示例'], foot: '' },
+      { x: 36, y: 70, t: '结束', av: '○', lines: ['流程示例'], foot: '', run: 1 },
+    ]
+    for (const n of nodes) {
+      const node = el('div', `node ${n.sel ? 'sel' : ''} ${n.run ? 'run' : ''}`)
+      node.style.left = n.x + '%'; node.style.top = n.y + '%'
+      node.append(el('div', 'n-head', el('span', 'av', n.av), n.t))
+      for (const l of n.lines) node.append(el('div', 'n-line', l))
+      if (n.foot) node.append(el('div', 'n-foot', el('span', 'tag ok', n.foot)))
+      node.append(el('div', 'port r'), el('div', 'port l'))
+      canvas.append(node)
+    }
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+    svg.setAttribute('class', 'wire'); svg.setAttribute('width', '100%'); svg.setAttribute('height', '100%')
+    const paths = [['22,32', '30,16'], ['32,30', '32,50'], ['50,22', '62,28'], ['48,52', '60,56'], ['16,58', '36,74']]
+    for (const [from, to] of paths) {
+      const p = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+      const [x1, y1] = from.split(',').map(Number); const [x2, y2] = to.split(',').map(Number)
+      p.setAttribute('d', `M ${x1 * 6} ${y1 * 4} C ${x1 * 6 + 60} ${y1 * 4}, ${x2 * 6 - 60} ${y2 * 4}, ${x2 * 6} ${y2 * 4}`)
+      p.style.stroke = 'var(--line-2)'; p.setAttribute('fill', 'none'); p.setAttribute('stroke-width', '1.5')
+      svg.append(p)
+    }
+    canvas.append(svg)
+    const status = el('div', 'c-status',
+      el('span', '', '拖动空白=平移 · 滚轮=缩放'), el('span', '', '节点与连线均为布局示例'),
+      el('span', '', '节点示例 7 · 连线示例 5 · 缩放 100%'))
+    const canvasView = el('div', 'workflow-canvas-view')
+    canvasView.append(tools, canvas, status)
+    const plan = el('div', 'doc-body scroll')
+    plan.setAttribute('role', 'region')
+    plan.setAttribute('aria-label', '业务计划内容预览')
+    renderNeutralTabContent(plan, '业务计划', '业务计划视图的内容区域预留在此处；没有加载或保存计划数据。')
+    const setWorkflowView = label => {
+      const isCanvas = label === '工作流画布'
+      canvasView.hidden = !isCanvas
+      canvasView.style.display = isCanvas ? 'flex' : 'none'
+      plan.hidden = isCanvas
+      plan.setAttribute('aria-label', `${label}内容预览`)
+      const title = content.closest('.panel')?.querySelector('.panel-title')
+      if (title) title.textContent = isCanvas ? '工作流' : `工作流 · ${label}`
+    }
+    const tabs = panelTabs(panel, setWorkflowView)
+    if (tabs) content.append(tabs)
+    content.append(canvasView, plan)
+    setWorkflowView(panel.activeTab)
+    return () => {
+      const title = content.closest('.panel')?.querySelector('.panel-title')
+      if (title) title.textContent = panel.title
+      content.replaceChildren()
+    }
+  },
+
+  /* ---- 预览（媒体/文档） ---- */
+  preview(_panel, content) {
+    if (typeof window.businessBridge?.renderCompanion === 'function') return window.businessBridge.renderCompanion(_panel, content, 'preview')
+    const media = el('div', 'media')
+    media.append(el('div', 'frame', '预览区域示例'))
+    media.append(el('div', 'bar',
+      el('span', 'mono', '示例文件 / preview.md'),
+      el('button', 'p-btn pri', '打开示例')))
+    const locate = iconBtn('⌖', '定位', () => showLocalPreview('定位预览', '此界面没有真实文件可定位；文件定位功能未连接。'))
+    const close = iconBtn('×', '关闭预览', () => {
+      media.replaceChildren(el('div', 'frame', '当前没有打开的预览'))
+    })
+    const head = el('div', 'p-head', el('span', 'name', '预览'),
+      el('div', 'right', locate, iconBtn('⤓', '下载'), iconBtn('⤢', '全屏'), close))
+    content.append(head, media)
+    return () => content.replaceChildren()
+  },
+
+  /* ---- 状态卡片示例 ---- */
+  monitor(_panel, content) {
+    const head = el('div', 'p-head', el('span', 'name', '状态面板示例'),
+      el('div', 'right', tag('界面示例', 'info'), iconBtn('↻', '刷新示例')))
+    const statGrid = el('div', 'stat-grid')
+    const stats = [
+      ['指标 A', '示例', '未连接数据源', 38],
+      ['指标 B', '示例', '未连接数据源', 34],
+      ['指标 C', '示例', '未连接数据源', 25],
+      ['指标 D', '示例', '未连接数据源', 55],
+      ['状态项', '示例', '仅作布局展示', 100],
+      ['进度项', '示例', '仅作布局展示', 90],
+    ]
+    for (const [lb, vl, sub, pct] of stats) {
+      const s = el('div', 'stat')
+      s.append(el('div', 'lb', lb), el('div', 'vl', vl), el('div', 'sub', sub))
+      const bar = el('div', 'bar'); const fill = el('i'); fill.style.width = pct + '%'
+      if (pct >= 90) fill.style.background = 'var(--green)'
+      bar.append(fill); s.append(bar)
+      statGrid.append(s)
+    }
+    const tree = el('div', 'pad')
+    tree.append(el('div', 'sep'))
+    for (const nm of ['服务示例 A', '服务示例 B', '任务示例', '数据源示例', '组件示例']) {
+      tree.append(el('div', 'frow', el('span', 'ic', '▸'), el('span', 'nm', nm), tag('未连接', '')))
+    }
+    content.append(head, statGrid, tree)
+    return () => content.replaceChildren()
+  },
+
+  /* ---- 命令行布局示例 ---- */
+  terminal(_panel, content) {
+    const head = el('div', 'p-head', el('span', 'name', '命令行示例'),
+      el('div', 'right', tag('未连接', 'info'), iconBtn('↻', '重连示例')))
+    const term = make('div', 'term')
+    term.innerHTML =
+      `<span class="p">workspace</span>:<span class="c">~</span>$ command-example\n` +
+      `此处为静态终端布局示例。\n` +
+      `未建立本机或远程连接，也不会执行命令。\n` +
+      `<span class="p">workspace</span>:<span class="c">~</span>$ <span class="w">_</span>`
+    content.append(head, term)
+    return () => content.replaceChildren()
+  },
+
+  /* ---- 技能管理卡片 ---- */
+  skills(_panel, content) {
+    const head = el('div', 'p-head', el('span', 'name', '技能管理'),
+      el('div', 'right', tag('技能示例'), iconBtn('＋', '新建示例')))
+    const cardGrid = el('div', 'card-grid')
+    const cards = [
+      ['技能示例 A', '用于展示技能卡片标题和说明文本。', 'ok'],
+      ['技能示例 B', '静态内容，不对应已安装技能。', 'ok'],
+      ['技能示例 C', '用于演示状态标签与辅助信息。', 'ok'],
+      ['技能示例 D', '此独立预览不会执行技能。', 'ok'],
+      ['技能示例 E', '仅为布局占位内容。', 'warn'],
+      ['技能示例 F', '不读取本地目录或个人资料。', 'ok'],
+      ['技能示例 G', '用于展示多列卡片排版。', 'ok'],
+      ['技能示例 H', '未连接任何工具服务。', 'ok'],
+    ]
+    for (const [t, d, st] of cards) {
+      const c = el('div', 'scard')
+      c.append(el('div', 't', el('span', 'sdot ' + (st === 'ok' ? '' : 'gray')), t))
+      c.append(el('div', 'd', d))
+      c.append(el('div', 'f', tag('示例', st === 'ok' ? 'ok' : 'warn'), chip('预览'), chip('设置示例')))
+      cardGrid.append(c)
+    }
+    content.append(head, cardGrid)
+    return () => content.replaceChildren()
+  },
+
+  /* ---- 插件卡片示例 ---- */
+  tools(_panel, content) {
+    const head = el('div', 'p-head', el('span', 'name', '插件界面示例'),
+      el('div', 'right', tag('未连接', 'info'), iconBtn('＋', '添加示例')))
+    const cardGrid = el('div', 'card-grid')
+    for (const [t, v, d] of [
+      ['插件示例 A', '示例', '插件说明区域示例'],
+      ['插件示例 B', '示例', '状态标签和版本位置示例'],
+      ['插件示例 C', '示例', '未安装或启用任何插件'],
+      ['插件示例 D', '示例', '不连接工具或MCP服务'],
+      ['插件示例 E', '示例', '用于展示卡片布局'],
+      ['插件示例 F', '示例', '此列表不是已安装清单'],
+    ]) {
+      const c = el('div', 'scard')
+      c.append(el('div', 't', el('span', 'sdot'), t))
+      c.append(el('div', 'd', d))
+      c.append(el('div', 'f', tag('示例', 'info'), chip(v)))
+      cardGrid.append(c)
+    }
+    content.append(head, cardGrid)
+    return () => content.replaceChildren()
+  },
+
+  /* ---- 图片工具布局示例 ---- */
+  imagetool(panel, content) {
+    const head = el('div', 'p-head', el('span', 'name', panel.title || '图片工具示例'),
+      el('div', 'right', iconBtn('↻', '刷新示例'), iconBtn('⤢', '全屏示例')))
+    const row1 = el('div', 'tools-row',
+      el('span', 'lb', '查看'), chip('适应'), chip('100%'), chip('+'), chip('−'), chip('框选'), chip('打开图片'), chip('系统打开'))
+    const row2 = el('div', 'tools-row',
+      el('span', 'lb', '编辑'), chip('完成示例'), chip('重置示例'), chip('移除选中项'))
+    const row3 = el('div', 'tools-row',
+      el('span', 'lb', '工具'), chip('选择示例'), chip('绘制示例'),
+      el('span', 'lb', '模式'), chip('预览 ▾'),
+      el('span', 'lb', '框高'), el('input', 'num-in'), el('span', 'lb', 'px'),
+      el('span', 'lb', '框宽'), el('input', 'num-in'), el('span', 'lb', '%'),
+      el('span', 'chk', el('span', 'box on'), '等像素'))
+    const media = el('div', 'media')
+    media.append(el('div', 'frame', '图片内容预览示例'))
+    media.append(el('div', 'bar', tag('输入示例', 'info'), tag('输出示例', 'ok'), el('span', 'mono', '尺寸信息示例')))
+    content.append(head, row1, row2, row3, media)
+    return () => content.replaceChildren()
+  },
+
+  /* ---- 日志面板 ---- */
+  log(_panel, content) {
+    if (typeof window.businessBridge?.renderBusinessPanel === 'function') return window.businessBridge.renderBusinessPanel(_panel, content, _panel.path)
+    const head = el('div', 'p-head', el('span', 'name', '日志界面示例'),
+      el('div', 'right', chip('全部', 'on'), chip('错误'), chip('警告'), iconBtn('⤓', '导出')))
+    const term = make('div', 'term')
+    term.innerHTML =
+      `[--:--:--] <span class="p">INFO</span>  示例日志行 A\n` +
+      `[--:--:--] <span class="p">INFO</span>  示例日志行 B\n` +
+      `[--:--:--] <span class="w">WARN</span>  示例警告信息\n` +
+      `[--:--:--] <span class="p">INFO</span>  示例状态记录\n` +
+      `[--:--:--] <span class="e">ERROR</span> 示例错误信息\n` +
+      `           此处不对应真实调用栈\n` +
+      `           未连接运行服务\n` +
+      `[--:--:--] <span class="p">INFO</span>  示例事件完成\n` +
+      `[--:--:--] <span class="p">INFO</span>  示例工具调用记录\n` +
+      `[--:--:--] <span class="p">INFO</span>  示例文件操作记录\n`
+    content.append(head, term)
+    return () => content.replaceChildren()
+  },
+}
+const unsupportedRenderer = (panel, content) => {
+  content.append(el('p', 'reserved-copy', `暂不支持的面板类型：${panel.type}`))
+  return () => content.replaceChildren()
+}
+
+/* ============================================================
+   场景标签栏（照搬源码 initScenarioTabBar：拖拽换位 / 收成图标 / 分离）
+   ============================================================ */
+const TABBAR_VERSION = 'tabs-2026-09-26.1'
+const TAB_COLLAPSED_W = 33
+const SCENE_ICONS = ['▦', '◧', '⇄', '◇', '☰', '⧉', '▤', '▣', '✚']
+
+function tabListOf(nav) {
+  return Array.prototype.filter.call(nav.children, n => n && n.classList && n.classList.contains('tab'))
+}
+/** 落点 → 目标下标（纯函数，规则与浏览器标签页一致） */
+function tabDropIndex(rects, dropX) {
+  for (let i = 0; i < rects.length; i++) {
+    if (dropX < (rects[i].left + rects[i].right) / 2) return i
+  }
+  return rects.length
+}
+/** 其它标签平移时用 FLIP 补动画 */
+function flipNav(nav, mutate) {
+  const tabs = tabListOf(nav)
+  tabs.forEach(t => { t.style.transition = 'none'; t.style.transform = '' })
+  void nav.offsetWidth
+  const before = tabs.map(t => t.getBoundingClientRect().left)
+  mutate()
+  const after = tabs.map(t => t.getBoundingClientRect().left)
+  tabs.forEach((t, i) => {
+    const d = before[i] - after[i]
+    if (!d || Math.abs(d) < 0.5) return
+    t.style.transition = 'none'
+    t.style.transform = `translateX(${d}px)`
+    requestAnimationFrame(() => { t.style.transition = ''; t.style.transform = '' })
+  })
+}
+/** 收起 / 展开：激活的、悬停的、正在拖的始终展开 */
+function applyTabCollapse(nav, keepOpen) {
+  tabListOf(nav).forEach(t => {
+    const open = t === keepOpen || t.classList.contains('active') || t.classList.contains('tab-dragging')
+    t.classList.toggle('tab-collapsed', !open)
+  })
+}
+function measureTabWidths(nav) {
+  const tabs = tabListOf(nav)
+  tabs.forEach(t => {
+    t.classList.remove('tab-collapsed')
+    t.style.removeProperty('--tab-w')
+    t.style.removeProperty('--label-w')
+  })
+  tabs.forEach(t => {
+    const w = Math.ceil(t.getBoundingClientRect().width)
+    if (w > 0) t.style.setProperty('--tab-w', (w + 1) + 'px')
+    const lab = t.querySelector('.tab-label')
+    if (lab) {
+      const lw = Math.ceil(lab.scrollWidth)
+      if (lw > 0) t.style.setProperty('--label-w', lw + 'px')
+    }
+    t.style.setProperty('--tab-cw', TAB_COLLAPSED_W + 'px')
+  })
+}
+
+function initScenarioTabBar(opts) {
+  opts = opts || {}
+  const nav = opts.nav || document.getElementById('scenario-tabs')
+  if (!nav) return null
+  if (nav.getAttribute('data-tabbar') === TABBAR_VERSION) {
+    measureTabWidths(nav); applyTabCollapse(nav); return null
+  }
+  nav.setAttribute('data-tabbar', TABBAR_VERSION)
+  measureTabWidths(nav)
+
+  let drag = null, suppressClick = false, suppressTimer = null
+
+  // 悬停丝滑展开（事件委托：标签重建也不用重绑）
+  nav.addEventListener('mouseover', e => {
+    const t = e.target && e.target.closest ? e.target.closest('.tab') : null
+    if (t && t.parentNode === nav) applyTabCollapse(nav, t)
+  })
+  nav.addEventListener('mouseout', e => {
+    const t = e.target && e.target.closest ? e.target.closest('.tab') : null
+    if (!t || t.parentNode !== nav) return
+    const to = e.relatedTarget
+    if (to && t.contains(to)) return
+    applyTabCollapse(nav)
+  })
+
+  const beginDrag = () => {
+    const t = drag.tab
+    drag.width = t.offsetWidth; drag.height = t.offsetHeight
+    drag.startLeft = t.offsetLeft; drag.startTop = t.offsetTop
+    const ph = make('div', 'tab-placeholder')
+    ph.style.width = drag.width + 'px'; ph.style.height = drag.height + 'px'
+    nav.insertBefore(ph, t)
+    drag.ph = ph
+    t.classList.add('tab-dragging')
+    t.style.position = 'absolute'
+    t.style.width = drag.width + 'px'; t.style.height = drag.height + 'px'
+    t.style.left = drag.startLeft + 'px'; t.style.top = drag.startTop + 'px'
+    nav.classList.add('tabs-dragging')
+    drag.started = true
+    drag.curTarget = -1
+    applyTabCollapse(nav, t)
+  }
+  const placeTarget = target => {
+    const others = tabListOf(nav).filter(x => x !== drag.tab)
+    flipNav(nav, () => {
+      if (target >= others.length) nav.appendChild(drag.ph)
+      else nav.insertBefore(drag.ph, others[target])
+    })
+  }
+  const edgeScroll = clientX => {
+    const nr = nav.getBoundingClientRect()
+    const max = nav.scrollWidth - nav.clientWidth
+    if (max <= 0) return
+    if (clientX < nr.left + 30) nav.scrollLeft = Math.max(0, nav.scrollLeft - 8)
+    else if (clientX > nr.right - 30) nav.scrollLeft = Math.min(max, nav.scrollLeft + 8)
+  }
+
+  const onDown = e => {
+    if (e.button !== 0) return
+    const t = e.target && e.target.closest ? e.target.closest('.tab') : null
+    if (!t || t.parentNode !== nav) return
+    if (e.target.closest('.tab-detach')) return          // ⧉ 有自己的逻辑
+    if (tabListOf(nav).some(x => x.classList.contains('tab-dragging'))) return
+    drag = { tab: t, id: e.pointerId, startX: e.clientX, startY: e.clientY, started: false, scrollAt: nav.scrollLeft }
+    try { t.setPointerCapture(e.pointerId) } catch { /* ignore */ }
+  }
+  const onMove = e => {
+    if (!drag || e.pointerId !== drag.id) return
+    if (!drag.started) {
+      if (Math.abs(e.clientX - drag.startX) < 5 && Math.abs(e.clientY - drag.startY) < 5) return  // 5px 内算点击
+      beginDrag()
+    }
+    if (e.cancelable) e.preventDefault()
+    const scrollDelta = nav.scrollLeft - drag.scrollAt
+    drag.tab.style.left = (drag.startLeft + (e.clientX - drag.startX) + scrollDelta) + 'px'
+    const nr = nav.getBoundingClientRect()
+    const dropX = e.clientX - (nr.left + nav.clientLeft) + nav.scrollLeft
+    const others = tabListOf(nav).filter(x => x !== drag.tab)
+    const rects = others.map(x => ({ left: x.offsetLeft, right: x.offsetLeft + x.offsetWidth }))
+    const target = tabDropIndex(rects, dropX)
+    if (target !== drag.curTarget) { drag.curTarget = target; placeTarget(target) }
+    edgeScroll(e.clientX)
+  }
+  const onUp = e => {
+    if (!drag || e.pointerId !== drag.id) return
+    if (!drag.started) { drag = null; return }   // 没拖动 ⇒ 放行 click（正常切场景）
+    const t = drag.tab, ph = drag.ph
+    suppressClick = true                          // 拖完这一下不算点击
+    if (suppressTimer) clearTimeout(suppressTimer)
+    suppressTimer = setTimeout(() => { suppressClick = false }, 500)
+    drag = null
+    t.style.transition = 'left .16s cubic-bezier(.2,.8,.2,1), transform .16s ease'
+    t.style.left = ph.offsetLeft + 'px'
+    setTimeout(() => {
+      nav.insertBefore(t, ph)
+      t.classList.remove('tab-dragging')
+      ;['position', 'width', 'height', 'left', 'top', 'transition', 'zIndex'].forEach(k => t.style.removeProperty(k))
+      if (ph.parentNode) ph.parentNode.removeChild(ph)
+      nav.classList.remove('tabs-dragging')
+      measureTabWidths(nav); applyTabCollapse(nav)
+      if (typeof opts.persist === 'function') {
+        try {
+          opts.persist(tabListOf(nav).map(x => x.dataset.scId).filter(Boolean))
+        } catch { /* 存档失败不影响已换好的位置 */ }
+      }
+    }, 170)
+  }
+  nav.addEventListener('click', e => {
+    if (!suppressClick) return
+    e.stopPropagation(); e.preventDefault()
+  }, true)
+  nav.addEventListener('pointerdown', onDown)
+  nav.addEventListener('pointermove', onMove)
+  nav.addEventListener('pointerup', onUp)
+  nav.addEventListener('pointercancel', onUp)
+  applyTabCollapse(nav)
+  return { version: TABBAR_VERSION, refresh: () => { measureTabWidths(nav); applyTabCollapse(nav) } }
+}
+
+/* ============================================================
+   面板：挂载（序号徽标 + 展开箭头 + 拖拽吸附）
+   ============================================================ */
+function panelHead(meta) {
+  const head = el('div', 'panel-header')
+  const grip = make('span', 'grip', '⠿'); grip.title = '拖拽移动面板'
+  const badge = el('span', 'panel-badge', String((meta._idx || 0) + 1).padStart(2, '0'))
+  badge.title = '面板序号'
+  const identity = el('div', 'panel-identity')
+  identity.append(el('strong', 'panel-title', meta.title))
+  if (meta.sub) identity.append(el('span', 'panel-sub', meta.sub))
+  head.append(grip, badge, identity)
+  return { head, grip, identity }
+}
+
+function createPanelExpandIcon() {
+  const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+  icon.setAttribute('viewBox', '0 0 24 20')
+  icon.setAttribute('aria-hidden', 'true')
+  icon.setAttribute('focusable', 'false')
+  const addLayer = (className, d) => {
+    const group = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    group.setAttribute('class', className)
+    for (const layer of d) {
+      const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect')
+      rect.setAttribute('x', layer.x); rect.setAttribute('y', layer.y)
+      rect.setAttribute('width', layer.width); rect.setAttribute('height', layer.height)
+      rect.setAttribute('rx', '1.1')
+      rect.setAttribute('transform', layer.transform)
+      rect.setAttribute('fill', layer.front ? 'var(--panel-header)' : 'none')
+      rect.setAttribute('stroke', layer.front ? 'currentColor' : 'var(--text-dim)')
+      rect.setAttribute('stroke-width', layer.front ? '1.35' : '1.1')
+      group.append(rect)
+    }
+    icon.append(group)
+  }
+  const horizontal = { x: 2, y: 6, width: 15, height: 8, transform: 'rotate(-4 9.5 10)', front: true }
+  const vertical = { x: 9, y: 2.5, width: 8, height: 15, transform: 'rotate(-4 13 10)', front: false }
+  addLayer('panel-expand-icon-normal', [vertical, horizontal])
+  addLayer('panel-expand-icon-extended', [{ ...horizontal, front: false }, { ...vertical, front: true }])
+  return icon
+}
+
+function setPanelExpandControl(button, expanded) {
+  if (!button) return
+  const label = expanded ? '还原面板高度' : '向上延长面板'
+  button.dataset.extended = expanded ? 'true' : 'false'
+  button.setAttribute('aria-pressed', String(Boolean(expanded)))
+  button.setAttribute('aria-label', label)
+  button.title = label
+}
+
+function makePanel(meta, idx) {
+  const wrap = make('section', `panel panel-${meta.type}`)
+  if (meta.focus) wrap.classList.add('focus')
+  wrap.dataset.panelId = meta.id
+  wrap.dataset.col = meta.col; wrap.dataset.row = meta.row
+  wrap.dataset.w = meta.w; wrap.dataset.h = meta.h
+  wrap.__meta = { ...meta, _idx: idx }
+  applyGeom(wrap)
+  const { head, grip, identity } = panelHead({ ...meta, _idx: idx })
+
+  // 所有面板都可纵向延长；双击全屏仍由 panel-interactions 单独处理。
+  const controls = make('div', 'panel-controls')
+  const exp = el('button', 'panel-expand')
+  exp.type = 'button'
+  exp.append(createPanelExpandIcon())
+  setPanelExpandControl(exp, false)
+  exp.addEventListener('click', ev => {
+    ev.preventDefault(); ev.stopPropagation()
+    if (expandedStateOf(wrap)) collapsePanel(wrap)
+    else expandPanel(wrap, exp)
+  })
+  identity.append(exp)
+  const refresh = iconBtn('↻', '刷新面板', () => {
+    try { cleanups.get(meta.id)?.() } catch { /* ignore */ }
+    const body = wrap.querySelector('.panel-content'); body.replaceChildren()
+    cleanups.set(meta.id, (rendererRegistry[meta.type] || unsupportedRenderer)(meta, body))
+  })
+  controls.append(refresh)
+  head.append(controls)
+
+  const content = make('div', 'panel-content')
+  wrap.append(head, content)
+  grid.append(wrap)
+  cleanups.set(meta.id, (rendererRegistry[meta.type] || unsupportedRenderer)(meta, content))
+  attachDrag(wrap, head, grip)
+  return wrap
+}
+
+function applyGeom(panel, expanded) {
+  if (expanded) return   // 展开态由 expandPanel 用内联 fixed 坐标接管
+  panel.style.position = ''
+  panel.style.gridColumn = `${panel.dataset.col} / span ${panel.dataset.w}`
+  panel.style.gridRow = `${panel.dataset.row} / span ${panel.dataset.h}`
+  ;['left', 'top', 'width', 'height', 'zIndex'].forEach(k => panel.style.removeProperty(k))
+}
+
+/* ---- 面板展开/收起（照搬源码：占位格 + position:fixed 撑满网格高，ESC 逐层收） ---- */
+function expandedStateOf(wrap) {
+  return panelExpandStates.find(s => s.wrap === wrap) || null
+}
+function expandPanel(wrap, btn) {
+  try {
+    const slot = make('div', 'panel-slot')
+    slot.style.gridColumn = `${wrap.dataset.col} / span ${wrap.dataset.w}`
+    slot.style.gridRow = `${wrap.dataset.row} / span ${wrap.dataset.h}`
+    if (wrap.dataset.splitTreeManaged === 'true') {
+      const gridRect = grid.getBoundingClientRect()
+      const wrapRect = wrap.getBoundingClientRect()
+      const gridStyle = getComputedStyle(grid)
+      const scaleX = gridRect.width / Math.max(1, grid.offsetWidth)
+      const scaleY = gridRect.height / Math.max(1, grid.offsetHeight)
+      const originX = gridRect.left + ((parseFloat(gridStyle.borderLeftWidth) || 0) + (parseFloat(gridStyle.paddingLeft) || 0)) * scaleX
+      const originY = gridRect.top + ((parseFloat(gridStyle.borderTopWidth) || 0) + (parseFloat(gridStyle.paddingTop) || 0)) * scaleY
+      slot.style.position = 'absolute'
+      slot.style.gridColumn = '1 / -1'
+      slot.style.gridRow = '1 / -1'
+      slot.style.left = `${(wrapRect.left - originX) / scaleX}px`
+      slot.style.top = `${(wrapRect.top - originY) / scaleY}px`
+      slot.style.width = `${wrapRect.width / scaleX}px`
+      slot.style.height = `${wrapRect.height / scaleY}px`
+    }
+    grid.insertBefore(slot, wrap)
+    const g = grid.getBoundingClientRect()
+    const s = slot.getBoundingClientRect()
+    const from = wrap.getBoundingClientRect()
+    const to = { left: s.left, top: g.top, width: s.width, height: g.height }
+    wrap.style.position = 'fixed'
+    wrap.style.zIndex = String(++panelExpandZ)
+    wrap.style.left = Math.round(from.left) + 'px'
+    wrap.style.top = Math.round(from.top) + 'px'
+    wrap.style.width = Math.round(from.width) + 'px'
+    wrap.style.height = Math.round(from.height) + 'px'
+    wrap.classList.add('panel-expanded')
+    requestAnimationFrame(() => {
+      wrap.classList.add('panel-anim')
+      wrap.style.left = Math.round(to.left) + 'px'
+      wrap.style.top = Math.round(to.top) + 'px'
+      wrap.style.width = Math.round(to.width) + 'px'
+      wrap.style.height = Math.round(to.height) + 'px'
+      setTimeout(() => wrap.classList.remove('panel-anim'), 340)
+    })
+    if (btn) setPanelExpandControl(btn, true)
+    const onResize = () => {
+      if (!wrap.isConnected) { collapsePanel(wrap); return }
+      try {
+        wrap.classList.remove('panel-anim')
+        const g2 = grid.getBoundingClientRect()
+        const s2 = slot.getBoundingClientRect()
+        wrap.style.left = Math.round(s2.left) + 'px'
+        wrap.style.top = Math.round(g2.top) + 'px'
+        wrap.style.width = Math.round(s2.width) + 'px'
+        wrap.style.height = Math.round(g2.height) + 'px'
+      } catch { /* ignore */ }
+    }
+    const onKey = e => {
+      if (!wrap.isConnected) { collapsePanel(wrap); return }
+      // ESC 只收最上层那个（最后展开的），连按逐个退栈
+      if (e.key === 'Escape' && panelExpandStates[panelExpandStates.length - 1] === st) {
+        e.preventDefault(); collapsePanel(wrap)
+      }
+    }
+    window.addEventListener('resize', onResize)
+    document.addEventListener('keydown', onKey, true)
+    const st = { wrap, slot, btn, onResize, onKey }
+    panelExpandStates.push(st)
+  } catch { /* 展开失败保持原状 */ }
+}
+function collapsePanel(wrap) {
+  const idx = panelExpandStates.findIndex(s => s.wrap === wrap)
+  if (idx < 0) return
+  const st = panelExpandStates[idx]
+  panelExpandStates.splice(idx, 1)
+  window.removeEventListener('resize', st.onResize)
+  document.removeEventListener('keydown', st.onKey, true)
+  if (st.btn) setPanelExpandControl(st.btn, false)
+  try {
+    const s = st.slot.getBoundingClientRect()
+    const g = grid.getBoundingClientRect()
+    wrap.classList.add('panel-anim')
+    wrap.style.left = Math.round(s.left) + 'px'
+    wrap.style.top = Math.round(s.top) + 'px'
+    wrap.style.width = Math.round(s.width) + 'px'
+    wrap.style.height = Math.round(Math.min(s.height, g.height)) + 'px'
+    setTimeout(() => {
+      wrap.classList.remove('panel-anim', 'panel-expanded')
+      applyGeom(wrap)
+      if (st.slot.parentNode) st.slot.parentNode.removeChild(st.slot)
+    }, 330)
+  } catch {
+    wrap.classList.remove('panel-anim', 'panel-expanded')
+    applyGeom(wrap)
+    if (st.slot.parentNode) st.slot.parentNode.removeChild(st.slot)
+  }
+}
+
+/* ---- 面板拖拽移动 + 自动吸附到网格（交互保留） ---- */
+function attachDrag(panel, handle, grip) {
+  let pending = null, dragging = false, moveFrame = null, latestPoint = null
+  const restoreStyle = state => {
+    if (state.originalStyle === null) panel.removeAttribute('style')
+    else panel.setAttribute('style', state.originalStyle)
+  }
+  const applyPoint = point => {
+    if (!panel.isConnected || !dragging || !point) return
+    const dx = (point.x - pending.x) / pending.scaleX
+    const dy = (point.y - pending.y) / pending.scaleY
+    panel.style.translate = `${dx}px ${dy}px`
+    const target = findSnapTarget(point.x, point.y, panel)
+    grid.querySelectorAll('.panel').forEach(p => p.classList.remove('snap-target'))
+    if (target) target.classList.add('snap-target')
+  }
+  const cancel = () => end({ pointerId: pending?.pointerId }, true)
+  const onLostPointerCapture = e => {
+    if (pending && e.pointerId === pending.pointerId) end(e, true)
+  }
+  const start = e => {
+    if (e.button !== 0) return
+    if (e.target.closest('.icon-control, .panel-expand')) return
+    if (expandedStateOf(panel)) return
+    if (pending || dragging || activePanelDragCancel) return
+    const rect = panel.getBoundingClientRect()
+    const layoutWidth = panel.offsetWidth || rect.width
+    const layoutHeight = panel.offsetHeight || rect.height
+    pending = {
+      pointerId: e.pointerId, x: e.clientX, y: e.clientY,
+      scaleX: rect.width / layoutWidth || 1,
+      scaleY: rect.height / layoutHeight || 1,
+      originalStyle: panel.getAttribute('style'),
+    }
+    try { handle.setPointerCapture?.(e.pointerId) } catch { pending = null; return }
+    activePanelDragCancel = cancel
+    window.addEventListener('blur', cancel)
+  }
+  const move = e => {
+    if (!pending || e.pointerId !== pending.pointerId) return
+    if (!dragging) {
+      if (Math.hypot(e.clientX - pending.x, e.clientY - pending.y) < 8) return
+      dragging = true
+      panel.classList.add('dragging')
+      panel.style.zIndex = '10000'
+      panel.style.transition = 'none'
+    }
+    latestPoint = { x: e.clientX, y: e.clientY }
+    if (moveFrame !== null) return
+    moveFrame = window.requestAnimationFrame(() => {
+      moveFrame = null
+      applyPoint(latestPoint)
+    })
+  }
+  const end = (e, cancelled = false) => {
+    if (!pending && !dragging) return
+    if (pending?.pointerId !== e?.pointerId) return
+    const state = pending
+    if (moveFrame !== null) window.cancelAnimationFrame(moveFrame)
+    moveFrame = null
+    if (dragging && !cancelled && Number.isFinite(e?.clientX) && Number.isFinite(e?.clientY)) {
+      latestPoint = { x: e.clientX, y: e.clientY }
+      applyPoint(latestPoint)
+    }
+    const target = dragging && !cancelled ? findSnapTarget(e.clientX, e.clientY, panel) : null
+    const wasDragging = dragging
+    pending = null
+    dragging = false
+    latestPoint = null
+    window.removeEventListener('blur', cancel)
+    if (activePanelDragCancel === cancel) activePanelDragCancel = null
+    panel.classList.remove('dragging', 'snap-target')
+    grid.querySelectorAll('.panel').forEach(p => p.classList.remove('snap-target'))
+    try {
+      if (handle.hasPointerCapture?.(state.pointerId)) handle.releasePointerCapture(state.pointerId)
+    } catch { /* capture can be lost before pointerup */ }
+    if (!wasDragging) return
+    restoreStyle(state)
+    if (target && target !== panel) swapGeom(panel, target)
+  }
+  handle.addEventListener('pointerdown', start)
+  handle.addEventListener('pointermove', move)
+  handle.addEventListener('pointerup', end)
+  handle.addEventListener('pointercancel', e => end(e, true))
+  handle.addEventListener('lostpointercapture', onLostPointerCapture)
+  grip.addEventListener('pointerdown', start)
+  grip.addEventListener('pointermove', move)
+  grip.addEventListener('pointerup', end)
+  grip.addEventListener('pointercancel', e => end(e, true))
+  grip.addEventListener('lostpointercapture', onLostPointerCapture)
+}
+function findSnapTarget(x, y, self) {
+  let best = null, bestDist = Infinity
+  grid.querySelectorAll('.panel').forEach(p => {
+    if (p === self) return
+    const r = p.getBoundingClientRect()
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2
+    const d = Math.hypot(cx - x, cy - y)
+    if (d < bestDist) { bestDist = d; best = p }
+  })
+  return bestDist < 260 ? best : null
+}
+function swapGeom(a, b) {
+  for (const k of ['col', 'row', 'w', 'h']) {
+    const t = a.dataset[k]; a.dataset[k] = b.dataset[k]; b.dataset[k] = t
+  }
+  applyGeom(a); applyGeom(b)
+  // 同步 meta（刷新/展开读的是 meta）
+  for (const p of [a, b]) {
+    if (p.__meta) {
+      p.__meta.col = +p.dataset.col; p.__meta.row = +p.dataset.row
+      p.__meta.w = +p.dataset.w; p.__meta.h = +p.dataset.h
+    }
+  }
+}
+
+/* ============================================================
+   场景加载（照搬源码 loadScenario 的清理/重挂骨架）
+   ============================================================ */
+function clearScene() {
+  for (const cleanup of cleanups.values()) { try { cleanup?.() } catch { /* ignore */ } }
+  cleanups.clear()
+  // 展开栈清干净（面板要没了）
+  for (const st of [...panelExpandStates]) {
+    window.removeEventListener('resize', st.onResize)
+    document.removeEventListener('keydown', st.onKey, true)
+  }
+  panelExpandStates = []
+  grid.replaceChildren()
+  grid.querySelectorAll('.drop-ghost').forEach(n => n.remove())
+}
+
+function commitScenario(scene) {
+  if (!scene) return false
+  activePanelDragCancel?.()
+  currentTab = scene.id
+  clearScene()
+  // Advance the bridge generation before the new role/workflow records capture it.
+  // Rendering first would make their ACKs stale when sceneSelected increments it.
+  window.businessBridge?.sceneSelected?.(scene)
+  grid.style.setProperty('--cols', scene.cols || 4)
+  grid.style.setProperty('--rows', scene.rows || 4)
+  scene.panels.forEach((p, i) => makePanel({ ...p, sceneId: scene.id }, i))
+  // 标签激活态
+  const nav = $('#scenario-tabs')
+  tabListOf(nav).forEach(t => t.classList.toggle('active', t.dataset.scId === scene.id))
+  applyTabCollapse(nav)
+  updateSidebarScene(scene)
+  if(initialSceneCommit?.id===scene.id){const pending=initialSceneCommit;initialSceneCommit=undefined;pending.resolve(true)}
+  return true
+}
+
+function loadInitialScenario(id){
+  return new Promise((resolve,reject)=>{
+    const pending={id,resolve,reject};initialSceneCommit=pending
+    Promise.resolve(loadScenario(id)).then(()=>{if(initialSceneCommit===pending){initialSceneCommit=undefined;reject({firstPaintStage:'scene'})}},()=>{if(initialSceneCommit===pending)initialSceneCommit=undefined;reject({firstPaintStage:'scene'})})
+  })
+}
+
+function runSceneLoadQueue() {
+  if (sceneLoadPromise) return sceneLoadPromise
+  sceneLoadPromise = (async () => {
+    while (sceneHandledVersion < sceneRequestVersion) {
+      const attemptVersion = sceneRequestVersion
+      let prepared = { ok: true }
+      const bridge = window.businessBridge
+      if (typeof bridge?.prepareSceneTransition === 'function') {
+        try { prepared = await bridge.prepareSceneTransition() }
+        catch { prepared = { ok: false } }
+      }
+      if (prepared?.ok !== true) {
+        sceneHandledVersion = attemptVersion
+        setStatus('场景切换暂不可用，请重试。', true)
+        if (sceneHandledVersion < sceneRequestVersion) continue
+        break
+      }
+      // Requests arriving during hide share that hide barrier. Commit only the
+      // latest target; no intermediate scene is rendered or persisted.
+      const commitVersion = sceneRequestVersion
+      const scene = data.scenes.find(item => item.id === requestedSceneId)
+      if (scene) commitScenario(scene)
+      sceneHandledVersion = commitVersion
+    }
+  })().finally(() => {
+    sceneLoadPromise = undefined
+    if (sceneHandledVersion < sceneRequestVersion) void runSceneLoadQueue()
+  })
+  return sceneLoadPromise
+}
+
+function loadScenario(id) {
+  const scene = data.scenes.find(s => s.id === id) || data.scenes[0]
+  if (!scene) return Promise.resolve(false)
+  requestedSceneId = scene.id
+  sceneRequestVersion++
+  return runSceneLoadQueue()
+}
+
+function updateSidebarScene(scene) {
+  const current = document.getElementById('ui-sidebar-current')
+  if (current) current.textContent = scene?.name || '工作台'
+}
+
+function initSidebarOverlay() {
+  const toggle = document.getElementById('ui-sidebar-toggle')
+  const sidebar = document.getElementById('ui-sidebar')
+  const backdrop = document.getElementById('ui-sidebar-backdrop')
+  const close = document.getElementById('ui-sidebar-close')
+  if (!toggle || !sidebar || !backdrop || !close) return
+  const nativeSidebar = window.businessBridge?.isDesktop?.() === true
+  let nativeSidebarReady = false
+  let nativeSidebarBusy = false
+  const setOpen = open => {
+    if (nativeSidebar) {
+      toggle.setAttribute('aria-expanded', String(open))
+      toggle.setAttribute('aria-label', open ? '关闭侧栏' : '打开侧栏')
+      toggle.title = open ? '关闭原生侧栏' : '打开原生侧栏'
+      document.body.classList.toggle('native-account-surface', true)
+      return
+    }
+    sidebar.classList.toggle('is-open', open)
+    sidebar.setAttribute('aria-hidden', String(!open))
+    backdrop.hidden = !open
+    toggle.setAttribute('aria-expanded', String(open))
+    toggle.setAttribute('aria-label', open ? '关闭侧栏' : '打开侧栏')
+    toggle.title = open ? '关闭侧栏' : '打开侧栏'
+  }
+  if (nativeSidebar) {
+    document.body.classList.add('native-account-surface')
+    // Desktop mode uses the Host-owned account surface only. Keep the preview
+    // drawer in the DOM for browser mode, but never expose or bind it here.
+    sidebar.hidden = true
+    sidebar.setAttribute('aria-hidden', 'true')
+    backdrop.hidden = true
+    toggle.disabled = true
+    toggle.setAttribute('aria-expanded', 'false')
+    toggle.setAttribute('aria-label', '打开原生侧栏')
+    toggle.title = '正在等待原生工作区挂载…'
+    window.addEventListener('business-sidebar-state', event => {
+      if (typeof event.detail === 'boolean') setOpen(event.detail)
+    })
+    window.addEventListener('business-account-status', event => {
+      nativeSidebarReady = event.detail?.status === 'context-mounted'
+      toggle.disabled = !nativeSidebarReady || nativeSidebarBusy
+      if (nativeSidebarReady) toggle.title = toggle.getAttribute('aria-expanded') === 'true' ? '关闭原生侧栏' : '打开原生侧栏'
+      else toggle.title = event.detail?.status === 'unavailable' || event.detail?.status === 'error'
+        ? '原生工作区暂不可用' : '正在等待原生工作区挂载…'
+    })
+    toggle.addEventListener('click', async () => {
+      if (!nativeSidebarReady || nativeSidebarBusy) return
+      nativeSidebarBusy = true
+      toggle.disabled = true
+      try {
+        const result = await window.businessBridge.toggleSidebar()
+        if (result?.ok && typeof result.open === 'boolean') setOpen(result.open)
+        else setStatus('原生侧栏暂时不可用。', true)
+      } catch { setStatus('原生侧栏暂时不可用。', true) }
+      finally {
+        nativeSidebarBusy = false
+        toggle.disabled = !nativeSidebarReady
+      }
+    })
+  } else {
+    toggle.addEventListener('click', () => setOpen(sidebar.getAttribute('aria-hidden') === 'true'))
+    close.addEventListener('click', () => setOpen(false))
+    backdrop.addEventListener('click', () => setOpen(false))
+  }
+  if (!nativeSidebar) {
+    sidebar.querySelectorAll('[data-sidebar-action]').forEach(button => {
+      button.addEventListener('click', () => {
+        setOpen(false)
+        const action = button.dataset.sidebarAction
+        if (action === 'new-session') showLocalPreview('新建会话', '此纯前端预览不创建真实会话，也不发送消息。')
+        else if (action === 'workspaces') showLocalPreview('工作区', '此预览不读取或切换真实工作区。')
+        else if (action === 'automations') showLocalPreview('自动化', '此预览不读取或运行自动化任务。')
+        else if (action === 'settings') showSettings()
+      })
+    })
+    const archive = document.getElementById('ui-sidebar-archive')
+    const sessionEmpty = document.getElementById('ui-sidebar-session-empty')
+    archive?.addEventListener('click', () => {
+      const visible = archive.getAttribute('aria-pressed') !== 'true'
+      archive.setAttribute('aria-pressed', String(visible))
+      archive.textContent = visible ? '隐藏归档' : '显示归档'
+      if (sessionEmpty) sessionEmpty.textContent = visible ? '暂无归档会话' : '暂无会话'
+    })
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && sidebar.getAttribute('aria-hidden') === 'false') setOpen(false)
+    })
+  }
+}
+
+function buildTabs() {
+  const nav = $('#scenario-tabs')
+  nav.replaceChildren()
+  nav.removeAttribute('data-tabbar')
+  const order = getOrder()
+  const byId = new Map(data.scenes.map(s => [s.id, s]))
+  const sorted = [...order.map(id => byId.get(id)).filter(Boolean),
+                  ...data.scenes.filter(s => !order.includes(s.id))]
+  sorted.forEach((scene, i) => {
+    const tab = make('button', 'tab' + (scene.id === currentTab ? ' active' : ''))
+    tab.type = 'button'
+    tab.dataset.id = scene.id
+    tab.dataset.scId = scene.id
+    tab.dataset.movable = '1'
+    tab.append(
+      el('span', 'tab-ico', SCENE_ICONS[data.scenes.indexOf(scene)] || SCENE_ICONS[i] || '◇'),
+      el('span', 'tab-label', scene.name))
+    const detach = el('span', 'tab-detach', '⧉')
+    detach.title = '在新窗口打开此场景'
+    detach.addEventListener('click', ev => {
+      ev.preventDefault(); ev.stopPropagation()
+      openDetachedScene(scene.id)
+    })
+    tab.append(detach)
+    tab.addEventListener('click', () => {
+      if (tab._moved) return
+      persistActiveScene(scene.id)
+      loadScenario(scene.id)
+    })
+    nav.append(tab)
+  })
+  initScenarioTabBar({ nav, persist: saveOrder })
+  applyTabCollapse(nav)
+}
+function getOrder() {
+  try { return JSON.parse(localStorage.getItem('sceneTabOrder') || '[]') } catch { return [] }
+}
+const ACTIVE_SCENE_KEY = 'ui18.activeScene:v1'
+function isSoloWindow() {
+  return new URLSearchParams(location.search).get('solo') === '1'
+}
+function getSavedActiveScene(scenes) {
+  try {
+    const saved = localStorage.getItem(ACTIVE_SCENE_KEY)
+    return scenes.some(scene => scene.id === saved) ? saved : null
+  } catch { return null }
+}
+function persistActiveScene(sceneId) {
+  if (isSoloWindow()) return
+  try { localStorage.setItem(ACTIVE_SCENE_KEY, sceneId) } catch { /* Active scene memory is optional. */ }
+}
+function saveOrder(ids) {
+  try { localStorage.setItem('sceneTabOrder', JSON.stringify(ids)) } catch { /* ignore */ }
+}
+function openDetachedScene(id) {
+  if (window.businessBridge?.isDesktop?.()) {
+    void window.businessBridge.openScene(id).then(result => {
+      if (!result?.ok) setStatus('此场景暂时无法在独立窗口打开。', true)
+    })
+    return
+  }
+  const url = `index.html?scene=${encodeURIComponent(id)}&solo=1`
+  window.open(url, '_blank', 'width=1280,height=840')
+}
+
+/* ============================================================
+   标题栏（照搬源码 initTitlebar / initTheme）
+   ============================================================ */
+let toolModalBack = null
+function ensureModalHeader(titleText) {
+  const title = $('#modal-title')
+  const head = title.parentElement
+  let group = head.querySelector('.modal-title-group')
+  if (!group) {
+    group = make('div', 'modal-title-group')
+    head.insertBefore(group, title)
+    group.append(title)
+  }
+  let back = group.querySelector('.modal-tool-back')
+  if (!back) {
+    back = make('button', 'modal-close modal-tool-back', '‹')
+    back.type = 'button'
+    back.setAttribute('aria-label', '返回上一页')
+    back.title = '返回上一页'
+    group.insertBefore(back, title)
+  }
+  back.hidden = titleText === '工作台工具'
+  back.onclick = () => {
+    const previous = toolModalBack
+    toolModalBack = null
+    if (previous) previous()
+    else closeModal()
+  }
+}
+function openModal(title, bodyBuilder) {
+  ensureModalHeader(title)
+  $('#modal-title').textContent = title
+  const body = $('#modal-body')
+  body.replaceChildren()
+  bodyBuilder(body)
+  $('#modal-mask').style.display = 'flex'
+}
+function closeModal() {
+  toolModalBack = null
+  $('#modal-mask').style.display = 'none'
+  $('#modal-body').replaceChildren()
+}
+function modalRows(body, rows, note) {
+  for (const [badge, name, desc, right] of rows) {
+    const row = el('div', 'mdl-row')
+    row.append(el('div', 'mdl-badge', badge))
+    row.append(el('div', null, el('div', 'mdl-name', name), el('div', 'mdl-desc', desc)))
+    const r = el('div', 'mdl-right')
+    for (const t of right || []) r.append(tag(t[0], t[1]))
+    row.append(r)
+    body.append(row)
+  }
+  if (note) body.append(el('div', 'modal-note', note))
+}
+function showPlugins() {
+  if (window.businessBridge?.isDesktop?.()) {
+    openModal('插件目录', body => {
+      body.append(el('div', 'modal-note', '正在读取原生工作区中的插件目录…'))
+    })
+    const body = $('#modal-body')
+    const current = () => $('#modal-mask').style.display !== 'none' && $('#modal-title').textContent === '插件目录'
+    void window.businessBridge.globalAction('plugins').then(result => {
+      if (!current()) return
+      if (!result?.ok || !Array.isArray(result.value?.entries)) {
+        body.replaceChildren(el('div', 'modal-note', '插件目录暂不可用；原生工作区未返回可确认的条目。'))
+        return
+      }
+      const rows = result.value.entries.map(item => [
+        typeof item?.moduleName === 'string' && item.moduleName ? item.moduleName.slice(0, 1) : '·',
+        typeof item?.meta?.title === 'string' ? item.meta.title : (typeof item?.moduleName === 'string' ? item.moduleName : '未命名插件'),
+        typeof item?.meta?.description === 'string' ? item.meta.description : (typeof item?.entryId === 'string' ? item.entryId : ''),
+        [[item?.enabled === true ? '已启用' : '未启用', item?.enabled === true ? 'ok' : '']],
+      ])
+      body.replaceChildren()
+      modalRows(body, rows, '')
+      if (!rows.length) body.append(el('div', 'modal-note', '原生工作区没有返回插件条目。'))
+    }).catch(() => {
+      if (current()) body.replaceChildren(el('div', 'modal-note', '插件目录暂不可用。'))
+    })
+    return
+  }
+  disconnectedModal('插件目录', '浏览器预览不能读取桌面宿主的插件目录。')
+}
+function disconnectedModal(title, detail) {
+  openModal(title, body => body.append(el('div', 'modal-note', detail), el('div', 'modal-note', '桌面宿主或业务服务未连接；此处没有示例数据。')))
+}
+
+function showSkills() {
+  if (!window.businessBridge?.isDesktop?.()) return disconnectedModal('技能目录', '浏览器预览不能读取当前助手的 Skill。')
+  openModal('技能目录', body => body.append(el('div', 'modal-note', '正在读取当前助手的 Skill…')))
+  const body = $('#modal-body')
+  const current = () => $('#modal-mask').style.display !== 'none' && $('#modal-title').textContent === '技能目录'
+  void window.businessBridge.globalAction('agent-data').then(result => {
+    if (!current()) return
+    if (!result?.ok) { body.replaceChildren(el('div', 'modal-note', agentDataError(result.reason))); return }
+    const skills = result.value.capabilities.skills
+    if (!skills || !Array.isArray(skills.items)) { body.replaceChildren(el('div', 'modal-note', '当前助手未返回可确认的 Skill 条目。')); return }
+    const rows = skills.items.map(item => [
+      typeof item?.name === 'string' ? item.name.slice(0, 1) : '·',
+      typeof item?.name === 'string' ? item.name : '未命名 Skill',
+      typeof item?.description === 'string' ? item.description : '当前助手返回的 Skill。',
+      [[item?.invocation?.userInvocable === true ? '可由用户调用' : '仅助手调用', 'info']],
+    ])
+    body.replaceChildren()
+    modalRows(body, rows, `角色：${result.value.role} · Skill 状态：${skills.status || '未提供'}`)
+    if (!rows.length) body.append(el('div', 'modal-note', '当前助手没有返回 Skill 条目。'))
+  }).catch(() => { if (current()) body.replaceChildren(el('div', 'modal-note', '当前助手的 Skill 暂不可读。')) })
+}
+
+function agentDataError(reason) {
+  if (reason === 'not-mounted') return '原生工作区尚未挂载。'
+  if (reason === 'forbidden') return '当前无权读取助手配置。'
+  if (reason === 'unconfigured') return '当前场景没有匹配的助手配置。'
+  return '当前助手配置暂不可读；未显示示例数据。'
+}
+
+function showRegisteredTools() {
+  if (!window.businessBridge?.isDesktop?.()) return disconnectedModal('已注册工具', '浏览器预览不能读取桌面宿主注册的工具。')
+  openModal('已注册工具', body => body.append(el('div', 'modal-note', '正在读取已注册工具…')))
+  const body = $('#modal-body')
+  const current = () => $('#modal-mask').style.display !== 'none' && $('#modal-title').textContent === '已注册工具'
+  void window.businessBridge.globalAction('tools').then(result => {
+    if (!current()) return
+    if (!result?.ok || !Array.isArray(result.value?.tools)) {
+      body.replaceChildren(el('div', 'modal-note', result?.reason === 'forbidden' ? '当前无权读取工具目录。' : '工具目录暂不可用。'))
+      return
+    }
+    const rows = result.value.tools.map(tool => {
+      const properties = tool.parameters.properties && typeof tool.parameters.properties === 'object'
+        ? Object.keys(tool.parameters.properties) : []
+      return [tool.name.slice(0, 1) || '·', tool.name,
+        `${tool.description} · 参数：${properties.length ? properties.join(' · ') : '无参数字段'}`,
+        tool.deferLoading ? [['延迟加载', 'info']] : []]
+    })
+    body.replaceChildren()
+    modalRows(body, rows, '')
+    if (!rows.length) body.append(el('div', 'modal-note', '当前没有已注册工具。'))
+  }).catch(() => { if (current()) body.replaceChildren(el('div', 'modal-note', '工具目录暂不可用。')) })
+}
+
+function showTools() {
+  toolModalBack = null
+  const native = window.businessBridge?.isDesktop?.() === true
+  const entries = [
+    ['ERPNext 服务', native ? '打开原生 ERPNext 状态组件窗口。' : '浏览器预览不连接 ERPNext。', showERPNextService],
+    ['刷新场景 / 重试', '重新渲染当前场景。', () => { closeModal(); if (currentTab) loadScenario(currentTab) }],
+    ['返回工作台', '切回工作总览场景。', () => { closeModal(); loadScenario('center') }],
+    ['界面大小', '字号与组件尺寸同步档位。', showAppearanceSettings],
+    ['动效', '切换界面动效偏好。', showAppearanceSettings],
+    ['助手能力', native ? '读取当前助手的配置、MCP 与 Skill 状态。' : '浏览器预览不读取助手能力。', showAssistantCapabilities],
+    ['应用 / 编辑', native ? '打开原生应用或编辑菜单。' : '浏览器预览没有桌面应用菜单。', showAppsEditor],
+    ['原生会话', native ? '打开隐藏原生工作区的会话窗口。' : '浏览器预览不能打开原生会话。', showNativeConversation],
+    ['已注册工具', native ? '读取桌面宿主中的已注册工具目录。' : '浏览器预览不能读取桌面工具目录。', showRegisteredTools],
+  ]
+  openModal('工作台工具', body => {
+    const list = el('div', 'preview-action-list')
+    for (const [name, description, activate] of entries) {
+      const row = el('div', 'mdl-row preview-action-row', el('div', 'mdl-badge', '•'),
+        el('div', null, el('div', 'mdl-name', name), el('div', 'mdl-desc', description)))
+      const button = make('button', 'preview-action-open', '打开')
+      button.type = 'button'
+      button.setAttribute('aria-label', `打开${name}`)
+      if (name === '应用 / 编辑' && native) button.dataset.nativeAction = 'application-edit'
+      button.addEventListener('click', () => {
+        if (name === '刷新场景 / 重试' || name === '返回工作台') return activate()
+        toolModalBack = showTools
+        activate()
+      })
+      row.append(button)
+      list.append(row)
+    }
+    body.append(list, el('div', 'modal-note', native
+      ? '各入口独立读取或调用现有桌面接口；目录失败不会关闭此菜单。'
+      : '浏览器预览不连接桌面宿主或业务服务；此处不会显示伪造的工具、能力或用量数据。'))
+  })
+}
+
+function showERPNextService() {
+  if (!window.businessBridge?.isDesktop?.()) return disconnectedModal('ERPNext 服务', '浏览器预览不能挂载原生 ERPNext 状态组件。')
+  openModal('ERPNext 服务', body => body.append(el('div', 'modal-note', '正在挂载并打开原生 ERPNext 状态窗口…')))
+  const body = $('#modal-body')
+  const current = () => $('#modal-mask').style.display !== 'none' && $('#modal-title').textContent === 'ERPNext 服务'
+  void window.businessBridge.globalAction('erpnext-status').then(result => {
+    if (!current()) return
+    if (!result?.ok) { body.replaceChildren(el('div', 'modal-note', 'ERPNext 原生状态组件暂不可用；没有报告服务已连接。')); return }
+    body.replaceChildren(el('div', 'modal-note', `原生状态窗口：${result.value.placement === 'popped-out' ? '已打开或聚焦' : '已挂载'}。`),
+      el('div', 'modal-note', `组件状态：${result.value.status || '未提供'}。此状态不代表 ERPNext 业务服务已通过健康检查。`))
+  }).catch(() => { if (current()) body.replaceChildren(el('div', 'modal-note', 'ERPNext 原生状态组件暂不可用。')) })
+}
+function showModels() {
+  if (window.businessBridge?.isDesktop?.()) {
+    openModal('模型与提供方', body => body.append(el('div', 'modal-note', '正在读取模型目录…')))
+    const body = $('#modal-body')
+    const current = () => $('#modal-mask').style.display !== 'none' && $('#modal-title').textContent === '模型与提供方'
+    void window.businessBridge.globalAction('models').then(result => {
+      if (!current()) return
+      const catalog = result?.value
+      if (!result?.ok || !catalog || !Array.isArray(catalog.groups)) {
+        body.replaceChildren(el('div', 'modal-note', '模型目录暂不可读。'))
+        return
+      }
+      const rows = []
+      for (const group of catalog.groups) {
+        if (!group || typeof group.id !== 'string' || !Array.isArray(group.models)) continue
+        const name = typeof group.name === 'string' ? group.name : group.id
+        if (!group.models.length) rows.push([name.slice(0, 1) || '·', name, '该提供方目录当前没有模型条目。', []])
+        for (const model of group.models) {
+          if (!model || typeof model.id !== 'string') continue
+          const isDefault = catalog.defaultModel?.provider === group.id && catalog.defaultModel.model === model.id
+          rows.push([name.slice(0, 1) || '·', model.name || model.id, `${name} · ${model.id}`,
+            isDefault ? [['目录默认（未指定会话）', 'info']] : []])
+        }
+      }
+      const notes = []
+      if (catalog.defaultModel) notes.push(`目录默认（未指定会话）：${catalog.defaultModel.model} @ ${catalog.defaultModel.provider}`)
+      else notes.push('目录默认模型：未提供。')
+      if (Array.isArray(catalog.failures) && catalog.failures.length) notes.push(`部分提供方目录读取失败：${catalog.failures.length} 个；目录结果可能不完整。`)
+      body.replaceChildren()
+      modalRows(body, rows, notes.join(' '))
+      if (!rows.length) body.append(el('div', 'modal-note', '当前没有可确认的模型条目。'))
+    }).catch(() => { if (current()) body.replaceChildren(el('div', 'modal-note', '模型目录暂不可读。')) })
+    return
+  }
+  disconnectedModal('模型与提供方', '浏览器预览不能读取桌面宿主的模型目录。')
+}
+
+function showLocalPreview(title, description) {
+  openModal(title, body => {
+    body.append(
+      el('div', 'modal-preview-empty', el('span', 'modal-preview-icon', '◇'), el('span', null, description)),
+      el('div', 'modal-note', '界面预览 · 未连接真实服务、账户或数据。'))
+  })
+}
+
+function showAppsEditor() {
+  const native = window.businessBridge?.isDesktop?.() === true
+  openModal('应用 / 编辑', body => {
+    if (!native) {
+      body.append(el('div', 'modal-note', '浏览器预览没有桌面应用或编辑菜单。'))
+      return
+    }
+    body.append(el('div', 'modal-note', '通过桌面宿主现有菜单打开应用或编辑命令。'))
+    for (const [name, menu] of [['应用', 'application'], ['编辑', 'edit']]) {
+      const button = make('button', 'preview-action-open', `打开${name}菜单`)
+      button.type = 'button'
+      button.dataset.nativeAction = menu
+      button.setAttribute('aria-label', `打开${name}菜单`)
+      button.addEventListener('click', async () => {
+        const result = await window.businessBridge.openNativeMenu(menu, button.getBoundingClientRect())
+        setStatus(result?.ok ? `已请求打开${name}菜单。` : `${name}菜单暂不可用。`, !result?.ok)
+      })
+      body.append(button)
+    }
+  })
+}
+
+function showNativeConversation() {
+  if (!window.businessBridge?.isDesktop?.()) return disconnectedModal('原生会话', '浏览器预览不能打开隐藏原生工作区。')
+  openModal('原生会话', body => body.append(el('div', 'modal-note', '正在检查原生工作区并打开会话窗口…')))
+  const body = $('#modal-body')
+  const current = () => $('#modal-mask').style.display !== 'none' && $('#modal-title').textContent === '原生会话'
+  void window.businessBridge.globalAction('native-conversation').then(result => {
+    if (!current()) return
+    body.replaceChildren(el('div', 'modal-note', result?.ok
+      ? '已打开或聚焦原生工作区窗口。会话和用量由该工作区显示。'
+      : result?.reason === 'not-mounted' ? '原生工作区尚未挂载，当前没有打开会话。' : '原生工作区窗口暂不可用。'))
+  }).catch(() => { if (current()) body.replaceChildren(el('div', 'modal-note', '原生工作区窗口暂不可用。')) })
+}
+
+function showAssistantCapabilities() {
+  const native = window.businessBridge?.isDesktop?.() === true
+  openModal('助手能力', body => {
+    const content = el('div', 'capability-content')
+    body.append(content)
+    const actions = el('div', 'capability-actions')
+    const reload = () => loadAgentCapabilities(content)
+    for (const label of ['重新读取', '读取最新', '保存为默认', '使用已保存配置新建对话']) {
+      const button = make('button', 'capability-action', label)
+      button.type = 'button'
+      if (label === '重新读取' || label === '读取最新') {
+        button.disabled = !native
+        button.title = native ? '重新读取当前助手的只读配置与能力' : '浏览器预览未连接助手配置服务'
+        button.addEventListener('click', reload)
+      } else {
+        button.disabled = true
+        button.title = '当前桌面桥没有配置写入或带配置新建会话接口'
+      }
+      actions.append(button)
+    }
+    body.append(actions, el('div', 'modal-note', native
+      ? '只读显示当前助手返回的配置与能力。保存和使用配置新建会话尚无桌面桥接。'
+      : '浏览器预览未连接助手配置服务；没有显示示例能力。'))
+    if (native) reload()
+  })
+}
+
+function loadAgentCapabilities(content) {
+  content.replaceChildren(el('div', 'modal-note', '正在读取当前助手配置与能力…'))
+  void window.businessBridge.globalAction('agent-data').then(result => {
+    if (!content.isConnected) return
+    if (!result?.ok) { content.replaceChildren(el('div', 'modal-note', agentDataError(result?.reason))); return }
+    const { role, capabilities, configuration } = result.value
+    const section = (title, details) => {
+      const block = el('section', 'capability-section', el('div', 'capability-heading', title))
+      for (const detail of details) block.append(el('div', 'capability-empty', detail))
+      return block
+    }
+    const mcp = capabilities.mcp || {}
+    const tools = capabilities.tools || {}
+    const skills = capabilities.skills || {}
+    const skillConfig = configuration.skill
+    const mcpConfigRows = configuration.mcpServers.flatMap(server => {
+      const name = typeof server?.serverName === 'string' ? server.serverName : '未命名 MCP'
+      const transport = server?.transport === 'stdio' ? 'stdio' : server?.transport === 'streamable-http' ? 'Streamable HTTP' : '未提供连接方式'
+      const refs = [...Object.values(server?.env || {}), ...Object.values(server?.headers || {})]
+        .filter(ref => ref && typeof ref === 'object')
+        .map(ref => `${typeof ref.envName === 'string' ? ref.envName : '未命名引用'} · ${typeof ref.scheme === 'string' ? ref.scheme : '未提供方式'} · ${ref.isSet === true ? '已设置' : ref.isSet === false ? '未设置' : '状态未知'}`)
+      return [`${name} · ${transport}`, ...refs.map(ref => `引用：${ref}`)]
+    })
+    const skillDirs = Array.isArray(skillConfig.customSkillDirs) ? skillConfig.customSkillDirs.filter(value => typeof value === 'string') : []
+    const details = [
+      section('当前配置', [`助手：${role}`, `能力状态：${capabilities.status}`, `当前可见工具：${Array.isArray(tools.items) ? tools.items.length : 0} 项`]),
+      section('已保存配置', [`预设：${typeof configuration.preset === 'string' ? configuration.preset : '未提供'} · 修订：${configuration.revision} · ${configuration.editable === true ? '可编辑' : '只读'}`, `MCP 配置：${configuration.mcpServers.length} 项 · 禁用工具：${configuration.deniedTools.length} 项`, `Skill 默认目录：${skillConfig.includeDefaultRoots === false ? '关闭' : '包含'}`, ...(skillDirs.length ? skillDirs.map(path => `Skill 目录：${path}`) : ['没有自定义 Skill 目录'])]),
+      section('MCP 配置', mcpConfigRows.length ? mcpConfigRows : ['没有 MCP 配置']),
+      section('MCP 能力', [`状态：${typeof mcp.status === 'string' ? mcp.status : '未提供'}`, ...(Array.isArray(mcp.visibleTools) && mcp.visibleTools.length ? mcp.visibleTools.map(name => typeof name === 'string' ? name : '').filter(Boolean) : ['当前没有可见 MCP 工具'])]),
+      section('工具能力', [`状态：${typeof tools.status === 'string' ? tools.status : '未提供'}`, `已返回：${Array.isArray(tools.items) ? tools.items.length : 0} 项 · 总数：${Number.isFinite(tools.total) ? tools.total : '未提供'}`, ...(Array.isArray(tools.items) ? tools.items.map(item => typeof item?.name === 'string' ? item.name : '').filter(Boolean) : [])]),
+      section('Skill', [`状态：${typeof skills.status === 'string' ? skills.status : '未提供'}`, `已返回：${Array.isArray(skills.items) ? skills.items.length : 0} 项 · 总数：${Number.isFinite(skills.total) ? skills.total : '未提供'}`, ...(Array.isArray(skills.items) ? skills.items.map(item => typeof item?.name === 'string' ? item.name : '').filter(Boolean) : [])]),
+    ]
+    content.replaceChildren(...details)
+  }).catch(() => {
+    if (content.isConnected) content.replaceChildren(el('div', 'modal-note', '当前助手配置与能力暂不可读。'))
+  })
+}
+
+const UI_SCALE_KEY = 'uiPreviewScale'
+const UI_MOTION_KEY = 'uiPreviewMotion'
+function readUiScale() {
+  if (window.businessBridge?.isDesktop?.()) return window.businessBridge.getNativeScale?.() || 1
+  try {
+    const value = Number(localStorage.getItem(UI_SCALE_KEY))
+    return [0.9, 1, 1.1].includes(value) ? value : 1
+  } catch { return 1 }
+}
+function applyUiScale(value) {
+  const scale = [0.9, 1, 1.1].includes(Number(value)) ? Number(value) : 1
+  if (window.businessBridge?.isDesktop?.()) {
+    void window.businessBridge.setNativeScale(scale).then(result => {
+      if (!result?.ok) setStatus(result?.reason === 'unsupported-native-scale' ? '此缩放档位未获桌面宿主支持。' : '无法保存界面缩放。', true)
+    })
+    return
+  }
+  const presets = {
+    0.9: ['12px', '12px', '10.5px', '36px', '45px', '36px', '30px', '4px', '4px', '26px', '18px', '243px'],
+    1: ['13px', '13px', '11.5px', '38px', '48px', '40px', '34px', '5px', '5px', '28px', '20px', '270px'],
+    1.1: ['14px', '14px', '12.5px', '42px', '54px', '44px', '38px', '6px', '6px', '31px', '22px', '297px'],
+  }
+  const [font, tabFont, titleFont, titlebar, titlebarLeading, scenebar, icon, gap, padding, panelHeader, control, sidebar] = presets[scale]
+  const root = document.documentElement.style
+  for (const [name, value] of Object.entries({
+    '--ui-font-size': font,
+    '--ui-font-tab-size': tabFont,
+    '--ui-font-title-size': titleFont,
+    '--ui-titlebar-height': titlebar,
+    '--ui-titlebar-leading': titlebarLeading,
+    '--ui-scenebar-height': scenebar,
+    '--ui-icon-width': icon,
+    '--ui-grid-gap': gap,
+    '--ui-grid-padding': padding,
+    '--ui-panel-header-height': panelHeader,
+    '--ui-control-size': control,
+    '--ui-sidebar-width': sidebar,
+  })) root.setProperty(name, value)
+  try { localStorage.setItem(UI_SCALE_KEY, String(scale)) } catch { /* preview preference is optional */ }
+  requestAnimationFrame(() => window.dispatchEvent(new Event('resize')))
+}
+function applyUiMotion(enabled) {
+  document.documentElement.classList.toggle('reduce-motion', !enabled)
+  try { localStorage.setItem(UI_MOTION_KEY, enabled ? 'on' : 'off') } catch { /* preview preference is optional */ }
+}
+function ensureScaleOption(select, value, hostCurrent = false) {
+  const key = String(value)
+  let option = [...select.options].find(item => item.value === key)
+  if (!option && hostCurrent) {
+    option = make('option', '', `当前桌面宿主 · ${Math.round(Number(value) * 100)}%`)
+    option.value = key
+    option.disabled = true
+    option.dataset.hostCurrentScale = 'true'
+    select.append(option)
+  }
+  if (option) select.value = key
+}
+
+function showAppearanceSettings() {
+  const native = window.businessBridge?.isDesktop?.() === true
+  openModal('界面大小与动效', body => {
+    const sizeLabel = el('label', 'settings-row')
+    sizeLabel.append(el('span', 'settings-label', '界面大小'))
+    const select = make('select', 'settings-select')
+    select.setAttribute('aria-label', '界面大小')
+    for (const [value, label] of [['0.9', '较小 · 90%'], ['1', '标准 · 100%'], ['1.1', '较大 · 110%']]) {
+      const option = make('option', '', label)
+      option.value = value
+      select.append(option)
+    }
+    const currentScale = readUiScale()
+    ensureScaleOption(select, currentScale, native && ![0.9, 1, 1.1].includes(currentScale))
+    select.addEventListener('change', () => applyUiScale(select.value))
+    sizeLabel.append(select)
+    const motionLabel = make('label', 'settings-row settings-check')
+    const motion = make('input')
+    motion.type = 'checkbox'
+    let motionEnabled = true
+    try { motionEnabled = localStorage.getItem(UI_MOTION_KEY) !== 'off' } catch { /* default on */ }
+    motion.checked = motionEnabled
+    motion.setAttribute('aria-label', '启用界面动效')
+    motion.addEventListener('change', () => applyUiMotion(motion.checked))
+    motionLabel.append(motion, el('span', 'settings-label', '启用界面动效'))
+    const reset = make('button', 'preview-action-open', '恢复标准大小')
+    reset.type = 'button'
+    reset.addEventListener('click', () => { select.value = '1'; applyUiScale(1) })
+    body.append(sizeLabel, motionLabel, reset,
+      el('div', 'modal-note', native
+        ? '缩放由桌面宿主应用到窗口与原生面板；动效仅控制此界面。'
+        : '设置仅保存在本地 UI 预览中，不修改系统显示设置或业务偏好。'))
+  })
+}
+
+function showSettings() {
+  if (!window.businessBridge?.isDesktop?.()) return showAppearanceSettings()
+  void window.businessBridge.globalAction('settings').then(result => {
+    if (!result?.ok) setStatus('原生设置暂不可用。', true)
+    else setStatus('已向原生工作区请求打开设置。', false)
+  })
+}
+
+function showMobileLink() {
+  if (window.businessBridge?.isDesktop?.()) {
+    openModal('连接手机', body => body.append(el('div', 'modal-note', '正在请求手机连接信息…')))
+    const body = $('#modal-body')
+    const current = () => $('#modal-mask').style.display !== 'none' && $('#modal-title').textContent === '连接手机'
+    void window.businessBridge.globalAction('mobile').then(result => {
+      if (!current()) return
+      const value = result?.value
+      const matrix = value?.qrMatrix
+      if (!result?.ok || typeof value?.url !== 'string' || !matrix || matrix.quietZone !== 4 || !Number.isInteger(matrix.size)
+        || matrix.size < 21 || matrix.size > 177 || !Array.isArray(matrix.modules)
+        || matrix.modules.length !== matrix.size
+        || matrix.modules.some(row => typeof row !== 'string' || row.length !== matrix.size || !/^[01]+$/.test(row))) {
+        body.replaceChildren(el('div', 'modal-note', '手机连接信息暂不可用；未生成可确认的二维码。'))
+        return
+      }
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+      svg.setAttribute('viewBox', `0 0 ${matrix.size + 8} ${matrix.size + 8}`)
+      svg.setAttribute('role', 'img')
+      svg.setAttribute('aria-label', '手机连接二维码')
+      svg.classList.add('mobile-qr')
+      const background = document.createElementNS(svg.namespaceURI, 'rect')
+      background.setAttribute('width', String(matrix.size + 8)); background.setAttribute('height', String(matrix.size + 8)); background.setAttribute('fill', '#fff')
+      const path = document.createElementNS(svg.namespaceURI, 'path')
+      const bits = []
+      matrix.modules.forEach((row, y) => { for (let x = 0; x < matrix.size; x++) if (row[x] === '1') bits.push(`M${x + 4} ${y + 4}h1v1h-1z`) })
+      path.setAttribute('d', bits.join('')); path.setAttribute('fill', '#111')
+      svg.append(background, path)
+      const copy = make('button', 'preview-action-open', '复制连接链接')
+      copy.type = 'button'
+      copy.addEventListener('click', async () => {
+        try { await navigator.clipboard.writeText(value.url); copy.textContent = '已复制链接' }
+        catch { copy.textContent = '无法自动复制，请重试' }
+      })
+      body.replaceChildren(el('div', 'mobile-link-content', svg, el('div', 'modal-note', '请使用手机扫描二维码连接此工作台。'), copy))
+    }).catch(() => {
+      if (current()) body.replaceChildren(el('div', 'modal-note', '手机连接信息暂不可用。'))
+    })
+    return
+  }
+  showLocalPreview('手机连接', '手机连接与二维码区域；此 UI 预览不生成二维码、不请求连接。')
+}
+
+let webAiAuthController = null
+
+function openWebAiWindow(provider, previewUrl) {
+  if (window.businessBridge?.isDesktop?.()) {
+    void window.businessBridge.openWebAi(provider).then(opened => {
+      if (!opened) setStatus('网页 AI 窗口暂不可用。', true)
+      else webAiAuthController?.opened(provider)
+    })
+    return
+  }
+  window.open(previewUrl, '_blank', 'noopener,noreferrer,width=1100,height=820')
+}
+
+function initWebAiAuthState() {
+  const api = window.app?.aiWeb
+  const providers = ['deepseek', 'doubao']
+  const latestGeneration = new Map(providers.map(provider => [provider, -1]))
+  const openedProviders = new Set()
+  const sampling = new Set()
+  const lastSampleAt = new Map(providers.map(provider => [provider, -Infinity]))
+  let active = true
+  let unsubscribe
+
+  function applyState(dto) {
+    if (!active || !dto || typeof dto !== 'object' || Array.isArray(dto)) return
+    const keys = Object.keys(dto).sort()
+    if (keys.length !== 4 || keys.join(',') !== 'authState,evidence,generation,provider') return
+    const { provider, authState, evidence, generation } = dto
+    const expected = provider === 'deepseek'
+      ? { none: 'unknown', 'deepseek-sign-in-path': 'unauthenticated', 'deepseek-account-menu': 'authenticated' }
+      : { none: 'unknown', 'doubao-login-button': 'unauthenticated', 'doubao-account-menu': 'authenticated' }
+    if (!providers.includes(provider) || !Object.hasOwn(expected, evidence) || expected[evidence] !== authState
+      || !Number.isSafeInteger(generation) || generation < 0) return
+    if (generation < latestGeneration.get(provider)) return
+    latestGeneration.set(provider, generation)
+    const button = document.getElementById(provider === 'deepseek' ? 'btn-deepseek' : 'btn-doubao')
+    if (button) {
+      const providerName = provider === 'deepseek' ? 'DeepSeek' : '豆包'
+      const statusLabel = authState === 'authenticated' ? '已登录'
+        : authState === 'unauthenticated' ? '未登录' : '状态未确认'
+      button.dataset.authState = authState
+      button.title = `打开 ${providerName} 网页窗口 · ${statusLabel}`
+      button.setAttribute('aria-label', `打开 ${providerName} 网页窗口，${statusLabel}`)
+    }
+  }
+
+  async function refreshState(provider) {
+    if (!active || !providers.includes(provider) || typeof api?.authState !== 'function') return
+    try { applyState(await api.authState(provider)) } catch { /* Keep the last Host-reported state. */ }
+  }
+
+  async function sample(provider, source) {
+    if (!active || !openedProviders.has(provider) || sampling.has(provider)
+      || typeof api?.authControlSample !== 'function') return
+    const now = Date.now()
+    if (source === 'focus' && now - lastSampleAt.get(provider) < 1200) return
+    sampling.add(provider)
+    lastSampleAt.set(provider, now)
+    try {
+      // This returns bounded account-menu evidence only; it never drives the auth dot.
+      await api.authControlSample(provider)
+    } catch { /* Sampling never decides auth; read the Host cache below. */ }
+    finally {
+      await refreshState(provider)
+      sampling.delete(provider)
+    }
+  }
+
+  if (typeof api?.subscribeAuthState === 'function') {
+    try { unsubscribe = api.subscribeAuthState(applyState) } catch { /* Initial reads remain available. */ }
+  }
+  for (const provider of providers) void refreshState(provider)
+  const onFocus = () => {
+    for (const provider of openedProviders) void sample(provider, 'focus')
+  }
+  window.addEventListener('focus', onFocus)
+  window.addEventListener('pagehide', () => {
+    active = false
+    window.removeEventListener('focus', onFocus)
+    try { if (typeof unsubscribe === 'function') unsubscribe() } catch { /* Window teardown is authoritative. */ }
+  }, { once: true })
+
+  return Object.freeze({
+    opened(provider) {
+      if (!providers.includes(provider)) return
+      openedProviders.add(provider)
+      void sample(provider, 'open')
+    },
+  })
+}
+
+function initUiPreferences() {
+  if (!window.businessBridge?.isDesktop?.()) applyUiScale(readUiScale())
+  window.addEventListener('business-ui-scale-state', event => {
+    if (!event.detail?.available) return
+    const select = document.querySelector('#modal-mask[style*="display: flex"] #modal-body select[aria-label="界面大小"]')
+    if (select) ensureScaleOption(select, event.detail.value, ![0.9, 1, 1.1].includes(event.detail.value))
+  })
+  let motionEnabled = true
+  try { motionEnabled = localStorage.getItem(UI_MOTION_KEY) !== 'off' } catch { /* default on */ }
+  applyUiMotion(motionEnabled)
+}
+
+// 外观切换（深色 / 浅色 / 跟随系统）
+const THEME_KEY = 'guiTheme'
+function currentThemeMode() {
+  const nativePreference = window.businessBridge?.getThemePreference?.()
+  if (['light', 'dark', 'system'].includes(nativePreference)) return nativePreference
+  if (window.businessBridge?.isDesktop?.()) return 'system'
+  const v = localStorage.getItem(THEME_KEY)
+  return (v === 'light' || v === 'system') ? v : 'dark'
+}
+function applyTheme(mode) {
+  const light = window.matchMedia('(prefers-color-scheme: light)').matches
+  const preferredResolved = arguments[1]
+  const native = window.businessBridge?.isDesktop?.() === true
+  if (native && !['light', 'dark'].includes(preferredResolved)) return
+  const resolved = ['light', 'dark'].includes(preferredResolved)
+    ? preferredResolved : mode === 'system' ? (light ? 'light' : 'dark') : mode
+  document.documentElement.dataset.theme = resolved
+  const btn = document.getElementById('btn-theme')
+  if (btn) {
+    btn.dataset.themeIcon = mode
+    btn.dataset.themeEffective = resolved
+    const modes = ['system', 'dark', 'light']
+    const nextMode = modes[(modes.indexOf(mode) + 1) % modes.length]
+    const labels = { system: '跟随系统', dark: '固定深色（不跟随系统）', light: '固定浅色（不跟随系统）' }
+    btn.title = '切换主题 · 偏好：' + labels[mode]
+      + ' · 实际：' + (resolved === 'light' ? '浅色' : '深色')
+      + ' · 下次：' + labels[nextMode]
+    btn.setAttribute('aria-label', btn.title)
+  }
+}
+function initTheme() {
+  const btn = document.getElementById('btn-theme')
+  if (!btn) return
+  const native = window.businessBridge?.isDesktop?.() === true
+  let themeWritePending = false
+  btn.addEventListener('click', e => {
+    e.stopPropagation()
+    const modes = ['system', 'dark', 'light']
+    const next = modes[(modes.indexOf(currentThemeMode()) + 1) % modes.length]
+    if (native) {
+      if (themeWritePending) return
+      themeWritePending = true
+      btn.disabled = true
+      btn.setAttribute('aria-busy', 'true')
+      setStatus('正在保存主题，请稍候。', true)
+      void (async () => {
+        try {
+          const ok = await window.businessBridge.setThemePreference(next)
+          setStatus(ok === true ? '主题已保存。' : '主题切换未完成。', ok !== true)
+        } catch { setStatus('主题切换未完成。', true) }
+        finally {
+          themeWritePending = false
+          btn.disabled = false
+          btn.removeAttribute('aria-busy')
+        }
+      })()
+      return
+    }
+    localStorage.setItem(THEME_KEY, next)
+    applyTheme(next)
+  })
+  const mq = window.matchMedia('(prefers-color-scheme: light)')
+  const onSys = () => { if (!native && currentThemeMode() === 'system') applyTheme('system') }
+  if (mq.addEventListener) mq.addEventListener('change', onSys)
+  else if (mq.addListener) mq.addListener(onSys)
+  window.addEventListener('business-theme-state', event => {
+    const snapshot = event.detail
+    if (snapshot && ['light', 'dark', 'system'].includes(snapshot.preference)) applyTheme(snapshot.preference, snapshot.colorScheme)
+  })
+  const preference = currentThemeMode()
+  if (native) {
+    btn.dataset.themeIcon = preference
+    btn.removeAttribute('data-theme-effective')
+    btn.title = '切换主题 · 正在读取桌面主题偏好'
+    btn.setAttribute('aria-label', btn.title)
+  } else applyTheme(preference)
+}
+
+function setStatus(text, _busy) {
+  const statusText = $('#status-text')
+  if (statusText) statusText.textContent = text
+}
+
+function initTitlebarOverflow() {
+  const controls = document.getElementById('titlebar-controls')
+  const actionGroup = document.getElementById('titlebar-action-controls')
+  const trigger = document.getElementById('btn-toolbar-overflow')
+  const menu = document.getElementById('toolbar-overflow-menu')
+  const windowControls = document.getElementById('titlebar-window-controls')
+  if (!controls || !actionGroup || !trigger || !menu || !windowControls) return
+
+  const labels = new Map([
+    ['btn-theme', '外观'], ['btn-mobile', '手机连接'], ['btn-settings', '设置'],
+    ['btn-refresh', '刷新当前场景'], ['btn-plugins', '插件目录'], ['btn-skills', '助手能力'],
+    ['btn-tools', '工作台工具'], ['btn-models', '模型与提供方'],
+  ])
+  const actions = [...actionGroup.querySelectorAll(':scope > button.tb-btn')]
+    .filter(button => labels.has(button.id))
+    .map(button => {
+      const placeholder = document.createComment(`toolbar:${button.id}`)
+      button.before(placeholder)
+      return {
+        button, placeholder, role: button.getAttribute('role'), tabIndex: button.getAttribute('tabindex'),
+        ariaLabel: button.getAttribute('aria-label'), title: button.getAttribute('title'),
+        label: labels.get(button.id), labelNode: null,
+      }
+    })
+  if (!actions.length) return
+
+  let opened = false
+  let resizeObserver
+  const restoreAction = item => {
+    item.labelNode?.remove()
+    item.labelNode = null
+    item.button.classList.remove('toolbar-overflow-menuitem')
+    item.button.removeAttribute('role')
+    if (item.role !== null) item.button.setAttribute('role', item.role)
+    item.button.removeAttribute('tabindex')
+    if (item.tabIndex !== null) item.button.setAttribute('tabindex', item.tabIndex)
+    item.button.removeAttribute('aria-label')
+    if (item.ariaLabel !== null) item.button.setAttribute('aria-label', item.ariaLabel)
+    if (item.title !== null) item.button.setAttribute('title', item.title)
+    if (item.placeholder.parentNode) item.placeholder.parentNode.insertBefore(item.button, item.placeholder.nextSibling)
+  }
+  const overflowed = () => actions.filter(item => item.button.parentElement === menu)
+  const syncNativeOverlayState = value => document.body.classList.toggle('titlebar-overflow-open', value)
+  const closeMenu = ({ focus = false } = {}) => {
+    if (!opened) return
+    opened = false
+    menu.hidden = true
+    trigger.setAttribute('aria-expanded', 'false')
+    syncNativeOverlayState(false)
+    if (focus) trigger.focus()
+  }
+  const openMenu = ({ focus = true } = {}) => {
+    if (!overflowed().length) return
+    opened = true
+    menu.hidden = false
+    trigger.setAttribute('aria-expanded', 'true')
+    syncNativeOverlayState(true)
+    positionMenu()
+    if (focus) menu.querySelector('[role="menuitem"]')?.focus()
+  }
+  function positionMenu() {
+    if (menu.hidden) return
+    const rect = trigger.getBoundingClientRect()
+    menu.style.top = `${Math.max(4, rect.bottom + 4)}px`
+    menu.style.right = `${Math.max(4, window.innerWidth - rect.right)}px`
+  }
+  const setMenuItem = item => {
+    const button = item.button
+    if (!item.labelNode) {
+      item.labelNode = document.createElement('span')
+      item.labelNode.className = 'toolbar-overflow-label'
+      item.labelNode.textContent = item.label
+    }
+    button.append(item.labelNode)
+    button.classList.add('toolbar-overflow-menuitem')
+    button.setAttribute('role', 'menuitem')
+    button.setAttribute('tabindex', '-1')
+    button.setAttribute('aria-label', item.label)
+    button.title = item.label
+  }
+  const naturalActionWidth = () => {
+    const oldFlex = actionGroup.style.flex
+    const oldWidth = actionGroup.style.width
+    const oldVisibility = actionGroup.style.visibility
+    actionGroup.style.flex = '0 0 auto'
+    actionGroup.style.width = 'max-content'
+    actionGroup.style.visibility = 'hidden'
+    const width = Math.ceil(actionGroup.scrollWidth || actionGroup.getBoundingClientRect().width)
+    actionGroup.style.flex = oldFlex
+    actionGroup.style.width = oldWidth
+    actionGroup.style.visibility = oldVisibility
+    return width
+  }
+  const elementWidth = element => Math.ceil(element.getBoundingClientRect().width || element.offsetWidth || 0)
+  const fixedBrandWidth = () => {
+    const drag = document.querySelector('#titlebar .titlebar-drag')
+    const brand = drag?.querySelector('.brand')
+    const mark = brand?.querySelector('.brand-mark')
+    const webAi = drag?.querySelector('.webai-shortcuts')
+    if (!drag || !brand || !mark) return 0
+    const px = value => Number.parseFloat(value) || 0
+    const dragStyle = getComputedStyle(drag)
+    const brandStyle = getComputedStyle(brand)
+    const aiStyle = webAi ? getComputedStyle(webAi) : null
+    return px(dragStyle.paddingLeft) + px(dragStyle.paddingRight) + px(dragStyle.gap)
+      + elementWidth(mark) + px(brandStyle.gap)
+      + (webAi ? elementWidth(webAi) + px(aiStyle.marginLeft) : elementWidth(brand))
+  }
+  const syncOverflow = () => {
+    if (opened) closeMenu()
+    for (const item of [...overflowed()].reverse()) restoreAction(item)
+    for (const separator of actionGroup.querySelectorAll(':scope > .tb-sep')) separator.hidden = false
+    const required = naturalActionWidth()
+    const titlebar = document.getElementById('titlebar')
+    const viewportWidth = titlebar?.clientWidth || window.innerWidth
+    const baseAvailable = Math.max(0, viewportWidth - fixedBrandWidth() - elementWidth(windowControls) - 12)
+    if (required <= baseAvailable + 1) {
+      trigger.hidden = true
+      actionGroup.dataset.overflowing = 'false'
+      for (const item of [...overflowed()].reverse()) restoreAction(item)
+      for (const separator of actionGroup.querySelectorAll(':scope > .tb-sep')) separator.hidden = false
+      menu.hidden = true
+      trigger.setAttribute('aria-expanded', 'false')
+      syncNativeOverlayState(false)
+      return
+    }
+
+    trigger.hidden = false
+    const available = Math.max(0, baseAvailable - elementWidth(trigger))
+    actionGroup.dataset.overflowing = 'true'
+    menu.hidden = true
+    const separators = [...actionGroup.querySelectorAll(':scope > .tb-sep')]
+    for (const separator of separators) separator.hidden = true
+    for (const item of [...actions].reverse()) {
+      if (actionGroup.scrollWidth <= available + 1) break
+      setMenuItem(item)
+      menu.prepend(item.button)
+    }
+    // Keep overflowed items in their original toolbar order.
+    for (const item of actions) if (item.button.parentElement === menu) menu.append(item.button)
+    if (!overflowed().length) {
+      trigger.hidden = true
+      actionGroup.dataset.overflowing = 'false'
+      for (const separator of separators) separator.hidden = false
+    }
+  }
+  const toggleMenu = () => opened ? closeMenu({ focus: true }) : openMenu()
+
+  trigger.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); toggleMenu() })
+  trigger.addEventListener('keydown', event => {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault(); openMenu()
+    }
+  })
+  menu.addEventListener('keydown', event => {
+    const items = [...menu.querySelectorAll('[role="menuitem"]')]
+    if (!items.length) return
+    const index = items.indexOf(document.activeElement)
+    if (event.key === 'Escape') { event.preventDefault(); closeMenu({ focus: true }); return }
+    if (event.key === 'Home') { event.preventDefault(); items[0].focus(); return }
+    if (event.key === 'End') { event.preventDefault(); items.at(-1).focus(); return }
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      const delta = event.key === 'ArrowDown' ? 1 : -1
+      items[(index + delta + items.length) % items.length].focus()
+      return
+    }
+    if (event.key === 'Tab') {
+      event.preventDefault()
+      closeMenu()
+      const next = event.shiftKey ? trigger : document.getElementById('btn-min')
+      next?.focus()
+    }
+  })
+  menu.addEventListener('click', event => {
+    const item = event.target.closest?.('[role="menuitem"]')
+    if (item) closeMenu({ focus: true })
+  })
+  document.addEventListener('pointerdown', event => {
+    if (!opened || trigger.contains(event.target) || menu.contains(event.target) || event.target.closest?.('.theme-menu')) return
+    closeMenu()
+  }, true)
+  window.addEventListener('resize', () => { if (opened) closeMenu(); syncOverflow() })
+  if (typeof ResizeObserver === 'function') {
+    resizeObserver = new ResizeObserver(() => { if (opened) closeMenu(); syncOverflow() })
+    resizeObserver.observe(controls)
+    const titlebar = document.getElementById('titlebar')
+    if (titlebar) resizeObserver.observe(titlebar)
+  }
+  syncOverflow()
+}
+
+async function readNativeCaptionOverlay() {
+  if (window.businessBridge?.isDesktop?.() !== true || typeof window.app?.win?.info !== 'function') return false
+  try {
+    const info = await window.app.win.info()
+    initialPaintMain = info?.isMain === true
+    return info?.nativeCaption === true
+  } catch { if(initialPaintMain)throw {firstPaintStage:'caption'};return false }
+}
+
+function initTitlebar(nativeCaptionOverlay = false) {
+  document.getElementById('btn-refresh').addEventListener('click', () => {
+    if (currentTab) loadScenario(currentTab)
+  })
+  document.getElementById('btn-mobile').addEventListener('click', showMobileLink)
+  document.getElementById('btn-settings').addEventListener('click', showSettings)
+  document.getElementById('btn-plugins').addEventListener('click', showPlugins)
+  document.getElementById('btn-skills').addEventListener('click', showSkills)
+  document.getElementById('btn-tools').addEventListener('click', showTools)
+  document.getElementById('btn-models').addEventListener('click', showModels)
+  document.getElementById('btn-deepseek').addEventListener('click', () => openWebAiWindow('deepseek', 'https://chat.deepseek.com/'))
+  document.getElementById('btn-doubao').addEventListener('click', () => openWebAiWindow('doubao', 'https://www.doubao.com/chat/'))
+  document.getElementById('modal-close').addEventListener('click', closeModal)
+  document.getElementById('modal-mask').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeModal()
+  })
+  // 窗口控制（浏览器下为占位）
+  const native = () => window.businessBridge?.isDesktop?.() === true
+  const winAction = action => window.businessBridge?.windowAction?.(action)
+  const syncMaximizedState = async () => {
+    if (nativeCaptionOverlay) return
+    if (!native()) {
+      btnMax.dataset.windowState = 'preview'
+      btnMax.title = '最大化（仅桌面应用可用）'
+      btnMax.setAttribute('aria-label', btnMax.title)
+      return
+    }
+    const maximized = await winAction('isMaximized')
+    if (typeof maximized !== 'boolean') return
+    btnMax.dataset.maximized = String(maximized)
+    btnMax.dataset.windowState = maximized ? 'maximized' : 'restored'
+    btnMax.title = maximized ? '还原窗口' : '最大化窗口'
+    btnMax.setAttribute('aria-label', btnMax.title)
+  }
+  const windowControls = document.getElementById('titlebar-window-controls')
+  if (windowControls) windowControls.hidden = nativeCaptionOverlay
+  const btnMax = document.getElementById('btn-max')
+  if (!nativeCaptionOverlay) {
+    document.getElementById('btn-min').addEventListener('click', () => { if (native()) void winAction('minimize') })
+    btnMax.addEventListener('click', async () => {
+      if (!native()) return
+      await winAction('toggleMaximize')
+      await syncMaximizedState()
+    })
+    document.getElementById('btn-close').addEventListener('click', () => {
+      if (native()) void winAction('close')
+      else closeModal()
+    })
+    window.addEventListener('resize', () => { void syncMaximizedState() })
+    void syncMaximizedState()
+  } else {
+    btnMax.dataset.windowState = 'native-caption'
+    btnMax.title = '窗口控制由系统标题栏提供'
+    btnMax.setAttribute('aria-label', btnMax.title)
+  }
+  initTitlebarOverflow()
+}
+
+/* ============================================================
+   启动
+   ============================================================ */
+const normalizeScenes = raw => Array.isArray(raw) ? raw : (Array.isArray(raw?.scenes) ? raw.scenes : [])
+
+function reportInitialPaintProgress(stage){
+  return initialPaintMain && window.businessBridge?.isDesktop?.()
+    ? window.app.initialPaintReady({status:'progress',stage}) : Promise.resolve()
+}
+
+async function boot() {
+  // The approved five-scene geometry is local UI state and must paint even if the
+  // Host config is slow or unavailable. The bridge loads/validates business data
+  // independently and replaces only the contents of business-backed panels.
+  await ensureBusinessBridge()
+  const nativeCaptionOverlay = await readNativeCaptionOverlay()
+  document.body.classList.toggle('native-caption-overlay', nativeCaptionOverlay)
+  const windowControls = document.getElementById('titlebar-window-controls')
+  if (windowControls) windowControls.hidden = nativeCaptionOverlay
+  if (window.__SCENES__) {
+    // file:// 下 fetch 会被 CORS 拦 —— 走 scenes-data.js 内联数据
+    data = { scenes: normalizeScenes(window.__SCENES__) }
+  } else {
+    const resp = await fetch('scenes.json')
+    data = { scenes: normalizeScenes(await resp.json()) }
+  }
+  data.scenes = normalizeScenes(data.scenes)
+  // ?scene=<id> 直达；&solo=1 分离窗口（隐藏场景栏，腾高度给面板）
+  const params = new URLSearchParams(location.search)
+  const want = params.get('scene')
+  if (want && data.scenes.some(s => s.id === want)) currentTab = want
+  else currentTab = getSavedActiveScene(data.scenes) || data.scenes[0]?.id || null
+  if (params.get('solo') === '1') {
+    document.body.classList.add('solo')
+    document.title = `织贸工作台 · ${data.scenes.find(s => s.id === currentTab)?.name || '场景'}（独立窗口）`
+  }
+  initTheme()
+  initUiPreferences()
+  webAiAuthController = initWebAiAuthState()
+  initTitlebar(nativeCaptionOverlay)
+  await reportInitialPaintProgress('caption')
+  initSidebarOverlay()
+  buildTabs()
+  const sceneReady = initialPaintMain && window.businessBridge?.isDesktop?.()
+    ? loadInitialScenario(currentTab).then(async value=>{await reportInitialPaintProgress('scene');return value}) : (loadScenario(currentTab),Promise.resolve())
+  const bridge = window.businessBridge
+  if (bridge?.isDesktop?.()) {
+    setStatus('正在读取业务配置…', true)
+    window.addEventListener('business-config-state', event => {
+      const phase = event.detail?.phase
+      if (phase === 'ready') setStatus('业务配置已载入', false)
+      else if (phase === 'error') setStatus('业务配置不可用', true)
+    })
+    void bridge.start()
+  } else {
+    setStatus('界面预览 · 不连接业务服务', false)
+    void bridge?.start?.()
+  }
+  const themeReady=bridge?.isDesktop?.() && initialPaintMain
+    ? bridge.whenInitialThemeReady().then(async snapshot=>{applyTheme(snapshot.preference,snapshot.colorScheme);await reportInitialPaintProgress('theme')},()=>{throw {firstPaintStage:'theme'}})
+    : Promise.resolve()
+  if(bridge?.isDesktop?.() && initialPaintMain){
+  await Promise.all([sceneReady,themeReady])
+  // The local interactions script is parser-loaded; no guest frame/RAF/network barrier.
+  if(document.readyState==='loading')await new Promise(resolve=>document.addEventListener('DOMContentLoaded',resolve,{once:true}))
+  window.dispatchEvent(new Event('resize'))
+  if(!grid.classList.contains('pi-split-resize-enabled'))throw {firstPaintStage:'layout'}
+  grid.getBoundingClientRect()
+  await reportInitialPaintProgress('layout')
+  await new Promise(resolve=>requestAnimationFrame(resolve))
+  await new Promise(resolve=>requestAnimationFrame(resolve))
+  await reportInitialPaintProgress('paint')
+  await window.app.initialPaintReady({status:'ready'})
+  }
+  window.addEventListener('resize', () => {
+    const nav = $('#scenario-tabs')
+    if (nav.getAttribute('data-tabbar') === TABBAR_VERSION) {
+      measureTabWidths(nav); applyTabCollapse(nav)
+    }
+  })
+}
+boot().catch(async error=>{
+  const reason=['caption','theme','scene','layout'].includes(error?.firstPaintStage)?error.firstPaintStage:'boot'
+  setStatus('工作台初始化失败。',true)
+  if(initialPaintMain && typeof window.app?.initialPaintReady==='function')try{await window.app.initialPaintReady({status:'failed',reason})}catch{}
+  console.error('Source shell initial paint failed: '+reason)
+})
