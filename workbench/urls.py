@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from django.urls import path
 
-from . import api, views, workflow_views
+from . import api, views, workflow_views, product_fact_restore_api
 from .customers import api as customer_api
 from .customers import views as customer_views
 from .erpnext import api as erpnext_api
@@ -123,6 +123,8 @@ urlpatterns = [
     path("api/tasks/demo", api.create_demo_task),
     path("api/tasks/<str:task_id>", api.get_task),
     path("api/product-library", api.product_library),
+    path("api/products/<str:product_id>/fact-restoration/preview", product_fact_restore_api.preview),
+    path("api/products/<str:product_id>/fact-restoration/apply", product_fact_restore_api.apply),
     path(
         "api/products/<str:product_id>/revisions",
         api.product_revisions,
