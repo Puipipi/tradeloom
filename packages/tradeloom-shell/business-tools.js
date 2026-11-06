@@ -17,11 +17,16 @@ const MAX_RESPONSE_BYTES = 1024 * 1024
 const REQUEST_TIMEOUT_MS = 30_000
 const NATIVE_BRIDGE_HEADER = 'x-tradeloom-native-bridge'
 const NATIVE_BRIDGE_TOOLS = new Set([
+  'tradeloom_dispatch_create',
+  'tradeloom_dispatch_list',
+  'tradeloom_dispatch_claim',
+  'tradeloom_dispatch_receipt',
   'tradeloom_begin_native_workflow_assignment',
   'tradeloom_bind_native_workflow_expert',
   'tradeloom_submit_native_workflow_advice',
 ])
 const KNOWN_PRESETS = new Set(Object.values(ROLE_PRESETS))
+const DISPATCH_PRESETS = new Set([ROLE_PRESETS.center, ROLE_PRESETS.product, ROLE_PRESETS.delivery])
 const ERP_DOCTYPES = Object.freeze(['Item', 'Customer', 'Supplier', 'Warehouse', 'Bin', 'Sales Order', 'Purchase Order'])
 const INTAKE_CANDIDATE_TYPES = Object.freeze(['product_identity', 'commercial_source', 'production_instruction', 'labor_analysis'])
 const INTAKE_FIELDS = Object.freeze({
@@ -65,6 +70,10 @@ const TOOL_ACCESS = Object.freeze({
   tradeloom_read_deliverables: new Set([ROLE_PRESETS.center, ROLE_PRESETS.delivery]),
   tradeloom_preview_workflow_intent: new Set([ROLE_PRESETS.center]),
   tradeloom_dispatch_workflow_subtask: new Set([ROLE_PRESETS.center]),
+  tradeloom_dispatch_create: new Set([ROLE_PRESETS.center, ROLE_PRESETS.product, ROLE_PRESETS.delivery]),
+  tradeloom_dispatch_list: new Set([ROLE_PRESETS.center, ROLE_PRESETS.product, ROLE_PRESETS.delivery]),
+  tradeloom_dispatch_claim: new Set([ROLE_PRESETS.center, ROLE_PRESETS.product, ROLE_PRESETS.delivery]),
+  tradeloom_dispatch_receipt: new Set([ROLE_PRESETS.center, ROLE_PRESETS.product, ROLE_PRESETS.delivery]),
   tradeloom_begin_native_workflow_assignment: new Set([ROLE_PRESETS.center]),
   tradeloom_bind_native_workflow_expert: new Set([ROLE_PRESETS.center]),
   tradeloom_submit_native_workflow_advice: new Set([ROLE_PRESETS.product, ROLE_PRESETS.delivery]),
@@ -283,6 +292,67 @@ function observedAgentIdentity(exec) {
     agent_preset: header.agentPreset,
     parent_session: parentSession,
     delegation_depth: depth,
+  }
+}
+
+function observedDispatchActor(exec) {
+  const identity = observedAgentIdentity(exec)
+  const sessionId = exec?.agent?.session?.id
+  if (!identity || !DISPATCH_PRESETS.has(identity.agent_preset)
+    || typeof sessionId !== 'string' || !sessionId.trim() || sessionId.length > 256) return null
+  return {
+    agent_id: identity.agent_id,
+    session_id: sessionId,
+    agent_preset: identity.agent_preset,
+  }
+}
+
+function liveDispatchRecipient(ctx, agentId) {
+  const agent = ctx?.agents?.get?.(agentId)
+  if (!agent || agent.id !== agentId) return null
+  const sessionId = agent?.session?.id
+  const preset = agent?.session?.header?.agentPreset
+  if (typeof sessionId !== 'string' || !sessionId.trim() || sessionId.length > 256
+    || !DISPATCH_PRESETS.has(preset)) return null
+  return { agent_id: agent.id, session_id: sessionId, agent_preset: preset }
+}
+
+function dispatchResultError(result, fallback) {
+  return failure(typeof result?.code === 'string' && /^[a-z][a-z0-9_]{0,63}$/.test(result.code)
+    ? result.code
+    : fallback)
+}
+
+function validDispatchDto(value) {
+  const actor = item => item && typeof item === 'object' && !Array.isArray(item)
+    && typeof item.agent_id === 'string' && typeof item.session_id === 'string'
+    && DISPATCH_PRESETS.has(item.agent_preset)
+  return value && typeof value === 'object' && !Array.isArray(value)
+    && typeof value.id === 'string' && /^[a-f0-9]{32}$/.test(value.id)
+    && ['notification', 'action'].includes(value.kind)
+    && ['queued', 'claimed', 'acknowledged', 'completed', 'failed'].includes(value.status)
+    && actor(value.sender) && actor(value.recipient)
+    && typeof value.source === 'string' && typeof value.requirement === 'string'
+    && value.delivery_result && typeof value.delivery_result === 'object' && !Array.isArray(value.delivery_result)
+    && (value.receipt === null || (value.receipt && typeof value.receipt === 'object' && !Array.isArray(value.receipt)))
+}
+
+function projectDispatchDto(value) {
+  if (!validDispatchDto(value)) return null
+  return {
+    id: value.id,
+    kind: value.kind,
+    status: value.status,
+    sender: { agent_id: value.sender.agent_id, session_id: value.sender.session_id, agent_preset: value.sender.agent_preset },
+    recipient: { agent_id: value.recipient.agent_id, session_id: value.recipient.session_id, agent_preset: value.recipient.agent_preset },
+    source: boundedString(value.source, 200),
+    requirement: boundedString(value.requirement, 4000),
+    delivery_result: value.delivery_result,
+    receipt: value.receipt,
+    created_at: boundedString(value.created_at, 64),
+    updated_at: boundedString(value.updated_at, 64),
+    claimed_at: value.claimed_at === null ? null : boundedString(value.claimed_at, 64),
+    closed_at: value.closed_at === null ? null : boundedString(value.closed_at, 64),
   }
 }
 
@@ -1795,6 +1865,104 @@ export function registerBusinessTools(ctx, config = {}, dependencies = {}) {
         const result = await djangoRequest(ctx, 'tradeloom_erpnext_read_quotation_draft_operation', exec,
           `/api/erpnext/quotation-drafts/${encodeURIComponent(args.operation_id)}`, 'GET', undefined, dependencies)
         return draftToolResult(result)
+      },
+    },
+    {
+      name: 'tradeloom_dispatch_create',
+      description: 'Create a durable notification or action for a currently registered TradeLoom agent. New dispatches remain queued; creation never runs the recipient task.',
+      parameters: schema({
+        idempotency_key: wireString('Stable caller key for this dispatch.'),
+        kind: { ...wireString('Notification or action.'), enum: ['notification', 'action'] },
+        recipient_agent_id: wireString('ID of a currently registered agent; its session and preset are resolved by the Host.'),
+        source: wireString('Short source reference, such as a workflow or task ID.'),
+        requirement: { type: 'string', description: 'The notification or requested action, at most 4000 characters.', maxLength: 4000 },
+      }),
+      async execute(args, exec) {
+        if (!args || typeof args !== 'object' || Array.isArray(args)
+          || Object.keys(args).some(key => !['idempotency_key', 'kind', 'recipient_agent_id', 'source', 'requirement'].includes(key))
+          || !exactArgs(args, ['idempotency_key', 'kind', 'recipient_agent_id', 'source', 'requirement'], ['idempotency_key', 'kind', 'recipient_agent_id', 'source', 'requirement'])
+          || args.idempotency_key.length > 200 || !['notification', 'action'].includes(args.kind)
+          || args.recipient_agent_id.length > 256 || args.source.length > 200 || args.requirement.length > 4000) return failure('invalid_arguments')
+        const actor = observedDispatchActor(exec)
+        if (!actor) return failure('host_identity_unavailable')
+        const recipient = liveDispatchRecipient(ctx, args.recipient_agent_id)
+        if (!recipient) return failure('dispatch_recipient_unavailable')
+        const result = await djangoRequest(ctx, 'tradeloom_dispatch_create', exec, '/api/dispatches', 'POST', {
+          actor, idempotency_key: args.idempotency_key, kind: args.kind, recipient,
+          source: args.source, requirement: args.requirement,
+        }, dependencies, [403, 409, 422])
+        if (result?.ok === false) return failure(result.error_code)
+        if (result?.code) return dispatchResultError(result, 'dispatch_request_failed')
+        const dispatch = projectDispatchDto(result?.dispatch)
+        if (!dispatch || typeof result.replayed !== 'boolean') return failure('invalid_dispatch_dto')
+        return success({ dispatch, replayed: result.replayed })
+      },
+    },
+    {
+      name: 'tradeloom_dispatch_list',
+      description: 'Read the current agent session inbox or outbox. The session identity comes from the executing native agent, not tool arguments.',
+      parameters: schema({
+        view: { ...wireString('Inbox or outbox.'), enum: ['inbox', 'outbox'] },
+        offset: { type: 'integer', description: 'Optional next page offset from the previous response.' },
+      }, ['view']),
+      async execute(args, exec) {
+        if (!args || typeof args !== 'object' || Array.isArray(args)
+          || Object.keys(args).some(key => !['view', 'offset'].includes(key))
+          || typeof args.view !== 'string' || !['inbox', 'outbox'].includes(args.view)
+          || (args.offset !== undefined && (!Number.isInteger(args.offset) || args.offset < 0 || args.offset > 1_000_000))) return failure('invalid_arguments')
+        const actor = observedDispatchActor(exec)
+        if (!actor) return failure('host_identity_unavailable')
+        const body = { actor, view: args.view }
+        if (args.offset !== undefined) body.offset = args.offset
+        const result = await djangoRequest(ctx, 'tradeloom_dispatch_list', exec, '/api/dispatches/inbox', 'POST', body, dependencies, [403, 422])
+        if (result?.ok === false) return failure(result.error_code)
+        if (result?.code) return dispatchResultError(result, 'dispatch_request_failed')
+        if (result?.view !== args.view || !Array.isArray(result.items) || typeof result.has_more !== 'boolean'
+          || (result.next_offset !== null && (!Number.isInteger(result.next_offset) || result.next_offset < 0))) return failure('invalid_dispatch_dto')
+        const items = result.items.map(projectDispatchDto)
+        if (items.some(item => !item)) return failure('invalid_dispatch_dto')
+        return success({ view: args.view, items, has_more: result.has_more, next_offset: result.next_offset })
+      },
+    },
+    {
+      name: 'tradeloom_dispatch_claim',
+      description: 'Acknowledge one notification or claim one queued action addressed to the executing native agent. Busy action requests remain queued.',
+      parameters: schema({ dispatch_id: wireString('A server-issued 32-character dispatch ID.') }),
+      async execute(args, exec) {
+        if (!exactArgs(args, ['dispatch_id'], ['dispatch_id']) || !/^[a-f0-9]{32}$/.test(args.dispatch_id)) return failure('invalid_arguments')
+        const actor = observedDispatchActor(exec)
+        if (!actor) return failure('host_identity_unavailable')
+        const result = await djangoRequest(ctx, 'tradeloom_dispatch_claim', exec, `/api/dispatches/${args.dispatch_id}/claim`, 'POST', { actor }, dependencies, [403, 404, 409, 422])
+        if (result?.ok === false) return failure(result.error_code)
+        if (result?.code) return dispatchResultError(result, 'dispatch_request_failed')
+        const dispatch = projectDispatchDto(result?.dispatch)
+        if (!dispatch || !['claimed', 'already_claimed', 'busy', 'acknowledged', 'already_acknowledged'].includes(result.result)
+          || typeof result.replayed !== 'boolean') return failure('invalid_dispatch_dto')
+        return success({ result: result.result, dispatch, replayed: result.replayed })
+      },
+    },
+    {
+      name: 'tradeloom_dispatch_receipt',
+      description: 'Submit the final result for one action previously claimed by the executing native agent. The receipt only closes that dispatch ID.',
+      parameters: schema({
+        dispatch_id: wireString('A server-issued 32-character dispatch ID.'),
+        status: { ...wireString('Final action result.'), enum: ['completed', 'failed'] },
+        result: { type: 'string', description: 'Bounded receipt summary, at most 2000 characters.', maxLength: 2000 },
+      }),
+      async execute(args, exec) {
+        if (!exactArgs(args, ['dispatch_id', 'status', 'result'], ['dispatch_id', 'status', 'result'])
+          || !/^[a-f0-9]{32}$/.test(args.dispatch_id) || !['completed', 'failed'].includes(args.status)
+          || args.result.length > 2000) return failure('invalid_arguments')
+        const actor = observedDispatchActor(exec)
+        if (!actor) return failure('host_identity_unavailable')
+        const result = await djangoRequest(ctx, 'tradeloom_dispatch_receipt', exec, `/api/dispatches/${args.dispatch_id}/receipt`, 'POST', {
+          actor, status: args.status, result: args.result,
+        }, dependencies, [403, 404, 409, 422])
+        if (result?.ok === false) return failure(result.error_code)
+        if (result?.code) return dispatchResultError(result, 'dispatch_request_failed')
+        const dispatch = projectDispatchDto(result?.dispatch)
+        if (!dispatch || typeof result.replayed !== 'boolean') return failure('invalid_dispatch_dto')
+        return success({ dispatch, replayed: result.replayed })
       },
     },
   ]
