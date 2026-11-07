@@ -20,6 +20,9 @@ const PUBLIC_ERRORS = new Set([
   'binding_revision_mismatch', 'workflow_not_eligible', 'invalid_expected_revision',
   'unsupported_model_selection', 'upstream_terminal_unverified', 'upstream_output_unavailable', 'native_prompt_too_large',
   'native_run_unavailable', 'native_task_origin_required', 'ui_origin_required', 'resume_blocked', 'resume_plan_conflict', 'resume_revision_conflict', 'operation_conflict', 'operation_aborted',
+  'owner_capability_required', 'owner_fenced', 'owner_conflict', 'legacy_unmanaged',
+  'owner_namespace_unavailable', 'recovery_unavailable', 'recovery_snapshot_invalid',
+  'invalid_recovery_cursor', 'run_create_reconciled',
 ])
 const OUTPUT = {
   schema: {

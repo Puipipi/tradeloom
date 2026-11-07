@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto'
+import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { ROLE_PRESETS } from './roles.js'
 import { createConfirmedWorkflowDefinition } from './workflow-definition.js'
 import { createWorkflowRunJournal } from './workflow-run-journal.js'
@@ -99,11 +99,131 @@ export function createWorkflowNativeService({ ctx, readState, definitionStore, r
     || typeof ctx?.tools?.execute !== 'function' || typeof readState !== 'function'
     || typeof definitionStore?.get !== 'function') throw new TypeError('native service requires Host ownership and definition services')
   const reviewDecisionChannel = createWorkflowReviewDecisionChannel()
+  const ownershipMethods = ['getOwnershipNamespace', 'getOwnershipState', 'createOwned', 'saveOwned',
+    'renewOwned', 'releaseOwned', 'claimResumed', 'recoverExpired']
+  const hasOwnershipAdapter = ownershipMethods.some(name => typeof runStore?.[name] === 'function')
+  const ownershipEnabled = ownershipMethods.every(name => typeof runStore?.[name] === 'function')
+  if (hasOwnershipAdapter && !ownershipEnabled) throw new TypeError('Native workflow ownership adapter is incomplete')
+  const ownerEntries = new Set()
+  let ownerDescriptor
+  let recoveryPromise
+  const recoveryAbort = new AbortController()
   const journal = createWorkflowRunJournal({ store: runStore, reviewDecisionChannel })
+
+  async function getOwnerDescriptor() {
+    ownerDescriptor ??= await runStore.getOwnershipNamespace({ signal: recoveryAbort.signal })
+    return ownerDescriptor
+  }
+
+  function createLeaseRef(runId, capability = null, existingLeaseRef = null) {
+    const leaseRef = existingLeaseRef ?? { runId, capability, lost: false }
+    if (capability && !leaseRef.capability) leaseRef.capability = capability
+    const leaseStore = {
+      get: id => runStore.get(id),
+      list: options => runStore.list(options),
+      async save(snapshot, expectedRevision) {
+        if (!ownershipEnabled) return runStore.save(snapshot, expectedRevision)
+        if (!leaseRef.capability) {
+          if (expectedRevision !== 0) throw fail('owner_capability_required')
+          const descriptor = await getOwnerDescriptor()
+          const pending = {
+            namespaceId: descriptor.namespaceId,
+            runId: snapshot.id,
+            ownerId: randomUUID(),
+            ownerToken: randomBytes(32).toString('base64url'),
+          }
+          const entry = { capability: null, leaseRef, lost: false, released: false,
+            leaseExpiresAt: null, renewalTimer: null, renewalPromise: null }
+          leaseRef.entry = entry
+          ownerEntries.add(entry)
+          leaseRef.capability = pending
+          const createRequest = Object.freeze({ ...pending, snapshot })
+          let created
+          try { created = await runStore.createOwned(createRequest) }
+          catch (firstError) {
+            try { created = await runStore.createOwned(createRequest) }
+            catch { ownerEntries.delete(entry); throw firstError }
+          }
+          const capability = Object.freeze({ ...pending, ownerEpoch: created.ownerEpoch })
+          leaseRef.capability = capability
+          entry.capability = capability
+          entry.leaseExpiresAt = created.leaseExpiresAt
+          if (created.alreadyAdvanced) {
+            try { await runStore.releaseOwned(capability) } catch {}
+            entry.released = true
+            ownerEntries.delete(entry)
+            throw fail('run_create_reconciled')
+          }
+          return created.snapshot
+        }
+        if (leaseRef.lost) throw fail('owner_fenced')
+        return runStore.saveOwned(leaseRef.capability, snapshot, expectedRevision)
+      },
+    }
+    return { leaseRef, journal: createWorkflowRunJournal({ store: leaseStore, reviewDecisionChannel }) }
+  }
+
+  function journalForRun(runId, leaseRef = null) {
+    return createLeaseRef(runId, leaseRef?.capability ?? null, leaseRef)
+  }
+
+  async function claimLeaseForMutation(runId, expectedRevision, expectedStatus, signal) {
+    const descriptor = await getOwnerDescriptor()
+    const state = await runStore.getOwnershipState(runId, descriptor.namespaceId, { signal })
+    if (!state.managed) throw fail('legacy_unmanaged')
+    if (state.revision !== expectedRevision || state.status !== expectedStatus) throw fail('owner_conflict')
+    if (state.active) throw fail('owner_conflict')
+    const pending = { namespaceId: descriptor.namespaceId, runId,
+      ownerId: randomUUID(), ownerToken: randomBytes(32).toString('base64url') }
+    const claimed = await runStore.claimResumed({ ...pending, expectedRevision,
+      expectedOwnerEpoch: state.ownerEpoch, signal })
+    const leaseRef = { runId, capability: Object.freeze({ ...pending, ownerEpoch: claimed.ownerEpoch }), lost: false }
+    const entry = { capability: leaseRef.capability, leaseRef, lost: false, released: false,
+      leaseExpiresAt: claimed.leaseExpiresAt, renewalTimer: null, renewalPromise: null }
+    leaseRef.entry = entry
+    ownerEntries.add(entry)
+    return leaseRef
+  }
+
+  async function startRecovery() {
+    if (!ownershipEnabled) return { ready: true, unmanagedCount: 0 }
+    if (recoveryPromise) return recoveryPromise
+    recoveryPromise = (async () => {
+      const descriptor = await getOwnerDescriptor()
+      let cursor = descriptor.recoveryCursor
+      let unmanagedCount = 0
+      while (true) {
+        if (closed || recoveryAbort.signal.aborted) throw fail('service_closed')
+        const page = await runStore.recoverExpired(descriptor.namespaceId, cursor, { signal: recoveryAbort.signal })
+        if (page.item?.kind === 'unmanaged') unmanagedCount += 1
+        if (page.item?.kind === 'recovered') {
+          const handle = await journal.open(page.item.snapshot.id)
+          if (!handle || handle.getSnapshot().revision !== page.item.snapshot.revision
+            || handle.getSnapshot().status !== 'interrupted') throw fail('recovery_snapshot_invalid')
+        }
+        if (page.complete) return { ready: true, unmanagedCount }
+        if (typeof page.nextCursor !== 'string' || page.nextCursor === cursor) throw fail('invalid_recovery_cursor')
+        cursor = page.nextCursor
+      }
+    })()
+    return recoveryPromise
+  }
+
+  async function assertReady() {
+    if (closed) throw fail('service_closed')
+    await startRecovery()
+    if (closed) throw fail('service_closed')
+  }
+
   const runs = new Map()
   let closed = false
   const stop = () => {
     closed = true
+    recoveryAbort.abort(fail('host_unloaded'))
+    for (const entry of ownerEntries) {
+      if (entry.renewalTimer) clearTimeout(entry.renewalTimer)
+      entry.renewalTimer = null
+    }
     for (const owned of runs.values()) owned.controller.abort(fail('host_unloaded'))
     // Never await an owned task from its own disposal path.
   }
@@ -150,7 +270,35 @@ export function createWorkflowNativeService({ ctx, readState, definitionStore, r
     if (latest.definitionRevision !== snapshot.definitionRevision) throw fail('definition_revision_mismatch')
     if (closed || exec.signal.aborted || task.signal.aborted) throw fail('operation_aborted')
   }
-  function schedule(handle, auth, callId, submissionAborted, resumeOperationId = null, task = null) {
+  function startRenewal(runId, leaseRef, owned) {
+    if (!ownershipEnabled || !leaseRef?.capability) return null
+    const entry = leaseRef.entry
+    if (!entry || entry.capability !== leaseRef.capability) return null
+    const arm = () => {
+      if (closed || entry.lost || entry.released || owned.controller.signal.aborted) return
+      entry.renewalTimer = setTimeout(() => {
+        entry.renewalTimer = null
+        entry.renewalPromise = (async () => {
+          try {
+            const renewed = await runStore.renewOwned(leaseRef.capability, { signal: owned.controller.signal })
+            entry.leaseExpiresAt = renewed.leaseExpiresAt
+          } catch (error) {
+            entry.lost = true
+            leaseRef.lost = true
+            owned.error = error
+            owned.controller.abort(fail('owner_fenced'))
+          } finally {
+            entry.renewalPromise = null
+            arm()
+          }
+        })()
+      }, ownerDescriptor?.renewAfterMs ?? 40_000)
+      entry.renewalTimer.unref?.()
+    }
+    arm()
+    return entry
+  }
+  function schedule(handle, auth, callId, submissionAborted, resumeOperationId = null, task = null, leaseRef = null) {
     const controller = new AbortController()
     if (submissionAborted) controller.abort(fail('submission_aborted_during_create'))
     const abortTask = () => controller.abort(task.signal.reason)
@@ -158,13 +306,15 @@ export function createWorkflowNativeService({ ctx, readState, definitionStore, r
       task.signal.addEventListener('abort', abortTask, { once: true })
       if (task.signal.aborted) abortTask()
     }
-    const owned = { controller, error: null, task: null }
+    const owned = { controller, error: null, task: null, leaseRef }
     // Cordis effect registers a disposer returned by its immediate setup.
     const releaseParent = auth.parent.ctx.effect(() => () => controller.abort(fail('parent_disposed')))
     runs.set(handle.getSnapshot().id, owned)
     if (closed) controller.abort(fail('host_unloaded'))
+    const leaseEntry = startRenewal(handle.getSnapshot().id, leaseRef, owned)
     owned.task = new Promise(resolve => setImmediate(resolve)).then(async () => {
       while (true) {
+        if (leaseRef?.lost) return
         await handle.settleBlockedNodes()
         const snapshot = handle.getSnapshot()
         if (TERMINAL.has(snapshot.status) || snapshot.cancelRequested === true) return
@@ -273,8 +423,21 @@ export function createWorkflowNativeService({ ctx, readState, definitionStore, r
           { agent: auth.parent, callId, signal: controller.signal })
         })
       }
-    }).catch(error => { owned.error = error }).finally(() => {
+    }).catch(error => { owned.error = error }).finally(async () => {
+      if (leaseEntry?.renewalTimer) clearTimeout(leaseEntry.renewalTimer)
+      if (leaseEntry) leaseEntry.renewalTimer = null
+      if (leaseEntry?.renewalPromise) await leaseEntry.renewalPromise.catch(() => {})
       runs.delete(handle.getSnapshot().id)
+      if (ownershipEnabled && leaseEntry && !leaseEntry.lost && leaseRef?.capability
+        && ['done', 'failed', 'cancelled', 'interrupted', 'waiting'].includes(handle.getSnapshot().status)) {
+        try {
+          await runStore.releaseOwned(leaseRef.capability)
+          leaseEntry.released = true
+          ownerEntries.delete(leaseEntry)
+        } catch (error) {
+          owned.error ??= error
+        }
+      }
       if (task) { task.signal.removeEventListener('abort', abortTask); releaseTask(task) }
       if (typeof releaseParent === 'function') releaseParent()
     })
@@ -282,7 +445,10 @@ export function createWorkflowNativeService({ ctx, readState, definitionStore, r
   async function resumePreparation(runId, exec) {
     if (closed) throw fail('service_closed')
     const auth = await authorize(exec)
-    const handle = await journal.open(runId)
+    const activeRun = runs.get(runId)
+    const leaseRef = activeRun?.leaseRef ?? createLeaseRef(runId).leaseRef
+    const { journal: runJournal } = journalForRun(runId, leaseRef)
+    const handle = await runJournal.open(runId)
     if (!handle) throw fail('run_not_found')
     const snapshot = handle.getSnapshot()
     if (!owns(snapshot, auth)) throw fail('run_parent_mismatch')
@@ -306,7 +472,7 @@ export function createWorkflowNativeService({ ctx, readState, definitionStore, r
     if (runs.has(runId)) { plan.eligible = false; plan.blocked.push({ nodeId: null, reason: 'run_active_in_service' }) }
     const resumePlanHash = `sha256:${fingerprint([stored.id, stored.revision, stored.parentAgentId, stored.sessionId,
       stored.bindingRevision, stored.definitionRevision, stored.status, stored.cancelRequested === true, stored.nodes, plan])}`
-    return { auth: final, handle, plan, snapshot: stored, resumePlanHash }
+    return { auth: final, handle, plan, snapshot: stored, resumePlanHash, leaseRef }
   }
   return Object.freeze({
     async prepare_resume(input, exec) {
@@ -330,10 +496,19 @@ export function createWorkflowNativeService({ ctx, readState, definitionStore, r
       if (input.resumePlanHash !== prepared.resumePlanHash) throw fail('resume_plan_conflict')
       if (!prepared.plan.eligible) throw fail('resume_blocked')
       if (closed || exec?.signal?.aborted) throw fail('operation_aborted')
+      await assertReady()
       const task = await bindTask(exec, input.runId, prepared.auth, prepared.snapshot)
       let scheduled = false
+      let claimedCapability = null
       try {
         await revalidateTask(task, exec, prepared.auth, prepared.snapshot)
+        if (ownershipEnabled && !prepared.leaseRef.capability) {
+          const claimedLease = await claimLeaseForMutation(input.runId, input.expectedRunRevision,
+            prepared.snapshot.status, task?.signal)
+          prepared.leaseRef.capability = claimedLease.capability
+          prepared.leaseRef.entry = claimedLease.entry
+          claimedCapability = claimedLease.capability
+        }
         let claimed
         try {
           claimed = await prepared.handle.claimResume({ operationId, fingerprint: bodyFingerprint,
@@ -349,10 +524,23 @@ export function createWorkflowNativeService({ ctx, readState, definitionStore, r
           await prepared.handle.requestCancel({ operationId: `aborted:${operationId}`, fingerprint: bodyFingerprint })
           throw fail('operation_aborted')
         }
-        schedule(prepared.handle, prepared.auth, exec.callId, false, operationId, task)
+        schedule(prepared.handle, prepared.auth, exec.callId, false, operationId, task, prepared.leaseRef)
         scheduled = true
         return { runId: input.runId, status: 'queued', reused: false, scheduled: true }
-      } finally { if (!scheduled) releaseTask(task) }
+      } finally {
+        if (!scheduled) {
+          if (claimedCapability) {
+            try { await runStore.releaseOwned(claimedCapability) } catch {}
+            const entry = prepared.leaseRef.entry
+            if (entry?.capability === claimedCapability) {
+              entry.released = true
+              if (entry.renewalTimer) clearTimeout(entry.renewalTimer)
+              ownerEntries.delete(entry)
+            }
+          }
+          releaseTask(task)
+        }
+      }
     },
     async prepare(input, exec) {
       const workflowId = only(input, 'workflowId', WORKFLOW_ID)
@@ -413,6 +601,7 @@ export function createWorkflowNativeService({ ctx, readState, definitionStore, r
       if (latestDefinition.definitionRevision !== confirmed.definitionRevision) throw fail('definition_revision_mismatch')
       if (closed) throw fail('service_closed')
       if (exec?.signal?.aborted) throw fail('ABORTED_BEFORE_NATIVE_SUBMIT')
+      await assertReady()
       // The service, not renderer/Host prediction, owns this authoritative tuple.
       // Bind before run creation. An orphan uncharged binding after CAS failure
       // remains in the original budget ledger and is never silently rebound.
@@ -422,13 +611,9 @@ export function createWorkflowNativeService({ ctx, readState, definitionStore, r
       try {
         await revalidateTask(task, exec, current, expected)
         if (prior) return existing(prior, expected)
-        let handle
-        try { handle = await journal.create(expected) } catch (error) {
-          const stored = await runStore.get(identity.runId)
-          if (stored) return existing(stored, expected)
-          throw error
-        }
-        schedule(handle, auth, exec.callId, exec?.signal?.aborted === true, null, task)
+        const { journal: submitJournal, leaseRef } = createLeaseRef(identity.runId)
+        const handle = await submitJournal.create(expected)
+        schedule(handle, auth, exec.callId, exec?.signal?.aborted === true, null, task, leaseRef)
         scheduled = true
         return { runId: identity.runId, status: 'queued', queued: true, scheduled: true, reused: false }
       } finally { if (!scheduled) releaseTask(task) }
@@ -453,32 +638,73 @@ export function createWorkflowNativeService({ ctx, readState, definitionStore, r
     async cancel(input, exec) {
       const id = only(input, 'runId', RUN_ID)
       const auth = await authorize(exec)
-      const handle = await journal.open(id)
+      const ownedRun = runs.get(id)
+      const activeLeaseRef = ownedRun?.leaseRef
+      if (ownershipEnabled && activeLeaseRef?.lost) throw fail('owner_fenced')
+      const leaseRef = activeLeaseRef?.capability ? activeLeaseRef : null
+      const { journal: cancelJournal } = journalForRun(id, leaseRef)
+      const handle = await cancelJournal.open(id)
       const snapshot = handle?.getSnapshot()
       if (!snapshot) throw fail('run_not_found')
       if (!owns(snapshot, auth)) throw fail('run_parent_mismatch')
       if (snapshot.bindingRevision !== auth.bindingRevision) throw fail('binding_revision_mismatch')
       const current = await authorize(exec)
       if (current.parent !== auth.parent || current.bindingRevision !== auth.bindingRevision || exec?.signal?.aborted) throw fail('operation_aborted')
-      const cancelled = await handle.requestCancel({ operationId: operationKey('cancel', auth, exec), fingerprint: fingerprint(['cancel', id]) })
-      if (cancelled.alreadyTerminal) return { runId: id, status: snapshot.status, aborted: false, reason: 'already_terminal' }
-      const owned = runs.get(id)
-      if (cancelled.reused) {
-        const abort = cancelled.snapshot.cancelRequested === true && owned && !owned.controller.signal.aborted
-        if (abort) owned.controller.abort(fail('run_cancel_requested'))
-        return { runId: id, status: cancelled.snapshot.status, aborted: Boolean(abort), reused: true,
-          reason: abort ? 'abort_requested' : 'already_requested', intentPersisted: true }
+      if (['done', 'failed', 'cancelled'].includes(snapshot.status)) {
+        return { runId: id, status: snapshot.status, aborted: false, reason: 'already_terminal' }
       }
-      if (!owned) return { runId: id, status: cancelled.snapshot.status, aborted: false, reason: 'not_active_in_service', intentPersisted: true }
-      owned.controller.abort(fail('run_cancel_requested'))
-      return { runId: id, status: cancelled.snapshot.status, aborted: true, reason: 'abort_requested', intentPersisted: true }
+      await assertReady()
+      let newlyClaimedLease = null
+      if (ownershipEnabled && !leaseRef?.capability) {
+        newlyClaimedLease = await claimLeaseForMutation(id, snapshot.revision, snapshot.status, exec?.signal)
+      }
+      try {
+        if (newlyClaimedLease) {
+          const { journal: mutationJournal } = journalForRun(id, newlyClaimedLease)
+          const mutationHandle = await mutationJournal.open(id)
+          if (!mutationHandle) throw fail('run_not_found')
+          const cancelled = await mutationHandle.requestCancel({ operationId: operationKey('cancel', auth, exec), fingerprint: fingerprint(['cancel', id]) })
+          if (cancelled.alreadyTerminal) return { runId: id, status: cancelled.snapshot.status, aborted: false, reason: 'already_terminal' }
+          const owned = runs.get(id)
+          if (cancelled.reused) {
+            const abort = cancelled.snapshot.cancelRequested === true && owned && !owned.controller.signal.aborted
+            if (abort) owned.controller.abort(fail('run_cancel_requested'))
+            return { runId: id, status: cancelled.snapshot.status, aborted: Boolean(abort), reused: true,
+              reason: abort ? 'abort_requested' : 'already_requested', intentPersisted: true }
+          }
+          if (!owned) return { runId: id, status: cancelled.snapshot.status, aborted: false,
+            reason: 'not_active_in_service', intentPersisted: true }
+          owned.controller.abort(fail('run_cancel_requested'))
+          return { runId: id, status: cancelled.snapshot.status, aborted: true, reason: 'abort_requested', intentPersisted: true }
+        }
+        const cancelled = await handle.requestCancel({ operationId: operationKey('cancel', auth, exec), fingerprint: fingerprint(['cancel', id]) })
+        if (cancelled.alreadyTerminal) return { runId: id, status: cancelled.snapshot.status, aborted: false, reason: 'already_terminal' }
+        const owned = runs.get(id)
+        if (cancelled.reused) {
+          const abort = cancelled.snapshot.cancelRequested === true && owned && !owned.controller.signal.aborted
+          if (abort) owned.controller.abort(fail('run_cancel_requested'))
+          return { runId: id, status: cancelled.snapshot.status, aborted: Boolean(abort), reused: true,
+            reason: abort ? 'abort_requested' : 'already_requested', intentPersisted: true }
+        }
+        if (!owned) return { runId: id, status: cancelled.snapshot.status, aborted: false,
+          reason: 'not_active_in_service', intentPersisted: true }
+        owned.controller.abort(fail('run_cancel_requested'))
+        return { runId: id, status: cancelled.snapshot.status, aborted: true, reason: 'abort_requested', intentPersisted: true }
+      } finally {
+        if (newlyClaimedLease) {
+          await runStore.releaseOwned(newlyClaimedLease.capability)
+          newlyClaimedLease.entry.released = true
+          if (newlyClaimedLease.entry.renewalTimer) clearTimeout(newlyClaimedLease.entry.renewalTimer)
+          ownerEntries.delete(newlyClaimedLease.entry)
+        }
+      }
     },
-    recover: () => journal.recoverInterruptedRuns(),
+    recover: () => ownershipEnabled ? startRecovery() : journal.recoverInterruptedRuns(),
     dispose: stop,
     // Host-only observation for shutdown/acceptance; cleanup above never awaits it.
     async drain() {
       const pending = [...runs.entries()]
-      await Promise.all(pending.map(([, owned]) => owned.task))
+      await Promise.allSettled([recoveryPromise, ...pending.map(([, owned]) => owned.task)])
       return pending.map(([runId, owned]) => ({ runId, error: owned.error?.code ?? null }))
     },
   })

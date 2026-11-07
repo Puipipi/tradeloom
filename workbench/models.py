@@ -20,6 +20,14 @@ class CanvasWorkflowRun(models.Model):
     status = models.CharField(max_length=20)
     execution_mode = models.CharField(max_length=20)
     snapshot = models.JSONField()
+    owner_namespace_id = models.UUIDField(null=True, blank=True)
+    owner_id = models.UUIDField(null=True, blank=True)
+    owner_epoch = models.BigIntegerField(null=True, blank=True)
+    owner_token_hash = models.CharField(max_length=64, null=True, blank=True)
+    owner_create_fingerprint = models.CharField(max_length=64, null=True, blank=True)
+    owner_lease_expires_at = models.DateTimeField(null=True, blank=True)
+    owner_released_at = models.DateTimeField(null=True, blank=True)
+    owner_fenced_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -32,6 +40,27 @@ class CanvasWorkflowRun(models.Model):
                 name="canvas_one_active_workflow_run",
             )
         ]
+
+
+class CanvasWorkflowRunNamespace(models.Model):
+    """Server-created identity for the database that owns workflow runs."""
+
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+    namespace_id = models.UUIDField(unique=True, editable=False)
+
+    class Meta:
+        constraints = [models.CheckConstraint(condition=models.Q(id=1), name="canvas_workflow_run_namespace_singleton")]
+
+    def save(self, *args, **kwargs):
+        if self.pk != 1:
+            raise ValidationError("Canvas workflow run namespace is a singleton")
+        if not self._state.adding:
+            current = type(self).objects.using(kwargs.get("using") or self._state.db).filter(pk=1).values_list(
+                "namespace_id", flat=True
+            ).first()
+            if current is not None and current != self.namespace_id:
+                raise ValidationError("Canvas workflow run namespace is immutable")
+        return super().save(*args, **kwargs)
 
 
 class CanvasWorkflowDefinition(models.Model):

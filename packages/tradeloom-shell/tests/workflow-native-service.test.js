@@ -112,6 +112,209 @@ async function fixture({ nodes, edges = [], answer = null, askError = null, prov
 
 const answer = question => ({ answers: [{ id: question.questions[0].id, selected: ['批准'] }] })
 
+function installFakeRunOwnership(f) {
+  const raw = f.runStore
+  const saveRaw = raw.save.bind(raw)
+  const namespaceId = '22222222-2222-4222-8222-222222222222'
+  const owners = new Map()
+  const counters = { claims: 0, saves: 0, releases: 0 }
+  let nextSaveError = null
+  let nextReleaseError = null
+  const expiry = () => new Date(Date.now() + 120_000).toISOString()
+  const ownsCapability = (owner, capability) => owner && owner.active
+    && owner.ownerId === capability.ownerId && owner.ownerToken === capability.ownerToken
+    && owner.ownerEpoch === capability.ownerEpoch
+  raw.getOwnershipNamespace = async () => ({ protocol: 'canvas-run-owner/v1', namespaceId,
+    leaseTtlMs: 120_000, renewAfterMs: 40_000, maxDomainEnvelopeBytes: 2 * 1024 * 1024,
+    maxResponseBytes: 2 * 1024 * 1024 + 16 * 1024, recoveryCursor: 'fixture-cursor' })
+  raw.getOwnershipState = async (runId, requestedNamespace) => {
+    assert.equal(requestedNamespace, namespaceId)
+    const snapshot = await raw.get(runId), owner = owners.get(runId)
+    return { managed: Boolean(owner), namespaceId, runId, ownerId: owner?.ownerId,
+      ownerEpoch: owner?.ownerEpoch, active: owner?.active ?? false, released: owner?.released ?? false,
+      fenced: owner?.fenced ?? false, revision: snapshot?.revision, status: snapshot?.status }
+  }
+  raw.createOwned = async ({ namespaceId: requestedNamespace, runId, ownerId, ownerToken, snapshot }) => {
+    assert.equal(requestedNamespace, namespaceId)
+    await saveRaw(snapshot, 0)
+    const owner = { ownerId, ownerToken, ownerEpoch: '1', active: true, released: false }
+    owners.set(runId, owner)
+    return { protocol: 'canvas-run-owner/v1', namespaceId, runId, ownerId, ownerEpoch: '1',
+      leaseExpiresAt: expiry(), snapshot, alreadyAdvanced: false }
+  }
+  raw.saveOwned = async (capability, snapshot, expectedRevision) => {
+    counters.saves++
+    if (nextSaveError) { const error = nextSaveError; nextSaveError = null; throw error }
+    if (!ownsCapability(owners.get(capability.runId), capability)) {
+      throw Object.assign(new Error('owner fenced'), { code: 'owner_fenced' })
+    }
+    return saveRaw(snapshot, expectedRevision)
+  }
+  raw.renewOwned = async capability => {
+    const owner = owners.get(capability.runId)
+    if (!ownsCapability(owner, capability)) throw Object.assign(new Error('owner fenced'), { code: 'owner_fenced' })
+    return { ownerEpoch: owner.ownerEpoch, leaseExpiresAt: expiry() }
+  }
+  raw.releaseOwned = async capability => {
+    counters.releases++
+    if (nextReleaseError) { const error = nextReleaseError; nextReleaseError = null; throw error }
+    const owner = owners.get(capability.runId)
+    if (!owner || owner.ownerId !== capability.ownerId || owner.ownerToken !== capability.ownerToken
+      || owner.ownerEpoch !== capability.ownerEpoch) throw Object.assign(new Error('owner fenced'), { code: 'owner_fenced' })
+    owner.active = false
+    owner.released = true
+    return { released: true, ownerEpoch: owner.ownerEpoch }
+  }
+  raw.claimResumed = async ({ namespaceId: requestedNamespace, runId, expectedRevision,
+    expectedOwnerEpoch, ownerId, ownerToken }) => {
+    counters.claims++
+    assert.equal(requestedNamespace, namespaceId)
+    const owner = owners.get(runId), snapshot = await raw.get(runId)
+    assert.ok(owner)
+    assert.equal(snapshot.revision, expectedRevision)
+    assert.equal(owner.ownerEpoch, expectedOwnerEpoch)
+    assert.equal(owner.active, false)
+    const next = { ownerId, ownerToken, ownerEpoch: String(Number(owner.ownerEpoch) + 1), active: true, released: false }
+    owners.set(runId, next)
+    return { protocol: 'canvas-run-owner/v1', namespaceId, runId, ownerId, ownerEpoch: next.ownerEpoch,
+      leaseExpiresAt: expiry(), snapshot }
+  }
+  raw.recoverExpired = async (_requestedNamespace, cursor) => ({ namespaceId, item: null, nextCursor: cursor, complete: true })
+  return { owners, counters,
+    failNextSave(error = Object.assign(new Error('fixture mutation failed'), { code: 'fixture_mutation_failed' })) { nextSaveError = error },
+    failNextRelease(error = Object.assign(new Error('fixture release failed'), { code: 'fixture_release_failed' })) { nextReleaseError = error } }
+}
+
+test('lost create responses retry the frozen request and never schedule an advanced row twice', async () => {
+  for (const advancedBeforeRetry of [false, true]) {
+    const f = await fixture({ nodes: [
+      { id: 'task', kind: 'agent', agent: 'product', title: 'Task', instruction: 'Run once' },
+    ] })
+    const raw = f.runStore
+    const saveRaw = raw.save.bind(raw)
+    const namespaceId = '22222222-2222-4222-8222-222222222222'
+    const frozenRequests = []
+    let createCalls = 0, releases = 0
+    raw.getOwnershipNamespace = async () => ({ protocol: 'canvas-run-owner/v1', namespaceId,
+      leaseTtlMs: 120_000, renewAfterMs: 40_000, maxDomainEnvelopeBytes: 2 * 1024 * 1024,
+      maxResponseBytes: 2 * 1024 * 1024 + 16 * 1024, recoveryCursor: 'fixture-cursor' })
+    raw.getOwnershipState = async () => ({ managed: false })
+    raw.recoverExpired = async (_namespace, cursor) => ({ namespaceId, item: null, nextCursor: cursor, complete: true })
+    raw.claimResumed = async () => { throw new Error('claimResumed is not used in create reconciliation') }
+    raw.createOwned = async request => {
+      frozenRequests.push(JSON.stringify(request))
+      createCalls++
+      if (createCalls === 1) {
+        await saveRaw(request.snapshot, 0)
+        if (advancedBeforeRetry) {
+          await saveRaw({ ...request.snapshot, revision: 2, status: 'interrupted' }, 1)
+        }
+        throw Object.assign(new Error('response lost after server commit'), { code: 'network_error' })
+      }
+      const current = await raw.get(request.runId)
+      return { protocol: 'canvas-run-owner/v1', namespaceId, runId: request.runId,
+        ownerId: request.ownerId, ownerEpoch: '1',
+        leaseExpiresAt: new Date(Date.now() + 120_000).toISOString(), snapshot: current,
+        alreadyAdvanced: advancedBeforeRetry }
+    }
+    raw.saveOwned = (_capability, snapshot, expectedRevision) => saveRaw(snapshot, expectedRevision)
+    raw.renewOwned = async () => ({ leaseExpiresAt: new Date(Date.now() + 120_000).toISOString(), ownerEpoch: '1' })
+    raw.releaseOwned = async capability => { releases++; return { released: true, ownerEpoch: capability.ownerEpoch } }
+    const service = f.createService()
+    try {
+      if (advancedBeforeRetry) {
+        await assert.rejects(service.submit({ workflowId: 'workflow' }, { ...f.exec, callId: 'lost-create-advanced' }), error => {
+          assert.equal(error.code, 'run_create_persistence_failed')
+          assert.equal(error.cause?.code, 'run_create_reconciled')
+          return true
+        })
+        const stored = await raw.get([...await fs.readdir(f.runDirectory)].find(name => name.endsWith('.json')).slice(0, -5))
+        assert.equal(stored.revision, 2)
+        assert.equal(stored.status, 'interrupted')
+        assert.equal(f.dispatches, 0)
+      } else {
+        const submitted = await service.submit({ workflowId: 'workflow' }, { ...f.exec, callId: 'lost-create-unadvanced' })
+        assert.equal(submitted.scheduled, true)
+        const drained = await service.drain()
+        assert.equal(drained.length, 1)
+        assert.equal(drained[0].error, null)
+        assert.equal((await raw.get(submitted.runId)).status, 'done')
+        assert.equal(f.dispatches, 1)
+      }
+      assert.equal(createCalls, 2)
+      assert.equal(frozenRequests[0], frozenRequests[1])
+      assert.equal(releases, 1)
+    } finally {
+      service.dispose()
+      f.service.dispose()
+      await service.drain()
+      await f.cleanup()
+    }
+  }
+})
+
+test('failed lease renewal aborts local workflow progression without claiming external work stopped', async () => {
+  let resolveAnswer, questionEntered, renewEntered, rejectRenew
+  const enteredQuestion = new Promise(resolve => { questionEntered = resolve })
+  const enteredRenewal = new Promise(resolve => { renewEntered = resolve })
+  const renewalResult = new Promise((_, reject) => { rejectRenew = reject })
+  let question
+  const f = await fixture({ nodes: [
+    { id: 'before', kind: 'agent', agent: 'product', title: 'Before review', instruction: 'Run first' },
+    { id: 'review', kind: 'review', title: 'Review', instruction: 'Confirm' },
+    { id: 'after', kind: 'agent', agent: 'product', title: 'After review', instruction: 'Run second' },
+  ], edges: [{ from: 'before', to: 'review' }, { from: 'review', to: 'after' }], answer: input => {
+    question = input
+    questionEntered()
+    return new Promise(resolve => { resolveAnswer = resolve })
+  } })
+  const raw = f.runStore
+  const saveRaw = raw.save.bind(raw)
+  const namespaceId = '22222222-2222-4222-8222-222222222222'
+  raw.getOwnershipNamespace = async () => ({ protocol: 'canvas-run-owner/v1', namespaceId,
+    leaseTtlMs: 120_000, renewAfterMs: 50, maxDomainEnvelopeBytes: 2 * 1024 * 1024,
+    maxResponseBytes: 2 * 1024 * 1024 + 16 * 1024, recoveryCursor: 'fixture-cursor' })
+  raw.getOwnershipState = async () => ({ managed: false })
+  raw.recoverExpired = async (_namespace, cursor) => ({ namespaceId, item: null, nextCursor: cursor, complete: true })
+  raw.claimResumed = async () => { throw new Error('claimResumed is not used in renewal loss') }
+  raw.createOwned = async ({ runId, ownerId, ownerToken, snapshot }) => {
+    await saveRaw(snapshot, 0)
+    return { protocol: 'canvas-run-owner/v1', namespaceId, runId, ownerId, ownerEpoch: '1',
+      leaseExpiresAt: new Date(Date.now() + 120_000).toISOString(), snapshot, alreadyAdvanced: false }
+  }
+  let saveOwnedCalls = 0
+  raw.saveOwned = (capability, snapshot, expectedRevision) => {
+    saveOwnedCalls++
+    return saveRaw(snapshot, expectedRevision)
+  }
+  raw.renewOwned = async () => { renewEntered(); return renewalResult }
+  raw.releaseOwned = async capability => ({ released: true, ownerEpoch: capability.ownerEpoch })
+  const service = f.createService()
+  try {
+    await service.submit({ workflowId: 'workflow' }, { ...f.exec, callId: 'renewal-loss' })
+    await Promise.race([enteredQuestion, new Promise((_, reject) => setTimeout(() => reject(new Error('review was not reached')), 2000))])
+    await Promise.race([enteredRenewal, new Promise((_, reject) => setTimeout(() => reject(new Error('renewal was not attempted')), 2000))])
+    rejectRenew(Object.assign(new Error('lease expired'), { code: 'owner_fenced' }))
+    await new Promise(resolve => setImmediate(resolve))
+    const saveCallsAtLeaseLoss = saveOwnedCalls
+    resolveAnswer(answer(question))
+    const drained = await service.drain()
+    assert.equal(drained.length, 1)
+    assert.equal(drained[0].error, 'store_write_failed')
+    assert.equal(saveOwnedCalls, saveCallsAtLeaseLoss)
+    assert.equal(f.dispatches, 1)
+    const stored = await raw.get((await fs.readdir(f.runDirectory)).find(name => name.endsWith('.json')).slice(0, -5))
+    assert.equal(stored.nodes.review.reviewState.status, 'waiting')
+    assert.equal(stored.status, 'waiting')
+  } finally {
+    resolveAnswer?.(answer(question))
+    service.dispose()
+    f.service.dispose()
+    await service.drain()
+    await f.cleanup()
+  }
+})
+
 test('review provider is checked before create and before resume mutates the persisted run', async t => {
   const f = await fixture({ nodes: [
     { id: 'task', kind: 'agent', agent: 'product', title: 'Task', instruction: 'Produce a result' },
@@ -216,6 +419,76 @@ test('recovered waiting review resumes through a new service without replaying t
   const replay = await restartedService.resume(resumeInput, resumeExec)
   assert.equal(replay.reused, true)
   assert.equal((await f.runStore.get(submitted.runId)).events.length, finished.events.length)
+})
+
+test('journal accepts OWNER_LEASE_EXPIRED only as an interrupted review cause with intact request evidence', async t => {
+  let resolveAnswer, questionEntered, questionInput
+  const entered = new Promise(resolve => { questionEntered = resolve })
+  const pendingAnswer = new Promise(resolve => { resolveAnswer = resolve })
+  const f = await fixture({ nodes: [
+    { id: 'task', kind: 'agent', agent: 'product', title: 'Task', instruction: 'Produce a result' },
+    { id: 'review', kind: 'review', title: 'Review', instruction: 'Confirm the result' },
+  ], edges: [{ from: 'task', to: 'review' }], answer: question => {
+    questionInput = question
+    questionEntered()
+    return pendingAnswer
+  } })
+  t.after(async () => {
+    resolveAnswer(answer(questionInput))
+    f.service.dispose()
+    await f.service.drain()
+    await f.cleanup()
+  })
+
+  const submitted = await f.service.submit({ workflowId: 'workflow' }, f.exec)
+  await Promise.race([entered, new Promise((_, reject) => setTimeout(() => reject(new Error('review was not reached')), 2000))])
+  const waiting = await f.runStore.get(submitted.runId)
+  assert.equal(waiting.nodes.review.reviewState.status, 'waiting')
+  const recovered = await createWorkflowRunJournal({ store: f.runStore }).recoverInterruptedRuns()
+  assert.equal(recovered.recovered.length, 1)
+  const snapshot = clone(await f.runStore.get(submitted.runId))
+  assert.equal(snapshot.nodes.review.reviewState.error, 'PROCESS_RESTARTED')
+  const reviewEvent = snapshot.events.findLast(event => event.type === 'review-node-interrupted')
+  assert.ok(reviewEvent)
+  snapshot.nodes.review.error = 'OWNER_LEASE_EXPIRED'
+  snapshot.nodes.review.reviewState.error = 'OWNER_LEASE_EXPIRED'
+  reviewEvent.errorCategory = 'OWNER_LEASE_EXPIRED'
+  const runEvent = snapshot.events.findLast(event => event.type === 'run-interrupted')
+  runEvent.errorCategory = 'OWNER_LEASE_EXPIRED'
+  await f.runStore.writeRaw(snapshot)
+
+  const journal = createWorkflowRunJournal({ store: f.runStore })
+  const opened = await journal.open(submitted.runId)
+  assert.equal(opened.getSnapshot().nodes.review.reviewState.error, 'OWNER_LEASE_EXPIRED')
+  assert.equal(opened.getSnapshot().nodes.review.reviewState.receipt, null)
+  assert.equal(opened.getSnapshot().nodes.review.reviewState.request.questionId,
+    waiting.nodes.review.reviewState.request.questionId)
+  assert.equal((await opened.inspectResume()).eligible, true)
+
+  const invalidCases = [
+    ['missing interrupted event', value => { value.events = value.events.filter(event => event !== value.events.findLast(row => row.type === 'review-node-interrupted')) }],
+    ['wrong fingerprint', value => { value.events.findLast(event => event.type === 'review-node-interrupted').requestFingerprint = 'forged' }],
+    ['wrong request context', value => { value.events.findLast(event => event.type === 'review-node-interrupted').reviewRequest.bindingRevision = 'forged' }],
+    ['wrong event source', value => { value.events.findLast(event => event.type === 'review-node-interrupted').source = 'ownership-recovery' }],
+    ['forged cause', value => {
+      value.nodes.review.error = 'OTHER_INTERRUPTION'
+      value.nodes.review.reviewState.error = 'OTHER_INTERRUPTION'
+      value.events.findLast(event => event.type === 'review-node-interrupted').errorCategory = 'OTHER_INTERRUPTION'
+    }],
+  ]
+  for (const [label, mutate] of invalidCases) {
+    const invalid = clone(snapshot)
+    mutate(invalid)
+    await f.runStore.writeRaw(invalid)
+    await assert.rejects(journal.open(submitted.runId), { code: 'invalid_review_node_receipt' }, label)
+  }
+  const waitingWithLeaseCause = clone(waiting)
+  waitingWithLeaseCause.nodes.review.error = 'OWNER_LEASE_EXPIRED'
+  waitingWithLeaseCause.nodes.review.reviewState.error = 'OWNER_LEASE_EXPIRED'
+  await f.runStore.writeRaw(waitingWithLeaseCause)
+  await assert.rejects(journal.open(submitted.runId), { code: 'invalid_review_node_receipt' },
+    'lease-expiry cause is only valid in the interrupted review state')
+  await f.runStore.writeRaw(snapshot)
 })
 
 test('input-agent-review-agent-output persists local/review receipts and verifies parent text in binding prompts', async t => {
@@ -430,4 +703,284 @@ test('old 7e5 agent-only disk snapshot round-trips and recovers without changing
   assert.deepEqual(invalidRawBefore, invalidRaw)
   await assert.rejects(journal.open(invalid.id), { code: 'invalid_local_node_state' })
   assert.deepEqual(await fs.readFile(f.runStore.pathFor(invalid.id)), invalidRawBefore)
+})
+
+test('a delayed old review callback keeps its captured lease proof after a new service claims the run', async t => {
+  const questions = []
+  const services = []
+  const f = await fixture({ nodes: [
+    { id: 'task', kind: 'agent', agent: 'product', title: 'Task', instruction: 'Produce a result' },
+    { id: 'review', kind: 'review', title: 'Review', instruction: 'Confirm it' },
+  ], edges: [{ from: 'task', to: 'review' }], answer: question => new Promise(resolve => questions.push({ question, resolve })) })
+  t.after(async () => {
+    releaseStaleRead?.()
+    for (const pending of questions) pending.resolve(answer(pending.question))
+    for (const service of services) service.dispose()
+    await Promise.all(services.map(service => service.drain()))
+    await f.cleanup()
+  })
+
+  const raw = f.runStore
+  const namespaceId = '22222222-2222-4222-8222-222222222222'
+  const owners = new Map()
+  const writes = []
+  let holdGetRunId = null, releaseStaleRead
+  let markStaleRead
+  const staleReadCaptured = new Promise(resolve => { markStaleRead = resolve })
+  const staleReadGate = new Promise(resolve => { releaseStaleRead = resolve })
+  const getRaw = raw.get.bind(raw)
+  raw.get = async runId => {
+    const snapshot = await getRaw(runId)
+    if (runId === holdGetRunId) {
+      holdGetRunId = null
+      const captured = clone(snapshot)
+      markStaleRead(captured)
+      await staleReadGate
+      return captured
+    }
+    return snapshot
+  }
+  raw.getOwnershipNamespace = async () => ({ namespaceId, leaseTtlMs: 120_000, renewAfterMs: 40_000,
+    maxDomainEnvelopeBytes: 2 * 1024 * 1024, maxResponseBytes: 2 * 1024 * 1024 + 16 * 1024,
+    recoveryCursor: 'fixture-cursor' })
+  raw.getOwnershipState = async (runId, requestedNamespace) => {
+    assert.equal(requestedNamespace, namespaceId)
+    const snapshot = await raw.get(runId), owner = owners.get(runId)
+    return { managed: Boolean(owner), namespaceId, runId, ownerId: owner?.ownerId, ownerEpoch: owner?.ownerEpoch,
+      active: owner?.active ?? false, released: owner?.released ?? false, fenced: false,
+      revision: snapshot.revision, status: snapshot.status }
+  }
+  raw.createOwned = async ({ namespaceId: requestedNamespace, runId, ownerId, ownerToken, snapshot }) => {
+    assert.equal(requestedNamespace, namespaceId)
+    await raw.save(snapshot, 0)
+    owners.set(runId, { ownerId, ownerToken, ownerEpoch: '1', active: true, released: false })
+    return { namespaceId, runId, ownerId, ownerEpoch: '1', leaseExpiresAt: new Date(Date.now() + 120_000).toISOString(), snapshot, alreadyAdvanced: false }
+  }
+  raw.saveOwned = async (capability, snapshot, expectedRevision) => {
+    const owner = owners.get(capability.runId)
+    const accepted = owner?.active && owner.ownerId === capability.ownerId
+      && owner.ownerEpoch === capability.ownerEpoch && owner.ownerToken === capability.ownerToken
+    writes.push({ epoch: capability.ownerEpoch, accepted })
+    if (!accepted) throw Object.assign(new Error('owner fenced'), { code: 'owner_fenced' })
+    return raw.save(snapshot, expectedRevision)
+  }
+  raw.renewOwned = async capability => {
+    const owner = owners.get(capability.runId)
+    if (!owner?.active || owner.ownerEpoch !== capability.ownerEpoch || owner.ownerToken !== capability.ownerToken) {
+      throw Object.assign(new Error('owner fenced'), { code: 'owner_fenced' })
+    }
+    return { ownerEpoch: owner.ownerEpoch, leaseExpiresAt: new Date(Date.now() + 120_000).toISOString() }
+  }
+  raw.releaseOwned = async capability => {
+    const owner = owners.get(capability.runId)
+    if (!owner || owner.ownerEpoch !== capability.ownerEpoch || owner.ownerToken !== capability.ownerToken) {
+      throw Object.assign(new Error('owner fenced'), { code: 'owner_fenced' })
+    }
+    owner.active = false
+    owner.released = true
+    return { released: true, ownerEpoch: owner.ownerEpoch }
+  }
+  raw.claimResumed = async ({ namespaceId: requestedNamespace, runId, expectedRevision, expectedOwnerEpoch, ownerId, ownerToken }) => {
+    const owner = owners.get(runId), snapshot = await raw.get(runId)
+    assert.equal(requestedNamespace, namespaceId)
+    assert.equal(snapshot.revision, expectedRevision)
+    assert.equal(owner.ownerEpoch, expectedOwnerEpoch)
+    assert.equal(owner.active, false)
+    const next = { ownerId, ownerToken, ownerEpoch: String(Number(owner.ownerEpoch) + 1), active: true, released: false }
+    owners.set(runId, next)
+    return { namespaceId, runId, ownerId, ownerEpoch: next.ownerEpoch,
+      leaseExpiresAt: new Date(Date.now() + 120_000).toISOString(), snapshot }
+  }
+  raw.recoverExpired = async (_namespace, cursor) => ({ namespaceId, item: null, nextCursor: cursor, complete: true })
+
+  const firstService = f.createService()
+  services.push(firstService)
+  const submitted = await firstService.submit({ workflowId: 'workflow' }, f.exec)
+  await Promise.race([new Promise(resolve => {
+    const poll = () => questions.length >= 1 ? resolve() : setTimeout(poll, 5)
+    poll()
+  }), new Promise((_, reject) => setTimeout(() => reject(new Error('first review provider was not reached')), 2000))])
+  const beforeFence = await raw.get(submitted.runId)
+  assert.equal(beforeFence.nodes.review.reviewState.status, 'waiting')
+
+  holdGetRunId = submitted.runId
+  questions[0].resolve(answer(questions[0].question))
+  await staleReadCaptured
+  owners.get(submitted.runId).active = false
+  const recovered = await createWorkflowRunJournal({ store: raw }).recoverInterruptedRuns()
+  assert.equal(recovered.recovered.length, 1)
+  const restartedService = f.createService()
+  services.push(restartedService)
+  const prepared = await restartedService.prepare_resume({ runId: submitted.runId }, f.exec)
+  const resumed = await restartedService.resume({ runId: submitted.runId,
+    expectedRunRevision: prepared.expectedRunRevision, expectedDefinitionRevision: prepared.definitionRevision,
+    expectedBindingRevision: prepared.bindingRevision, resumePlanHash: prepared.resumePlanHash, confirm: true },
+  { ...f.exec, callId: 'new-service-resume' })
+  assert.equal(resumed.scheduled, true)
+  await Promise.race([new Promise(resolve => {
+    const poll = () => questions.length >= 2 ? resolve() : setTimeout(poll, 5)
+    poll()
+  }), new Promise((_, reject) => setTimeout(() => reject(new Error('new review provider was not reached')), 2000))])
+  assert.equal(owners.get(submitted.runId).ownerEpoch, '2')
+
+  releaseStaleRead()
+  await Promise.race([firstService.drain(), new Promise((_, reject) => setTimeout(() => reject(new Error(
+    `old service did not drain: ${JSON.stringify(writes)}`)), 2000))])
+  assert.equal(writes.some(row => row.epoch === '1' && !row.accepted), true, JSON.stringify(writes))
+  const afterOldCallback = await raw.get(submitted.runId)
+  assert.equal(afterOldCallback.nodes.review.reviewState.status, 'waiting')
+  assert.equal(writes.some(row => row.epoch === '1' && row.accepted), true)
+  assert.equal(writes.filter(row => row.epoch === '1' && !row.accepted).length, 1)
+  assert.equal(owners.get(submitted.runId).ownerEpoch, '2')
+
+  questions[1].resolve(answer(questions[1].question))
+  await restartedService.drain()
+  await firstService.drain()
+  assert.equal((await raw.get(submitted.runId)).status, 'done')
+  const takeoverWrite = writes.findIndex(row => row.epoch === '2' && row.accepted)
+  assert.ok(takeoverWrite >= 0)
+  assert.equal(writes.slice(takeoverWrite).some(row => row.epoch === '1' && row.accepted), false)
+
+  const secondRun = await restartedService.submit({ workflowId: 'workflow' }, { ...f.exec, callId: 'cancel-after-recovery' })
+  await Promise.race([new Promise(resolve => {
+    const poll = () => questions.length >= 3 ? resolve() : setTimeout(poll, 5)
+    poll()
+  }), new Promise((_, reject) => setTimeout(() => reject(new Error('cancellation review provider was not reached')), 2000))])
+  owners.get(secondRun.runId).active = false
+  const secondRecovery = await createWorkflowRunJournal({ store: raw }).recoverInterruptedRuns()
+  assert.equal(secondRecovery.recovered.length, 1)
+  const cancelService = f.createService()
+  services.push(cancelService)
+  const cancellation = await cancelService.cancel({ runId: secondRun.runId }, f.exec)
+  assert.equal(cancellation.reason, 'not_active_in_service')
+  const cancelledSnapshot = await raw.get(secondRun.runId)
+  assert.equal(cancelledSnapshot.cancelRequested, true)
+  assert.equal(owners.get(secondRun.runId).ownerEpoch, '2')
+})
+
+test('cancel returns terminal states without claiming or writing an owner lease', async () => {
+  for (const terminalStatus of ['done', 'failed', 'cancelled']) {
+    const nodes = [{ id: 'task', kind: 'agent', agent: 'product', title: 'Task', instruction: 'Finish once' }]
+    const edges = []
+    let answerDecision = null
+    if (terminalStatus === 'failed') {
+      nodes.push({ id: 'review', kind: 'review', title: 'Review', instruction: 'Reject the result' })
+      edges.push({ from: 'task', to: 'review' })
+      answerDecision = question => ({ answers: [{ id: question.questions[0].id, selected: ['拒绝'] }] })
+    }
+    const f = await fixture({ nodes, edges, answer: answerDecision })
+    const ownership = installFakeRunOwnership(f)
+    const service = f.createService()
+    try {
+      const submitted = await service.submit({ workflowId: 'workflow' }, { ...f.exec, callId: `terminal-${terminalStatus}` })
+      await service.drain()
+      const stored = await f.runStore.get(submitted.runId)
+      if (terminalStatus === 'cancelled') {
+        await f.runStore.writeRaw({ ...stored, status: 'cancelled' })
+      } else {
+        assert.equal(stored.status, terminalStatus)
+      }
+      const before = await f.runStore.get(submitted.runId)
+      const saveCount = ownership.counters.saves
+      const releaseCount = ownership.counters.releases
+      const result = await service.cancel({ runId: submitted.runId }, { ...f.exec, callId: `cancel-${terminalStatus}` })
+      assert.equal(result.reason, 'already_terminal')
+      assert.equal(result.status, terminalStatus)
+      assert.equal(ownership.counters.claims, 0, `${terminalStatus} must not claim a new lease`)
+      assert.equal(ownership.counters.saves, saveCount, `${terminalStatus} must not persist a cancel write`)
+      assert.equal(ownership.counters.releases, releaseCount, `${terminalStatus} has no new lease to release`)
+      assert.deepEqual(await f.runStore.get(submitted.runId), before)
+    } finally {
+      service.dispose()
+      await service.drain()
+      await f.cleanup()
+    }
+  }
+})
+
+test('cancel releases only its newly claimed lease on reused or failed mutations and surfaces release errors', async () => {
+  let question, resolveAnswer, enteredQuestionResolve
+  const enteredQuestion = new Promise(resolve => { enteredQuestionResolve = resolve })
+  const f = await fixture({ nodes: [
+    { id: 'task', kind: 'agent', agent: 'product', title: 'Task', instruction: 'Wait for review' },
+    { id: 'review', kind: 'review', title: 'Review', instruction: 'Confirm it' },
+  ], edges: [{ from: 'task', to: 'review' }], answer: input => {
+    question = input
+    enteredQuestionResolve()
+    return new Promise(resolve => { resolveAnswer = resolve })
+  } })
+  const ownership = installFakeRunOwnership(f)
+  const firstService = f.createService()
+  const secondService = f.createService()
+  const sameCancelExec = { ...f.exec, callId: 'reused-cancel-operation' }
+  try {
+    const submitted = await firstService.submit({ workflowId: 'workflow' }, f.exec)
+    await Promise.race([enteredQuestion, new Promise((_, reject) => setTimeout(() => reject(new Error('review was not reached')), 2000))])
+    const ownerBefore = ownership.owners.get(submitted.runId)
+    const cancelActive = await firstService.cancel({ runId: submitted.runId }, sameCancelExec)
+    assert.equal(cancelActive.reason, 'abort_requested')
+    assert.equal(ownership.counters.releases, 0, 'active execution retains its own lease until its task finishes')
+    resolveAnswer(answer(question))
+    await firstService.drain()
+    assert.equal(ownership.owners.get(submitted.runId).active, false)
+    assert.ok(ownerBefore)
+
+    const interrupted = await f.runStore.get(submitted.runId)
+    assert.equal(interrupted.status, 'interrupted')
+    assert.equal(interrupted.cancelRequested, true)
+    const releaseCount = ownership.counters.releases
+    const reused = await secondService.cancel({ runId: submitted.runId }, sameCancelExec)
+    assert.equal(reused.reused, true)
+    assert.equal(reused.reason, 'already_requested')
+    assert.equal(ownership.counters.releases, releaseCount + 1, 'a reused cancel must release the lease it just claimed')
+    assert.equal(ownership.owners.get(submitted.runId).active, false)
+
+    ownership.failNextRelease()
+    await assert.rejects(secondService.cancel({ runId: submitted.runId }, sameCancelExec), { code: 'fixture_release_failed' })
+    assert.equal(ownership.owners.get(submitted.runId).active, true, 'failed release must remain observable as active')
+
+    let mutationQuestion, resolveMutationAnswer, mutationEnteredResolve
+    const mutationEntered = new Promise(resolve => { mutationEnteredResolve = resolve })
+    const fMutation = await fixture({ nodes: [
+      { id: 'task', kind: 'agent', agent: 'product', title: 'Task', instruction: 'Wait for recovery' },
+      { id: 'review', kind: 'review', title: 'Review', instruction: 'Confirm it' },
+    ], edges: [{ from: 'task', to: 'review' }], answer: input => {
+      mutationQuestion = input
+      mutationEnteredResolve()
+      return new Promise(resolve => { resolveMutationAnswer = resolve })
+    } })
+    const mutationOwnership = installFakeRunOwnership(fMutation)
+    const ownerService = fMutation.createService()
+    const cancelService = fMutation.createService()
+    try {
+      const mutationRun = await ownerService.submit({ workflowId: 'workflow' }, fMutation.exec)
+      await Promise.race([mutationEntered, new Promise((_, reject) => setTimeout(() => reject(new Error('mutation review was not reached')), 2000))])
+      ownerService.dispose()
+      resolveMutationAnswer(answer(mutationQuestion))
+      await ownerService.drain()
+      const ownerSnapshot = await fMutation.runStore.get(mutationRun.runId)
+      assert.equal(ownerSnapshot.status, 'interrupted')
+      assert.notEqual(ownerSnapshot.cancelRequested, true)
+      mutationOwnership.failNextSave()
+      const releaseBeforeFailure = mutationOwnership.counters.releases
+      await assert.rejects(cancelService.cancel({ runId: mutationRun.runId }, { ...fMutation.exec, callId: 'cancel-write-fails' }), error => {
+        assert.equal(error.code, 'store_write_failed')
+        assert.equal(error.cause.code, 'fixture_mutation_failed')
+        return true
+      })
+      assert.equal(mutationOwnership.counters.releases, releaseBeforeFailure + 1)
+      assert.equal(mutationOwnership.owners.get(mutationRun.runId).active, false)
+    } finally {
+      ownerService.dispose()
+      cancelService.dispose()
+      await Promise.all([ownerService.drain(), cancelService.drain()])
+      await fMutation.cleanup()
+    }
+  } finally {
+    resolveAnswer?.(answer(question))
+    firstService.dispose()
+    secondService.dispose()
+    await Promise.all([firstService.drain(), secondService.drain()])
+    await f.cleanup()
+  }
 })
