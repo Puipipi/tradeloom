@@ -12,6 +12,7 @@ import { WORKFLOW_ROUTE, createWorkflowHandler } from './workflow-tools.js'
 import { WORKFLOW_NATIVE_UI_ROUTE, createWorkflowNativeUiHandler } from './workflow-native-ui.js'
 import { NATIVE_ARTIFACT_COLLECTION, NATIVE_ARTIFACT_FILE, createNativeArtifactHandler } from './workflow-native-artifact-http.js'
 import { AGENT_CONFIGURATION_ROUTE, createAgentConfigurationHandler } from './agent-configuration.js'
+import { DIAGNOSTICS_ROUTE, createDiagnosticsHandler } from './diagnostics-http.js'
 import { registerToolSchemas } from './tool-schemas.js'
 import { registerSkillsOpen } from './skills-open.js'
 import { createNativeImportAuthorizer } from './native-import-authorization.js'
@@ -726,7 +727,9 @@ export function apply(ctx, config = {}) {
     const disposeSkillsOpen = registerSkillsOpen(ctx)
     const disposeAgentCapabilities = ctx.webServer.register({ kind: 'exact', path: AGENT_CAPABILITIES_ROUTE, handler: createAgentCapabilitiesHandler(ctx) })
     const disposeAgentConfiguration = ctx.webServer.register({ kind: 'exact', path: AGENT_CONFIGURATION_ROUTE, handler: createAgentConfigurationHandler(ctx) })
-    return () => { artifact.dispose(); disposeArtifacts(); disposeArtifactFile(); disposeNativeWorkflow(); disposeWorkflow(); disposeSession(); disposeNewSession(); disposeProfile(); disposeMobileLink(); disposeSourceShellBinding(); disposeScenes(); disposeSceneLayouts(); disposeDockLayouts(); disposeAgentCapabilities(); disposeAgentConfiguration(); disposeToolSchemas(); disposeSkillsOpen() }
+    const diagnostics = createDiagnosticsHandler(ctx)
+    const disposeDiagnostics = ctx.webServer.register({ kind: 'exact', path: DIAGNOSTICS_ROUTE, handler: diagnostics.handle })
+    return () => { artifact.dispose(); diagnostics.dispose(); disposeDiagnostics(); disposeArtifacts(); disposeArtifactFile(); disposeNativeWorkflow(); disposeWorkflow(); disposeSession(); disposeNewSession(); disposeProfile(); disposeMobileLink(); disposeSourceShellBinding(); disposeScenes(); disposeSceneLayouts(); disposeDockLayouts(); disposeAgentCapabilities(); disposeAgentConfiguration(); disposeToolSchemas(); disposeSkillsOpen() }
   }, 'tradeloom-shell: protected session and profile routes')
 }
 
