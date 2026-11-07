@@ -34,6 +34,24 @@ class CanvasWorkflowRun(models.Model):
         ]
 
 
+class CanvasWorkflowDefinition(models.Model):
+    """Latest durable Canvas definition, independent of historical run snapshots."""
+
+    workflow_id = models.CharField(max_length=48, primary_key=True)
+    revision = models.PositiveBigIntegerField(default=1)
+    definition_revision = models.CharField(max_length=71, null=True, blank=True)
+    # Text JSON preserves legal JSON strings containing U+0000, which PostgreSQL jsonb rejects.
+    document = models.TextField(null=True, blank=True)
+    deleted = models.BooleanField(default=False)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["workflow_id"]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(revision__gt=0), name="canvas_workflow_definition_revision_positive"),
+        ]
+
+
 class Task(models.Model):
     id = models.CharField(
         primary_key=True,
