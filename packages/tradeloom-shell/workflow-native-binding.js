@@ -1,6 +1,8 @@
 import { getRoleBindingRevision } from './state.js'
 import { ROLE_PRESETS } from './roles.js'
 import { validateArtifactEvidence } from './workflow-artifact-source.js'
+import { verifiedWorkflowParent } from './workflow-local-nodes.js'
+import { verifiedReviewOutput } from './workflow-review.js'
 
 const MAX_PROMPT_BYTES = 64 * 1024
 
@@ -8,6 +10,10 @@ function upstreamPrompt(run, node) {
   const parentIds = new Set((run.document.edges ?? []).filter(edge => edge.to === node.id).map(edge => edge.from))
   const inputs = run.document.nodes.filter(candidate => parentIds.has(candidate.id)).map(parent => {
     const state = run.nodes[parent.id]
+    if (parent.kind === 'input' || parent.kind === 'output' || parent.kind === 'review') {
+      return verifiedWorkflowParent(run, parent, { verifyReviewParent: verifiedReviewOutput })
+    }
+    if (parent.kind !== 'agent') throw fail('upstream_terminal_unverified')
     const fullIdentity = state?.status === 'done' && Number.isSafeInteger(state.attempt) && state.attempt > 0
       && ['requestId', 'toolCallId', 'childId', 'nativeRunId'].every(key => nonEmptyString(state[key]))
     const receipt = fullIdentity && run.events?.findLast(event => event.type === 'node-terminal'
