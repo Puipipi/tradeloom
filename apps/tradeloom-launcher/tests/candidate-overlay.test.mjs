@@ -12,6 +12,22 @@ const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../.
 const manifest = JSON.parse(await readFile(path.join(repo, 'candidate-source-manifest-o08.json'), 'utf8'))
 const sha = bytes => createHash('sha256').update(bytes).digest('hex')
 
+test('固定manifest工作树字节等于Git canonical LF blob且builder使用同一pin', async () => {
+  const canonical = spawnSync('git', ['show', 'HEAD:candidate-source-manifest-o08.json'], { cwd: repo, encoding: 'buffer' })
+  assert.equal(canonical.status, 0, canonical.stderr?.toString())
+  const raw = await readFile(path.join(repo, 'candidate-source-manifest-o08.json'))
+  assert.deepEqual(raw, canonical.stdout)
+  assert.equal(raw.length, 67608)
+  assert.equal(sha(raw), '567d725766cb2d264b88edda25a2355f6a421ccb9f189349c0b2bb1c8890b0ee')
+  assert.equal(raw.includes(Buffer.from([0x0d])), false)
+  const attrs = await readFile(path.join(repo, '.gitattributes'), 'utf8')
+  assert.equal(attrs.split(/\r?\n/).filter(line => line === 'candidate-source-manifest-o08.json text eol=lf').length, 1)
+  const overlay = await readFile(path.join(repo, 'apps/tradeloom-launcher/scripts/build-candidate-overlay.mjs'), 'utf8')
+  const writer = await readFile(path.join(repo, 'apps/tradeloom-launcher/scripts/write-candidate-program-zip.py'), 'utf8')
+  assert.match(overlay, /SOURCE_MANIFEST_PIN = \{ bytes: 67608, sha256: '567d725766cb2d264b88edda25a2355f6a421ccb9f189349c0b2bb1c8890b0ee' \}/)
+  assert.match(writer, /SOURCE_PIN = \(67608, "567d725766cb2d264b88edda25a2355f6a421ccb9f189349c0b2bb1c8890b0ee"\)/)
+})
+
 test('固定manifest只描述4999候选、冻结R76基包和真实继承SDK', () => {
   assert.equal(manifest.sourceRepository.head, '4999f9e8bb079c7b69fb21982b89234963f7aa8e')
   assert.equal(manifest.sourceRepository.tree, '85803f3774a51a6096b06a1d8f2f304d4d0dc38e')

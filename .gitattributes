@@ -300,3 +300,14 @@
 /workbench/workflows/validation.py -text
 
 apps/tradeloom-launcher/accepted-build-inputs/r75/client.replica-palette.js -text
+candidate-source-manifest-o08.json text eol=lf
+workbench/canvas_workflow_definition_api.py text eol=lf
+workbench/migrations/0015_canvas_workflow_definition.py text eol=lf
+workbench/migrations/0016_merge_canvas_workflow_definition.py text eol=lf
+workbench/workflow_definition_validator.mjs text eol=lf
+workbench/workflow_definition_validator.py text eol=lf
+packages/tradeloom-shell/workflow-definition-postgres.js text eol=lf
+apps/tradeloom-launcher/stage-desktop.mjs text eol=lf
+apps/tradeloom-launcher/tests/stage-desktop.test.mjs text eol=lf
+packages/tradeloom-shell/tests/workflow-definition-postgres.test.js text eol=lf
+workbench/tests/test_canvas_workflow_definitions.py text eol=lf

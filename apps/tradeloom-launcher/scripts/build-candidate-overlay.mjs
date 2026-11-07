@@ -12,7 +12,7 @@ const BASE_ZIP = 'D:/Codex-ICT-builds/ui18-final-20261105-01a16e3f/portable-rele
 const ENTRY_MANIFEST = 'D:/Codex-ICT-builds/ui18-final-20261105-01a16e3f/portable-release-r76/program-entry-manifest.json'
 const BASE_PIN = { bytes: 797266789, sha256: '868815b145f5447c284bf75b6d48eaa483a832389795019bd1429de6df2bc341' }
 const ENTRY_PIN = { bytes: 8491236, sha256: '8b87366fdd62c178e3cdadb3fd23954ffaf2aa2736b73b61ac9f8c6ec438a12b' }
-const SOURCE_MANIFEST_PIN = { bytes: 69138, sha256: '78ac33f7f256719357453b48ddb170b478717aff8740a2633a1960e6e4a57bcb' }
+const SOURCE_MANIFEST_PIN = { bytes: 67608, sha256: '567d725766cb2d264b88edda25a2355f6a421ccb9f189349c0b2bb1c8890b0ee' }
 const sha = bytes => createHash('sha256').update(bytes).digest('hex')
 async function pin(file) {
   const st = await fs.lstat(file)

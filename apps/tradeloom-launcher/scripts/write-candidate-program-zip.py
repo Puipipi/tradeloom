@@ -14,7 +14,7 @@ SOURCE_MANIFEST = REPO / "candidate-source-manifest-o08.json"
 INSTALLED_BOOTSTRAP = pathlib.Path(__file__).resolve().parents[1] / "installed-bootstrap.mjs"
 BASE_PIN = (797266789, "868815b145f5447c284bf75b6d48eaa483a832389795019bd1429de6df2bc341")
 ENTRY_PIN = (8491236, "8b87366fdd62c178e3cdadb3fd23954ffaf2aa2736b73b61ac9f8c6ec438a12b")
-SOURCE_PIN = (69138, "78ac33f7f256719357453b48ddb170b478717aff8740a2633a1960e6e4a57bcb")
+SOURCE_PIN = (67608, "567d725766cb2d264b88edda25a2355f6a421ccb9f189349c0b2bb1c8890b0ee")
 SDK = {"app/resources/app.asar": "e86597aa3fe799c7f69c8b80a2c4cd3a0b45dce1e76749322cd2024bbf2c0c8d", "app/resources/runtime/primary-runtime/dependencies/node/bin/node.exe": "ba4e6d110e8c1592a1ecd390f6b05f3da124b13871a5be62b341a07a853c6c32"}
 
 def digest(data): return hashlib.sha256(data).hexdigest()
