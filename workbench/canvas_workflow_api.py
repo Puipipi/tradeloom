@@ -3,13 +3,20 @@
 import re
 import uuid
 
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from .api import _native_bridge_authorized, _parse_standard_json
 from .models import CanvasWorkflowRun
+from .canvas_workflow_ownership import (
+    MAX_OWNERSHIP_BODY_BYTES,
+    OwnershipError,
+    dispatch_owner_action,
+    namespace_descriptor,
+    ownership_state,
+)
 
 WORKFLOW_ID = re.compile(r"[a-z0-9][a-z0-9_-]{0,47}\Z")
 STATUSES = {"running", "waiting", "done", "failed", "cancelled", "interrupted"}
@@ -43,15 +50,38 @@ def _valid(snapshot, expected):
 def runs(request):
     if not _native_bridge_authorized(request):
         return JsonResponse({"error": "native_bridge_required"}, status=403)
+    using = getattr(request, "db", None) or "default"
     if request.method == "GET":
+        if request.GET.get("action") == "owner_run":
+            try:
+                payload, status = ownership_state(request.GET.get("id"), request.GET.get("namespaceId"), using=using)
+            except OwnershipError as error:
+                return JsonResponse({"error_code": error.code}, status=error.status,
+                                    json_dumps_params={"ensure_ascii": False, "separators": (",", ":")})
+            return JsonResponse(payload, status=status,
+                                json_dumps_params={"ensure_ascii": False, "separators": (",", ":")})
+        if request.GET.get("action") == "owner_namespace":
+            try:
+                payload, status = namespace_descriptor(using=using)
+            except OwnershipError as error:
+                return JsonResponse({"error_code": error.code}, status=error.status)
+            return JsonResponse(payload, status=status, json_dumps_params={"ensure_ascii": False, "separators": (",", ":")})
         run_id = request.GET.get("id")
         if run_id:
             try:
                 row = CanvasWorkflowRun.objects.filter(pk=uuid.UUID(run_id)).first()
             except ValueError:
                 return JsonResponse({"error": "invalid_run_id"}, status=400)
-            return (JsonResponse({"snapshot": row.snapshot}) if row else
-                    JsonResponse({"error": "run_not_found"}, status=404))
+            if row is None:
+                return JsonResponse({"error": "run_not_found"}, status=404)
+            try:
+                from .canvas_workflow_ownership import checked_response
+
+                payload = checked_response({"snapshot": row.snapshot})
+            except OwnershipError as error:
+                return JsonResponse({"error_code": error.code}, status=error.status,
+                                    json_dumps_params={"ensure_ascii": False, "separators": (",", ":")})
+            return JsonResponse(payload, json_dumps_params={"ensure_ascii": False, "separators": (",", ":")})
         rows = CanvasWorkflowRun.objects.all()
         workflow_id = request.GET.get("workflow")
         if workflow_id:
@@ -60,42 +90,35 @@ def runs(request):
             rows = rows.filter(workflow_id=workflow_id)
         if request.GET.get("active") == "1":
             rows = rows.filter(status__in=["running", "waiting", "interrupted"])
-        return JsonResponse({"runs": [
+        payload = {"runs": [
             {"id": str(row.id), "workflowId": row.workflow_id, "title": row.snapshot.get("title", ""),
              "status": row.status, "executionMode": row.execution_mode,
              "startedAt": row.snapshot.get("startedAt"), "finishedAt": row.snapshot.get("finishedAt"),
              "revision": row.revision}
             for row in rows[:100]
-        ]})
-    if len(request.body) > 2 * 1024 * 1024:
-        return JsonResponse({"error": "snapshot_too_large"}, status=413)
+        ]}
+        try:
+            from .canvas_workflow_ownership import checked_response
+
+            payload = checked_response(payload)
+        except OwnershipError as error:
+            return JsonResponse({"error_code": error.code}, status=error.status,
+                                json_dumps_params={"ensure_ascii": False, "separators": (",", ":")})
+        return JsonResponse(payload, json_dumps_params={"ensure_ascii": False, "separators": (",", ":")})
+    if len(request.body) > MAX_OWNERSHIP_BODY_BYTES:
+        return JsonResponse({"error_code": "recovery_response_too_large"}, status=413)
     body, invalid = _parse_standard_json(request)
     if invalid is not None:
         return invalid
-    snapshot, expected = body.get("snapshot"), body.get("expectedRevision")
-    if not _valid(snapshot, expected):
-        return JsonResponse({"error": "invalid_snapshot"}, status=400)
-    try:
-        with transaction.atomic():
-            row = CanvasWorkflowRun.objects.select_for_update().filter(pk=snapshot["id"]).first()
-            if row is None:
-                if expected != 0:
-                    return JsonResponse({"error": "revision_conflict"}, status=409)
-                row = CanvasWorkflowRun(id=snapshot["id"], workflow_id=snapshot["workflowId"])
-                status = 201
-            else:
-                if (row.revision != expected or row.workflow_id != snapshot["workflowId"]
-                        or row.execution_mode != snapshot["executionMode"]
-                        or row.snapshot.get("document") != snapshot["document"]
-                        or row.snapshot.get("startedAt") != snapshot.get("startedAt")
-                        or row.status in {"done", "failed", "cancelled"}):
-                    return JsonResponse({"error": "revision_conflict"}, status=409)
-                status = 200
-            row.revision = snapshot["revision"]
-            row.status = snapshot["status"]
-            row.execution_mode = snapshot["executionMode"]
-            row.snapshot = snapshot
-            row.save()
-    except IntegrityError:
-        return JsonResponse({"error": "active_run_or_revision_conflict"}, status=409)
-    return JsonResponse({"snapshot": row.snapshot}, status=status)
+    if isinstance(body, dict) and body.get("protocol") == "canvas-run-owner/v1":
+        try:
+            payload, status = dispatch_owner_action(body, using=using)
+        except OwnershipError as error:
+            return JsonResponse({"error_code": error.code}, status=error.status,
+                                json_dumps_params={"ensure_ascii": False, "separators": (",", ":")})
+        except IntegrityError:
+            return JsonResponse({"error_code": "active_workflow_conflict"}, status=409)
+        return JsonResponse(payload, status=status, json_dumps_params={"ensure_ascii": False, "separators": (",", ":")})
+    # Upgraded writers must present owner proof. Old snapshots remain readable, but
+    # proofless POSTs can no longer mutate either legacy or owned rows.
+    return JsonResponse({"error_code": "legacy_unmanaged"}, status=409)

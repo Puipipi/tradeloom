@@ -118,7 +118,7 @@ export function validateWorkflowReviewState(run, node) {
     && isDeepStrictEqual(row.reviewRequest, state.request))
   if (!event) throw fail('review_receipt_invalid')
   const expectedNodeStatus = state.status === 'interrupted' ? 'interrupted' : state.status === 'failed' ? 'failed' : 'waiting'
-  const allowedError = state.status === 'interrupted' ? ['operation_aborted', 'PROCESS_RESTARTED']
+  const allowedError = state.status === 'interrupted' ? ['operation_aborted', 'PROCESS_RESTARTED', 'OWNER_LEASE_EXPIRED']
     : state.status === 'failed' ? ['review_context_stale'] : state.status === 'deferred' ? ['review_unavailable', 'review_answer_invalid'] : ['']
   if (nodeState.status !== expectedNodeStatus || nodeState.attemptState !== `review-${state.status}`
     || !allowedError.includes(state.error) || nodeState.error !== state.error || nodeState.output !== '') throw fail('review_receipt_invalid')
