@@ -6,6 +6,8 @@ import { verifyWorkflowDefinition } from './workflow-definition.js'
 import { createStateStore, getRoleBindingRevision, resolveOwnedHome } from './state.js'
 import { submissionIdentity } from './workflow-native-service.js'
 import { ROLE_PRESETS } from './roles.js'
+import { validateWorkflowLocalReceipt } from './workflow-local-nodes.js'
+import { formatWorkflowReviewDetail, validateWorkflowReviewState, verifiedReviewOutput } from './workflow-review.js'
 
 export const WORKFLOW_NATIVE_UI_ROUTE = '/tradeloom/workflows/native'
 const MAX_BODY = 4096
@@ -19,11 +21,11 @@ const ACTIONS = Object.freeze({ prepare: ['workflowId'], submit: ['workflowId', 
   resume: ['runId', 'operationId', 'expectedRunRevision', 'expectedDefinitionRevision', 'expectedBindingRevision', 'resumePlanHash', 'confirm'] })
 const ERRORS = new Map([
   ...['invalid_input', 'invalid_native_workflow_arguments'].map(code => [code, 400]),
-  ...['center_session_not_live', 'center_binding_mismatch', 'binding_revision_mismatch', 'definition_revision_mismatch', 'submission_identity_conflict', 'unsupported_workflow_graph', 'workflow_not_found', 'workflow_not_confirmed', 'NATIVE_PRESET_NOT_ALLOWED', 'run_not_found', 'run_node_role_not_allowed'].map(code => [code, 409]),
+  ...['center_session_not_live', 'center_binding_mismatch', 'binding_revision_mismatch', 'definition_revision_mismatch', 'submission_identity_conflict', 'unsupported_workflow_graph', 'workflow_not_found', 'workflow_not_confirmed', 'NATIVE_PRESET_NOT_ALLOWED', 'run_not_found', 'run_node_role_not_allowed', 'review_answer_invalid', 'review_context_stale', 'review_rejected', 'review_request_stale', 'resume_confirmation_required'].map(code => [code, 409]),
   ...['unsupported_model_selection', 'upstream_terminal_unverified', 'upstream_output_unavailable', 'native_prompt_too_large', 'UPSTREAM_FAILED'].map(code => [code, 409]),
   ...['resume_blocked', 'resume_plan_conflict', 'resume_revision_conflict', 'operation_conflict', 'run_cancel_requested'].map(code => [code, 409]),
   ...['run_parent_mismatch', 'untrusted_parent', 'TOOL_POLICY_DENIED', 'TOOL_GUARD_DENIED', 'UNKNOWN_TOOL'].map(code => [code, 403]),
-  ...['native_run_unavailable', 'native_task_origin_required', 'ui_origin_required', 'native_bridge_unavailable', 'native_workflow_unavailable', 'run_store_unavailable', 'service_closed', 'ABORTED_BEFORE_NATIVE_SUBMIT', 'TOOL_CANCELLED', 'submission_unverified'].map(code => [code, 503]),
+  ...['native_run_unavailable', 'native_task_origin_required', 'ui_origin_required', 'native_bridge_unavailable', 'native_workflow_unavailable', 'run_store_unavailable', 'service_closed', 'ABORTED_BEFORE_NATIVE_SUBMIT', 'TOOL_CANCELLED', 'submission_unverified', 'review_unavailable'].map(code => [code, 503]),
   ['operation_aborted', 503],
 ])
 const fail = code => Object.assign(new Error(code), { code })
@@ -74,12 +76,107 @@ export function projectNativeWorkflowRun(run) {
     || !RUN.test(run.id ?? '') || !record(run.nodes)) throw fail('submission_unverified')
   let definition
   try { definition = verifyWorkflowDefinition(run.document, run.definitionRevision).document } catch { throw fail('submission_unverified') }
-  if (definition.id !== run.workflowId || definition.nodes.some(node => node.kind !== 'agent' || node.agent === 'center')
+  if (definition.id !== run.workflowId || definition.nodes.some(node => !['input', 'agent', 'review', 'output'].includes(node.kind)
+    || node.kind === 'agent' && node.agent === 'center') || !definition.nodes.some(node => node.kind === 'agent')
     || Object.keys(run.nodes).length !== definition.nodes.length
     || definition.nodes.some(node => !Object.hasOwn(run.nodes, node.id))) throw fail('submission_unverified')
-  const nodes = definition.nodes.map(({ id, agent: roleId }) => {
+  const nodes = definition.nodes.map(definitionNode => {
+    const { id, kind, agent: roleId } = definitionNode
     const node = run.nodes[id]
     if (!record(node)) throw fail('submission_unverified')
+    if (kind === 'review') {
+      if (node.attempt !== 0 || ['requestId', 'toolCallId', 'childId', 'nativeRunId'].some(key => node[key] !== null)
+        || node.artifactSource !== 'unknown' || !Array.isArray(node.artifacts) || node.artifacts.length !== 0
+        || Object.hasOwn(node, 'artifactEvidence') || Object.hasOwn(node, 'artifactRangeStart') || Object.hasOwn(node, 'localReceipt')) {
+        throw fail('submission_unverified')
+      }
+      const state = node.reviewState
+      if (node.status === 'pending' && state == null) return { id, kind, executionSource: 'dsh-user-questions', status: 'pending',
+        reviewStatus: 'pending', attempt: 0, childId: null, nativeRunId: null, toolCallId: null, output: '', error: '',
+        artifactState: 'unknown', artifactEvidence: null, settled: false, succeeded: false, terminalReceipt: null }
+      if (node.status === 'skipped' && state == null) {
+        const blocked = Array.isArray(node.blockedBy) && node.blockedBy.length > 0
+          && run.events.findLast(event => event.type === 'node-blocked' && event.source === 'native-run-journal'
+            && event.nodeId === id && event.workflowRunId === run.id && event.status === 'skipped'
+            && event.errorCategory === 'UPSTREAM_FAILED' && JSON.stringify(event.blockedBy) === JSON.stringify(node.blockedBy)
+            && node.blockedBy.every(parentId => definition.edges.some(edge => edge.from === parentId && edge.to === id)
+              && ['failed', 'skipped'].includes(run.nodes[parentId]?.status)))
+        if (!blocked) throw fail('submission_unverified')
+        return { id, kind, executionSource: 'dsh-user-questions', status: 'skipped', reviewStatus: 'blocked',
+          attempt: 0, childId: null, nativeRunId: null, toolCallId: null, output: '', error: 'UPSTREAM_FAILED',
+          artifactState: 'unknown', artifactEvidence: null, settled: true, succeeded: false,
+          terminalReceipt: { source: 'native-run-journal', status: 'skipped', workflowRunId: run.id, nodeId: id,
+            sequence: blocked.sequence, blockedBy: [...node.blockedBy] } }
+      }
+      let reviewed
+      try { reviewed = validateWorkflowReviewState(run, definitionNode) } catch { throw fail('submission_unverified') }
+      if (['waiting', 'deferred'].includes(state.status)) return { id, kind, executionSource: 'dsh-user-questions',
+        status: 'waiting', reviewStatus: state.status, questionId: state.request.questionId, question: definitionNode.title,
+        detail: formatWorkflowReviewDetail(state.request),
+        options: [...state.request.options], attempt: 0, childId: null, nativeRunId: null, toolCallId: null,
+        output: '', error: state.status === 'deferred' ? state.error : '', artifactState: 'unknown', artifactEvidence: null,
+        settled: false, succeeded: false, terminalReceipt: null }
+      if (state.status === 'approved' || state.status === 'rejected') {
+        const receipt = reviewed.receipt
+        return { id, kind, executionSource: 'dsh-user-questions', status: state.status === 'approved' ? 'done' : 'failed',
+          reviewStatus: state.status, questionId: receipt.questionId, attempt: 0, childId: null, nativeRunId: null,
+          toolCallId: null, output: receipt.output, error: state.status === 'rejected' ? 'review_rejected' : '',
+          artifactState: 'unknown', artifactEvidence: null, reviewReceipt: receipt, settled: true,
+          succeeded: state.status === 'approved', terminalReceipt: { source: 'dsh-user-questions', status: state.status,
+            workflowRunId: run.id, nodeId: id, questionId: receipt.questionId, attempt: 0 } }
+      }
+      if (state.status === 'interrupted') return { id, kind, executionSource: 'dsh-user-questions', status: 'interrupted',
+        reviewStatus: 'interrupted', questionId: state.request.questionId, attempt: 0, childId: null, nativeRunId: null,
+        toolCallId: null, output: '', error: state.error, artifactState: 'unknown', artifactEvidence: null,
+        settled: true, succeeded: false, terminalReceipt: { source: 'dsh-user-questions', status: 'interrupted',
+          workflowRunId: run.id, nodeId: id, questionId: state.request.questionId, attempt: 0 } }
+      if (state.status === 'failed') return { id, kind, executionSource: 'dsh-user-questions', status: 'failed',
+        reviewStatus: 'unavailable', attempt: 0, childId: null, nativeRunId: null, toolCallId: null, output: '',
+        error: state.error, artifactState: 'unknown', artifactEvidence: null, settled: true, succeeded: false,
+        terminalReceipt: { source: 'dsh-user-questions', status: 'failed', workflowRunId: run.id, nodeId: id,
+          questionId: state.request.questionId, attempt: 0 } }
+      throw fail('submission_unverified')
+    }
+    if (kind === 'input' || kind === 'output') {
+      if (node.status === 'done') {
+        let localReceipt
+        try { localReceipt = validateWorkflowLocalReceipt(run, definitionNode, { verifyReviewParent: verifiedReviewOutput }) } catch { throw fail('submission_unverified') }
+        const event = run.events.findLast(row => row.type === 'local-node-terminal' && row.source === 'workflow/local'
+          && row.workflowRunId === run.id && row.nodeId === id && row.status === 'done')
+        return { id, kind, executionSource: 'workflow/local', status: 'done', attempt: 0, attemptState: 'local',
+          childId: null, nativeRunId: null, toolCallId: null, output: localReceipt.output, error: '', artifactState: 'unknown',
+          artifactEvidence: null, localReceipt, settled: true, succeeded: true,
+          terminalReceipt: { source: 'workflow/local', status: 'completed', workflowRunId: run.id, nodeId: id,
+            attempt: 0, sequence: event.sequence } }
+      }
+      const localError = node.status === 'failed' && run.events.findLast(row => row.type === 'local-node-error'
+        && row.source === 'workflow/local' && row.workflowRunId === run.id && row.nodeId === id
+        && row.status === 'failed' && row.errorCategory === node.error && row.attempt === 0
+        && ['upstream_terminal_unverified', 'upstream_output_unavailable', 'local_receipt_invalid', 'local_output_unavailable'].includes(row.errorCategory)
+        && row.requestId === null && row.toolCallId === null && row.childId === null && row.nativeRunId === null
+        && ['parentAgentId', 'sessionId', 'bindingRevision', 'definitionRevision'].every(key => row[key] === run[key]))
+      const blocked = node.status === 'skipped' && node.attempt === 0 && node.childId == null
+        && node.toolCallId == null && node.nativeRunId == null && Array.isArray(node.blockedBy) && node.blockedBy.length > 0
+        && run.events.findLast(event => event.type === 'node-blocked' && event.source === 'native-run-journal'
+          && event.nodeId === id && event.workflowRunId === run.id && event.status === 'skipped'
+          && event.errorCategory === 'UPSTREAM_FAILED' && ['parentAgentId', 'sessionId', 'bindingRevision', 'definitionRevision'].every(key => event[key] === run[key])
+          && JSON.stringify(event.blockedBy) === JSON.stringify(node.blockedBy)
+          && node.blockedBy.every(parentId => definition.edges.some(edge => edge.from === parentId && edge.to === id)
+            && ['failed', 'skipped'].includes(run.nodes[parentId]?.status)))
+      if (node.status === 'failed' && !localError || node.status === 'skipped' && !blocked
+        || !['pending', 'failed', 'skipped'].includes(node.status) || node.attempt !== 0
+        || ['requestId', 'toolCallId', 'childId', 'nativeRunId'].some(key => node[key] !== null)
+        || node.artifactSource !== 'unknown' || !Array.isArray(node.artifacts) || node.artifacts.length !== 0
+        || Object.hasOwn(node, 'localReceipt') || Object.hasOwn(node, 'artifactEvidence') || Object.hasOwn(node, 'artifactRangeStart')) throw fail('submission_unverified')
+      const receipt = localError ? { source: 'workflow/local', status: 'failed', reason: safe(node.error),
+        workflowRunId: run.id, nodeId: id, attempt: 0,
+        sequence: localError.sequence } : blocked ? { source: 'native-run-journal', status: 'skipped', reason: 'UPSTREAM_FAILED',
+          workflowRunId: run.id, nodeId: id, sequence: blocked.sequence, blockedBy: [...node.blockedBy] } : null
+      return { id, kind, executionSource: 'workflow/local', status: node.status, attempt: 0, attemptState: node.attemptState,
+        childId: null, nativeRunId: null, toolCallId: null, output: '', error: node.error ? safe(node.error) : '',
+        artifactState: 'unknown', artifactEvidence: null, settled: Boolean(localError || blocked), succeeded: false, terminalReceipt: receipt }
+    }
+    if (Object.hasOwn(node, 'localReceipt')) throw fail('submission_unverified')
     const fullIdentity = record(node) && ['requestId', 'toolCallId', 'childId', 'nativeRunId'].every(key => typeof node[key] === 'string' && node[key])
       && ['parentAgentId', 'sessionId', 'bindingRevision', 'definitionRevision'].every(key => typeof run[key] === 'string' && run[key])
       && Number.isSafeInteger(node.attempt) && node.attempt > 0
@@ -123,17 +220,22 @@ export function projectNativeWorkflowRun(run) {
     settled, succeeded: settled && run.status === 'done' && nodes.every(node => node.succeeded),
     terminalReceipt: settled ? nodes.map(node => node.terminalReceipt) : null }
 }
-
 function validPreparedGraph(value) {
   const validNode = node => typeof node?.id === 'string' && node.id && node.roleId !== 'center'
     && Object.hasOwn(ROLE_PRESETS, node.roleId) && node.agentPreset === ROLE_PRESETS[node.roleId]
+  const validGraphNode = node => validNode(node) || (typeof node?.id === 'string' && node.id
+    && ['input', 'output'].includes(node.kind) && node.executionMode === 'local'
+    && Object.keys(node).length === 3 && Object.hasOwn(node, 'id') && Object.hasOwn(node, 'kind'))
+    || (typeof node?.id === 'string' && node.id && node.kind === 'review' && node.executionMode === 'user-questions'
+      && Object.keys(node).length === 3 && Object.hasOwn(node, 'id') && Object.hasOwn(node, 'kind'))
   const graph = value.graph
   if (!graph) return validNode(value.node) // Existing single-node prepared DTO remains readable.
   if (!record(graph) || !Array.isArray(graph.nodes) || graph.nodes.length < 1 || graph.nodes.length > 40
     || graph.nodeCount !== graph.nodes.length || !Number.isInteger(graph.edgeCount) || graph.edgeCount < 0 || graph.edgeCount > 80
-    || graph.maxConcurrent !== 1 || graph.nodes.some(node => !validNode(node))
+    || graph.maxConcurrent !== 1 || graph.nodes.some(node => !validGraphNode(node))
     || new Set(graph.nodes.map(node => node.id)).size !== graph.nodeCount
-    || JSON.stringify(graph.roleIds) !== JSON.stringify([...new Set(graph.nodes.map(node => node.roleId))])) return false
+    || !graph.nodes.some(validNode)
+    || JSON.stringify(graph.roleIds) !== JSON.stringify([...new Set(graph.nodes.filter(validNode).map(node => node.roleId))])) return false
   return graph.nodeCount === 1 ? validNode(value.node) && JSON.stringify(value.node) === JSON.stringify(graph.nodes[0])
     : !Object.hasOwn(value, 'node') && JSON.stringify(value.nodes) === JSON.stringify(graph.nodes)
 }

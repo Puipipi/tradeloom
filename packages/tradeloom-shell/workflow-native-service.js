@@ -5,6 +5,8 @@ import { createWorkflowRunJournal } from './workflow-run-journal.js'
 import { createWorkflowNativeBindingResolver, readAuthorizedCenterBinding } from './workflow-native-binding.js'
 import { createWorkflowNativeExecutor } from './workflow-native-executor.js'
 import { planReadyNodes } from './workflow-native-graph.js'
+import { validateNativeWorkflowGraph } from './workflow-local-nodes.js'
+import { createWorkflowReviewDecisionChannel, createWorkflowReviewRequest } from './workflow-review.js'
 
 const TERMINAL = new Set(['done', 'failed', 'cancelled'])
 const WORKFLOW_ID = /^[a-z0-9][a-z0-9_-]{0,47}$/
@@ -28,16 +30,16 @@ function expectedRevisions(input, definitionRevision, bindingRevision) {
   if (input.expectedDefinitionRevision !== undefined && input.expectedDefinitionRevision !== definitionRevision) throw fail('definition_revision_mismatch')
   if (input.expectedBindingRevision !== undefined && input.expectedBindingRevision !== bindingRevision) throw fail('binding_revision_mismatch')
 }
-function agentNodes(document) {
-  if (!document.nodes.length || document.nodes.some(node => node.kind !== 'agent')
-    || document.edges.some(edge => edge.from === edge.to)) {
-    throw fail('unsupported_workflow_graph')
-  }
-  for (const node of document.nodes) {
+function nativeNodes(document) {
+  const nodes = validateNativeWorkflowGraph(document)
+  for (const node of nodes.filter(node => node.kind === 'agent')) {
     if (node.agent === 'center' || !Object.hasOwn(ROLE_PRESETS, node.agent)) throw fail('run_node_role_not_allowed')
     if (typeof node.instruction !== 'string' || !node.instruction.trim()) throw fail('run_node_prompt_unavailable')
   }
-  return document.nodes
+  return nodes
+}
+function requireReviewProvider(ctx, nodes) {
+  if (nodes.some(node => node.kind === 'review') && typeof ctx.userQuestions?.ask !== 'function') throw fail('review_unavailable')
 }
 function allowedTool(ctx, parent, preset, model = null) {
   const tool = ctx.tools.get('subagent', parent)
@@ -96,7 +98,8 @@ export function createWorkflowNativeService({ ctx, readState, definitionStore, r
   if (typeof ctx?.effect !== 'function' || typeof ctx?.tools?.get !== 'function'
     || typeof ctx?.tools?.execute !== 'function' || typeof readState !== 'function'
     || typeof definitionStore?.get !== 'function') throw new TypeError('native service requires Host ownership and definition services')
-  const journal = createWorkflowRunJournal({ store: runStore })
+  const reviewDecisionChannel = createWorkflowReviewDecisionChannel()
+  const journal = createWorkflowRunJournal({ store: runStore, reviewDecisionChannel })
   const runs = new Map()
   let closed = false
   const stop = () => {
@@ -113,10 +116,10 @@ export function createWorkflowNativeService({ ctx, readState, definitionStore, r
   async function definition(id) {
     const stored = await definitionStore.get(id)
     if (!stored) throw fail('workflow_not_found')
-    if (Array.isArray(stored.nodes) && Array.isArray(stored.edges)) agentNodes(stored)
+    if (Array.isArray(stored.nodes) && Array.isArray(stored.edges)) nativeNodes(stored)
     const result = createConfirmedWorkflowDefinition(stored)
     if (result.document.id !== id) throw fail('workflow_identity_mismatch')
-    agentNodes(result.document)
+    nativeNodes(result.document)
     return result
   }
   function sameSubmission(snapshot, expected) {
@@ -168,7 +171,73 @@ export function createWorkflowNativeService({ ctx, readState, definitionStore, r
         const plan = planReadyNodes(snapshot.document, snapshot)
         if (!plan.readyNodeIds.length) return
         if (controller.signal.aborted && Object.values(snapshot.nodes).some(node => node.attempt > 0)) return
-        const node = agentNodes(snapshot.document).find(node => node.id === plan.readyNodeIds[0])
+        const node = snapshot.document.nodes.find(node => node.id === plan.readyNodeIds[0])
+        if (node.kind === 'input' || node.kind === 'output') {
+          try { await revalidateTask(task, { agent: auth.parent, callId, signal: controller.signal }, auth, snapshot) }
+          catch (error) {
+            if (controller.signal.aborted) return
+            throw error
+          }
+          const local = await handle.executeLocalNode({ nodeId: node.id, bindingRevision: snapshot.bindingRevision,
+            definitionRevision: snapshot.definitionRevision, signal: controller.signal })
+          if (local.status === 'interrupted' || controller.signal.aborted) return
+          continue
+        }
+        if (node.kind === 'review') {
+          const questionId = randomUUID()
+          const requestedAt = new Date().toISOString()
+          const { request, question } = createWorkflowReviewRequest(snapshot, node, questionId, requestedAt)
+          let reviewHandle
+          try {
+            await handle.beginReview({ nodeId: node.id, questionId, request,
+              bindingRevision: snapshot.bindingRevision, definitionRevision: snapshot.definitionRevision })
+            reviewHandle = true
+            await revalidateTask(task, { agent: auth.parent, callId, signal: controller.signal }, auth, snapshot)
+            if (controller.signal.aborted) { await handle.interruptReview({ nodeId: node.id, questionId }); return }
+          } catch (error) {
+            if (controller.signal.aborted) { await handle.interruptReview({ nodeId: node.id, questionId }); return }
+            if (reviewHandle && ['binding_revision_mismatch', 'definition_revision_mismatch', 'center_binding_mismatch'].includes(error?.code)) {
+              await handle.failReview({ nodeId: node.id, questionId }); continue
+            }
+            throw error
+          }
+          if (!reviewHandle) return
+          let answer
+          try {
+            answer = await ctx.userQuestions.ask({ questions: [question], agent: auth.parent, signal: controller.signal })
+          } catch (error) {
+            if (controller.signal.aborted || error?.code === 'ASK_ABORTED') {
+              await handle.interruptReview({ nodeId: node.id, questionId }); return
+            }
+            await handle.deferReview({ nodeId: node.id, questionId, error: 'review_unavailable' })
+            return
+          }
+          if (controller.signal.aborted) { await handle.interruptReview({ nodeId: node.id, questionId }); return }
+          const proof = reviewDecisionChannel.issue(answer, request, new Date().toISOString())
+          if (!proof) {
+            await handle.deferReview({ nodeId: node.id, questionId, error: 'review_answer_invalid' })
+            return
+          }
+          try {
+            await revalidateTask(task, { agent: auth.parent, callId, signal: controller.signal }, auth, snapshot)
+          } catch (error) {
+            if (controller.signal.aborted) { await handle.interruptReview({ nodeId: node.id, questionId }); return }
+            if (['binding_revision_mismatch', 'definition_revision_mismatch', 'center_binding_mismatch'].includes(error?.code)) {
+              await handle.failReview({ nodeId: node.id, questionId }); continue
+            }
+            await handle.deferReview({ nodeId: node.id, questionId, error: 'review_unavailable' })
+            return
+          }
+          if (controller.signal.aborted) { await handle.interruptReview({ nodeId: node.id, questionId }); return }
+          try { await handle.completeReview({ nodeId: node.id, questionId }, proof) }
+          catch (error) {
+            if (controller.signal.aborted || error?.code === 'review_request_stale') {
+              await handle.interruptReview({ nodeId: node.id, questionId }); return
+            }
+            throw error
+          }
+          continue
+        }
         const nextAttempt = snapshot.nodes[node.id].attempt + 1
         const attemptRequestId = resumeOperationId ? `resume:${fingerprint([snapshot.id, resumeOperationId, node.id, nextAttempt])}` : `attempt:${randomUUID()}`
         await handle.executeAttempt({ nodeId: node.id, attempt: nextAttempt, requestId: attemptRequestId,
@@ -220,7 +289,9 @@ export function createWorkflowNativeService({ ctx, readState, definitionStore, r
     const confirmed = await definition(snapshot.workflowId)
     if (confirmed.definitionRevision !== snapshot.definitionRevision) throw fail('definition_revision_mismatch')
     if (snapshot.bindingRevision !== auth.bindingRevision) throw fail('binding_revision_mismatch')
-    for (const node of agentNodes(confirmed.document)) allowedTool(ctx, auth.parent, ROLE_PRESETS[node.agent], node.model)
+    const nodes = nativeNodes(confirmed.document)
+    requireReviewProvider(ctx, nodes)
+    for (const node of nodes.filter(node => node.kind === 'agent')) allowedTool(ctx, auth.parent, ROLE_PRESETS[node.agent], node.model)
     const plan = await handle.inspectResume()
     const current = await authorize(exec)
     if (current.parent !== auth.parent || current.bindingRevision !== auth.bindingRevision) throw fail('binding_revision_mismatch')
@@ -288,8 +359,9 @@ export function createWorkflowNativeService({ ctx, readState, definitionStore, r
       if (closed) throw fail('service_closed')
       const auth = await authorize(exec)
       const confirmed = await definition(workflowId)
-      const nodes = agentNodes(confirmed.document)
-      for (const node of nodes) allowedTool(ctx, auth.parent, ROLE_PRESETS[node.agent], node.model)
+      const nodes = nativeNodes(confirmed.document)
+      requireReviewProvider(ctx, nodes)
+      for (const node of nodes.filter(node => node.kind === 'agent')) allowedTool(ctx, auth.parent, ROLE_PRESETS[node.agent], node.model)
       const current = await authorize(exec)
       if (current.parent !== auth.parent || current.bindingRevision !== auth.bindingRevision) throw fail('binding_revision_mismatch')
       const latestDefinition = await definition(workflowId)
@@ -300,11 +372,20 @@ export function createWorkflowNativeService({ ctx, readState, definitionStore, r
         definitionRevision: confirmed.definitionRevision, bindingRevision: final.bindingRevision,
         center: { roleId: 'center', sessionId: final.sessionId, workspaceId: final.workspaceId, archiveState: 'unarchived' },
         graph: { nodeCount: nodes.length, edgeCount: confirmed.document.edges.length, maxConcurrent: 1,
-          roleIds: [...new Set(nodes.map(node => node.agent))],
-          nodes: nodes.map(node => ({ id: node.id, roleId: node.agent, agentPreset: ROLE_PRESETS[node.agent] })) },
+          roleIds: [...new Set(nodes.filter(node => node.kind === 'agent').map(node => node.agent))],
+          nodes: nodes.map(node => node.kind === 'agent'
+            ? { id: node.id, roleId: node.agent, agentPreset: ROLE_PRESETS[node.agent] }
+            : node.kind === 'review' ? { id: node.id, kind: node.kind, executionMode: 'user-questions' }
+              : { id: node.id, kind: node.kind, executionMode: 'local' }) },
         ...(nodes.length === 1
-          ? { node: { id: nodes[0].id, roleId: nodes[0].agent, agentPreset: ROLE_PRESETS[nodes[0].agent] } }
-          : { nodes: nodes.map(node => ({ id: node.id, roleId: node.agent, agentPreset: ROLE_PRESETS[node.agent] })) }) }
+          ? { node: nodes[0].kind === 'agent'
+            ? { id: nodes[0].id, roleId: nodes[0].agent, agentPreset: ROLE_PRESETS[nodes[0].agent] }
+            : nodes[0].kind === 'review' ? { id: nodes[0].id, kind: nodes[0].kind, executionMode: 'user-questions' }
+              : { id: nodes[0].id, kind: nodes[0].kind, executionMode: 'local' } }
+          : { nodes: nodes.map(node => node.kind === 'agent'
+            ? { id: node.id, roleId: node.agent, agentPreset: ROLE_PRESETS[node.agent] }
+            : node.kind === 'review' ? { id: node.id, kind: node.kind, executionMode: 'user-questions' }
+              : { id: node.id, kind: node.kind, executionMode: 'local' }) }) }
     },
     async submit(input, exec) {
       const workflowId = submitInput(input)
@@ -314,7 +395,9 @@ export function createWorkflowNativeService({ ctx, readState, definitionStore, r
       if (typeof auth.parent.ctx?.effect !== 'function') throw fail('parent_ownership_unavailable')
       const confirmed = await definition(workflowId)
       if (exec?.signal?.aborted) throw fail('ABORTED_BEFORE_NATIVE_SUBMIT')
-      for (const node of agentNodes(confirmed.document)) allowedTool(ctx, auth.parent, ROLE_PRESETS[node.agent], node.model)
+      const nodes = nativeNodes(confirmed.document)
+      requireReviewProvider(ctx, nodes)
+      for (const node of nodes.filter(node => node.kind === 'agent')) allowedTool(ctx, auth.parent, ROLE_PRESETS[node.agent], node.model)
       expectedRevisions(input, confirmed.definitionRevision, auth.bindingRevision)
       const identity = submissionIdentity(auth.sessionId, exec.callId)
       const expected = { workflowRunId: identity.runId, workflowId, document: confirmed.document,
