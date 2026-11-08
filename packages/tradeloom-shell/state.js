@@ -1,5 +1,5 @@
-import { randomUUID } from 'node:crypto'
-import { lstat, mkdir, open, readFile, realpath, rename } from 'node:fs/promises'
+import { createHash, randomUUID } from 'node:crypto'
+import { lstat, mkdir, open, readFile, realpath, rename, unlink } from 'node:fs/promises'
 import { dirname, isAbsolute, join, parse, relative, resolve, sep } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { ROLE_IDS } from './roles.js'
@@ -140,10 +140,11 @@ export async function createStateStore(options = {}) {
   await assertNoLinks(directory, home)
   const statePath = join(directory, 'state.json')
 
-  async function read() {
+  async function readSnapshot() {
     await assertNoLinks(statePath, home)
-    const text = await readFile(statePath, 'utf8').catch(error => error?.code === 'ENOENT' ? null : Promise.reject(error))
-    if (text === null) return initialState()
+    const bytes = await readFile(statePath).catch(error => error?.code === 'ENOENT' ? null : Promise.reject(error))
+    if (bytes === null) return { state: initialState(), bytes: null }
+    const text = bytes.toString('utf8')
     const value = JSON.parse(text)
     if (value?.version !== 1 || typeof value.roles !== 'object' || typeof value.budgets !== 'object') {
       throw new Error('TradeLoom state file has an unsupported or corrupt format')
@@ -151,22 +152,64 @@ export async function createStateStore(options = {}) {
     if (value.dockLayouts === undefined) value.dockLayouts = { version: 2, scenes: {} }
     stripRoleBindingRevisionFields(value)
     value.roleBindingRevisions = normalizedRoleBindingRevisions(value)
-    return value
+    return { state: value, bytes }
+  }
+
+  async function read() { return (await readSnapshot()).state }
+
+  async function writeImmutableBackup(name, bytes) {
+    if (typeof name !== 'string' || !/^[a-z0-9][a-z0-9._-]{0,127}$/i.test(name)) throw new TypeError('invalid immutable backup name')
+    const backupDirectory = join(directory, 'scene-memory-backups')
+    await assertNoLinks(backupDirectory, home)
+    await mkdir(backupDirectory, { recursive: true })
+    await assertNoLinks(backupDirectory, home)
+    const backupPath = join(backupDirectory, name)
+    await assertNoLinks(backupPath, home)
+    try {
+      const handle = await open(backupPath, 'wx', 0o600)
+      try { await handle.writeFile(bytes); await handle.sync() } finally { await handle.close() }
+    } catch (error) {
+      if (error?.code !== 'EEXIST') throw error
+      const existing = await readFile(backupPath)
+      if (!existing.equals(bytes)) throw new Error('immutable scene-memory backup name collision')
+    }
+    const readback = await readFile(backupPath)
+    if (!readback.equals(bytes)) throw new Error('immutable scene-memory backup readback failed')
+    return backupPath
+  }
+
+  async function verifyImmutableBackup(name, expectedDigest) {
+    if (typeof name !== 'string' || !/^[a-z0-9][a-z0-9._-]{0,127}$/i.test(name)
+      || typeof expectedDigest !== 'string' || !/^[a-f0-9]{64}$/.test(expectedDigest)
+      || name !== `legacy-${expectedDigest}.json`) throw new TypeError('invalid immutable backup identity')
+    const backupDirectory = join(directory, 'scene-memory-backups')
+    const backupPath = join(backupDirectory, name)
+    await assertNoLinks(backupDirectory, home)
+    await assertNoLinks(backupPath, home)
+    const bytes = await readFile(backupPath)
+    if (createHash('sha256').update(bytes).digest('hex') !== expectedDigest) {
+      throw Object.assign(new Error('immutable scene-memory backup digest mismatch'), { code: 'legacy_backup_mismatch' })
+    }
+    return Buffer.from(bytes)
   }
 
   const queueKey = resolve(statePath).toLocaleLowerCase('en-US')
 
   return Object.freeze({
     async read() { return await read() },
-    async transact(mutator) {
+    async transact(mutator, options = {}) {
       const previous = writeQueues.get(queueKey) ?? Promise.resolve()
       let release
       const gate = new Promise(resolveGate => { release = resolveGate })
       const tail = previous.then(() => gate)
       writeQueues.set(queueKey, tail)
       await previous
+      let temporary
+      let committed = false
       try {
-        const state = await read()
+        const snapshot = await readSnapshot()
+        const state = snapshot.state
+        if (options.onSnapshot) await options.onSnapshot(Object.freeze({ state, previousBytes: snapshot.bytes === null ? null : Buffer.from(snapshot.bytes), statePath }))
         const previousTuples = Object.fromEntries(ROLE_IDS.map(role => [role, roleBindingTuple(state.roles?.[role])]))
         const previousRevisions = { ...state.roleBindingRevisions }
         const result = await mutator(state)
@@ -177,18 +220,41 @@ export async function createStateStore(options = {}) {
             ? previousRevisions[role]
             : nextRoleBindingRevision(previousRevisions[role]),
         ]))
-        const temporary = join(directory, `.state-${randomUUID()}.tmp`)
+        if (options.readOnly === true) return result
+        const serialized = Buffer.from(`${JSON.stringify(state, null, 2)}\n`, 'utf8')
+        temporary = join(directory, `.state-${randomUUID()}.tmp`)
         await assertNoLinks(temporary, home)
         const handle = await open(temporary, 'wx', 0o600)
         try {
-          await handle.writeFile(`${JSON.stringify(state, null, 2)}\n`, 'utf8')
+          await handle.writeFile(serialized)
           await handle.sync()
         } finally { await handle.close() }
+        if (options.beforeRename) await options.beforeRename(Object.freeze({
+          previousBytes: snapshot.bytes === null ? null : Buffer.from(snapshot.bytes),
+          nextBytes: Buffer.from(serialized),
+          statePath,
+        }))
+        const beforeCommitAttempt = async () => {
+          if (options.beforeCommitAttempt) await options.beforeCommitAttempt(Object.freeze({
+            previousBytes: snapshot.bytes === null ? null : Buffer.from(snapshot.bytes),
+            nextBytes: Buffer.from(serialized),
+            statePath,
+          }))
+          if (options.compareBeforeRename) {
+            const currentBytes = await readFile(statePath).catch(error => error?.code === 'ENOENT' ? null : Promise.reject(error))
+            if (snapshot.bytes === null ? currentBytes !== null : currentBytes === null || !currentBytes.equals(snapshot.bytes)) {
+              throw Object.assign(new Error('TradeLoom state changed before transaction commit'), { code: 'state_cas_conflict' })
+            }
+          }
+          if (options.validateCommit) options.validateCommit(Object.freeze({ statePath }))
+        }
         if (process.platform === 'win32') {
           const retryDelays = [20, 50, 100]
           let initialRenameError
           for (let attempt = 0; ; attempt += 1) {
             try {
+              await beforeCommitAttempt()
+              if (options.validateCommit) options.validateCommit(Object.freeze({ statePath }))
               await rename(temporary, statePath)
               break
             } catch (error) {
@@ -199,14 +265,34 @@ export async function createStateStore(options = {}) {
             }
           }
         } else {
+          await beforeCommitAttempt()
+          if (options.validateCommit) options.validateCommit(Object.freeze({ statePath }))
           await rename(temporary, statePath)
+        }
+        committed = true
+        temporary = undefined
+        if (options.readback) {
+          try {
+            if (options.afterRename) await options.afterRename(Object.freeze({
+              previousBytes: snapshot.bytes === null ? null : Buffer.from(snapshot.bytes),
+              nextBytes: Buffer.from(serialized),
+              statePath,
+            }))
+            const readback = await readFile(statePath)
+            if (!readback.equals(serialized)) throw new Error('state bytes differ after rename')
+          } catch (cause) {
+            throw Object.assign(new Error('TradeLoom state commit outcome is unknown after rename', { cause }), { code: 'state_commit_unknown', committed: true })
+          }
         }
         return result
       } finally {
+        if (!committed && temporary) await unlink(temporary).catch(() => {})
         release()
         if (writeQueues.get(queueKey) === tail) writeQueues.delete(queueKey)
       }
     },
+    writeImmutableBackup,
+    verifyImmutableBackup,
     paths: Object.freeze({ home, statePath }),
   })
 }

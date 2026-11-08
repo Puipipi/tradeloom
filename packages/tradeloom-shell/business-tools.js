@@ -3,7 +3,7 @@ import { isIPv4 } from 'node:net'
 import { ROLE_PRESETS } from './roles.js'
 
 export const name = '@tradeloom/dsh-business-shell/business-tools'
-export const inject = ['tools', 'webServer', 'agents']
+export const inject = ['tools', 'webServer', 'agents', 'sceneMemoryOriginAuthority']
 
 const DJANGO_HOST = '127.0.0.1'
 function djangoPort() {
@@ -16,6 +16,7 @@ const CSRF_PATH = '/'
 const MAX_RESPONSE_BYTES = 1024 * 1024
 const REQUEST_TIMEOUT_MS = 30_000
 const NATIVE_BRIDGE_HEADER = 'x-tradeloom-native-bridge'
+const SCENE_MEMORY_ORIGIN_ERRORS = new Set(['operation_not_active', 'operation_expired', 'operation_revoked', 'operation_terminal', 'operation_terminal_pending', 'origin_authority_not_ready', 'session_not_live', 'stale_role_binding'])
 const NATIVE_BRIDGE_TOOLS = new Set([
   'tradeloom_dispatch_create',
   'tradeloom_dispatch_list',
@@ -89,6 +90,8 @@ const TOOL_ACCESS = Object.freeze({
   tradeloom_intake_candidates: new Set([ROLE_PRESETS.center, ROLE_PRESETS.product, ROLE_PRESETS.delivery]),
   tradeloom_intake_candidate: new Set([ROLE_PRESETS.center, ROLE_PRESETS.product, ROLE_PRESETS.delivery]),
   tradeloom_read_execution_plan: new Set([ROLE_PRESETS.center, ROLE_PRESETS.delivery]),
+  tradeloom_scene_memory_read: new Set([ROLE_PRESETS.center, ROLE_PRESETS.product, ROLE_PRESETS.delivery]),
+  tradeloom_scene_memory_write: new Set([ROLE_PRESETS.center, ROLE_PRESETS.product, ROLE_PRESETS.delivery]),
 })
 
 const TOOL_OUTPUT = {
@@ -1234,6 +1237,42 @@ export function registerBusinessTools(ctx, config = {}, dependencies = {}) {
   if (!allowedTools) return () => {}
   const tools = [
     {
+      name: 'tradeloom_scene_memory_read',
+      description: 'Read the current scene memory through the verified owner operation carried by this execution.',
+      parameters: schema({ scene_id: string('The scene ID bound to this execution.', 120) }),
+      async execute(args, exec) {
+        if (!exactArgs(args, ['scene_id'], ['scene_id'])) return failure('invalid_arguments')
+        if (exec?.operationOriginAmbiguous) return failure('ambiguous_operation_origin')
+        if (typeof exec?.operationOriginError === 'string') return failure(SCENE_MEMORY_ORIGIN_ERRORS.has(exec.operationOriginError) ? exec.operationOriginError : 'scene_memory_origin_required')
+        if (!dependencies.sceneMemoryOriginAuthority || !exec?.operationOrigin) return failure('scene_memory_origin_required')
+        try {
+          const value = await dependencies.sceneMemoryOriginAuthority.transactSceneMemory(exec.operationOrigin, 'read', args.scene_id)
+          return success({ scene_id: args.scene_id, value })
+        } catch (error) { return failure(typeof error?.code === 'string' ? error.code : 'scene_memory_unavailable') }
+      },
+    },
+    {
+      name: 'tradeloom_scene_memory_write',
+      description: 'Write scene memory through the verified owner operation carried by this execution.',
+      parameters: schema({
+        scene_id: string('The scene ID bound to this execution.', 120),
+        value: { type: 'object', description: 'JSON scene memory value.', additionalProperties: true },
+      }),
+      async execute(args, exec) {
+        if (!args || typeof args !== 'object' || Array.isArray(args)
+          || Object.keys(args).some(key => !['scene_id', 'value'].includes(key))
+          || typeof args.scene_id !== 'string' || !args.scene_id
+          || !args.value || typeof args.value !== 'object' || Array.isArray(args.value)) return failure('invalid_arguments')
+        if (exec?.operationOriginAmbiguous) return failure('ambiguous_operation_origin')
+        if (typeof exec?.operationOriginError === 'string') return failure(SCENE_MEMORY_ORIGIN_ERRORS.has(exec.operationOriginError) ? exec.operationOriginError : 'scene_memory_origin_required')
+        if (!dependencies.sceneMemoryOriginAuthority || !exec?.operationOrigin) return failure('scene_memory_origin_required')
+        try {
+          const value = await dependencies.sceneMemoryOriginAuthority.transactSceneMemory(exec.operationOrigin, 'write', args.scene_id, args.value)
+          return success({ scene_id: args.scene_id, value })
+        } catch (error) { return failure(typeof error?.code === 'string' ? error.code : 'scene_memory_unavailable') }
+      },
+    },
+    {
       name: 'tradeloom_read_products',
       description: 'Read product facts and latest revision/source status from the existing TradeLoom product library.',
       parameters: schema({ q: string('Optional search by SKU or product name.'), status: string('Optional revision status filter.', 80), batch_id: string('Optional source batch ID.', 80) }, []),
@@ -1974,5 +2013,5 @@ export function registerBusinessTools(ctx, config = {}, dependencies = {}) {
 }
 
 export function apply(ctx, config = {}) {
-  registerBusinessTools(ctx, config)
+  registerBusinessTools(ctx, config, { sceneMemoryOriginAuthority: ctx.get?.('sceneMemoryOriginAuthority') })
 }

@@ -10,6 +10,7 @@ const DESKTOP_IPC = {
 	shortcutsChanged: "dsh-desktop:shortcuts-changed",
 	shortcutsRecording: "dsh-desktop:shortcuts-recording",
 	boot: "dsh-desktop:boot",
+	sceneMemoryOriginGrant: "dsh-desktop:scene-memory-origin-grant",
 	enterWorkspace: "dsh-desktop:enter-workspace",
 	onboardingActive: "dsh-desktop:onboarding-active",
 	onboardingApiKey: "dsh-desktop:onboarding-api-key",
@@ -978,6 +979,7 @@ if (location.protocol === `dsh-app:` && location.hostname === "app") {
 	electron.contextBridge.exposeInMainWorld("__DSH_HOST_PATHS__", { pathFor: (file) => electron.webUtils.getPathForFile(file) });
 	electron.contextBridge.exposeInMainWorld("dshDesktopBoot", {
 		ready: () => electron.ipcRenderer.invoke(DESKTOP_IPC.boot),
+		issueSceneMemoryOriginGrant: (request) => electron.ipcRenderer.invoke(DESKTOP_IPC.sceneMemoryOriginGrant, request),
 		failed: (message) => electron.ipcRenderer.invoke(DESKTOP_IPC.bootFailed, message)
 	});
 	electron.contextBridge.exposeInMainWorld("dshPlatform", {

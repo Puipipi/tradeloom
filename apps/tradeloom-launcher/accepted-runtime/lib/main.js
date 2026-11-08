@@ -4355,6 +4355,7 @@ function isDesktopHostEvent(message) {
 		case "native-import-confirmation-cancel": return Number.isSafeInteger(candidate.requestId) && candidate.requestId > 0;
 		case "update-tasks": return Number.isSafeInteger(candidate.requestId) && typeof candidate.active === "boolean" && (candidate.error === void 0 || typeof candidate.error === "string");
 		case "quit-inspection": return Number.isSafeInteger(candidate.requestId) && typeof candidate.activeTasks === "boolean" && typeof candidate.scheduledTasks === "boolean" && (candidate.error === void 0 || typeof candidate.error === "string");
+		case "scene-memory-origin-grant": return Number.isSafeInteger(candidate.requestId) && (candidate.error === void 0 && typeof candidate.grant?.token === "string" && Number.isFinite(candidate.grant.expiresAt) && typeof candidate.grant.hostEpoch === "string" || typeof candidate.error === "string" && (candidate.errorCode === void 0 || typeof candidate.errorCode === "string"));
 		default: return false;
 	}
 }
@@ -4530,7 +4531,11 @@ var DesktopHostProcess = class {
 			else {
 				const request = this.controlRequests.get(message.requestId);
 				if (message.error === void 0) request?.resolve(message);
-				else request?.reject(new Error(message.error));
+				else {
+					const error = new Error(message.error);
+					if (typeof message.errorCode === "string") error.code = message.errorCode;
+					request?.reject(error);
+				}
 			}
 		});
 		child.once("error", (error) => {
@@ -4604,6 +4609,11 @@ var DesktopHostProcess = class {
 			clearTimeout(timer);
 			this.controlRequests.delete(requestId);
 		}
+	}
+	async issueSceneMemoryOriginGrant(request) {
+		const response = await this.control({ type: "scene-memory-origin-grant", request }, 15e3, "scene-memory origin: grant request timed out");
+		if (response.type !== "scene-memory-origin-grant" || typeof response.grant?.token !== "string") throw new Error("scene-memory origin: Host returned an invalid grant");
+		return response.grant;
 	}
 	/**
 	* Request teardown and await child exit, escalating termination when needed.
@@ -7692,6 +7702,7 @@ const DESKTOP_IPC = {
 	shortcutsChanged: "dsh-desktop:shortcuts-changed",
 	shortcutsRecording: "dsh-desktop:shortcuts-recording",
 	boot: "dsh-desktop:boot",
+	sceneMemoryOriginGrant: "dsh-desktop:scene-memory-origin-grant",
 	enterWorkspace: "dsh-desktop:enter-workspace",
 	onboardingActive: "dsh-desktop:onboarding-active",
 	onboardingApiKey: "dsh-desktop:onboarding-api-key",
@@ -17086,6 +17097,47 @@ async function main() {
 		sourceMode,
 		controller: sourceController
 	} : { sourceMode });
+	ipcMain.handle(DESKTOP_IPC.sceneMemoryOriginGrant, async (event, request) => {
+		assertDesktopSender(event, ["app"]);
+		if (!request || typeof request.endpoint !== "string" || request.endpoint.split("/").some((segment) => segment === "" || segment === "." || segment === ".." || !/^[A-Za-z0-9_$.-]+$/.test(segment))
+			|| request.httpMethod !== "POST" || !(request.bodyBytes instanceof Uint8Array)
+			|| request.bodyBytes.byteLength === 0 || request.bodyBytes.byteLength > 2 * 1024 * 1024) throw new Error("scene-memory origin: invalid grant request");
+		if (!sourceMode || sourceController === void 0) return null;
+		const sender = event.sender;
+		const frame = event.senderFrame;
+		const controller = sourceController;
+		if (frame !== sender.mainFrame) throw new Error("scene-memory origin: request came from an unowned frame");
+		const guest = controller.resolveGuest(sender, frame);
+		if (guest === void 0) {
+			if (sender === mainWindow?.webContents) return null;
+			throw new Error("scene-memory origin: request came from an unowned guest");
+		}
+		if (guest.scope !== "role") {
+			if (["account", "account-sidebar", "scene-component"].includes(guest.scope)) return null;
+			throw new Error("scene-memory origin: request came from an unsupported guest");
+		}
+		const source = {
+			scope: "role",
+			guestId: sender.id,
+			generation: guest.generation,
+			sceneId: guest.sceneId,
+			panelId: guest.panelId,
+			sessionId: guest.sessionId,
+			bindingRevision: guest.bindingRevision
+		};
+		if (!Number.isSafeInteger(source.generation) || typeof source.sessionId !== "string" || typeof source.bindingRevision !== "string") throw new Error("scene-memory origin: incomplete role guest identity");
+		const host = backend.host;
+		if (typeof host?.issueSceneMemoryOriginGrant !== "function") throw new Error("scene-memory origin: Host is unavailable");
+		const grant = await host.issueSceneMemoryOriginGrant({ endpoint: request.endpoint, httpMethod: request.httpMethod, bodyBytesBase64: Buffer.from(request.bodyBytes).toString("base64"), source });
+		const current = sourceController?.resolveGuest(sender, frame);
+		if (sourceController !== controller || sender.isDestroyed() || sender.mainFrame !== frame
+			|| current?.scope !== "role" || current.generation !== source.generation
+			|| current.sceneId !== source.sceneId || current.panelId !== source.panelId
+			|| current.sessionId !== source.sessionId || current.bindingRevision !== source.bindingRevision) {
+			throw new Error("scene-memory origin: role guest changed while grant was pending");
+		}
+		return grant;
+	});
 	ipcMain.handle(DESKTOP_IPC.boot, async (event) => {
 		assertDesktopSender(event, ["app"]);
 		const sourceGuest = sourceMode ? sourceController?.resolveGuest(event.sender, event.senderFrame) : void 0;
