@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { lstat, realpath, stat } from 'node:fs/promises'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { ROLE_IDS, ROLE_PRESETS } from './roles.js'
-import { HOME_MARKER_VALUE, resolveOwnedHome, roleWorkspacePath } from './state.js'
+import { createStateStore, HOME_MARKER_VALUE, resolveOwnedHome, roleWorkspacePath } from './state.js'
 
 export const AGENT_CONFIGURATION_ROUTE = '/tradeloom/agent-configuration'
 const PRESET_MODULE = '@deepseek-ai/dsh-agent-preset'
@@ -63,6 +63,18 @@ function managedRows(config) {
 
 function revisionOf(config) {
   return createHash('sha256').update(canonical(managedRows(config))).digest('hex')
+}
+
+function trustedManagedConfigurationDigest(config) {
+  if (!isRecord(config) || !Array.isArray(config.plugins)) {
+    throw new ConfigurationError('managed-configuration-schema-invalid', 503)
+  }
+  for (const row of config.plugins) {
+    if (isManagedRow(row) && (!isRecord(row) || typeof row.name !== 'string' || !isRecord(row.config))) {
+      throw new ConfigurationError('managed-configuration-schema-invalid', 503)
+    }
+  }
+  return revisionOf(config)
 }
 
 function profileOwnedPath(profile, home, editor) {
@@ -139,8 +151,10 @@ function activePresetEntry(access, role) {
   return matches[0]
 }
 
-async function withRoleWriteLock(home, role, callback) {
-  const key = `${resolve(home).toLocaleLowerCase('en-US')}\0${role}`
+async function withRoleWriteLock(home, _role, callback) {
+  // Managed configuration revisions are Host-wide, so supported writes for
+  // different roles must share one ordering boundary.
+  const key = resolve(home).toLocaleLowerCase('en-US')
   const prior = configurationWriteFlights.get(key) ?? Promise.resolve()
   const next = prior.catch(() => {}).then(callback)
   configurationWriteFlights.set(key, next)
@@ -616,7 +630,7 @@ function validateMcpServerCollisions(currentConfig, servers) {
   }
 }
 
-async function applyManagedConfiguration(ctx, access, role, rawInput, dependencies, { providerGuard, onWriteStart } = {}) {
+async function applyManagedConfigurationCore(ctx, access, role, rawInput, dependencies, { providerGuard, onWriteStart } = {}) {
   validateInputEnvelope(rawInput)
   const entry = activePresetEntry(access, role)
   const current = entry.options.config
@@ -629,9 +643,10 @@ async function applyManagedConfiguration(ctx, access, role, rawInput, dependenci
   const beforeState = await resolvePresetState(ctx, preset)
   if (!beforeState.available) throw new ConfigurationError('configuration-unavailable', 503)
   if (providerGuard) await providerGuard('before-write')
-  onWriteStart?.()
   const expected = input.expectedRevision
   const nextValue = { mcpServers: input.mcpServers, skill: input.skill, deniedTools: input.deniedTools }
+  const intendedConfig = pluginRows({ ...nextValue, mcpServers: input.mcpServers }, current, current, role)
+  await onWriteStart?.({ role, beforeDigest: currentRevision, intendedDigest: revisionOf(intendedConfig) })
   const beforeEditConfig = providerGuard ? structuredClone(current ?? {}) : undefined
   let previousConfig
   let updatedConfig
@@ -730,6 +745,147 @@ async function applyManagedConfiguration(ctx, access, role, rawInput, dependenci
     publicResult: { role, preset, revision: writtenRevision, appliedForNewAgents: true, currentSessionUnchanged: true },
     previousConfig, updatedConfig, beforeHealthy: beforeState.healthy,
   }
+}
+
+export function createManagedConfigurationSequenceTracker(ctx, dependencies = {}) {
+  const storeFactory = dependencies.createStateStore ?? createStateStore
+  const readDigest = dependencies.readManagedConfigurationDigest ?? (async role => {
+    const access = await accessForRole(ctx, role, dependencies)
+    return trustedManagedConfigurationDigest(activePresetEntry(access, role).options.config)
+  })
+  const configurationHome = dependencies.resolveManagedConfigurationHome ?? (async role =>
+    (await accessForRole(ctx, role, dependencies)).home)
+  const withLock = async (role, callback) => {
+    const home = await configurationHome(role)
+    return withRoleWriteLock(home, role, callback)
+  }
+  const validSequence = state => {
+    const value = state.managedConfigurationMutationSequence ?? 0
+    if (!Number.isSafeInteger(value) || value < 0 || value >= Number.MAX_SAFE_INTEGER) {
+      throw new ConfigurationError('managed-configuration-sequence-invalid', 503)
+    }
+    return value
+  }
+  async function reconcilePending(store, state) {
+    const prior = state.managedConfigurationMutation
+    if (!prior || prior.status !== 'pending') return state
+    let observedDigest
+    try { observedDigest = await readDigest(prior.role) }
+    catch { throw new ConfigurationError('managed-configuration-reconcile-retry', 503) }
+    await store.transact(current => {
+      const row = current.managedConfigurationMutation
+      if (row?.sequence !== prior.sequence || row.status !== 'pending') return
+      row.observedDigest = observedDigest
+      if (observedDigest === row.intendedDigest) {
+        row.status = 'ready'
+        row.reconcileEvidence = 'authoritative-intended-readback'
+      } else if (observedDigest === row.beforeDigest) {
+        row.status = 'ready'
+        row.reconcileEvidence = 'authoritative-before-readback'
+      } else {
+        row.status = 'unknown'
+        row.reconcileEvidence = 'authoritative-third-digest'
+      }
+    })
+    return await store.read()
+  }
+  const readIdentityUnderLock = async role => {
+    const store = await storeFactory()
+    let state = await store.read()
+    state = await reconcilePending(store, state)
+    if (state.managedConfigurationMutation?.status === 'unknown') {
+      throw new ConfigurationError('managed-configuration-outcome-unknown', 503)
+    }
+    const roleManagedConfigDigest = await readDigest(role)
+    return {
+      managedConfigurationSequence: validSequence(state),
+      roleManagedConfigDigest,
+    }
+  }
+  return Object.freeze({
+    async begin({ role, beforeDigest, intendedDigest }) {
+      const store = await storeFactory()
+      let state = await store.read()
+      state = await reconcilePending(store, state)
+      let recoveredUnknown
+      if (state.managedConfigurationMutation?.status === 'unknown') {
+        const prior = state.managedConfigurationMutation
+        let observedDigest
+        try { observedDigest = await readDigest(prior.role) }
+        catch { throw new ConfigurationError('managed-configuration-reconcile-retry', 503) }
+        recoveredUnknown = { sequence: prior.sequence, observedDigest }
+      }
+      const actualBefore = await readDigest(role).catch(() => {
+        throw new ConfigurationError('managed-configuration-reconcile-retry', 503)
+      })
+      if (actualBefore !== beforeDigest) throw new ConfigurationError('revision-conflict', 409)
+      const token = await store.transact(current => {
+        const sequence = validSequence(current) + 1
+        const prior = current.managedConfigurationMutation
+        if (prior?.status === 'pending') throw new ConfigurationError('managed-configuration-reconcile-retry', 503)
+        current.managedConfigurationMutationSequence = sequence
+        current.managedConfigurationMutation = {
+          sequence, role, beforeDigest, intendedDigest, status: 'pending', writeStarted: true,
+          startedAt: Date.now(),
+          ...(recoveredUnknown ? {
+            recoveredUnknownSequence: recoveredUnknown.sequence,
+            recoveredUnknownObservedDigest: recoveredUnknown.observedDigest,
+          } : {}),
+        }
+        return { sequence, role, beforeDigest, intendedDigest }
+      })
+      return token
+    },
+    async finish(token, { error } = {}) {
+      const store = await storeFactory()
+      let observedDigest
+      try { observedDigest = await readDigest(token.role) }
+      catch { throw new ConfigurationError('managed-configuration-reconcile-retry', 503) }
+      const result = await store.transact(state => {
+        const row = state.managedConfigurationMutation
+        if (row?.sequence !== token.sequence || row.role !== token.role) {
+          throw new ConfigurationError('managed-configuration-operation-changed', 503)
+        }
+        row.observedDigest = observedDigest
+        row.applyErrorCode = error?.code ?? null
+        if (observedDigest === token.intendedDigest) {
+          row.status = 'ready'
+          row.resultEvidence = error ? 'error-with-intended-readback' : 'apply-success-readback'
+        } else if (observedDigest === token.beforeDigest) {
+          row.status = 'ready'
+          row.resultEvidence = 'authoritative-before-readback'
+        } else {
+          row.status = 'unknown'
+          row.resultEvidence = 'authoritative-third-digest'
+        }
+        return row.status
+      })
+      if (result === 'unknown') throw new ConfigurationError('managed-configuration-outcome-unknown', 503)
+    },
+    async readIdentity(role) {
+      return await withLock(role, () => readIdentityUnderLock(role))
+    },
+    readIdentityUnderLock,
+    withLock,
+  })
+}
+
+async function applyManagedConfiguration(ctx, access, role, rawInput, dependencies, options = {}) {
+  const tracker = dependencies.managedConfigurationSequenceTracker
+  let token
+  const callerStart = options.onWriteStart
+  const onWriteStart = async details => {
+    if (tracker) token = await tracker.begin(details)
+    await callerStart?.(details)
+  }
+  let result
+  try { result = await applyManagedConfigurationCore(ctx, access, role, rawInput, dependencies, { ...options, onWriteStart }) }
+  catch (error) {
+    if (token) await tracker.finish(token, { error })
+    throw error
+  }
+  if (token) await tracker.finish(token)
+  return result
 }
 
 function createAgentConfigurationController(ctx, dependencies = {}) {
@@ -888,9 +1044,17 @@ function createAgentConfigurationController(ctx, dependencies = {}) {
 }
 
 export function createAgentConfigurationResources(ctx, dependencies = {}) {
+  const sharedDependencies = {
+    ...dependencies,
+    managedConfigurationSequenceTracker: dependencies.managedConfigurationSequenceTracker
+      ?? createManagedConfigurationSequenceTracker(ctx, dependencies),
+  }
   return {
-    configurationHandler: createAgentConfigurationHandler(ctx, dependencies),
-    snapshotOperations: createAgentConfigurationController(ctx, dependencies),
+    configurationHandler: createAgentConfigurationHandler(ctx, sharedDependencies),
+    snapshotOperations: createAgentConfigurationController(ctx, sharedDependencies),
+    readManagedConfigurationIdentity: role => sharedDependencies.managedConfigurationSequenceTracker.readIdentity(role),
+    readManagedConfigurationIdentityUnderLock: role => sharedDependencies.managedConfigurationSequenceTracker.readIdentityUnderLock(role),
+    withManagedConfigurationLock: (role, callback) => sharedDependencies.managedConfigurationSequenceTracker.withLock(role, callback),
   }
 }
 

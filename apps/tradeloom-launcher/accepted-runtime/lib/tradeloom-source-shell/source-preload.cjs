@@ -16,6 +16,14 @@ contextBridge.exposeInMainWorld('app', Object.freeze({
   sys: Object.freeze({ load: () => call('systemLoad'), disks: () => call('systemDisks') }),
   knownFolders: () => call('knownFolders'), openKnownFolder: key => call('openKnownFolder',key),
   sourceConfig: () => call('config'),
+  sceneRotation: Object.freeze({
+    preview: request => call('sceneRotationPreview', request),
+    confirm: request => call('sceneRotationConfirm', request),
+    status: request => call('sceneRotationStatus', request),
+    resume: request => call('sceneRotationResume', request),
+    cancel: request => call('sceneRotationCancel', request),
+    abandon: request => call('sceneRotationAbandon', request),
+  }),
   openAiWebWindow: request => call('aiWebOpenOrFocus', request),
   aiWeb: Object.freeze({
     authState: provider => call('aiWebAuthState', provider),

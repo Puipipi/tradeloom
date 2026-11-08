@@ -4,6 +4,7 @@
   const ACTIONS = [
     ['独立窗口', '独立窗口操作暂不可用。'],
     ['打开原生会话', '该面板不支持原生会话。'],
+    ['轮换此角色会话', '此面板当前没有可轮换的角色会话。'],
     ['应用', '原生应用菜单暂不可用。'],
     ['编辑', '原生编辑菜单暂不可用。'],
   ]
@@ -46,6 +47,174 @@
     toastTimer = setTimeout(() => toast.classList.remove('pi-toast-visible'), 2200)
   }
 
+  function openSceneRotationDialog(flow) {
+    const dialog = document.createElement('dialog')
+    dialog.className = 'pi-scene-rotation-dialog'
+    dialog.setAttribute('aria-labelledby', 'pi-scene-rotation-title')
+    Object.assign(dialog.style, {
+      display: 'grid', gap: '12px', background: 'var(--dsw-specific-sidebar-fill, var(--background-primary, #fff))',
+      color: 'var(--dsw-alias-label-primary, var(--text-primary, #171717))',
+      border: '1px solid var(--dsw-alias-border-primary, var(--border, #d1d5db))', borderRadius: '12px',
+      boxSizing: 'border-box', maxWidth: '560px', width: 'min(560px, calc(100vw - 32px))', padding: '20px',
+    })
+    const title = document.createElement('h2')
+    title.id = 'pi-scene-rotation-title'
+    title.textContent = '轮换此角色会话'
+    const target = document.createElement('p')
+    target.textContent = `${flow.target.sceneId} / ${flow.target.panelId} / ${flow.target.roleId} / ${flow.target.sessionId}`
+    const message = document.createElement('p')
+    message.setAttribute('role', 'status')
+    const detail = document.createElement('div')
+    const actions = document.createElement('div')
+    actions.className = 'pi-scene-rotation-actions'
+    const archiveLabel = document.createElement('label')
+    const archive = document.createElement('input')
+    archive.type = 'checkbox'
+    archive.checked = false
+    archiveLabel.append(archive, document.createTextNode(' 归档旧会话（默认保留；不会停止旧会话活动）'))
+    const addButton = (label, action) => {
+      const button = document.createElement('button')
+      button.type = 'button'
+      button.className = 'pi-menu-item'
+      button.textContent = label
+      button.addEventListener('click', action)
+      actions.append(button)
+      return button
+    }
+    let preview
+    let operationId
+    let consumed = false
+    let busy = false
+    let closeButton
+    const setBusy = value => { busy = value; for (const button of actions.querySelectorAll('button')) button.disabled = busy }
+    const showOperationControls = () => {
+      detail.replaceChildren()
+      actions.replaceChildren()
+      if (operationId) {
+        addButton('读取操作状态', async () => run('status', { operationId }))
+        addButton('恢复原操作', async () => run('resume', { operationId }))
+        addButton('放弃本地操作', async () => run('abandon', { operationId }))
+      }
+      if (closeButton) actions.append(closeButton)
+    }
+    const run = async (operation, body) => {
+      if (busy) return
+      setBusy(true)
+      message.textContent = '正在处理…'
+      try {
+        const result = await flow[operation](body)
+        if (result?.pendingOperation) {
+          preview = undefined
+          consumed = true
+          operationId = result.pendingOperation.operationId
+          target.textContent = `${result.pendingOperation.sceneId} / ${result.pendingOperation.panelId} / ${result.pendingOperation.roleId} / ${result.pendingOperation.sessionId}`
+          message.textContent = `发现原操作 ${operationId}（${result.pendingOperation.status}）。仅可恢复或放弃该操作。`
+          showOperationControls()
+          return
+        }
+        if (operation === 'preview') {
+          preview = result
+          operationId = result.operationId
+          consumed = false
+          archive.disabled = true
+          actions.replaceChildren()
+          if (result?.staleTarget) {
+            message.textContent = '目标面板在预览返回时已变化。此预览不能确认，请取消或关闭。'
+            addButton('取消预览', async () => {
+              const token = preview?.previewToken
+              if (token) await run('cancel', { previewToken: token })
+            })
+            if (closeButton) actions.append(closeButton)
+            return
+          }
+          message.textContent = `${result?.impactMessage || '请核对固定角色和受影响面板后再确认。'} 旧会话：${result?.archiveOld === true ? '确认归档' : '保留'}`
+          const list = document.createElement('ul')
+          for (const item of result?.impactPanels ?? []) {
+            const row = document.createElement('li')
+            row.textContent = `${item.sceneId} / ${item.panelId}`
+            list.append(row)
+          }
+          detail.replaceChildren(list)
+          addButton('确认轮换', async () => {
+            const token = preview?.previewToken
+            if (!token) return
+            consumed = true
+            preview = undefined
+            await run('confirm', { previewToken: token })
+          })
+          addButton('取消预览', async () => {
+            const token = preview?.previewToken
+            if (!token) return
+            preview = undefined
+            await run('cancel', { previewToken: token })
+          })
+          return
+        }
+        if (operation === 'cancel') {
+          preview = undefined
+          consumed = true
+          operationId = result?.operationId ?? operationId
+          if (result?.cancelled === true) {
+            operationId = undefined
+            detail.replaceChildren()
+            archive.disabled = false
+            actions.replaceChildren()
+            if (closeButton) actions.append(closeButton)
+            message.textContent = '预览已取消；没有创建或更改会话。'
+          } else {
+            message.textContent = `预览已被消费；保留原操作 ${operationId ?? ''}（${result?.status ?? '状态未知'}）。`
+            showOperationControls()
+          }
+          return
+        }
+        if (result?.operationId) operationId = result.operationId
+        if (operation === 'status' || operation === 'resume') {
+          const status = result?.status ?? '状态未知'
+          message.textContent = `原操作 ${operationId}：${status}${result?.sessionId ? `；会话 ${result.sessionId}` : ''}`
+          if (['completed', 'bound', 'archive_pending'].includes(status)) {
+            preview = undefined
+            consumed = true
+          }
+        } else if (operation === 'abandon') {
+          preview = undefined
+          consumed = true
+          message.textContent = result?.alreadyBound
+            ? `绑定已生效，保留新会话 ${result.sessionId}；放弃不会回滚或停止会话。`
+            : `原操作已放弃；外部会话不会被删除或停止。${result?.externalEffectStatus ? ` 外部结果：${result.externalEffectStatus}` : ''}`
+        } else if (operation === 'confirm') {
+          const status = result?.status ?? '状态未知'
+          message.textContent = `轮换状态：${status}${result?.sessionId ? `；会话 ${result.sessionId}` : ''}`
+          if (['completed', 'bound', 'archive_pending'].includes(status)) consumed = true
+        }
+        if (operationId && result?.status !== 'completed' && operation !== 'abandon') showOperationControls()
+        else {
+          detail.replaceChildren()
+          actions.replaceChildren()
+          if (closeButton) actions.append(closeButton)
+        }
+      } catch (error) {
+        message.textContent = `${error?.message || '请求失败。'}${operationId ? ` 可读取或恢复原操作 ${operationId}。` : ''}`
+        preview = undefined
+        if (operationId) showOperationControls()
+      } finally { setBusy(false) }
+    }
+    addButton('查看影响预览', async () => run('preview', { archiveOld: archive.checked }))
+    closeButton = addButton('关闭', () => {
+      if (preview && !consumed) void flow.cancel({ previewToken: preview.previewToken }).catch(() => {})
+      dialog.close()
+    })
+    closeButton.classList.add('pi-scene-rotation-close')
+    dialog.addEventListener('cancel', event => {
+      event.preventDefault()
+      if (preview && !consumed) void flow.cancel({ previewToken: preview.previewToken }).catch(() => {})
+      dialog.close()
+    })
+    dialog.append(title, target, archiveLabel, message, detail, actions)
+    document.body.append(dialog)
+    dialog.addEventListener('close', () => dialog.remove(), { once: true })
+    dialog.showModal()
+  }
+
   function closeMenu() {
     if (!menu) return
     menu.button.setAttribute('aria-expanded', 'false')
@@ -76,7 +245,7 @@
     element.setAttribute('aria-label', '面板更多操作')
     const capabilities = window.businessBridge?.panelMenuCapabilities?.(panel)
     const entries = ACTIONS.filter(([label]) => label === '独立窗口' ? capabilities?.independent === true
-      : label === '打开原生会话' ? capabilities?.nativeConversation === true : true)
+      : label === '打开原生会话' || label === '轮换此角色会话' ? capabilities?.nativeConversation === true : true)
       .map(([label, explanation]) => ({ label, explanation }))
     const refreshButton = panel.querySelector('.panel-controls .icon-control[aria-label="刷新面板"]')
     const fullscreenButton = panel.querySelector('.panel-controls .pi-fullscreen')
@@ -125,6 +294,13 @@
               : result?.reason === 'pending' ? '原生会话窗口操作正在进行。'
                 : '原生会话暂不可用。')
           }).catch(() => announce('原生会话暂不可用。'))
+          return
+        }
+        if (label === '轮换此角色会话') {
+          const openRotation = window.businessBridge?.openSceneRotation
+          const flow = typeof openRotation === 'function' ? openRotation(panel) : undefined
+          if (!flow) { announce(explanation); return }
+          openSceneRotationDialog(flow)
           return
         }
         if (label === '应用' || label === '编辑') {

@@ -16884,6 +16884,12 @@ async function main() {
 			resetAccountShortcuts: (contents) => shortcuts.resetAccount(contents),
 			getConfig: getSourceSceneConfig,
 			resolveBinding: (binding) => sourceRequest("/tradeloom/source-shell/resolve-binding", binding),
+			sceneRotationPreview: (request) => sourceRequest("/tradeloom/scene-rotation/preview", request),
+			sceneRotationConfirm: (request) => sourceRequest("/tradeloom/scene-rotation/confirm", request),
+			sceneRotationStatus: (request) => sourceRequest("/tradeloom/scene-rotation/status", request),
+			sceneRotationResume: (request) => sourceRequest("/tradeloom/scene-rotation/resume", request),
+			sceneRotationCancel: (request) => sourceRequest("/tradeloom/scene-rotation/cancel", request),
+			sceneRotationAbandon: (request) => sourceRequest("/tradeloom/scene-rotation/abandon", request),
 			observeFailure: observeStartupSourceFailure,
 			observePhase: (phase) => typeof phase === "string"
 				? observeStartup("source-shell", "phase", { operation: "role-create", phase })

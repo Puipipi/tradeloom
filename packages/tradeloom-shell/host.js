@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { isIPv4 } from 'node:net'
 import { createStateStore, getRoleBindingRevision, replaceRoleBinding, resolveOwnedHome, roleWorkspacePath, ROLE_IDS } from './state.js'
@@ -14,6 +14,11 @@ import { WORKFLOW_NATIVE_UI_ROUTE, createWorkflowNativeUiHandler } from './workf
 import { NATIVE_ARTIFACT_COLLECTION, NATIVE_ARTIFACT_FILE, createNativeArtifactHandler } from './workflow-native-artifact-http.js'
 import { AGENT_CONFIGURATION_ROUTE, createAgentConfigurationResources } from './agent-configuration.js'
 import { AGENT_CONFIGURATION_SNAPSHOTS_ROUTE, createAgentConfigurationSnapshotsHandler } from './agent-configuration-snapshots.js'
+import {
+  SCENE_ROTATION_ABANDON_ROUTE, SCENE_ROTATION_CANCEL_ROUTE, SCENE_ROTATION_CONFIRM_ROUTE,
+  SCENE_ROTATION_PREVIEW_ROUTE, SCENE_ROTATION_RESUME_ROUTE, SCENE_ROTATION_STATUS_ROUTE,
+  createSceneRotationHandlers,
+} from './scene-rotation.js'
 import { DIAGNOSTICS_ROUTE, createDiagnosticsHandler } from './diagnostics-http.js'
 import { registerToolSchemas } from './tool-schemas.js'
 import { registerSkillsOpen } from './skills-open.js'
@@ -194,7 +199,7 @@ async function observePendingSession(ctx, sessionId) {
   }
 }
 
-function isReusablePendingObservation(observation, operation, workspace, archivedSessionIds) {
+function isReusablePendingObservation(observation, operation, workspace, archivedSessionIds, { requireAttached = true } = {}) {
   const boundary = observation?.projections?.values?.turnBoundary
   const blank = boundary === undefined
     || (boundary !== null && typeof boundary === 'object'
@@ -205,9 +210,37 @@ function isReusablePendingObservation(observation, operation, workspace, archive
     && blank
     && workspace?.id === operation.workspaceId
     && Array.isArray(workspace.sessionIds)
-    && workspace.sessionIds.includes(operation.sessionId)
+    && (!requireAttached || workspace.sessionIds.includes(operation.sessionId))
     && Array.isArray(archivedSessionIds)
     && !archivedSessionIds.includes(operation.sessionId)
+}
+
+export function createRotationSessionReconciler(ctx) {
+  return async (operation, assertStillActive) => {
+    if (!ROLE_IDS.includes(operation?.roleId) || operation.status !== 'creating' || operation.createStarted !== true
+      || typeof operation.newSessionId !== 'string' || typeof operation.workspaceId !== 'string'
+      || typeof operation.workspacePath !== 'string' || typeof assertStillActive !== 'function') return false
+    let workspace = ctx.workspaceRegistry.get(operation.workspaceId)
+    if (!workspace || workspace.path !== operation.workspacePath) return false
+    const observed = await observePendingSession(ctx, operation.newSessionId)
+    await assertStillActive()
+    const expected = {
+      sessionId: operation.newSessionId, workspaceId: operation.workspaceId,
+      workspacePath: operation.workspacePath, agentPreset: ROLE_PRESETS[operation.roleId],
+    }
+    if (!observed.found || !isReusablePendingObservation(observed.observation, expected, workspace,
+      ctx.workspaceRegistry.archivedSessionIds, { requireAttached: false })) return false
+    workspace = ctx.workspaceRegistry.get(operation.workspaceId)
+    if (!workspace || workspace.path !== operation.workspacePath
+      || !Array.isArray(workspace.sessionIds) || ctx.workspaceRegistry.archivedSessionIds.includes(operation.newSessionId)) return false
+    if (!workspace.sessionIds.includes(operation.newSessionId)) {
+      if (typeof workspace.attachSession !== 'function') return false
+      try { await workspace.attachSession(operation.newSessionId) }
+      catch { return false }
+    }
+    const attached = ctx.workspaceRegistry.get(operation.workspaceId)
+    return isReusablePendingObservation(observed.observation, expected, attached, ctx.workspaceRegistry.archivedSessionIds)
+  }
 }
 
 /** Create a new blank conversation without changing or deleting the previous session. */
@@ -263,7 +296,9 @@ export function createNewSessionHandler(ctx, dependencies = {}) {
             }
             return { operation: currentOperation }
           }
-          if (state.pendingSessionCreateByRole[role]) return { error: 'session-create-in-progress', status: 409 }
+          if (state.pendingSessionCreateByRole[role] || state.pendingSceneRotationByRole?.[role]) {
+            return { error: 'session-create-in-progress', status: 409 }
+          }
           const currentSessionId = state.roles[role]?.sessionId ?? null
           if (currentSessionId !== normalized.expectedSessionId) return { error: 'stale-session-binding', status: 409 }
           const operation = {
@@ -783,6 +818,7 @@ export function createHostOriginAccessors(getAuthority, getResolvedAuthority) {
 
 export function apply(ctx, config = {}) {
   const enabled = businessProxyEnabled(config)
+  const sceneRotationHostEpoch = randomUUID()
   let originAuthorityPromise
   let resolvedOriginAuthority
   const getOriginAuthority = () => originAuthorityPromise ??= (async () => {
@@ -884,9 +920,22 @@ export function apply(ctx, config = {}) {
     const disposeAgentConfiguration = ctx.webServer.register({ kind: 'exact', path: AGENT_CONFIGURATION_ROUTE, handler: agentConfiguration.configurationHandler })
     const snapshotsHandler = createAgentConfigurationSnapshotsHandler(ctx, { snapshotOperations: agentConfiguration.snapshotOperations })
     const disposeAgentConfigurationSnapshots = ctx.webServer.register({ kind: 'exact', path: AGENT_CONFIGURATION_SNAPSHOTS_ROUTE, handler: snapshotsHandler })
+    const sceneRotation = createSceneRotationHandlers(ctx, {
+      readManagedConfigurationIdentityUnderLock: agentConfiguration.readManagedConfigurationIdentityUnderLock,
+      withManagedConfigurationLock: agentConfiguration.withManagedConfigurationLock,
+      getHostEpoch: () => sceneRotationHostEpoch,
+      ensureDurableRoleSession: (...args) => ensureDurableRoleSession(...args),
+      reconcileCreatedSession: createRotationSessionReconciler(ctx),
+    })
+    const disposeSceneRotationPreview = ctx.webServer.register({ kind: 'exact', path: SCENE_ROTATION_PREVIEW_ROUTE, handler: sceneRotation.preview })
+    const disposeSceneRotationConfirm = ctx.webServer.register({ kind: 'exact', path: SCENE_ROTATION_CONFIRM_ROUTE, handler: sceneRotation.confirm })
+    const disposeSceneRotationStatus = ctx.webServer.register({ kind: 'exact', path: SCENE_ROTATION_STATUS_ROUTE, handler: sceneRotation.status })
+    const disposeSceneRotationResume = ctx.webServer.register({ kind: 'exact', path: SCENE_ROTATION_RESUME_ROUTE, handler: sceneRotation.resume })
+    const disposeSceneRotationCancel = ctx.webServer.register({ kind: 'exact', path: SCENE_ROTATION_CANCEL_ROUTE, handler: sceneRotation.cancel })
+    const disposeSceneRotationAbandon = ctx.webServer.register({ kind: 'exact', path: SCENE_ROTATION_ABANDON_ROUTE, handler: sceneRotation.abandon })
     const diagnostics = createDiagnosticsHandler(ctx)
     const disposeDiagnostics = ctx.webServer.register({ kind: 'exact', path: DIAGNOSTICS_ROUTE, handler: diagnostics.handle })
-    return async () => { await sceneMemoryOriginAuthority.dispose(); artifact.dispose(); diagnostics.dispose(); disposeDiagnostics(); disposeArtifacts(); disposeArtifactFile(); disposeNativeWorkflow(); disposeWorkflow(); disposeSession(); disposeNewSession(); disposeProfile(); disposeMobileLink(); disposeSourceShellBinding(); disposeScenes(); disposeSceneLayouts(); disposeDockLayouts(); disposeAgentCapabilities(); disposeAgentConfigurationSnapshots(); disposeAgentConfiguration(); disposeToolSchemas(); disposeSkillsOpen() }
+    return async () => { await sceneMemoryOriginAuthority.dispose(); await sceneRotation.dispose(); artifact.dispose(); diagnostics.dispose(); disposeDiagnostics(); disposeSceneRotationAbandon(); disposeSceneRotationCancel(); disposeSceneRotationResume(); disposeSceneRotationStatus(); disposeSceneRotationConfirm(); disposeSceneRotationPreview(); disposeArtifacts(); disposeArtifactFile(); disposeNativeWorkflow(); disposeWorkflow(); disposeSession(); disposeNewSession(); disposeProfile(); disposeMobileLink(); disposeSourceShellBinding(); disposeScenes(); disposeSceneLayouts(); disposeDockLayouts(); disposeAgentCapabilities(); disposeAgentConfigurationSnapshots(); disposeAgentConfiguration(); disposeToolSchemas(); disposeSkillsOpen() }
   }, 'tradeloom-shell: protected session and profile routes')
 }
 
