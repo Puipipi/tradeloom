@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { isIPv4 } from 'node:net'
 import { createStateStore, getRoleBindingRevision, replaceRoleBinding, resolveOwnedHome, roleWorkspacePath, ROLE_IDS } from './state.js'
+import { createExecutionOriginAuthority } from './execution-origin-authority.js'
 import { publicRoleMetadata, ROLE_PRESETS } from './roles.js'
 import { normalizeSceneWorkbench, validateSceneConfig, validateSceneWorkbench } from './scene-layout.js'
 import { normalizeDockLayouts, validateDockLayouts } from './dock-layout.js'
@@ -700,8 +701,160 @@ export function createMobileLinkHandler(ctx) {
   }
 }
 
+export function createHostOriginAccessors(getAuthority, getResolvedAuthority) {
+  const notReady = () => Object.assign(new Error('origin authority is not ready'), { code: 'origin_authority_not_ready' })
+  return Object.freeze({
+    verifyRequest: async input => (await getAuthority()).verifyRequest(input),
+    claimRequestReplay(origin) {
+      const authority = getResolvedAuthority()
+      if (!authority || typeof authority.claimRequestReplay !== 'function') throw notReady()
+      return authority.claimRequestReplay(origin)
+    },
+    completeRequestReplay(origin, response) {
+      const authority = getResolvedAuthority()
+      if (!authority || typeof authority.completeRequestReplay !== 'function') throw notReady()
+      return authority.completeRequestReplay(origin, response)
+    },
+    captureAtEnqueue(origin) {
+      const authority = getResolvedAuthority()
+      if (!authority) {
+        if (origin === undefined || origin === null) return undefined
+        throw notReady()
+      }
+      return authority.captureAtEnqueue(origin)
+    },
+    retainOriginWork(origin, options) {
+      const authority = getResolvedAuthority()
+      if (!authority) throw notReady()
+      if (typeof authority.retainOriginWork !== 'function') throw notReady()
+      return authority.retainOriginWork(origin, options)
+    },
+    captureQueuedOrigin(origin, workId, owner) {
+      const authority = getResolvedAuthority()
+      if (!authority) throw notReady()
+      if (typeof authority.captureQueuedOrigin !== 'function') throw notReady()
+      return authority.captureQueuedOrigin(origin, workId, owner)
+    },
+    releaseOriginWork(origin, workId, reason, owner) {
+      const authority = getResolvedAuthority()
+      if (!authority) throw notReady()
+      if (typeof authority.releaseOriginWork !== 'function') throw notReady()
+      return authority.releaseOriginWork(origin, workId, reason, owner)
+    },
+    cancelOrigin(origin, workIds, owner, reason) {
+      const authority = getResolvedAuthority()
+      if (!authority) throw notReady()
+      if (typeof authority.cancelOrigin !== 'function') throw notReady()
+      return authority.cancelOrigin(origin, workIds, owner, reason)
+    },
+    withVerifiedRequestOrigin(origin, callback) {
+      const authority = getResolvedAuthority()
+      if (!authority) throw notReady()
+      return authority.withVerifiedRequestOrigin(origin, callback)
+    },
+    withProoflessRequestOrigin(callback) {
+      const authority = getResolvedAuthority()
+      return authority ? authority.withProoflessRequestOrigin(callback) : callback()
+    },
+    isProoflessExternalRequest() { return getResolvedAuthority()?.isProoflessExternalRequest() === true },
+    runDetachedDriver(callback) {
+      const authority = getResolvedAuthority()
+      return authority ? authority.runDetachedDriver(callback) : callback()
+    },
+    currentRequestOrigin() { return getResolvedAuthority()?.currentRequestOrigin() },
+    currentToolExecution() { return getResolvedAuthority()?.currentToolExecution() },
+    runToolExecution(exec, callback) {
+      const authority = getResolvedAuthority()
+      if (!authority) {
+        if (exec?.operationOrigin === undefined) return callback(exec)
+        throw notReady()
+      }
+      return authority.runToolExecution(exec, callback)
+    },
+    inheritFromParentExecution(exec) {
+      const authority = getResolvedAuthority()
+      if (!authority) throw notReady()
+      return authority.inheritFromParentExecution(exec)
+    },
+    transactSceneMemory: (origin, action, sceneId, value) => getAuthority().then(authority => authority.transactSceneMemory(origin, action, sceneId, value)),
+    revoke: origin => getAuthority().then(authority => authority.revoke(origin)),
+  })
+}
+
 export function apply(ctx, config = {}) {
   const enabled = businessProxyEnabled(config)
+  let originAuthorityPromise
+  let resolvedOriginAuthority
+  const getOriginAuthority = () => originAuthorityPromise ??= (async () => {
+    const store = await createStateStore()
+    resolvedOriginAuthority = createExecutionOriginAuthority({
+      stateStore: store,
+      isSessionLive: origin => {
+        try {
+          const archived = ctx.workspaceRegistry?.archivedSessionIds
+          if (!Array.isArray(archived) || archived.includes(origin.sessionId)) return false
+          const workspace = ctx.workspaceRegistry.get(origin.workspaceId)
+          return Boolean(workspace && workspace.path === origin.workspacePath)
+        } catch { return false }
+      },
+      isSessionDurable: async origin => {
+        try {
+          if (!Array.isArray(ctx.workspaceRegistry?.archivedSessionIds)
+            || ctx.workspaceRegistry.archivedSessionIds.includes(origin.sessionId)) return false
+          const workspace = ctx.workspaceRegistry.get(origin.workspaceId)
+          if (!workspace || workspace.path !== origin.workspacePath) return false
+          const stillCurrent = await ensureDurableRoleSession(ctx, origin.sessionId, workspace, origin.workspacePath, origin.agentPreset, false)
+          return stillCurrent() && Array.isArray(ctx.workspaceRegistry.archivedSessionIds)
+            && !ctx.workspaceRegistry.archivedSessionIds.includes(origin.sessionId)
+        } catch { return false }
+      },
+    })
+    return resolvedOriginAuthority
+  })()
+  const originAccessors = createHostOriginAccessors(getOriginAuthority, () => resolvedOriginAuthority)
+  const sceneMemoryOriginAuthority = Object.freeze({
+    registerGrant: input => getOriginAuthority().then(async authority => {
+      const source = input?.source
+      if (!source || source.scope !== 'role' || !Number.isSafeInteger(source.guestId)
+        || !Number.isSafeInteger(source.generation) || typeof source.sceneId !== 'string'
+        || typeof source.panelId !== 'string' || typeof source.sessionId !== 'string'
+        || typeof source.bindingRevision !== 'string') throw Object.assign(new Error('unowned role guest'), { code: 'unowned_guest' })
+      const scenes = validateSceneConfig(JSON.parse(await readFile(new URL('./scenes.json', import.meta.url), 'utf8')))
+      const scene = scenes.scenes.find(item => item.id === source.sceneId)
+      const panel = scene?.panels.find(item => item.id === source.panelId)
+      const role = panel?.roleId ?? scene?.roleId
+      if (!panel || !['native-chat', 'native-workspace'].includes(panel.type) || !ROLE_IDS.includes(role)) {
+        throw Object.assign(new Error('role panel unavailable'), { code: 'unowned_guest' })
+      }
+      const store = await createStateStore()
+      const state = await store.read()
+      const binding = state.roles?.[role]
+      if (!binding || binding.agentPreset !== ROLE_PRESETS[role]) {
+        throw Object.assign(new Error('role binding unavailable'), { code: 'stale_role_binding' })
+      }
+      if (binding.sessionId !== source.sessionId || getRoleBindingRevision(state, role) !== source.bindingRevision) {
+        throw Object.assign(new Error('role guest belongs to a stale binding'), { code: 'stale_role_binding' })
+      }
+      const workspacePath = await roleWorkspacePath(role)
+      if (binding.workspacePath !== workspacePath) throw Object.assign(new Error('role workspace changed'), { code: 'stale_role_binding' })
+      return authority.registerGrant({
+        ...input,
+        source: void 0,
+        issuer: {
+          scope: 'role', guestId: source.guestId, generation: source.generation,
+          sceneId: scene.id, panelId: panel.id, roleId: role,
+          sessionId: binding.sessionId, workspaceId: binding.workspaceId,
+          workspacePath: binding.workspacePath, agentPreset: binding.agentPreset,
+          bindingRevision: source.bindingRevision,
+        },
+      })
+    }),
+    ...originAccessors,
+    dispose: async () => {
+      if (resolvedOriginAuthority) resolvedOriginAuthority.dispose()
+    },
+  })
+  ctx.provide('sceneMemoryOriginAuthority', sceneMemoryOriginAuthority)
   // Public lazy lookup does not make legacy Host/read routes depend on task
   // admission. Missing authority never authorizes a native mutation.
   const taskAuthority = () => ctx.get?.('nativeTaskAuthority')
@@ -733,7 +886,7 @@ export function apply(ctx, config = {}) {
     const disposeAgentConfigurationSnapshots = ctx.webServer.register({ kind: 'exact', path: AGENT_CONFIGURATION_SNAPSHOTS_ROUTE, handler: snapshotsHandler })
     const diagnostics = createDiagnosticsHandler(ctx)
     const disposeDiagnostics = ctx.webServer.register({ kind: 'exact', path: DIAGNOSTICS_ROUTE, handler: diagnostics.handle })
-    return () => { artifact.dispose(); diagnostics.dispose(); disposeDiagnostics(); disposeArtifacts(); disposeArtifactFile(); disposeNativeWorkflow(); disposeWorkflow(); disposeSession(); disposeNewSession(); disposeProfile(); disposeMobileLink(); disposeSourceShellBinding(); disposeScenes(); disposeSceneLayouts(); disposeDockLayouts(); disposeAgentCapabilities(); disposeAgentConfigurationSnapshots(); disposeAgentConfiguration(); disposeToolSchemas(); disposeSkillsOpen() }
+    return async () => { await sceneMemoryOriginAuthority.dispose(); artifact.dispose(); diagnostics.dispose(); disposeDiagnostics(); disposeArtifacts(); disposeArtifactFile(); disposeNativeWorkflow(); disposeWorkflow(); disposeSession(); disposeNewSession(); disposeProfile(); disposeMobileLink(); disposeSourceShellBinding(); disposeScenes(); disposeSceneLayouts(); disposeDockLayouts(); disposeAgentCapabilities(); disposeAgentConfigurationSnapshots(); disposeAgentConfiguration(); disposeToolSchemas(); disposeSkillsOpen() }
   }, 'tradeloom-shell: protected session and profile routes')
 }
 
