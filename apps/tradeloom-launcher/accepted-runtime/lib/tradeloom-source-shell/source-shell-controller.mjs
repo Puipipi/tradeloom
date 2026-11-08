@@ -5,7 +5,7 @@ import { createSurfaceOwner } from './surface-owner.mjs'
 const SOURCE_URL = 'dsh-app://app/source-shell/renderer/source-entry.html'
 const ACCOUNT_URL = 'dsh-app://app/source-shell/renderer/account-window.html'
 const SCENE_COMPONENT_URL = 'dsh-app://app/'
-export function createSourceShellController({ BrowserWindow, WebContentsView, ipcMain, appPreload, sourcePreload, ownedPartition, getConfig, resolveBinding, installProtocol, primaryWindow, getNativeCaptionFallback, hasNativeModal = () => false, updateOwnership = () => {}, createRegistry = createSurfaceOwner, loadUiScale = async () => 1, saveUiScale = async () => { throw Error('UI scale persistence unavailable') }, loadSceneOrder = async () => ({saved:false,ids:[]}), saveSceneOrder = async () => { throw Error('scene order persistence unavailable') }, inventoryTimeoutMs = 5000, systemInfo = { cpus, totalmem, freemem }, diskStat = statfs, getKnownFolders, openKnownFolder, attachAccountShortcuts, resetAccountShortcuts, observeFailure = () => {}, observePhase = () => {}, writeUi18Diagnostic = appendFile }) {
+export function createSourceShellController({ BrowserWindow, WebContentsView, ipcMain, appPreload, sourcePreload, ownedPartition, getConfig, resolveBinding, sceneRotationPreview = async () => { throw Error('scene rotation unavailable') }, sceneRotationConfirm = async () => { throw Error('scene rotation unavailable') }, sceneRotationStatus = async () => { throw Error('scene rotation unavailable') }, sceneRotationResume = async () => { throw Error('scene rotation unavailable') }, sceneRotationCancel = async () => { throw Error('scene rotation unavailable') }, sceneRotationAbandon = async () => { throw Error('scene rotation unavailable') }, installProtocol, primaryWindow, getNativeCaptionFallback, hasNativeModal = () => false, updateOwnership = () => {}, createRegistry = createSurfaceOwner, loadUiScale = async () => 1, saveUiScale = async () => { throw Error('UI scale persistence unavailable') }, loadSceneOrder = async () => ({saved:false,ids:[]}), saveSceneOrder = async () => { throw Error('scene order persistence unavailable') }, inventoryTimeoutMs = 5000, systemInfo = { cpus, totalmem, freemem }, diskStat = statfs, getKnownFolders, openKnownFolder, attachAccountShortcuts, resetAccountShortcuts, observeFailure = () => {}, observePhase = () => {}, writeUi18Diagnostic = appendFile }) {
   if (!appPreload || !sourcePreload || !ownedPartition || typeof getConfig !== 'function' || typeof resolveBinding !== 'function' || typeof installProtocol !== 'function') throw new Error('missing trusted desktop configuration')
   let initialSourcePaint;
   let accountOverlay;
@@ -135,6 +135,7 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
     workflowCanvasMount:'workflow-create',workflowCanvasStatus:'workflow-status',workflowCanvasBounds:'workflow-bounds',workflowCanvasVisible:'workflow-visibility',
     erpNextStatusMount:'erpnext-create',erpNextStatusStatus:'erpnext-status',erpNextStatusBounds:'erpnext-bounds',erpNextStatusVisible:'erpnext-visibility',
     accountSidebarToggle:'sidebar-open',accountSidebarSet:'sidebar-open',accountSidebarStatus:'sidebar-status',accountSidebarWidth:'sidebar-width',accountSidebarSetWidth:'sidebar-width',themePreference:'theme-preference',
+    sceneRotationPreview:'scene-rotation-preview',sceneRotationConfirm:'scene-rotation-confirm',sceneRotationStatus:'scene-rotation-status',sceneRotationResume:'scene-rotation-resume',sceneRotationCancel:'scene-rotation-cancel',sceneRotationAbandon:'scene-rotation-abandon',
   })
   const bind = (name, fn) => {
     const channel = `source-shell:${name}`, operation=observedOperations[name]
@@ -662,6 +663,89 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
         throw Error('invalid initial paint acknowledgement')
       })
       bind('config', event => { assertWindow(event); return config })
+      const rotationOwner = event => {
+        const requester = assertThemeWindow(event)
+        const registered = [...windows].find(([, value]) => value === requester)
+        if (!registered || requester.isDestroyed() || event.senderFrame !== requester.webContents.mainFrame
+          || event.senderFrame.url !== (registered[0] === 'main' ? SOURCE_URL : SOURCE_URL + '?solo=1&scene=' + encodeURIComponent(registered[0]))) {
+          throw Error('scene rotation owner rejected')
+        }
+        return { window: requester, frame: event.senderFrame, url: event.senderFrame.url, id: registered[0] }
+      }
+      const refreshRoleRotationSurfaces = async (result, assertCapturedOwner) => {
+        const refreshed = await getConfig()
+        assertCapturedOwner()
+        if (!refreshed || !Array.isArray(refreshed.scenes) || !refreshed.sessionBindings
+          || refreshed.sessionBindings[result.roleId] !== result.sessionId) throw Error('scene rotation binding refresh rejected')
+        const savedSceneOrder = config.scenes.map(item => item.id)
+        config = { ...refreshed, scenes: refreshed.scenes }
+        config = { ...config, scenes: orderedScenes(savedSceneOrder) }
+        const rolePanels = new Map()
+        for (const sceneConfig of config.scenes) {
+          for (const panel of sceneConfig.panels ?? []) {
+            if (!['native-chat', 'native-workspace'].includes(panel.type)) continue
+            const roleId = panel.roleId || sceneConfig.roleId
+            if (roleId === result.roleId) rolePanels.set(key(sceneConfig.id, panel.id), true)
+          }
+        }
+        for (const item of [...views.values()]) {
+          const id = key(item.sceneId, item.panelId)
+          if (!rolePanels.has(id) || views.get(id) !== item || item.view.webContents.isDestroyed()) continue
+          const binding = await resolveBinding({ sceneId: item.sceneId, panelId: item.panelId })
+          assertCapturedOwner()
+          if (binding?.sceneId !== item.sceneId || binding?.panelId !== item.panelId
+            || binding.bindingStatus !== 'bound' || binding.sessionId !== result.sessionId
+            || typeof binding.bindingRevision !== 'string') throw Error('scene rotation surface binding changed')
+          const seat = registry.get(item.sceneId, item.panelId)
+          if (!seat || seat.view !== item.wrapper) throw Error('scene rotation surface owner changed')
+          const previous = { sessionId: item.sessionId, bindingRevision: item.bindingRevision,
+            seatWindow: seat.window, rehomed: seat.rehomed === true }
+          const previousPopout = previous.seatWindow?.window
+          assertCapturedOwner()
+          registry.revoke(item.sceneId, item.panelId)
+          try {
+            registry.attach({ sceneId: item.sceneId, panelId: item.panelId, sessionId: result.sessionId,
+              surface: item.surface, view: item.wrapper, partition: ownedPartition })
+            if (previous.rehomed && previousPopout && !previousPopout.isDestroyed?.()
+              && rolePopouts.get(id) === previousPopout) registry.rehome(item.sceneId, item.panelId, wrap(previousPopout))
+          } catch (error) {
+            try {
+              if (registry.get(item.sceneId, item.panelId)) registry.revoke(item.sceneId, item.panelId)
+              registry.attach({ sceneId: item.sceneId, panelId: item.panelId, sessionId: previous.sessionId,
+                surface: item.surface, view: item.wrapper, partition: ownedPartition })
+              if (previous.rehomed && previousPopout && !previousPopout.isDestroyed?.()
+                && rolePopouts.get(id) === previousPopout) registry.rehome(item.sceneId, item.panelId, wrap(previousPopout))
+            } catch (restoreError) { throw new AggregateError([error, restoreError], 'scene rotation surface restore failed') }
+            throw error
+          }
+          item.sessionId = result.sessionId
+          item.bindingRevision = binding.bindingRevision
+          notifyGuest(item)
+          emit(item, item.status)
+        }
+      }
+      const runRotationRequest = async (event, action, request) => {
+        const captured = rotationOwner(event)
+        const assertCapturedOwner = () => {
+          const current = rotationOwner(event)
+          if (current.window !== captured.window || current.frame !== captured.frame
+            || current.url !== captured.url || current.id !== captured.id
+            || windows.get(captured.id) !== captured.window) throw Error('scene rotation owner changed')
+        }
+        const result = await action(request)
+        assertCapturedOwner()
+        if (result?.roleId && result?.sessionId && ['bound', 'completed', 'archive_pending'].includes(result.status)) {
+          await refreshRoleRotationSurfaces(result, assertCapturedOwner)
+        }
+        assertCapturedOwner()
+        return result
+      }
+      bind('sceneRotationPreview', (event, request) => runRotationRequest(event, sceneRotationPreview, request))
+      bind('sceneRotationConfirm', (event, request) => runRotationRequest(event, sceneRotationConfirm, request))
+      bind('sceneRotationStatus', (event, request) => runRotationRequest(event, sceneRotationStatus, request))
+      bind('sceneRotationResume', (event, request) => runRotationRequest(event, sceneRotationResume, request))
+      bind('sceneRotationCancel', (event, request) => runRotationRequest(event, sceneRotationCancel, request))
+      bind('sceneRotationAbandon', (event, request) => runRotationRequest(event, sceneRotationAbandon, request))
       bind('getUiScale',event=>{assertWindow(event);return uiScale})
       bind('themeSnapshot',event=>{assertThemeWindow(event);return sourceThemeSnapshot})
       bind('themePreference', (event, preference) => {

@@ -625,6 +625,57 @@
     return requestPlacement(record, intent)
   }
 
+  function openSceneRotation(panel) {
+    const record = state.roleRecord
+    const target = record?.target
+    const roleId = target?.roleId
+    const sessionId = roleId ? state.config?.raw?.sessionBindings?.[roleId] : undefined
+    if (!record || record.panel !== panel || !record.created || !target || !sessionId || !isCurrentRole(record)
+      || typeof app?.sceneRotation?.preview !== 'function') return undefined
+    const captured = Object.freeze({ sceneId: target.sceneId, panelId: target.panelId, roleId, sessionId,
+      uiSceneId: record.uiSceneId, revision: record.revision })
+    const samePanelOwner = () => isCurrentRole(record) && record.panel === panel
+      && record.target?.sceneId === captured.sceneId && record.target?.panelId === captured.panelId
+      && record.target?.roleId === captured.roleId
+    const sameCapturedBinding = () => samePanelOwner()
+      && state.config?.raw?.sessionBindings?.[captured.roleId] === captured.sessionId
+    const invoke = async (operation, body = {}) => {
+      const api = app?.sceneRotation
+      if (!['preview', 'confirm', 'status', 'resume', 'cancel', 'abandon'].includes(operation)
+        || typeof api?.[operation] !== 'function') throw new Error('scene rotation unavailable')
+      if (operation === 'preview' && !sameCapturedBinding()) throw new Error('scene rotation target changed')
+      let request
+      if (operation === 'preview') request = {
+        sceneId: captured.sceneId, panelId: captured.panelId, archiveOld: body.archiveOld === true,
+      }
+      else if (operation === 'confirm' || operation === 'cancel') {
+        if (typeof body.previewToken !== 'string') throw new Error('scene rotation preview unavailable')
+        request = { previewToken: body.previewToken }
+      } else {
+        if (typeof body.operationId !== 'string') throw new Error('scene rotation operation unavailable')
+        request = { operationId: body.operationId }
+      }
+      const result = await api[operation](request)
+      if (operation === 'preview') return { ...result, staleTarget: !sameCapturedBinding() }
+      if ((operation === 'confirm' || operation === 'resume') && result?.sessionId
+        && ['bound', 'completed', 'archive_pending'].includes(result.status)) {
+        const fresh = validateConfig(await app.sourceConfig())
+        if (fresh.raw.sessionBindings?.[captured.roleId] !== result.sessionId) {
+          throw new Error('scene rotation binding changed before renderer refresh')
+        }
+        state.config = fresh
+        if (samePanelOwner() && typeof app.harnessSurface?.status === 'function') {
+          const attached = await app.harnessSurface.status(captured.sceneId, captured.panelId)
+          if (samePanelOwner() && attached?.status) onRoleStatus({ ...attached, sceneId: captured.sceneId, panelId: captured.panelId })
+        }
+      }
+      return result
+    }
+    return Object.freeze({ target: captured, preview: body => invoke('preview', body), confirm: body => invoke('confirm', body),
+      status: body => invoke('status', body), resume: body => invoke('resume', body), cancel: body => invoke('cancel', body),
+      abandon: body => invoke('abandon', body) })
+  }
+
   function panelMenuCapabilities(panel) {
     const role = state.roleRecord
     const roleReady = !!(role && role.panel === panel && role.created && role.target && isCurrentRole(role))
@@ -1342,6 +1393,7 @@
     renderWorkflowPanel,
     renderCompanion,
     requestRolePlacement,
+    openSceneRotation,
     panelMenuCapabilities,
     requestPanelPlacement,
     setThemePreference,

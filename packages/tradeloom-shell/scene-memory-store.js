@@ -133,9 +133,14 @@ export function createSceneMemoryStore({ stateStore, isSessionLive, isSessionDur
           state.sceneMemoryMigration = { ...(isRecord(state.sceneMemoryMigration) ? state.sceneMemoryMigration : {}), version: 1 }
         }
         const current = isRecord(memories[sceneId]) ? memories[sceneId] : previous ?? {}
+        const writeRevision = current.writeRevision ?? 0
+        if (!Number.isSafeInteger(writeRevision) || writeRevision < 0 || writeRevision === Number.MAX_SAFE_INTEGER) {
+          throw new SceneMemoryOriginError('scene_memory_write_revision_invalid')
+        }
         memories[sceneId] = {
           ...current,
           value: detached,
+          writeRevision: writeRevision + 1,
           lineage: current.lineage ?? {
             operationId: origin.operationId,
             roleId: origin.roleId,
