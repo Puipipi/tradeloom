@@ -79,6 +79,14 @@ async function createMainObserver(records, append = (_path, line) => records.pus
   return sandbox.__makeObserver('D:\\owned\\desktop-startup-observation.jsonl', append)
 }
 
+async function createMainHostWrapper(host) {
+  const mainSource = await readFile(mainPath, 'utf8')
+  const wrapperSource = readBlock(mainSource, 'const wrapper = {', '\n\t\thostWrapper = wrapper;')
+  const sandbox = { host }
+  runInNewContext(wrapperSource + '\nglobalThis.__wrapper = wrapper', sandbox, { filename: mainPath })
+  return sandbox.__wrapper
+}
+
 async function createOriginGrantCase({
   observe,
   records,
@@ -333,6 +341,35 @@ test('actual Main scene-memory grant records bounded outcomes without changing r
     endpoint, httpMethod: 'POST', bodyBytes
   })
   const getRows = records => records.filter(record => record.operation === 'origin-grant')
+
+  await t.test('actual backend Host wrapper forwards the grant call unchanged', async () => {
+    const grantRequest = { endpoint: 'session/list', httpMethod: 'POST', bodyBytesBase64: 'AQID', source: { scope: 'role', generation: 4 } }
+    const grant = { token: 'fixture-host-grant', expiresAt: 123, hostEpoch: 'fixture-epoch' }
+    const originalError = new Error('fixture host rejection')
+    const received = []
+    const receivers = []
+    let rejected = false
+    const host = {
+      async issueSceneMemoryOriginGrant(request) {
+        received.push(request)
+        receivers.push(this)
+        if (rejected) throw originalError
+        return grant
+      }
+    }
+    const wrapper = await createMainHostWrapper(host)
+    assert.equal(typeof wrapper.issueSceneMemoryOriginGrant, 'function', 'production backend wrapper exposes the Host grant method')
+    const result = await wrapper.issueSceneMemoryOriginGrant(grantRequest)
+    assert.equal(received.length, 1)
+    assert.equal(received[0], grantRequest, 'the exact request object is forwarded')
+    assert.equal(receivers[0], host, 'the underlying Host remains the method receiver')
+    assert.equal(result, grant, 'the exact grant object is returned')
+    rejected = true
+    await assert.rejects(wrapper.issueSceneMemoryOriginGrant(grantRequest), error => error === originalError)
+    assert.equal(received.length, 2, 'one underlying call occurs per wrapper call')
+    assert.equal(received[1], grantRequest)
+    assert.equal(receivers[1], host)
+  })
 
   await t.test('session/list grant returns the same object and emits only bounded records', async () => {
     const records = []

@@ -16646,6 +16646,7 @@ async function main() {
 					updateStopFailure = error;
 				}
 			},
+			issueSceneMemoryOriginGrant: (request) => host.issueSceneMemoryOriginGrant(request),
 			updateTasks: (action) => host.updateTasks(action),
 			inspectQuit: () => host.inspectQuit()
 		};
