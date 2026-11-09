@@ -15,8 +15,8 @@ const readBlock = (source, startMarker, endMarker) => {
   assert.ok(start >= 0 && end > start, 'required production function boundary exists')
   return source.slice(start, end)
 }
-const wireMessage = ({ tag = 'guest-list-after-refresh-v1', outcome = 'result-error', code = 'gateway/internal', surface = 'chat', generation = 7 } = {}) =>
-  'TL-ROLE-GUEST-LIST-PROBE|' + tag + '|' + outcome + '|' + code + '|' + surface + '|' + generation
+const wireMessage = ({ tag = 'guest-list-after-refresh-v1', outcome = 'result-error', code = 'gateway/internal', reasonHint = 'unclassified', surface = 'chat', generation = 7 } = {}) =>
+  ['TL-ROLE-GUEST-LIST-PROBE', tag, outcome, code, ...(tag === 'guest-list-after-refresh-v2' ? [reasonHint] : []), surface, generation].join('|')
 
 class FakeWebContents extends EventEmitter {
   static nextId = 1
@@ -144,15 +144,47 @@ test('actual SourceShellController console listener forwards only current guest 
     Object.fromEntries(['probeTag', 'outcome', 'code'].map(key => [key, accepted[0][key]])),
     { probeTag: 'guest-list-after-refresh-v1', outcome: 'result-error', code: 'gateway/internal' }
   )
+  assert.equal('reasonHint' in accepted[0], false, 'legacy v1 does not receive a fabricated reason')
+  send(wireMessage({ tag: 'guest-list-after-refresh-v2', reasonHint: 'withdrawn-prefix', surface: guestDescriptor.surface, generation: guestDescriptor.generation }))
+  const v2Accepted = records.filter(record => record.phase === 'list-probe')
+  assert.equal(v2Accepted.length, 2, 'the current guest probe v2 reaches Main while v1 remains supported')
+  assert.deepEqual(
+    Object.fromEntries(['probeTag', 'outcome', 'code', 'reasonHint'].map(key => [key, v2Accepted[1][key]])),
+    { probeTag: 'guest-list-after-refresh-v2', outcome: 'result-error', code: 'gateway/internal', reasonHint: 'withdrawn-prefix' }
+  )
+  const beforeInvalidV2 = v2Accepted.length
+  send(wireMessage({ tag: 'guest-list-after-refresh-v2', code: 'FIXTURE_CODE', reasonHint: 'carrier-prefix', surface: guestDescriptor.surface, generation: guestDescriptor.generation }))
+  send(wireMessage({ tag: 'guest-list-after-refresh-v2', code: 'gateway/internal', reasonHint: 'none', surface: guestDescriptor.surface, generation: guestDescriptor.generation }))
+  send(wireMessage({ tag: 'guest-list-after-refresh-v2', outcome: 'ok', code: 'none', reasonHint: 'unclassified', surface: guestDescriptor.surface, generation: guestDescriptor.generation }))
+  send(wireMessage({ tag: 'guest-list-after-refresh-v2', reasonHint: 'invented', surface: guestDescriptor.surface, generation: guestDescriptor.generation }))
+  assert.equal(records.filter(record => record.phase === 'list-probe').length, beforeInvalidV2, 'invalid v2 reason/code pairs are rejected')
+  const beforeInvalidMain = records.length
+  observe('source-shell', 'phase', {
+    operation: 'role-guest', phase: 'list-probe', surface: guestDescriptor.surface,
+    probeTag: 'guest-list-after-refresh-v2', outcome: 'result-error', code: 'FIXTURE_CODE', reasonHint: 'carrier-prefix'
+  })
+  observe('source-shell', 'phase', {
+    operation: 'role-guest', phase: 'list-probe', surface: guestDescriptor.surface,
+    probeTag: 'guest-list-after-refresh-v2', outcome: 'result-error', code: 'gateway/internal', reasonHint: 'none'
+  })
+  observe('source-shell', 'phase', {
+    operation: 'role-guest', phase: 'list-probe', surface: guestDescriptor.surface,
+    probeTag: 'guest-list-after-refresh-v2', outcome: 'ok', code: 'none', reasonHint: 'unclassified'
+  })
+  observe('source-shell', 'phase', {
+    operation: 'role-guest', phase: 'list-probe', surface: guestDescriptor.surface,
+    probeTag: 'guest-list-after-refresh-v2', outcome: 'result-error', code: 'FIXTURE_CODE', reasonHint: 'invented'
+  })
+  assert.equal(records.length, beforeInvalidMain, 'Main rejects invalid v2 reason/code pairs')
   send(wireMessage({ code: 'gateway/cancelled', surface: guestDescriptor.surface, generation: guestDescriptor.generation }))
   const slashAccepted = records.filter(record => record.phase === 'list-probe')
-  assert.equal(slashAccepted.length, 2, 'second SDK namespaced code also reaches Main')
-  assert.equal(slashAccepted[1].code, 'gateway/cancelled')
+  assert.equal(slashAccepted.length, 3, 'second SDK namespaced code also reaches Main')
+  assert.equal(slashAccepted[2].code, 'gateway/cancelled')
   const maxCode = 'a'.repeat(62) + '/b'
   send(wireMessage({ code: maxCode, surface: guestDescriptor.surface, generation: guestDescriptor.generation }))
   const boundedAccepted = records.filter(record => record.phase === 'list-probe')
-  assert.equal(boundedAccepted.length, 3, '64-character namespaced code remains within the accepted bound')
-  assert.equal(boundedAccepted[2].code, maxCode)
+  assert.equal(boundedAccepted.length, 4, '64-character namespaced code remains within the accepted bound')
+  assert.equal(boundedAccepted[3].code, maxCode)
   assert.equal('sessionId' in accepted[0], false)
   assert.equal('message' in accepted[0], false)
   assert.equal('items' in accepted[0], false)
@@ -174,6 +206,8 @@ test('actual SourceShellController console listener forwards only current guest 
   const beforeRejects = records.length
   send(validWire, {})
   send(wireMessage({ generation: guestDescriptor.generation + 1, surface: guestDescriptor.surface }))
+  send(wireMessage({ tag: 'guest-list-after-refresh-v2', reasonHint: 'unclassified', generation: guestDescriptor.generation + 1, surface: guestDescriptor.surface }))
+  send(wireMessage({ tag: 'guest-list-after-refresh-v2', reasonHint: 'unclassified', surface: guestDescriptor.surface }, {}))
   send(wireMessage({ surface: guestDescriptor.surface === 'chat' ? 'files' : 'chat', generation: guestDescriptor.generation }))
   send(wireMessage({ tag: 'unexpected', surface: guestDescriptor.surface, generation: guestDescriptor.generation }))
   for (const code of ['bad|code', 'a//b', '/a/b', 'a/b/', 'a'.repeat(63) + '/b', 'a/b\n', 'a/b\r\n', 'none']) {

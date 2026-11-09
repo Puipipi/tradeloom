@@ -134,19 +134,28 @@ window.__ModuleLoader__.load({
               if(!listProbeStarted && liveNow() && same(descriptor,latest.current)) {
                 listProbeStarted=true
                 const safeRemoteCode=error=>error?.isDSHRemoteError===true && typeof error.code==='string' && error.code!=='none' && error.code.length<=64 && /^[A-Za-z][A-Za-z0-9_-]*(?:\/[A-Za-z0-9_-]+)*(?![\s\S])/u.test(error.code)?error.code:'unknown'
-                const reportListProbe=(outcome,code)=>{
+                const safeReasonHint=error=>{
+                  if(error?.isDSHRemoteError!==true || error.code!=='gateway/internal' || typeof error.message!=='string')return 'unclassified'
+                  if(error.message.startsWith('client api: Remote method ') && error.message.endsWith(' is no longer mounted'))return 'withdrawn-prefix'
+                  if(error.message.startsWith('client api: ') && error.message.includes(' failed: '))return 'carrier-prefix'
+                  return 'unclassified'
+                }
+                const reportListProbe=(outcome,code,reasonHint)=>{
                   if(!liveNow() || !same(descriptor,latest.current))return
-                  try { console.info('TL-ROLE-GUEST-LIST-PROBE|guest-list-after-refresh-v1|'+outcome+'|'+code+'|'+descriptor.surface+'|'+descriptor.generation) } catch {}
+                  const message='TL-ROLE-GUEST-LIST-PROBE|guest-list-after-refresh-v2|'+outcome+'|'+code+'|'+reasonHint+'|'+descriptor.surface+'|'+descriptor.generation
+                  if(message.length>170)return
+                  try { console.info(message) } catch {}
                 }
                 void (async()=>{
                   try {
                     const result=await ctx.remote.session.list({})
                     if(!liveNow() || !same(descriptor,latest.current))return
                     reportListProbe(result?.ok===true?'ok':result?.ok===false?'result-error':'unknown',
-                      result?.ok===true?'none':safeRemoteCode(result?.error))
+                      result?.ok===true?'none':safeRemoteCode(result?.error),
+                      result?.ok===true?'none':safeReasonHint(result?.error))
                   } catch(error) {
                     if(!liveNow() || !same(descriptor,latest.current))return
-                    reportListProbe('throw',safeRemoteCode(error))
+                    reportListProbe('throw',safeRemoteCode(error),safeReasonHint(error))
                   }
                 })().catch(()=>{})
               }

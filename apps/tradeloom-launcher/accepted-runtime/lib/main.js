@@ -524,12 +524,17 @@ function createStartupObservation(path, append = (file, content) => {
 					if (fields.phase === "list-probe") {
 						const validCode = fields.code === "none" || fields.code === "unknown"
 							|| typeof fields.code === "string" && fields.code.length <= 64 && /^[A-Za-z][A-Za-z0-9_-]*(?:\/[A-Za-z0-9_-]+)*(?![\s\S])/u.test(fields.code);
-						if (fields.probeTag !== "guest-list-after-refresh-v1"
-							|| !["ok", "result-error", "throw", "unknown"].includes(fields.outcome)
-							|| !validCode || (fields.outcome === "ok") !== (fields.code === "none")) return;
+						const v1 = fields.probeTag === "guest-list-after-refresh-v1";
+						const v2 = fields.probeTag === "guest-list-after-refresh-v2";
+						const validReasonHint = ["withdrawn-prefix", "carrier-prefix", "unclassified", "none"].includes(fields.reasonHint);
+						if ((!v1 && !v2) || !["ok", "result-error", "throw", "unknown"].includes(fields.outcome)
+							|| !validCode || (fields.outcome === "ok") !== (fields.code === "none")
+							|| v2 && (!validReasonHint || (fields.outcome === "ok") !== (fields.reasonHint === "none")
+								|| ["withdrawn-prefix", "carrier-prefix"].includes(fields.reasonHint) && fields.code !== "gateway/internal")) return;
 						safe.probeTag = fields.probeTag;
 						safe.outcome = fields.outcome;
 						safe.code = fields.code;
+						if (v2) safe.reasonHint = fields.reasonHint;
 					}
 				} else return;
 			} else {

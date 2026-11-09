@@ -120,30 +120,37 @@ test('ready catalog keeps the original retain path and does not probe', async ()
 
 test('real SourceNative effect classifies result and thrown errors without logging their payload', async () => {
   const cases = [
-    { remoteList: async () => ({ ok: true, value: { items: [{ sessionId: 'private-fixture-id' }] } }), outcome: 'ok', code: 'none' },
-    { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: 'FIXTURE_REMOTE_CODE', message: 'private fixture text' } }), outcome: 'result-error', code: 'FIXTURE_REMOTE_CODE' },
-    { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: 'gateway/internal', message: 'private fixture text' } }), outcome: 'result-error', code: 'gateway/internal' },
-    { remoteList: async () => { throw { isDSHRemoteError: true, code: 'FIXTURE_THROW_CODE', message: 'private fixture text' } }, outcome: 'throw', code: 'FIXTURE_THROW_CODE' },
-    { remoteList: async () => { throw { isDSHRemoteError: true, code: 'gateway/cancelled', message: 'private fixture text' } }, outcome: 'throw', code: 'gateway/cancelled' },
-    { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: 'bad|code' } }), outcome: 'result-error', code: 'unknown' },
-    { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: 'gateway//internal' } }), outcome: 'result-error', code: 'unknown' },
-    { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: '/gateway/internal' } }), outcome: 'result-error', code: 'unknown' },
-    { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: 'gateway/internal/' } }), outcome: 'result-error', code: 'unknown' },
-    { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: 'bad code with spaces' } }), outcome: 'result-error', code: 'unknown' },
-    { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: 'gateway/internal\n' } }), outcome: 'result-error', code: 'unknown' },
-    { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: 'gateway/internal\r\n' } }), outcome: 'result-error', code: 'unknown' },
-    { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: 'a'.repeat(63) + '/b' } }), outcome: 'result-error', code: 'unknown' },
-    { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: 'none' } }), outcome: 'result-error', code: 'unknown' },
-    { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: 'a'.repeat(62) + '/b' } }), outcome: 'result-error', code: 'a'.repeat(62) + '/b' },
-    { remoteList: async () => ({ ok: false, error: { code: 'FIXTURE_UNBRANDED_CODE' } }), outcome: 'result-error', code: 'unknown' }
+    { remoteList: async () => ({ ok: true, value: { items: [{ sessionId: 'private-fixture-id' }] } }), outcome: 'ok', code: 'none', reasonHint: 'none' },
+    { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: 'FIXTURE_REMOTE_CODE', message: 'private fixture text' } }), outcome: 'result-error', code: 'FIXTURE_REMOTE_CODE', reasonHint: 'unclassified' },
+    { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: 'gateway/internal', message: 'client api: Remote method PRIVATE_METHOD is no longer mounted' } }), outcome: 'result-error', code: 'gateway/internal', reasonHint: 'withdrawn-prefix' },
+    { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: 'gateway/internal', message: 'client api: PRIVATE_ENDPOINT failed: private fixture text' } }), outcome: 'result-error', code: 'gateway/internal', reasonHint: 'carrier-prefix' },
+    { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: 'gateway/internal', message: 'different internal error private fixture text' } }), outcome: 'result-error', code: 'gateway/internal', reasonHint: 'unclassified' },
+    { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: 'gateway/internal', message: 17 } }), outcome: 'result-error', code: 'gateway/internal', reasonHint: 'unclassified' },
+    { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: false, code: 'gateway/internal', message: 'client api: PRIVATE_ENDPOINT failed: private fixture text' } }), outcome: 'result-error', code: 'unknown', reasonHint: 'unclassified' },
+    { remoteList: async () => { throw { isDSHRemoteError: true, code: 'FIXTURE_THROW_CODE', message: 'private fixture text' } }, outcome: 'throw', code: 'FIXTURE_THROW_CODE', reasonHint: 'unclassified' },
+    { remoteList: async () => { throw { isDSHRemoteError: true, code: 'gateway/cancelled', message: 'client api: Remote method PRIVATE_METHOD is no longer mounted' } }, outcome: 'throw', code: 'gateway/cancelled', reasonHint: 'unclassified' },
+    { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: 'bad|code' } }), outcome: 'result-error', code: 'unknown', reasonHint: 'unclassified' },
+    { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: 'gateway//internal' } }), outcome: 'result-error', code: 'unknown', reasonHint: 'unclassified' },
+    { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: '/gateway/internal' } }), outcome: 'result-error', code: 'unknown', reasonHint: 'unclassified' },
+    { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: 'gateway/internal/' } }), outcome: 'result-error', code: 'unknown', reasonHint: 'unclassified' },
+    { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: 'bad code with spaces' } }), outcome: 'result-error', code: 'unknown', reasonHint: 'unclassified' },
+    { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: 'gateway/internal\n' } }), outcome: 'result-error', code: 'unknown', reasonHint: 'unclassified' },
+    { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: 'gateway/internal\r\n' } }), outcome: 'result-error', code: 'unknown', reasonHint: 'unclassified' },
+    { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: 'a'.repeat(63) + '/b' } }), outcome: 'result-error', code: 'unknown', reasonHint: 'unclassified' },
+    { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: 'none' } }), outcome: 'result-error', code: 'unknown', reasonHint: 'unclassified' },
+    { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: 'a'.repeat(62) + '/b' } }), outcome: 'result-error', code: 'a'.repeat(62) + '/b', reasonHint: 'unclassified' },
+    { remoteList: async () => ({ ok: false, error: { code: 'FIXTURE_UNBRANDED_CODE', message: 'client api: session.list failed: private fixture text' } }), outcome: 'result-error', code: 'unknown', reasonHint: 'unclassified' },
+    { remoteList: async () => ({ ok: false, error: { code: 'gateway/internal', message: 'client api: PRIVATE_ENDPOINT failed: private fixture text' } }), outcome: 'result-error', code: 'unknown', reasonHint: 'unclassified' }
   ]
   for (const entry of cases) {
     const mounted = await mountSourceNative(entry)
     await turn()
     const probe = mounted.messages.find(message => message.includes('TL-ROLE-GUEST-LIST-PROBE|'))
     assert.ok(probe, 'probe event is emitted for the independent request result')
-    assert.deepEqual(probe.split('|'), ['TL-ROLE-GUEST-LIST-PROBE', 'guest-list-after-refresh-v1', entry.outcome, entry.code, 'files', '7'])
+    assert.deepEqual(probe.split('|'), ['TL-ROLE-GUEST-LIST-PROBE', 'guest-list-after-refresh-v2', entry.outcome, entry.code, entry.reasonHint, 'files', '7'])
     assert.ok(!probe.includes('private fixture text'))
+    assert.ok(!probe.includes('PRIVATE_METHOD'))
+    assert.ok(!probe.includes('PRIVATE_ENDPOINT'))
     assert.ok(!probe.includes('fixture-session-id'))
     assert.equal(mounted.retainCount, 0)
     mounted.cleanup()

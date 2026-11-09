@@ -169,19 +169,28 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
     const details=args[0]
     const message=typeof details?.message==='string'?details.message:args[2]
     if(typeof message!=='string'||message.length>180)return
-    const match=/^TL-ROLE-GUEST-LIST-PROBE\|([a-z0-9-]{1,40})\|(ok|result-error|throw|unknown)\|([^|]{1,64})\|(chat|files)\|([0-9]{1,16})$/u.exec(message)
-    if(!match || match[1]!=='guest-list-after-refresh-v1')return
-    const code=match[3]
+    const v1=/^TL-ROLE-GUEST-LIST-PROBE\|(guest-list-after-refresh-v1)\|(ok|result-error|throw|unknown)\|([^|]{1,64})\|(chat|files)\|([0-9]{1,16})$/u.exec(message)
+    const v2=/^TL-ROLE-GUEST-LIST-PROBE\|(guest-list-after-refresh-v2)\|(ok|result-error|throw|unknown)\|([^|]{1,64})\|(withdrawn-prefix|carrier-prefix|unclassified|none)\|(chat|files)\|([0-9]{1,16})$/u.exec(message)
+    const match=v2||v1
+    if(!match)return
+    const version=v2?2:1, outcome=match[2], code=match[3], reasonHint=v2?match[4]:null
+    const surface=match[v2?5:4], generationText=match[v2?6:5]
     const validCode=code==='none'||code==='unknown'||code.length<=64&&/^[A-Za-z][A-Za-z0-9_-]*(?:\/[A-Za-z0-9_-]+)*(?![\s\S])/u.test(code)
-    if(!validCode || (match[2]==='ok' ? code!=='none' : code==='none'))return
+    if(!validCode || (outcome==='ok' ? code!=='none' : code==='none'))return
+    if(version===2) {
+      if((outcome==='ok') !== (reasonHint==='none') || (outcome!=='ok' && reasonHint==='none'))return
+      if((reasonHint==='withdrawn-prefix'||reasonHint==='carrier-prefix') && code!=='gateway/internal')return
+    }
     try {
       const contents=item.view.webContents, frame=details?.frame
       if(closed || contents.isDestroyed() || frame!==contents.mainFrame)return
-      const id=key(item.sceneId,item.panelId), seat=registry.get(item.sceneId,item.panelId), generation=Number(match[5])
+      const id=key(item.sceneId,item.panelId), seat=registry.get(item.sceneId,item.panelId), generation=Number(generationText)
       if(views.get(id)!==item || !seat || seat.view!==item.wrapper || seat.window?.window!==item.parent
-        || match[4]!==item.surface || !Number.isSafeInteger(item.generation) || !Number.isSafeInteger(generation)
+        || surface!==item.surface || !Number.isSafeInteger(item.generation) || !Number.isSafeInteger(generation)
         || generation!==item.generation)return
-      try { observePhase({operation:'role-guest',phase:'list-probe',surface:item.surface,probeTag:match[1],outcome:match[2],code:match[3]}) } catch {}
+      const fields={operation:'role-guest',phase:'list-probe',surface:item.surface,probeTag:match[1],outcome,code}
+      if(version===2)fields.reasonHint=reasonHint
+      try { observePhase(fields) } catch {}
     } catch {}
   }
   const emit = (item, status) => { item.status=status; const seat=registry.get(item.sceneId,item.panelId),placement=seat?.rehomed?'popped-out':'docked',origin=windows.get(item.sceneId)??main;for(const w of new Set([seat?.window.window,origin].filter(Boolean)))if(!w.isDestroyed())try{w.webContents.send('source-shell:status-event',{sceneId:item.sceneId,panelId:item.panelId,status,placement})}catch{} }
