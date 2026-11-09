@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { runInNewContext } from 'node:vm'
 import test from 'node:test'
+import { createGatewayFixture } from '../../../apps/tradeloom-launcher/tests/session-list-failure-phase.test.mjs'
 
 const sourcePath = resolve(process.cwd(), 'packages/tradeloom-shell/client.source-native.js')
 const descriptor = { sceneId: 'fixture-scene', panelId: 'fixture-panel', sessionId: 'fixture-session-id', surface: 'files', generation: 7 }
@@ -13,7 +14,7 @@ const deferred = () => {
   return { promise, resolve: resolvePromise, reject: rejectPromise }
 }
 
-async function mountSourceNative({ refresh = async () => {}, remoteList = async () => ({ ok: true, value: { items: [] } }), catalogPhase = 'pending', catalogIds = [] } = {}) {
+export async function mountSourceNative({ refresh = async () => {}, remoteList = async () => ({ ok: true, value: { items: [] } }), catalogPhase = 'pending', catalogIds = [], gatewayApi, initialDescriptor = descriptor } = {}) {
   let definition, Component
   const effects = [], cleanups = [], messages = [], stateUpdates = [], refs = []
   let retainCount = 0, remoteListCount = 0
@@ -34,8 +35,9 @@ async function mountSourceNative({ refresh = async () => {}, remoteList = async 
   runInNewContext(await readFile(sourcePath, 'utf8'), sandbox, { filename: sourcePath })
   assert.equal(typeof definition?.factory, 'function')
   const api = definition.factory(name => {
-    assert.equal(name, 'react')
-    return React
+    if (name === 'react') return React
+    if (name === '@deepseek-ai/dsh-api-gateway/client') return gatewayApi
+    assert.fail(`unexpected ModuleLoader dependency: ${name}`)
   })
   const snapshot = { ids: catalogIds, byId: {}, phase: catalogPhase, projectionsBySession: {} }
   const ctx = {
@@ -62,11 +64,11 @@ async function mountSourceNative({ refresh = async () => {}, remoteList = async 
     remote: { session: { list: (...args) => { remoteListCount++; return remoteList(...args) } } }
   }
   const bridge = {
-    nativeSurfaceDescriptor: async () => descriptor,
+      nativeSurfaceDescriptor: async () => initialDescriptor,
     onNativeSurfaceChanged: () => () => {},
     nativeSurfaceMounted: async () => {}
   }
-  api.register(ctx, descriptor, bridge)
+  api.register(ctx, initialDescriptor, bridge)
   assert.equal(typeof Component, 'function')
   Component({ SessionProvider: () => null, renderFactorySlot: () => null })
   for (const effect of effects) {
@@ -101,6 +103,50 @@ test('real SourceNative effect runs one non-blocking independent list probe afte
     'completion after cleanup is ignored')
 })
 
+test('SourceNative reports the phase from the same Gateway factory error object', async () => {
+  const rpcError = new Error('fixture gateway call rejection')
+  const gateway = await createGatewayFixture({ rpcCall: async () => { throw rpcError } })
+  const mounted = await mountSourceNative({
+    gatewayApi: gateway.api,
+    remoteList: async () => (await gateway.invokeList()).result
+  })
+  await turn()
+  await turn()
+  const probe = mounted.messages.find(message => message.startsWith('TL-ROLE-GUEST-LIST-PROBE|'))
+  assert.equal(mounted.remoteListCount, 1, 'diagnostic still makes one independent request')
+  assert.equal(probe, `TL-ROLE-GUEST-LIST-PROBE|guest-list-after-refresh-v2|result-error|gateway/internal|rpc-call|files|${descriptor.generation}`)
+  assert.equal(mounted.retainCount, 0, 'phase reporting does not alter catalog ownership')
+  mounted.cleanup()
+})
+
+test('SourceNative leaves cross-factory and cloned Gateway errors unclassified', async () => {
+  const producer = await createGatewayFixture({ rpcCall: async () => { throw new Error('private carrier fixture') } })
+  const otherFactory = await createGatewayFixture()
+  const crossFactory = await mountSourceNative({
+    gatewayApi: otherFactory.api,
+    remoteList: async () => (await producer.invokeList()).result
+  })
+  await turn()
+  const crossFactoryProbe = crossFactory.messages.find(message => message.startsWith('TL-ROLE-GUEST-LIST-PROBE|'))
+  assert.ok(crossFactoryProbe?.includes('|gateway/internal|unclassified|'))
+  assert.equal(crossFactory.remoteListCount, 1)
+  crossFactory.cleanup()
+
+  const cloneFactory = await createGatewayFixture({ rpcCall: async () => { throw new Error('private carrier fixture') } })
+  const cloned = await mountSourceNative({
+    gatewayApi: cloneFactory.api,
+    remoteList: async () => {
+      const result = (await cloneFactory.invokeList()).result
+      return result.ok ? result : { ...result, error: { ...result.error } }
+    }
+  })
+  await turn()
+  const clonedProbe = cloned.messages.find(message => message.startsWith('TL-ROLE-GUEST-LIST-PROBE|'))
+  assert.ok(clonedProbe?.includes('|gateway/internal|unclassified|'))
+  assert.equal(cloned.remoteListCount, 1)
+  cloned.cleanup()
+})
+
 test('ready catalog keeps the original retain path and does not probe', async () => {
   let refreshCount = 0
   const mounted = await mountSourceNative({
@@ -122,8 +168,8 @@ test('real SourceNative effect classifies result and thrown errors without loggi
   const cases = [
     { remoteList: async () => ({ ok: true, value: { items: [{ sessionId: 'private-fixture-id' }] } }), outcome: 'ok', code: 'none', reasonHint: 'none' },
     { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: 'FIXTURE_REMOTE_CODE', message: 'private fixture text' } }), outcome: 'result-error', code: 'FIXTURE_REMOTE_CODE', reasonHint: 'unclassified' },
-    { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: 'gateway/internal', message: 'client api: Remote method PRIVATE_METHOD is no longer mounted' } }), outcome: 'result-error', code: 'gateway/internal', reasonHint: 'withdrawn-prefix' },
-    { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: 'gateway/internal', message: 'client api: PRIVATE_ENDPOINT failed: private fixture text' } }), outcome: 'result-error', code: 'gateway/internal', reasonHint: 'carrier-prefix' },
+    { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: 'gateway/internal', message: 'client api: Remote method PRIVATE_METHOD is no longer mounted' } }), outcome: 'result-error', code: 'gateway/internal', reasonHint: 'unclassified' },
+    { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: 'gateway/internal', message: 'client api: PRIVATE_ENDPOINT failed: private fixture text' } }), outcome: 'result-error', code: 'gateway/internal', reasonHint: 'unclassified' },
     { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: 'gateway/internal', message: 'different internal error private fixture text' } }), outcome: 'result-error', code: 'gateway/internal', reasonHint: 'unclassified' },
     { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: 'gateway/internal', message: 17 } }), outcome: 'result-error', code: 'gateway/internal', reasonHint: 'unclassified' },
     { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: false, code: 'gateway/internal', message: 'client api: PRIVATE_ENDPOINT failed: private fixture text' } }), outcome: 'result-error', code: 'unknown', reasonHint: 'unclassified' },

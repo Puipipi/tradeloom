@@ -6,6 +6,8 @@ import { resolve } from 'node:path'
 import { runInNewContext } from 'node:vm'
 import test from 'node:test'
 import { createSourceShellController } from '../accepted-runtime/lib/tradeloom-source-shell/source-shell-controller.mjs'
+import { mountSourceNative } from '../../../packages/tradeloom-shell/tests/client-source-native-session-list-probe.test.js'
+import { createGatewayFixture } from './session-list-failure-phase.test.mjs'
 
 const repo = resolve(process.cwd())
 const mainPath = resolve(repo, 'apps/tradeloom-launcher/accepted-runtime/lib/main.js')
@@ -173,6 +175,18 @@ test('actual SourceShellController console listener forwards only current guest 
   })
   observe('source-shell', 'phase', {
     operation: 'role-guest', phase: 'list-probe', surface: guestDescriptor.surface,
+    probeTag: 'guest-list-after-refresh-v2', outcome: 'result-error', code: 'FIXTURE_CODE', reasonHint: 'rpc-call'
+  })
+  observe('source-shell', 'phase', {
+    operation: 'role-guest', phase: 'list-probe', surface: guestDescriptor.surface,
+    probeTag: 'guest-list-after-refresh-v2', outcome: 'result-error', code: 'gateway/internal', reasonHint: 'none'
+  })
+  observe('source-shell', 'phase', {
+    operation: 'role-guest', phase: 'list-probe', surface: guestDescriptor.surface,
+    probeTag: 'guest-list-after-refresh-v2', outcome: 'ok', code: 'none', reasonHint: 'result-decode'
+  })
+  observe('source-shell', 'phase', {
+    operation: 'role-guest', phase: 'list-probe', surface: guestDescriptor.surface,
     probeTag: 'guest-list-after-refresh-v2', outcome: 'result-error', code: 'FIXTURE_CODE', reasonHint: 'invented'
   })
   assert.equal(records.length, beforeInvalidMain, 'Main rejects invalid v2 reason/code pairs')
@@ -207,7 +221,9 @@ test('actual SourceShellController console listener forwards only current guest 
   send(validWire, {})
   send(wireMessage({ generation: guestDescriptor.generation + 1, surface: guestDescriptor.surface }))
   send(wireMessage({ tag: 'guest-list-after-refresh-v2', reasonHint: 'unclassified', generation: guestDescriptor.generation + 1, surface: guestDescriptor.surface }))
+  send(wireMessage({ tag: 'guest-list-after-refresh-v2', reasonHint: 'rpc-call', generation: guestDescriptor.generation + 1, surface: guestDescriptor.surface }))
   send(wireMessage({ tag: 'guest-list-after-refresh-v2', reasonHint: 'unclassified', surface: guestDescriptor.surface }, {}))
+  send(wireMessage({ tag: 'guest-list-after-refresh-v2', reasonHint: 'result-decode', surface: guestDescriptor.surface }, {}))
   send(wireMessage({ surface: guestDescriptor.surface === 'chat' ? 'files' : 'chat', generation: guestDescriptor.generation }))
   send(wireMessage({ tag: 'unexpected', surface: guestDescriptor.surface, generation: guestDescriptor.generation }))
   for (const code of ['bad|code', 'a//b', '/a/b', 'a/b/', 'a'.repeat(63) + '/b', 'a/b\n', 'a/b\r\n', 'none']) {
@@ -219,10 +235,49 @@ test('actual SourceShellController console listener forwards only current guest 
 
   send(validWire)
   assert.equal(records.filter(record => record.phase === 'list-probe').length, beforeRejects + 1, 'well-formed event remains observable')
+
+  const beforeActualPhases = records.filter(record => record.phase === 'list-probe').length
+  const rpcGateway = await createGatewayFixture({ rpcCall: async () => { throw new Error('private RPC fixture') } })
+  const rpcSource = await mountSourceNative({
+    initialDescriptor: guestDescriptor,
+    gatewayApi: rpcGateway.api,
+    remoteList: async () => (await rpcGateway.invokeList()).result
+  })
+  await new Promise(resolveTurn => setTimeout(resolveTurn, 0))
+  await new Promise(resolveTurn => setTimeout(resolveTurn, 0))
+  const rpcWire = rpcSource.messages.find(message => message.startsWith('TL-ROLE-GUEST-LIST-PROBE|'))
+  assert.ok(rpcWire?.includes('|result-error|gateway/internal|rpc-call|'), 'actual SourceNative emits the Gateway call phase')
+  send(rpcWire)
+  const decodeGateway = await createGatewayFixture({ rpcCall: async () => ({ ok: true, value: { items: [] } }) })
+  const decodeSource = await mountSourceNative({
+    initialDescriptor: guestDescriptor,
+    gatewayApi: decodeGateway.api,
+    remoteList: async () => (await decodeGateway.invokeList({ decode: () => { throw new Error('private decode fixture') } })).result
+  })
+  await new Promise(resolveTurn => setTimeout(resolveTurn, 0))
+  await new Promise(resolveTurn => setTimeout(resolveTurn, 0))
+  const decodeWire = decodeSource.messages.find(message => message.startsWith('TL-ROLE-GUEST-LIST-PROBE|'))
+  assert.ok(decodeWire?.includes('|result-error|gateway/internal|result-decode|'), 'actual SourceNative emits the strict decode phase')
+  send(decodeWire)
+  rpcSource.cleanup()
+  decodeSource.cleanup()
+  const actualPhaseRecords = records.filter(record => record.phase === 'list-probe').slice(beforeActualPhases)
+  assert.deepEqual(actualPhaseRecords.map(record => record.reasonHint), ['rpc-call', 'result-decode'],
+    'actual SourceNative phase messages pass the real guest console listener and Main allowlist')
+  for (const record of actualPhaseRecords) {
+    assert.equal(record.code, 'gateway/internal')
+    assert.equal(record.probeTag, 'guest-list-after-refresh-v2')
+    assert.equal('message' in record, false)
+    assert.equal('details' in record, false)
+  }
+  send(wireMessage({ tag: 'guest-list-after-refresh-v2', outcome: 'result-error', code: 'FIXTURE_CODE', reasonHint: 'rpc-call', surface: guestDescriptor.surface, generation: guestDescriptor.generation }))
+  send(wireMessage({ tag: 'guest-list-after-refresh-v2', outcome: 'ok', code: 'none', reasonHint: 'rpc-call', surface: guestDescriptor.surface, generation: guestDescriptor.generation }))
+  const beforeInvalidPhasePair = records.filter(record => record.phase === 'list-probe').length
+  assert.equal(beforeInvalidPhasePair, beforeActualPhases + 2, 'wrong-code and ok-with-phase pairs stay rejected')
   guestContents.destroy()
   send(validWire)
-  assert.equal(records.filter(record => record.phase === 'list-probe').length, beforeRejects + 1, 'destroyed/revoked guest seat is rejected')
+  assert.equal(records.filter(record => record.phase === 'list-probe').length, beforeRejects + 3, 'destroyed/revoked guest seat is rejected')
   await controller.destroy()
   send(validWire)
-  assert.equal(records.filter(record => record.phase === 'list-probe').length, beforeRejects + 1, 'events after controller close are ignored')
+  assert.equal(records.filter(record => record.phase === 'list-probe').length, beforeRejects + 3, 'events after controller close are ignored')
 })

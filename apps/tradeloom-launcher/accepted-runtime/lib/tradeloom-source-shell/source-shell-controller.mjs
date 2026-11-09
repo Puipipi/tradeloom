@@ -170,7 +170,7 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
     const message=typeof details?.message==='string'?details.message:args[2]
     if(typeof message!=='string'||message.length>180)return
     const v1=/^TL-ROLE-GUEST-LIST-PROBE\|(guest-list-after-refresh-v1)\|(ok|result-error|throw|unknown)\|([^|]{1,64})\|(chat|files)\|([0-9]{1,16})$/u.exec(message)
-    const v2=/^TL-ROLE-GUEST-LIST-PROBE\|(guest-list-after-refresh-v2)\|(ok|result-error|throw|unknown)\|([^|]{1,64})\|(withdrawn-prefix|carrier-prefix|unclassified|none)\|(chat|files)\|([0-9]{1,16})$/u.exec(message)
+    const v2=/^TL-ROLE-GUEST-LIST-PROBE\|(guest-list-after-refresh-v2)\|(ok|result-error|throw|unknown)\|([^|]{1,64})\|(withdrawn-prefix|carrier-prefix|rpc-call|result-decode|unclassified|none)\|(chat|files)\|([0-9]{1,16})$/u.exec(message)
     const match=v2||v1
     if(!match)return
     const version=v2?2:1, outcome=match[2], code=match[3], reasonHint=v2?match[4]:null
@@ -179,7 +179,7 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
     if(!validCode || (outcome==='ok' ? code!=='none' : code==='none'))return
     if(version===2) {
       if((outcome==='ok') !== (reasonHint==='none') || (outcome!=='ok' && reasonHint==='none'))return
-      if((reasonHint==='withdrawn-prefix'||reasonHint==='carrier-prefix') && code!=='gateway/internal')return
+      if(['withdrawn-prefix','carrier-prefix','rpc-call','result-decode'].includes(reasonHint) && code!=='gateway/internal')return
     }
     try {
       const contents=item.view.webContents, frame=details?.frame

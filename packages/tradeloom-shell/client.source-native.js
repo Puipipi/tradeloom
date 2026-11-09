@@ -3,6 +3,7 @@ window.__ModuleLoader__.load({
   chunk: 'client.source-native.js',
   factory(require) {
     const React = require('react'), h = React.createElement
+    const gatewayApi = require('@deepseek-ai/dsh-api-gateway/client')
     const valid = d => d && typeof d.sceneId === 'string' && typeof d.panelId === 'string' && typeof d.sessionId === 'string' && d.sessionId && ['chat','files'].includes(d.surface) && Number.isSafeInteger(d.generation)
     const same = (a,b) => valid(a) && valid(b) && ['sceneId','panelId','sessionId','surface','generation'].every(k => a[k] === b[k])
     const reportRoleGuestPhase = (descriptor, phase) => {
@@ -135,10 +136,11 @@ window.__ModuleLoader__.load({
                 listProbeStarted=true
                 const safeRemoteCode=error=>error?.isDSHRemoteError===true && typeof error.code==='string' && error.code!=='none' && error.code.length<=64 && /^[A-Za-z][A-Za-z0-9_-]*(?:\/[A-Za-z0-9_-]+)*(?![\s\S])/u.test(error.code)?error.code:'unknown'
                 const safeReasonHint=error=>{
-                  if(error?.isDSHRemoteError!==true || error.code!=='gateway/internal' || typeof error.message!=='string')return 'unclassified'
-                  if(error.message.startsWith('client api: Remote method ') && error.message.endsWith(' is no longer mounted'))return 'withdrawn-prefix'
-                  if(error.message.startsWith('client api: ') && error.message.includes(' failed: '))return 'carrier-prefix'
-                  return 'unclassified'
+                  if(error?.isDSHRemoteError!==true || error.code!=='gateway/internal')return 'unclassified'
+                  try {
+                    const phase=gatewayApi?.getInvocationFailurePhase?.(error)
+                    return phase==='rpc-call'||phase==='result-decode'?phase:'unclassified'
+                  } catch { return 'unclassified' }
                 }
                 const reportListProbe=(outcome,code,reasonHint)=>{
                   if(!liveNow() || !same(descriptor,latest.current))return
