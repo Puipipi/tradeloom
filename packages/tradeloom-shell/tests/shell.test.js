@@ -417,9 +417,12 @@ test('authorized role route creates one mapped native session and reuses it afte
 
 test('the protected host registers the explicit create-new-session route', async () => {
   const routes = []
+  const services = new Map()
   const ctx = {
     tools: {}, agents: { get() { return undefined } },
     connection: { requestRejection() {} },
+    provide(name, service) { services.set(name, service) },
+    get(name) { return services.get(name) },
     webServer: { register(route) { routes.push(route); return () => {} } },
     workspaceRegistry: {}, sessionController: {},
     on() {}, effect(register) { this.cleanup = register() },
