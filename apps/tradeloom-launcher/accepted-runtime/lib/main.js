@@ -60,7 +60,8 @@ const ROLE_GUEST_PHASES = new Set([
 	"generation-wait-start", "generation-wait-end",
 	"loader-wait-start", "loader-wait-end",
 	"catalog-refresh-start", "catalog-refresh-end", "catalog-refresh-error",
-	"terminal-error"
+	"terminal-error",
+	"list-probe"
 ]);
 const SOURCE_FAILURE_OPERATIONS = [
 	"role-create",
@@ -520,6 +521,36 @@ function createStartupObservation(path, append = (file, content) => {
 					safe.operation = "role-guest";
 					safe.phase = fields.phase;
 					safe.surface = fields.surface;
+					if (fields.phase === "list-probe") {
+						const validCode = fields.code === "none" || fields.code === "unknown"
+							|| typeof fields.code === "string" && fields.code.length <= 64 && /^[A-Za-z][A-Za-z0-9_-]*(?:\/[A-Za-z0-9_-]+)*(?![\s\S])/u.test(fields.code);
+						const v1 = fields.probeTag === "guest-list-after-refresh-v1";
+						const v2 = fields.probeTag === "guest-list-after-refresh-v2";
+						const validReasonHint = ["withdrawn-prefix", "carrier-prefix", "rpc-call", "result-decode", "unclassified", "none"].includes(fields.reasonHint);
+						if ((!v1 && !v2) || !["ok", "result-error", "throw", "unknown"].includes(fields.outcome)
+							|| !validCode || (fields.outcome === "ok") !== (fields.code === "none")
+							|| v2 && (!validReasonHint || (fields.outcome === "ok") !== (fields.reasonHint === "none")
+								|| ["withdrawn-prefix", "carrier-prefix", "rpc-call", "result-decode"].includes(fields.reasonHint) && fields.code !== "gateway/internal")) return;
+						safe.probeTag = fields.probeTag;
+						safe.outcome = fields.outcome;
+						safe.code = fields.code;
+						if (v2) safe.reasonHint = fields.reasonHint;
+					}
+				} else if (fields.operation === "origin-grant") {
+					const validPhase = ["sender", "request-shape", "source-mode", "frame", "guest", "role-identity", "provider", "recheck", "completed"].includes(fields.phase);
+					const validEndpointClass = fields.endpointClass === "session-list" || fields.endpointClass === "other";
+					const validResult = ["entered", "grant", "null", "error"].includes(fields.result);
+					const validCode = ["none", "unknown", "unowned_guest", "stale_role_binding", "role_session_not_durable"].includes(fields.code);
+					if (!validPhase || !validEndpointClass || !validResult || !validCode
+						|| fields.result === "error" && fields.code === "none"
+						|| fields.result !== "error" && fields.code !== "none"
+						|| fields.result === "entered" && fields.phase !== "source-mode"
+						|| fields.result === "grant" && fields.phase !== "completed") return;
+					safe.operation = "origin-grant";
+					safe.phase = fields.phase;
+					safe.endpointClass = fields.endpointClass;
+					safe.result = fields.result;
+					safe.code = fields.code;
 				} else return;
 			} else {
 				for (const key of ["windowId", "windowCount"]) {
@@ -16615,6 +16646,7 @@ async function main() {
 					updateStopFailure = error;
 				}
 			},
+			issueSceneMemoryOriginGrant: (request) => host.issueSceneMemoryOriginGrant(request),
 			updateTasks: (action) => host.updateTasks(action),
 			inspectQuit: () => host.inspectQuit()
 		};
@@ -17105,45 +17137,72 @@ async function main() {
 		controller: sourceController
 	} : { sourceMode });
 	ipcMain.handle(DESKTOP_IPC.sceneMemoryOriginGrant, async (event, request) => {
-		assertDesktopSender(event, ["app"]);
-		if (!request || typeof request.endpoint !== "string" || request.endpoint.split("/").some((segment) => segment === "" || segment === "." || segment === ".." || !/^[A-Za-z0-9_$.-]+$/.test(segment))
-			|| request.httpMethod !== "POST" || !(request.bodyBytes instanceof Uint8Array)
-			|| request.bodyBytes.byteLength === 0 || request.bodyBytes.byteLength > 2 * 1024 * 1024) throw new Error("scene-memory origin: invalid grant request");
-		if (!sourceMode || sourceController === void 0) return null;
-		const sender = event.sender;
-		const frame = event.senderFrame;
-		const controller = sourceController;
-		if (frame !== sender.mainFrame) throw new Error("scene-memory origin: request came from an unowned frame");
-		const guest = controller.resolveGuest(sender, frame);
-		if (guest === void 0) {
-			if (sender === mainWindow?.webContents) return null;
-			throw new Error("scene-memory origin: request came from an unowned guest");
-		}
-		if (guest.scope !== "role") {
-			if (["account", "account-sidebar", "scene-component"].includes(guest.scope)) return null;
-			throw new Error("scene-memory origin: request came from an unsupported guest");
-		}
-		const source = {
-			scope: "role",
-			guestId: sender.id,
-			generation: guest.generation,
-			sceneId: guest.sceneId,
-			panelId: guest.panelId,
-			sessionId: guest.sessionId,
-			bindingRevision: guest.bindingRevision
+		let phase = "sender";
+		let endpointClass = "other";
+		const observeGrant = (result, code = "none") => {
+			try { observeStartup("source-shell", "phase", { operation: "origin-grant", phase, endpointClass, result, code }); } catch {}
 		};
-		if (!Number.isSafeInteger(source.generation) || typeof source.sessionId !== "string" || typeof source.bindingRevision !== "string") throw new Error("scene-memory origin: incomplete role guest identity");
-		const host = backend.host;
-		if (typeof host?.issueSceneMemoryOriginGrant !== "function") throw new Error("scene-memory origin: Host is unavailable");
-		const grant = await host.issueSceneMemoryOriginGrant({ endpoint: request.endpoint, httpMethod: request.httpMethod, bodyBytesBase64: Buffer.from(request.bodyBytes).toString("base64"), source });
-		const current = sourceController?.resolveGuest(sender, frame);
-		if (sourceController !== controller || sender.isDestroyed() || sender.mainFrame !== frame
-			|| current?.scope !== "role" || current.generation !== source.generation
-			|| current.sceneId !== source.sceneId || current.panelId !== source.panelId
-			|| current.sessionId !== source.sessionId || current.bindingRevision !== source.bindingRevision) {
-			throw new Error("scene-memory origin: role guest changed while grant was pending");
+		const safeGrantCode = (error) => {
+			try {
+				const code = error !== null && (typeof error === "object" || typeof error === "function") ? error.code : void 0;
+				return ["unowned_guest", "stale_role_binding", "role_session_not_durable"].includes(code) ? code : "unknown";
+			} catch { return "unknown"; }
+		};
+		try {
+			assertDesktopSender(event, ["app"]);
+			phase = "request-shape";
+			if (!request || typeof request.endpoint !== "string" || request.endpoint.split("/").some((segment) => segment === "" || segment === "." || segment === ".." || !/^[A-Za-z0-9_$.-]+$/.test(segment))
+				|| request.httpMethod !== "POST" || !(request.bodyBytes instanceof Uint8Array)
+				|| request.bodyBytes.byteLength === 0 || request.bodyBytes.byteLength > 2 * 1024 * 1024) throw new Error("scene-memory origin: invalid grant request");
+			endpointClass = request.endpoint === "session/list" ? "session-list" : "other";
+			phase = "source-mode";
+			observeGrant("entered");
+			if (!sourceMode || sourceController === void 0) { observeGrant("null"); return null; }
+			const sender = event.sender;
+			const frame = event.senderFrame;
+			const controller = sourceController;
+			phase = "frame";
+			if (frame !== sender.mainFrame) throw new Error("scene-memory origin: request came from an unowned frame");
+			phase = "guest";
+			const guest = controller.resolveGuest(sender, frame);
+			if (guest === void 0) {
+				if (sender === mainWindow?.webContents) { observeGrant("null"); return null; }
+				throw new Error("scene-memory origin: request came from an unowned guest");
+			}
+			if (guest.scope !== "role") {
+				if (["account", "account-sidebar", "scene-component"].includes(guest.scope)) { observeGrant("null"); return null; }
+				throw new Error("scene-memory origin: request came from an unsupported guest");
+			}
+			phase = "role-identity";
+			const source = {
+				scope: "role",
+				guestId: sender.id,
+				generation: guest.generation,
+				sceneId: guest.sceneId,
+				panelId: guest.panelId,
+				sessionId: guest.sessionId,
+				bindingRevision: guest.bindingRevision
+			};
+			if (!Number.isSafeInteger(source.generation) || typeof source.sessionId !== "string" || typeof source.bindingRevision !== "string") throw new Error("scene-memory origin: incomplete role guest identity");
+			phase = "provider";
+			const host = backend.host;
+			if (typeof host?.issueSceneMemoryOriginGrant !== "function") throw new Error("scene-memory origin: Host is unavailable");
+			const grant = await host.issueSceneMemoryOriginGrant({ endpoint: request.endpoint, httpMethod: request.httpMethod, bodyBytesBase64: Buffer.from(request.bodyBytes).toString("base64"), source });
+			phase = "recheck";
+			const current = sourceController?.resolveGuest(sender, frame);
+			if (sourceController !== controller || sender.isDestroyed() || sender.mainFrame !== frame
+				|| current?.scope !== "role" || current.generation !== source.generation
+				|| current.sceneId !== source.sceneId || current.panelId !== source.panelId
+				|| current.sessionId !== source.sessionId || current.bindingRevision !== source.bindingRevision) {
+				throw new Error("scene-memory origin: role guest changed while grant was pending");
+			}
+			phase = "completed";
+			observeGrant(grant === null ? "null" : "grant");
+			return grant;
+		} catch (error) {
+			observeGrant("error", safeGrantCode(error));
+			throw error;
 		}
-		return grant;
 	});
 	ipcMain.handle(DESKTOP_IPC.boot, async (event) => {
 		assertDesktopSender(event, ["app"]);

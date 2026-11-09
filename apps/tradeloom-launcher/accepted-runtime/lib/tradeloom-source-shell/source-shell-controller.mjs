@@ -165,6 +165,34 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
       try { observePhase({operation:'role-guest',phase:match[1],surface:item.surface}) } catch {}
     } catch {}
   }
+  const observeRoleGuestListProbeMessage = (item, args) => {
+    const details=args[0]
+    const message=typeof details?.message==='string'?details.message:args[2]
+    if(typeof message!=='string'||message.length>180)return
+    const v1=/^TL-ROLE-GUEST-LIST-PROBE\|(guest-list-after-refresh-v1)\|(ok|result-error|throw|unknown)\|([^|]{1,64})\|(chat|files)\|([0-9]{1,16})$/u.exec(message)
+    const v2=/^TL-ROLE-GUEST-LIST-PROBE\|(guest-list-after-refresh-v2)\|(ok|result-error|throw|unknown)\|([^|]{1,64})\|(withdrawn-prefix|carrier-prefix|rpc-call|result-decode|unclassified|none)\|(chat|files)\|([0-9]{1,16})$/u.exec(message)
+    const match=v2||v1
+    if(!match)return
+    const version=v2?2:1, outcome=match[2], code=match[3], reasonHint=v2?match[4]:null
+    const surface=match[v2?5:4], generationText=match[v2?6:5]
+    const validCode=code==='none'||code==='unknown'||code.length<=64&&/^[A-Za-z][A-Za-z0-9_-]*(?:\/[A-Za-z0-9_-]+)*(?![\s\S])/u.test(code)
+    if(!validCode || (outcome==='ok' ? code!=='none' : code==='none'))return
+    if(version===2) {
+      if((outcome==='ok') !== (reasonHint==='none') || (outcome!=='ok' && reasonHint==='none'))return
+      if(['withdrawn-prefix','carrier-prefix','rpc-call','result-decode'].includes(reasonHint) && code!=='gateway/internal')return
+    }
+    try {
+      const contents=item.view.webContents, frame=details?.frame
+      if(closed || contents.isDestroyed() || frame!==contents.mainFrame)return
+      const id=key(item.sceneId,item.panelId), seat=registry.get(item.sceneId,item.panelId), generation=Number(generationText)
+      if(views.get(id)!==item || !seat || seat.view!==item.wrapper || seat.window?.window!==item.parent
+        || surface!==item.surface || !Number.isSafeInteger(item.generation) || !Number.isSafeInteger(generation)
+        || generation!==item.generation)return
+      const fields={operation:'role-guest',phase:'list-probe',surface:item.surface,probeTag:match[1],outcome,code}
+      if(version===2)fields.reasonHint=reasonHint
+      try { observePhase(fields) } catch {}
+    } catch {}
+  }
   const emit = (item, status) => { item.status=status; const seat=registry.get(item.sceneId,item.panelId),placement=seat?.rehomed?'popped-out':'docked',origin=windows.get(item.sceneId)??main;for(const w of new Set([seat?.window.window,origin].filter(Boolean)))if(!w.isDestroyed())try{w.webContents.send('source-shell:status-event',{sceneId:item.sceneId,panelId:item.panelId,status,placement})}catch{} }
   const findRoleTargetForSession = async sessionId => {
     const currentConfig = await getConfig()
@@ -1034,7 +1062,7 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
         const item={sceneId,panelId,sessionId:binding.sessionId,bindingRevision:binding.bindingRevision,surface,generation:++generation,view:v,wrapper,parent:w,status:'loading',loaded:false}; views.set(key(sceneId,panelId),item)
         w.contentView.addChildView(v); v.setVisible(false); v.webContents.setZoomFactor(uiScale); updateOwnership(v.webContents,w);raiseAccountOverlay(w)
         if(accountSidebarOpen&&accountSidebar&&accountSidebar.parent===w&&!accountGlobalPanel)w.contentView.addChildView(accountSidebar.view)
-        v.webContents.on('console-message',(...args)=>observeRoleGuestMessage(item,args))
+        v.webContents.on('console-message',(...args)=>{observeRoleGuestMessage(item,args);observeRoleGuestListProbeMessage(item,args)})
         v.webContents.once('destroyed',()=>revoke(item)); v.webContents.once('render-process-gone',()=>{ emit(item,'error'); revoke(item) })
         v.webContents.on('focus',()=>{focusedGuests.set(item.parent,v.webContents);item.parent.webContents.send('source-shell:native-focus')})
         v.webContents.on('did-start-navigation',details=>{ if(details.isMainFrame && item.loaded && !(details.isSameDocument && typeof details.url==='string' && details.url.startsWith('dsh-app://app/'))) revoke(item) })

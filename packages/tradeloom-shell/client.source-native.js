@@ -3,6 +3,7 @@ window.__ModuleLoader__.load({
   chunk: 'client.source-native.js',
   factory(require) {
     const React = require('react'), h = React.createElement
+    const gatewayApi = require('@deepseek-ai/dsh-api-gateway/client')
     const valid = d => d && typeof d.sceneId === 'string' && typeof d.panelId === 'string' && typeof d.sessionId === 'string' && d.sessionId && ['chat','files'].includes(d.surface) && Number.isSafeInteger(d.generation)
     const same = (a,b) => valid(a) && valid(b) && ['sceneId','panelId','sessionId','surface','generation'].every(k => a[k] === b[k])
     const reportRoleGuestPhase = (descriptor, phase) => {
@@ -118,6 +119,7 @@ window.__ModuleLoader__.load({
               reportRoleGuestPhase(descriptor,'loader-wait-end')
             }
             let refreshed=false
+            let listProbeStarted=false
             const refreshCatalog=async()=>{
               if(refreshed)return list.getSnapshot()
               refreshed=true
@@ -129,7 +131,38 @@ window.__ModuleLoader__.load({
             if(connection.interactions==='none')catalog=await refreshCatalog()
             else if(catalog?.phase!=='ready' || (Array.isArray(catalog?.ids)&&!catalog.ids.includes(descriptor.sessionId)))catalog=await refreshCatalog()
             if(!liveNow()){reportRoleGuestPhase(descriptor,'not-live');return}
-            if(catalog?.phase!=='ready') { reportRoleGuestPhase(descriptor,'catalog-not-ready');throw Error('session catalog not ready') }
+            if(catalog?.phase!=='ready') {
+              if(!listProbeStarted && liveNow() && same(descriptor,latest.current)) {
+                listProbeStarted=true
+                const safeRemoteCode=error=>error?.isDSHRemoteError===true && typeof error.code==='string' && error.code!=='none' && error.code.length<=64 && /^[A-Za-z][A-Za-z0-9_-]*(?:\/[A-Za-z0-9_-]+)*(?![\s\S])/u.test(error.code)?error.code:'unknown'
+                const safeReasonHint=error=>{
+                  if(error?.isDSHRemoteError!==true || error.code!=='gateway/internal')return 'unclassified'
+                  try {
+                    const phase=gatewayApi?.getInvocationFailurePhase?.(error)
+                    return phase==='rpc-call'||phase==='result-decode'?phase:'unclassified'
+                  } catch { return 'unclassified' }
+                }
+                const reportListProbe=(outcome,code,reasonHint)=>{
+                  if(!liveNow() || !same(descriptor,latest.current))return
+                  const message='TL-ROLE-GUEST-LIST-PROBE|guest-list-after-refresh-v2|'+outcome+'|'+code+'|'+reasonHint+'|'+descriptor.surface+'|'+descriptor.generation
+                  if(message.length>170)return
+                  try { console.info(message) } catch {}
+                }
+                void (async()=>{
+                  try {
+                    const result=await ctx.remote.session.list({})
+                    if(!liveNow() || !same(descriptor,latest.current))return
+                    reportListProbe(result?.ok===true?'ok':result?.ok===false?'result-error':'unknown',
+                      result?.ok===true?'none':safeRemoteCode(result?.error),
+                      result?.ok===true?'none':safeReasonHint(result?.error))
+                  } catch(error) {
+                    if(!liveNow() || !same(descriptor,latest.current))return
+                    reportListProbe('throw',safeRemoteCode(error),safeReasonHint(error))
+                  }
+                })().catch(()=>{})
+              }
+              reportRoleGuestPhase(descriptor,'catalog-not-ready');throw Error('session catalog not ready')
+            }
             if (!live) { reportRoleGuestPhase(descriptor, 'not-live'); return }
             if(Array.isArray(catalog.ids)&&!catalog.ids.includes(descriptor.sessionId))reportRoleGuestPhase(descriptor,'catalog-missing-bound')
             try { reference=ctx.sessions.retain(descriptor.sessionId,{source:'sourceNativeSurface'}) }
