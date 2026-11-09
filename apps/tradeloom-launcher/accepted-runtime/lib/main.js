@@ -60,7 +60,8 @@ const ROLE_GUEST_PHASES = new Set([
 	"generation-wait-start", "generation-wait-end",
 	"loader-wait-start", "loader-wait-end",
 	"catalog-refresh-start", "catalog-refresh-end", "catalog-refresh-error",
-	"terminal-error"
+	"terminal-error",
+	"list-probe"
 ]);
 const SOURCE_FAILURE_OPERATIONS = [
 	"role-create",
@@ -520,6 +521,16 @@ function createStartupObservation(path, append = (file, content) => {
 					safe.operation = "role-guest";
 					safe.phase = fields.phase;
 					safe.surface = fields.surface;
+					if (fields.phase === "list-probe") {
+						const validCode = fields.code === "none" || fields.code === "unknown"
+							|| typeof fields.code === "string" && /^[A-Za-z][A-Za-z0-9_-]{0,63}$/u.test(fields.code);
+						if (fields.probeTag !== "guest-list-after-refresh-v1"
+							|| !["ok", "result-error", "throw", "unknown"].includes(fields.outcome)
+							|| !validCode || (fields.outcome === "ok") !== (fields.code === "none")) return;
+						safe.probeTag = fields.probeTag;
+						safe.outcome = fields.outcome;
+						safe.code = fields.code;
+					}
 				} else return;
 			} else {
 				for (const key of ["windowId", "windowCount"]) {

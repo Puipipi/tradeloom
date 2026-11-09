@@ -118,6 +118,7 @@ window.__ModuleLoader__.load({
               reportRoleGuestPhase(descriptor,'loader-wait-end')
             }
             let refreshed=false
+            let listProbeStarted=false
             const refreshCatalog=async()=>{
               if(refreshed)return list.getSnapshot()
               refreshed=true
@@ -129,7 +130,28 @@ window.__ModuleLoader__.load({
             if(connection.interactions==='none')catalog=await refreshCatalog()
             else if(catalog?.phase!=='ready' || (Array.isArray(catalog?.ids)&&!catalog.ids.includes(descriptor.sessionId)))catalog=await refreshCatalog()
             if(!liveNow()){reportRoleGuestPhase(descriptor,'not-live');return}
-            if(catalog?.phase!=='ready') { reportRoleGuestPhase(descriptor,'catalog-not-ready');throw Error('session catalog not ready') }
+            if(catalog?.phase!=='ready') {
+              if(!listProbeStarted && liveNow() && same(descriptor,latest.current)) {
+                listProbeStarted=true
+                const safeRemoteCode=error=>error?.isDSHRemoteError===true && typeof error.code==='string' && /^[A-Za-z][A-Za-z0-9_-]{0,63}$/u.test(error.code)?error.code:'unknown'
+                const reportListProbe=(outcome,code)=>{
+                  if(!liveNow() || !same(descriptor,latest.current))return
+                  try { console.info('TL-ROLE-GUEST-LIST-PROBE|guest-list-after-refresh-v1|'+outcome+'|'+code+'|'+descriptor.surface+'|'+descriptor.generation) } catch {}
+                }
+                void (async()=>{
+                  try {
+                    const result=await ctx.remote.session.list({})
+                    if(!liveNow() || !same(descriptor,latest.current))return
+                    reportListProbe(result?.ok===true?'ok':result?.ok===false?'result-error':'unknown',
+                      result?.ok===true?'none':safeRemoteCode(result?.error))
+                  } catch(error) {
+                    if(!liveNow() || !same(descriptor,latest.current))return
+                    reportListProbe('throw',safeRemoteCode(error))
+                  }
+                })().catch(()=>{})
+              }
+              reportRoleGuestPhase(descriptor,'catalog-not-ready');throw Error('session catalog not ready')
+            }
             if (!live) { reportRoleGuestPhase(descriptor, 'not-live'); return }
             if(Array.isArray(catalog.ids)&&!catalog.ids.includes(descriptor.sessionId))reportRoleGuestPhase(descriptor,'catalog-missing-bound')
             try { reference=ctx.sessions.retain(descriptor.sessionId,{source:'sourceNativeSurface'}) }

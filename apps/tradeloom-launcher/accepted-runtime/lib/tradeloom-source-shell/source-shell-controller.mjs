@@ -165,6 +165,23 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
       try { observePhase({operation:'role-guest',phase:match[1],surface:item.surface}) } catch {}
     } catch {}
   }
+  const observeRoleGuestListProbeMessage = (item, args) => {
+    const details=args[0]
+    const message=typeof details?.message==='string'?details.message:args[2]
+    if(typeof message!=='string'||message.length>180)return
+    const match=/^TL-ROLE-GUEST-LIST-PROBE\|([a-z0-9-]{1,40})\|(ok|result-error|throw|unknown)\|([A-Za-z][A-Za-z0-9_-]{0,63}|none|unknown)\|(chat|files)\|([0-9]{1,16})$/u.exec(message)
+    if(!match || match[1]!=='guest-list-after-refresh-v1')return
+    if(match[2]==='ok' ? match[3]!=='none' : match[3]==='none')return
+    try {
+      const contents=item.view.webContents, frame=details?.frame
+      if(closed || contents.isDestroyed() || frame!==contents.mainFrame)return
+      const id=key(item.sceneId,item.panelId), seat=registry.get(item.sceneId,item.panelId), generation=Number(match[5])
+      if(views.get(id)!==item || !seat || seat.view!==item.wrapper || seat.window?.window!==item.parent
+        || match[4]!==item.surface || !Number.isSafeInteger(item.generation) || !Number.isSafeInteger(generation)
+        || generation!==item.generation)return
+      try { observePhase({operation:'role-guest',phase:'list-probe',surface:item.surface,probeTag:match[1],outcome:match[2],code:match[3]}) } catch {}
+    } catch {}
+  }
   const emit = (item, status) => { item.status=status; const seat=registry.get(item.sceneId,item.panelId),placement=seat?.rehomed?'popped-out':'docked',origin=windows.get(item.sceneId)??main;for(const w of new Set([seat?.window.window,origin].filter(Boolean)))if(!w.isDestroyed())try{w.webContents.send('source-shell:status-event',{sceneId:item.sceneId,panelId:item.panelId,status,placement})}catch{} }
   const findRoleTargetForSession = async sessionId => {
     const currentConfig = await getConfig()
@@ -1034,7 +1051,7 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
         const item={sceneId,panelId,sessionId:binding.sessionId,bindingRevision:binding.bindingRevision,surface,generation:++generation,view:v,wrapper,parent:w,status:'loading',loaded:false}; views.set(key(sceneId,panelId),item)
         w.contentView.addChildView(v); v.setVisible(false); v.webContents.setZoomFactor(uiScale); updateOwnership(v.webContents,w);raiseAccountOverlay(w)
         if(accountSidebarOpen&&accountSidebar&&accountSidebar.parent===w&&!accountGlobalPanel)w.contentView.addChildView(accountSidebar.view)
-        v.webContents.on('console-message',(...args)=>observeRoleGuestMessage(item,args))
+        v.webContents.on('console-message',(...args)=>{observeRoleGuestMessage(item,args);observeRoleGuestListProbeMessage(item,args)})
         v.webContents.once('destroyed',()=>revoke(item)); v.webContents.once('render-process-gone',()=>{ emit(item,'error'); revoke(item) })
         v.webContents.on('focus',()=>{focusedGuests.set(item.parent,v.webContents);item.parent.webContents.send('source-shell:native-focus')})
         v.webContents.on('did-start-navigation',details=>{ if(details.isMainFrame && item.loaded && !(details.isSameDocument && typeof details.url==='string' && details.url.startsWith('dsh-app://app/'))) revoke(item) })
