@@ -133,7 +133,7 @@ window.__ModuleLoader__.load({
             if(catalog?.phase!=='ready') {
               if(!listProbeStarted && liveNow() && same(descriptor,latest.current)) {
                 listProbeStarted=true
-                const safeRemoteCode=error=>error?.isDSHRemoteError===true && typeof error.code==='string' && /^[A-Za-z][A-Za-z0-9_-]{0,63}$/u.test(error.code)?error.code:'unknown'
+                const safeRemoteCode=error=>error?.isDSHRemoteError===true && typeof error.code==='string' && error.code!=='none' && error.code.length<=64 && /^[A-Za-z][A-Za-z0-9_-]*(?:\/[A-Za-z0-9_-]+)*(?![\s\S])/u.test(error.code)?error.code:'unknown'
                 const reportListProbe=(outcome,code)=>{
                   if(!liveNow() || !same(descriptor,latest.current))return
                   try { console.info('TL-ROLE-GUEST-LIST-PROBE|guest-list-after-refresh-v1|'+outcome+'|'+code+'|'+descriptor.surface+'|'+descriptor.generation) } catch {}

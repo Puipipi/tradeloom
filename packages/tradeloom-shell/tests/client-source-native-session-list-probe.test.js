@@ -122,8 +122,19 @@ test('real SourceNative effect classifies result and thrown errors without loggi
   const cases = [
     { remoteList: async () => ({ ok: true, value: { items: [{ sessionId: 'private-fixture-id' }] } }), outcome: 'ok', code: 'none' },
     { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: 'FIXTURE_REMOTE_CODE', message: 'private fixture text' } }), outcome: 'result-error', code: 'FIXTURE_REMOTE_CODE' },
+    { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: 'gateway/internal', message: 'private fixture text' } }), outcome: 'result-error', code: 'gateway/internal' },
     { remoteList: async () => { throw { isDSHRemoteError: true, code: 'FIXTURE_THROW_CODE', message: 'private fixture text' } }, outcome: 'throw', code: 'FIXTURE_THROW_CODE' },
+    { remoteList: async () => { throw { isDSHRemoteError: true, code: 'gateway/cancelled', message: 'private fixture text' } }, outcome: 'throw', code: 'gateway/cancelled' },
+    { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: 'bad|code' } }), outcome: 'result-error', code: 'unknown' },
+    { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: 'gateway//internal' } }), outcome: 'result-error', code: 'unknown' },
+    { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: '/gateway/internal' } }), outcome: 'result-error', code: 'unknown' },
+    { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: 'gateway/internal/' } }), outcome: 'result-error', code: 'unknown' },
     { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: 'bad code with spaces' } }), outcome: 'result-error', code: 'unknown' },
+    { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: 'gateway/internal\n' } }), outcome: 'result-error', code: 'unknown' },
+    { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: 'gateway/internal\r\n' } }), outcome: 'result-error', code: 'unknown' },
+    { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: 'a'.repeat(63) + '/b' } }), outcome: 'result-error', code: 'unknown' },
+    { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: 'none' } }), outcome: 'result-error', code: 'unknown' },
+    { remoteList: async () => ({ ok: false, error: { isDSHRemoteError: true, code: 'a'.repeat(62) + '/b' } }), outcome: 'result-error', code: 'a'.repeat(62) + '/b' },
     { remoteList: async () => ({ ok: false, error: { code: 'FIXTURE_UNBRANDED_CODE' } }), outcome: 'result-error', code: 'unknown' }
   ]
   for (const entry of cases) {

@@ -15,7 +15,7 @@ const readBlock = (source, startMarker, endMarker) => {
   assert.ok(start >= 0 && end > start, 'required production function boundary exists')
   return source.slice(start, end)
 }
-const wireMessage = ({ tag = 'guest-list-after-refresh-v1', outcome = 'result-error', code = 'FIXTURE_REMOTE_CODE', surface = 'chat', generation = 7 } = {}) =>
+const wireMessage = ({ tag = 'guest-list-after-refresh-v1', outcome = 'result-error', code = 'gateway/internal', surface = 'chat', generation = 7 } = {}) =>
   'TL-ROLE-GUEST-LIST-PROBE|' + tag + '|' + outcome + '|' + code + '|' + surface + '|' + generation
 
 class FakeWebContents extends EventEmitter {
@@ -136,14 +136,23 @@ test('actual SourceShellController console listener forwards only current guest 
   assert.equal(probePhases.length, 1, 'actual controller listener accepts the current guest main-frame message')
   assert.deepEqual(probePhases[0], {
     operation: 'role-guest', phase: 'list-probe', surface: guestDescriptor.surface,
-    probeTag: 'guest-list-after-refresh-v1', outcome: 'result-error', code: 'FIXTURE_REMOTE_CODE'
+    probeTag: 'guest-list-after-refresh-v1', outcome: 'result-error', code: 'gateway/internal'
   })
   const accepted = records.filter(record => record.phase === 'list-probe')
   assert.equal(accepted.length, 1, 'current guest main-frame probe reaches the actual Main startup observer')
   assert.deepEqual(
     Object.fromEntries(['probeTag', 'outcome', 'code'].map(key => [key, accepted[0][key]])),
-    { probeTag: 'guest-list-after-refresh-v1', outcome: 'result-error', code: 'FIXTURE_REMOTE_CODE' }
+    { probeTag: 'guest-list-after-refresh-v1', outcome: 'result-error', code: 'gateway/internal' }
   )
+  send(wireMessage({ code: 'gateway/cancelled', surface: guestDescriptor.surface, generation: guestDescriptor.generation }))
+  const slashAccepted = records.filter(record => record.phase === 'list-probe')
+  assert.equal(slashAccepted.length, 2, 'second SDK namespaced code also reaches Main')
+  assert.equal(slashAccepted[1].code, 'gateway/cancelled')
+  const maxCode = 'a'.repeat(62) + '/b'
+  send(wireMessage({ code: maxCode, surface: guestDescriptor.surface, generation: guestDescriptor.generation }))
+  const boundedAccepted = records.filter(record => record.phase === 'list-probe')
+  assert.equal(boundedAccepted.length, 3, '64-character namespaced code remains within the accepted bound')
+  assert.equal(boundedAccepted[2].code, maxCode)
   assert.equal('sessionId' in accepted[0], false)
   assert.equal('message' in accepted[0], false)
   assert.equal('items' in accepted[0], false)
@@ -167,17 +176,19 @@ test('actual SourceShellController console listener forwards only current guest 
   send(wireMessage({ generation: guestDescriptor.generation + 1, surface: guestDescriptor.surface }))
   send(wireMessage({ surface: guestDescriptor.surface === 'chat' ? 'files' : 'chat', generation: guestDescriptor.generation }))
   send(wireMessage({ tag: 'unexpected', surface: guestDescriptor.surface, generation: guestDescriptor.generation }))
-  send(wireMessage({ code: 'bad code', surface: guestDescriptor.surface, generation: guestDescriptor.generation }))
+  for (const code of ['bad|code', 'a//b', '/a/b', 'a/b/', 'a'.repeat(63) + '/b', 'a/b\n', 'a/b\r\n', 'none']) {
+    send(wireMessage({ code, surface: guestDescriptor.surface, generation: guestDescriptor.generation }))
+  }
   send(wireMessage({ outcome: 'ok', code: 'FIXTURE_REMOTE_CODE', surface: guestDescriptor.surface, generation: guestDescriptor.generation }))
   send(validWire + 'x'.repeat(200))
   assert.equal(records.length, beforeRejects, 'subframe, stale generation, wrong surface/tag/code, ok-with-code, and oversized messages are rejected')
 
   send(validWire)
-  assert.equal(records.filter(record => record.phase === 'list-probe').length, 3, 'well-formed event remains observable')
+  assert.equal(records.filter(record => record.phase === 'list-probe').length, beforeRejects + 1, 'well-formed event remains observable')
   guestContents.destroy()
   send(validWire)
-  assert.equal(records.filter(record => record.phase === 'list-probe').length, 3, 'destroyed/revoked guest seat is rejected')
+  assert.equal(records.filter(record => record.phase === 'list-probe').length, beforeRejects + 1, 'destroyed/revoked guest seat is rejected')
   await controller.destroy()
   send(validWire)
-  assert.equal(records.filter(record => record.phase === 'list-probe').length, 3, 'events after controller close are ignored')
+  assert.equal(records.filter(record => record.phase === 'list-probe').length, beforeRejects + 1, 'events after controller close are ignored')
 })

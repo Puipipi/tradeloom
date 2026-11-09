@@ -523,7 +523,7 @@ function createStartupObservation(path, append = (file, content) => {
 					safe.surface = fields.surface;
 					if (fields.phase === "list-probe") {
 						const validCode = fields.code === "none" || fields.code === "unknown"
-							|| typeof fields.code === "string" && /^[A-Za-z][A-Za-z0-9_-]{0,63}$/u.test(fields.code);
+							|| typeof fields.code === "string" && fields.code.length <= 64 && /^[A-Za-z][A-Za-z0-9_-]*(?:\/[A-Za-z0-9_-]+)*(?![\s\S])/u.test(fields.code);
 						if (fields.probeTag !== "guest-list-after-refresh-v1"
 							|| !["ok", "result-error", "throw", "unknown"].includes(fields.outcome)
 							|| !validCode || (fields.outcome === "ok") !== (fields.code === "none")) return;

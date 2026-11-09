@@ -169,9 +169,11 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
     const details=args[0]
     const message=typeof details?.message==='string'?details.message:args[2]
     if(typeof message!=='string'||message.length>180)return
-    const match=/^TL-ROLE-GUEST-LIST-PROBE\|([a-z0-9-]{1,40})\|(ok|result-error|throw|unknown)\|([A-Za-z][A-Za-z0-9_-]{0,63}|none|unknown)\|(chat|files)\|([0-9]{1,16})$/u.exec(message)
+    const match=/^TL-ROLE-GUEST-LIST-PROBE\|([a-z0-9-]{1,40})\|(ok|result-error|throw|unknown)\|([^|]{1,64})\|(chat|files)\|([0-9]{1,16})$/u.exec(message)
     if(!match || match[1]!=='guest-list-after-refresh-v1')return
-    if(match[2]==='ok' ? match[3]!=='none' : match[3]==='none')return
+    const code=match[3]
+    const validCode=code==='none'||code==='unknown'||code.length<=64&&/^[A-Za-z][A-Za-z0-9_-]*(?:\/[A-Za-z0-9_-]+)*(?![\s\S])/u.test(code)
+    if(!validCode || (match[2]==='ok' ? code!=='none' : code==='none'))return
     try {
       const contents=item.view.webContents, frame=details?.frame
       if(closed || contents.isDestroyed() || frame!==contents.mainFrame)return
