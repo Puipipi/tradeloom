@@ -66,7 +66,7 @@ class FakeWebContentsView {
   getBounds() { return this.bounds }
 }
 
-async function createMainObserver(records) {
+async function createMainObserver(records, append = (_path, line) => records.push(JSON.parse(line))) {
   const mainSource = await readFile(mainPath, 'utf8')
   const constants = readBlock(mainSource, 'const STAGES = [', 'const SOURCE_FAILURE_OPERATIONS =')
   const observerSource = readBlock(mainSource, 'function createStartupObservation(path, append =', 'const observeStartup = createStartupObservation')
@@ -76,7 +76,54 @@ async function createMainObserver(records) {
     appendFileSync: () => {}
   }
   runInNewContext(constants + '\n' + observerSource + '\nglobalThis.__makeObserver = createStartupObservation', sandbox, { filename: mainPath })
-  return sandbox.__makeObserver('D:\\owned\\desktop-startup-observation.jsonl', (_path, line) => records.push(JSON.parse(line)))
+  return sandbox.__makeObserver('D:\\owned\\desktop-startup-observation.jsonl', append)
+}
+
+async function createOriginGrantCase({
+  observe,
+  records,
+  guest,
+  hostCall,
+  mainWindow = null,
+  sourceMode = true,
+  senderCheck,
+  resolveGuest,
+  append
+}) {
+  const mainSource = await readFile(mainPath, 'utf8')
+  const registration = readBlock(
+    mainSource,
+    'ipcMain.handle(DESKTOP_IPC.sceneMemoryOriginGrant, async (event, request) => {',
+    '\n\t});'
+  )
+  const frame = { url: 'fixture://owned-main' }
+  const sender = { id: 91, mainFrame: frame, isDestroyed: () => false }
+  const sourceGuest = guest ?? {
+    scope: 'role', generation: 4, sceneId: 'fixture-scene', panelId: 'fixture-panel',
+    sessionId: 'fixture-session-secret', bindingRevision: 'fixture-revision'
+  }
+  const captured = []
+  const observer = observe ?? await createMainObserver(records ?? captured, append)
+  const guestResolver = resolveGuest ?? ((currentSender, currentFrame) =>
+    currentSender === sender && currentFrame === sender.mainFrame ? sourceGuest : undefined)
+  let handler
+  const sandbox = {
+    DESKTOP_IPC: { sceneMemoryOriginGrant: 'fixture:scene-memory-origin-grant' },
+    ipcMain: { handle(channel, callback) { assert.equal(channel, 'fixture:scene-memory-origin-grant'); handler = callback } },
+    assertDesktopSender: senderCheck ?? ((event, allowed) => {
+      if (!allowed.includes('app') || event.sender !== sender) throw new Error('fixture sender rejected')
+    }),
+    sourceMode,
+    sourceController: { resolveGuest: guestResolver },
+    mainWindow,
+    backend: { host: { issueSceneMemoryOriginGrant: hostCall } },
+    observeStartup: observer,
+    Buffer,
+    Uint8Array
+  }
+  runInNewContext(registration + '\n\t});', sandbox, { filename: mainPath })
+  assert.equal(typeof handler, 'function', 'actual Main handler is captured')
+  return { handler, sender, frame, guest: sourceGuest }
 }
 
 test('actual SourceShellController console listener forwards only current guest probe to the Main allowlist', async t => {
@@ -280,4 +327,176 @@ test('actual SourceShellController console listener forwards only current guest 
   await controller.destroy()
   send(validWire)
   assert.equal(records.filter(record => record.phase === 'list-probe').length, beforeRejects + 3, 'events after controller close are ignored')
+})
+test('actual Main scene-memory grant records bounded outcomes without changing results', async t => {
+  const makeRequest = (endpoint = 'session/list', bodyBytes = new Uint8Array([1, 2, 3])) => ({
+    endpoint, httpMethod: 'POST', bodyBytes
+  })
+  const getRows = records => records.filter(record => record.operation === 'origin-grant')
+
+  await t.test('session/list grant returns the same object and emits only bounded records', async () => {
+    const records = []
+    let hostCalls = 0
+    const grant = { token: 'fixture-token-secret', expiresAt: 123, hostEpoch: 'fixture-host' }
+    const fixture = await createOriginGrantCase({
+      records,
+      hostCall: async request => { hostCalls += 1; assert.equal(request.endpoint, 'session/list'); return grant }
+    })
+    const result = await fixture.handler({ sender: fixture.sender, senderFrame: fixture.frame }, makeRequest())
+    assert.equal(result, grant)
+    assert.equal(hostCalls, 1)
+    const rows = getRows(records)
+    assert.equal(rows.length, 2)
+    assert.deepEqual(rows.map(row => row.result), ['entered', 'grant'])
+    assert.deepEqual(rows.map(row => row.endpointClass), ['session-list', 'session-list'])
+    const serialized = JSON.stringify(rows)
+    for (const secret of ['fixture-token-secret', 'fixture-session-secret', 'fixture-panel', 'session/list']) {
+      assert.equal(serialized.includes(secret), false, `sensitive value omitted: ${secret}`)
+    }
+  })
+
+  await t.test('null mode preserves null and records terminal null', async () => {
+    const records = []
+    let hostCalls = 0
+    const fixture = await createOriginGrantCase({ records, sourceMode: false, hostCall: async () => { hostCalls += 1 } })
+    const result = await fixture.handler({ sender: fixture.sender, senderFrame: fixture.frame }, makeRequest())
+    assert.equal(result, null)
+    assert.equal(hostCalls, 0)
+    const rows = getRows(records)
+    assert.equal(rows.length, 2)
+    assert.deepEqual(rows.map(row => row.result), ['entered', 'null'])
+  })
+
+  await t.test('request rejection before endpoint classification emits one unclassified terminal row', async () => {
+    const records = []
+    const fixture = await createOriginGrantCase({ records, hostCall: async () => assert.fail('Host must not be called') })
+    const rejection = fixture.handler({ sender: fixture.sender, senderFrame: fixture.frame }, makeRequest('session/list', new Uint8Array()))
+    await assert.rejects(rejection, error => error.message === 'scene-memory origin: invalid grant request')
+    const rows = getRows(records)
+    assert.equal(rows.length, 1)
+    assert.deepEqual({ endpointClass: rows[0].endpointClass, result: rows[0].result }, { endpointClass: 'other', result: 'error' })
+  })
+
+  await t.test('sender rejection preserves the same error and does not read endpoint', async () => {
+    const records = []
+    const senderError = new Error('fixture sender rejection')
+    let endpointReads = 0
+    const fixture = await createOriginGrantCase({
+      records,
+      senderCheck: () => { throw senderError },
+      hostCall: async () => assert.fail('Host must not be called')
+    })
+    const request = {
+      get endpoint() { endpointReads += 1; return 'session/list' },
+      httpMethod: 'POST', bodyBytes: new Uint8Array([1])
+    }
+    await assert.rejects(
+      fixture.handler({ sender: fixture.sender, senderFrame: fixture.frame }, request),
+      actual => actual === senderError
+    )
+    assert.equal(endpointReads, 0)
+    const rows = getRows(records)
+    assert.equal(rows.length, 1)
+    assert.deepEqual({ endpointClass: rows[0].endpointClass, phase: rows[0].phase, result: rows[0].result },
+      { endpointClass: 'other', phase: 'sender', result: 'error' })
+  })
+
+  await t.test('allowlisted Host code is recorded without changing error identity', async () => {
+    const records = []
+    const error = Object.assign(new Error('do not serialize'), { code: 'stale_role_binding' })
+    const fixture = await createOriginGrantCase({ records, hostCall: async () => { throw error } })
+    await assert.rejects(
+      fixture.handler({ sender: fixture.sender, senderFrame: fixture.frame }, makeRequest()),
+      actual => actual === error
+    )
+    const rows = getRows(records)
+    assert.equal(rows.length, 2)
+    assert.equal(rows[1].code, 'stale_role_binding')
+    assert.equal(JSON.stringify(rows).includes('do not serialize'), false)
+  })
+
+  await t.test('Host error identity is preserved and unknown code is not serialized', async () => {
+    const records = []
+    const error = Object.assign(new Error('fixture-secret-error-message'), { code: 'fixture-secret-code' })
+    const fixture = await createOriginGrantCase({ records, hostCall: async () => { throw error } })
+    await assert.rejects(
+      fixture.handler({ sender: fixture.sender, senderFrame: fixture.frame }, makeRequest()),
+      actual => actual === error
+    )
+    const rows = getRows(records)
+    assert.equal(rows.length, 2)
+    assert.equal(rows[1].result, 'error')
+    assert.equal(rows[1].code, 'unknown')
+    const serialized = JSON.stringify(rows)
+    assert.equal(serialized.includes('fixture-secret-error-message'), false)
+    assert.equal(serialized.includes('fixture-secret-code'), false)
+  })
+
+  await t.test('recheck failure is recorded after await and its original error is rethrown', async () => {
+    const records = []
+    let resolutions = 0
+    const changed = {
+      scope: 'role', generation: 5, sceneId: 'fixture-scene', panelId: 'fixture-panel',
+      sessionId: 'fixture-session-secret', bindingRevision: 'fixture-revision'
+    }
+    const fixture = await createOriginGrantCase({
+      records,
+      hostCall: async () => ({ token: 'fixture-token-secret', expiresAt: 123, hostEpoch: 'fixture-host' }),
+      resolveGuest: () => (++resolutions === 1 ? {
+        scope: 'role', generation: 4, sceneId: 'fixture-scene', panelId: 'fixture-panel',
+        sessionId: 'fixture-session-secret', bindingRevision: 'fixture-revision'
+      } : changed)
+    })
+    await assert.rejects(
+      fixture.handler({ sender: fixture.sender, senderFrame: fixture.frame }, makeRequest()),
+      error => error.message === 'scene-memory origin: role guest changed while grant was pending'
+    )
+    assert.equal(resolutions, 2)
+    const rows = getRows(records)
+    assert.equal(rows.length, 2)
+    assert.equal(rows[1].result, 'error')
+    assert.equal(rows[1].phase, 'recheck')
+  })
+
+  await t.test('observer append failure does not change the returned grant', async () => {
+    let hostCalls = 0
+    const grant = { token: 'fixture-token-secret', expiresAt: 123, hostEpoch: 'fixture-host' }
+    const fixture = await createOriginGrantCase({
+      records: [],
+      append: () => { throw new Error('observer fixture failure') },
+      hostCall: async () => { hostCalls += 1; return grant }
+    })
+    const result = await fixture.handler({ sender: fixture.sender, senderFrame: fixture.frame }, makeRequest('session/list'))
+    assert.equal(result, grant)
+    assert.equal(hostCalls, 1)
+  })
+
+  await t.test('a directly throwing observer does not change null or Host error', async () => {
+    const observe = () => { throw new Error('observer fixture failure') }
+    const nullFixture = await createOriginGrantCase({
+      records: [], observe, sourceMode: false,
+      hostCall: async () => assert.fail('Host must not be called')
+    })
+    assert.equal(await nullFixture.handler(
+      { sender: nullFixture.sender, senderFrame: nullFixture.frame }, makeRequest()
+    ), null)
+
+    const hostError = Object.assign(new Error('private provider failure'), { code: 'stale_role_binding' })
+    const errorFixture = await createOriginGrantCase({ records: [], observe, hostCall: async () => { throw hostError } })
+    await assert.rejects(
+      errorFixture.handler({ sender: errorFixture.sender, senderFrame: errorFixture.frame }, makeRequest()),
+      actual => actual === hostError
+    )
+  })
+
+  await t.test('non-list endpoints are only classified as other', async () => {
+    const records = []
+    const grant = { token: 'fixture-token-secret', expiresAt: 123, hostEpoch: 'fixture-host' }
+    const fixture = await createOriginGrantCase({ records, hostCall: async () => grant })
+    assert.equal(await fixture.handler({ sender: fixture.sender, senderFrame: fixture.frame }, makeRequest('account/list')), grant)
+    const rows = getRows(records)
+    assert.equal(rows.length, 2)
+    assert.deepEqual(rows.map(row => row.endpointClass), ['other', 'other'])
+    assert.equal(JSON.stringify(rows).includes('account/list'), false)
+  })
 })
