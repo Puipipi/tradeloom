@@ -20,6 +20,7 @@ import {
   createSceneRotationHandlers,
 } from './scene-rotation.js'
 import { DIAGNOSTICS_ROUTE, createDiagnosticsHandler } from './diagnostics-http.js'
+import { registerListenerIdentityRoute } from './listener-identity.js'
 import { registerToolSchemas } from './tool-schemas.js'
 import { registerSkillsOpen } from './skills-open.js'
 import { createNativeImportAuthorizer } from './native-import-authorization.js'
@@ -935,7 +936,43 @@ export function apply(ctx, config = {}) {
     const disposeSceneRotationAbandon = ctx.webServer.register({ kind: 'exact', path: SCENE_ROTATION_ABANDON_ROUTE, handler: sceneRotation.abandon })
     const diagnostics = createDiagnosticsHandler(ctx)
     const disposeDiagnostics = ctx.webServer.register({ kind: 'exact', path: DIAGNOSTICS_ROUTE, handler: diagnostics.handle })
-    return async () => { await sceneMemoryOriginAuthority.dispose(); await sceneRotation.dispose(); artifact.dispose(); diagnostics.dispose(); disposeDiagnostics(); disposeSceneRotationAbandon(); disposeSceneRotationCancel(); disposeSceneRotationResume(); disposeSceneRotationStatus(); disposeSceneRotationConfirm(); disposeSceneRotationPreview(); disposeArtifacts(); disposeArtifactFile(); disposeNativeWorkflow(); disposeWorkflow(); disposeSession(); disposeNewSession(); disposeProfile(); disposeMobileLink(); disposeSourceShellBinding(); disposeScenes(); disposeSceneLayouts(); disposeDockLayouts(); disposeAgentCapabilities(); disposeAgentConfigurationSnapshots(); disposeAgentConfiguration(); disposeToolSchemas(); disposeSkillsOpen() }
+    const listenerIdentityRoute = registerListenerIdentityRoute(ctx)
+    return async () => {
+      let listenerDisposalError
+      try { await listenerIdentityRoute.dispose() } catch (error) { listenerDisposalError = error }
+      try {
+        await sceneMemoryOriginAuthority.dispose()
+        await sceneRotation.dispose()
+        artifact.dispose()
+        diagnostics.dispose()
+        disposeDiagnostics()
+        disposeSceneRotationAbandon()
+        disposeSceneRotationCancel()
+        disposeSceneRotationResume()
+        disposeSceneRotationStatus()
+        disposeSceneRotationConfirm()
+        disposeSceneRotationPreview()
+        disposeArtifacts()
+        disposeArtifactFile()
+        disposeNativeWorkflow()
+        disposeWorkflow()
+        disposeSession()
+        disposeNewSession()
+        disposeProfile()
+        disposeMobileLink()
+        disposeSourceShellBinding()
+        disposeScenes()
+        disposeSceneLayouts()
+        disposeDockLayouts()
+        disposeAgentCapabilities()
+        disposeAgentConfigurationSnapshots()
+        disposeAgentConfiguration()
+        disposeToolSchemas()
+        disposeSkillsOpen()
+      } finally {
+        if (listenerDisposalError) throw listenerDisposalError
+      }
+    }
   }, 'tradeloom-shell: protected session and profile routes')
 }
 
