@@ -322,7 +322,7 @@
     const entries = ACTIONS.filter(([label]) => label === '独立窗口' ? capabilities?.independent === true
       : label === '打开原生会话' || label === '轮换此角色会话' ? capabilities?.nativeConversation === true : true)
       .map(([label, explanation]) => ({ label, explanation }))
-    const panelGrid = panel.closest('#grid')
+    const panelGrid = panel?.closest?.('#grid')
     const sceneKey = sceneKeyFor(panel)
     for (const closedId of closedPanelIdsFor(sceneKey)) {
       if (closedId === panel.dataset.panelId) continue
@@ -353,7 +353,7 @@
           return
         }
         if (restorePanelId) {
-          restorePanel(restorePanelId, panel.closest('#grid'))
+          restorePanel(restorePanelId, panel?.closest?.('#grid'))
           return
         }
         if (label === '关闭面板') {
