@@ -271,6 +271,7 @@ html[data-theme="light"] .tab.active{color:var(--accent)}
   position:relative;container-type:inline-size;
   transition:box-shadow .12s ease;
 }
+.panel.pi-closed{display:none!important}
 .panel:hover{border-color:var(--panel-hover-border)}
 .panel.focus{border-color:var(--cyan);box-shadow:0 0 0 1px var(--focus-ring)}
 .panel.dimmed{opacity:.45}

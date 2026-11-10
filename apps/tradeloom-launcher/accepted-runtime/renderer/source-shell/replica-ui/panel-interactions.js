@@ -7,10 +7,12 @@
     ['轮换此角色会话', '此面板当前没有可轮换的角色会话。'],
     ['应用', '原生应用菜单暂不可用。'],
     ['编辑', '原生编辑菜单暂不可用。'],
+    ['关闭面板', '当前场景至少需要保留一个可见面板。'],
   ]
   const states = new Map()
   const TRACK_STORAGE_KEY = 'uiGridTrackWeights:v1'
   const SPLIT_TREE_STORAGE_KEY = 'uiPanelSplitTree:v2'
+  const CLOSED_PANELS_STORAGE_KEY = 'uiClosedPanels:v1'
   const RESIZE_HIT_CSS_PX = 8
   const RESIZE_START_THRESHOLD_CSS_PX = 4
   const resizeHoverLifecycle = new WeakSet()
@@ -215,6 +217,79 @@
     dialog.showModal()
   }
 
+  function closedPanelStore() {
+    try {
+      const parsed = JSON.parse(window.localStorage?.getItem(CLOSED_PANELS_STORAGE_KEY) || '{}')
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+    } catch { return {} }
+  }
+
+  function persistClosedPanelStore(store) {
+    try { window.localStorage?.setItem(CLOSED_PANELS_STORAGE_KEY, JSON.stringify(store)) } catch {}
+  }
+
+  function sceneKeyFor(panel) {
+    const grid = panel?.closest?.('#grid')
+    const info = grid ? sceneGridInfo(grid) : null
+    return info?.sceneId || panel?.__meta?.sceneId || panel?.dataset?.sceneId || ''
+  }
+
+  function closedPanelIdsFor(sceneKey) {
+    const store = closedPanelStore()
+    return Array.isArray(store[sceneKey]) ? store[sceneKey] : []
+  }
+
+  function recordClosedPanel(sceneKey, panelId, closed) {
+    if (!sceneKey || !panelId) return
+    const store = closedPanelStore()
+    const current = new Set(Array.isArray(store[sceneKey]) ? store[sceneKey] : [])
+    if (closed) current.add(panelId)
+    else current.delete(panelId)
+    if (current.size) store[sceneKey] = [...current]
+    else delete store[sceneKey]
+    persistClosedPanelStore(store)
+  }
+
+  function applyClosedPanels(grid) {
+    const info = grid ? sceneGridInfo(grid) : null
+    if (!info) return
+    const closed = new Set(closedPanelIdsFor(info.sceneId))
+    for (const panel of info.panels) {
+      const shouldHide = closed.has(panel.dataset.panelId)
+      panel.classList.toggle('pi-closed', shouldHide)
+      panel.setAttribute('aria-hidden', shouldHide ? 'true' : 'false')
+    }
+  }
+
+  function visiblePanelsIn(grid) {
+    return [...(grid?.querySelectorAll(':scope > .panel') || [])].filter(panel => !panel.classList.contains('pi-closed'))
+  }
+
+  function closePanel(panel) {
+    const grid = panel?.closest?.('#grid')
+    const sceneKey = sceneKeyFor(panel)
+    const panelId = panel?.dataset?.panelId
+    if (!grid || !sceneKey || !panelId) { announce('当前面板无法关闭。'); return false }
+    if (visiblePanelsIn(grid).length <= 1) { announce('当前场景至少需要保留一个可见面板。'); return false }
+    if (states.get(panel)?.detached) { announce('独立窗口中的面板请先收回工作台。'); return false }
+    recordClosedPanel(sceneKey, panelId, true)
+    applyClosedPanels(grid)
+    updateResizeHandles()
+    announce(`已关闭面板 ${panelId}；可在任意面板的“更多面板操作”中选择“恢复面板”。`)
+    return true
+  }
+
+  function restorePanel(panelId, grid) {
+    const sceneKey = grid ? sceneGridInfo(grid)?.sceneId : ''
+    const target = grid?.querySelector(`:scope > .panel[data-panel-id="${panelId}"]`)
+    if (!target) { announce('未找到要恢复的面板。'); return false }
+    recordClosedPanel(sceneKey, panelId, false)
+    applyClosedPanels(grid)
+    updateResizeHandles()
+    announce(`已恢复面板 ${panelId}。`)
+    return true
+  }
+
   function closeMenu() {
     if (!menu) return
     menu.button.setAttribute('aria-expanded', 'false')
@@ -247,6 +322,15 @@
     const entries = ACTIONS.filter(([label]) => label === '独立窗口' ? capabilities?.independent === true
       : label === '打开原生会话' || label === '轮换此角色会话' ? capabilities?.nativeConversation === true : true)
       .map(([label, explanation]) => ({ label, explanation }))
+    const panelGrid = panel.closest('#grid')
+    const sceneKey = sceneKeyFor(panel)
+    for (const closedId of closedPanelIdsFor(sceneKey)) {
+      if (closedId === panel.dataset.panelId) continue
+      const closedPanel = panelGrid?.querySelector(`:scope > .panel[data-panel-id="${closedId}"]`)
+      if (!closedPanel) continue
+      const title = closedPanel.querySelector('.panel-title')?.textContent?.trim() || closedId
+      entries.push({ label: `恢复面板：${title}`, explanation: '该面板已关闭。', restorePanelId: closedId })
+    }
     const refreshButton = panel.querySelector('.panel-controls .icon-control[aria-label="刷新面板"]')
     const fullscreenButton = panel.querySelector('.panel-controls .pi-fullscreen')
     if (refreshButton && getComputedStyle(refreshButton).display === 'none') {
@@ -255,7 +339,7 @@
     if (fullscreenButton && getComputedStyle(fullscreenButton).display === 'none') {
       entries.unshift({ label: '放大到主体区域', explanation: '将当前面板放大到主体区域。', forwardButton: fullscreenButton })
     }
-    for (const { label, explanation, forwardButton } of entries) {
+    for (const { label, explanation, forwardButton, restorePanelId } of entries) {
       const item = document.createElement('button')
       item.type = 'button'
       item.className = 'pi-menu-item'
@@ -266,6 +350,14 @@
         closeMenu()
         if (forwardButton) {
           forwardButton.click()
+          return
+        }
+        if (restorePanelId) {
+          restorePanel(restorePanelId, panel.closest('#grid'))
+          return
+        }
+        if (label === '关闭面板') {
+          closePanel(panel)
           return
         }
         if (label === '独立窗口') {
@@ -1533,6 +1625,7 @@
       const current = sceneGridInfo(document.getElementById('grid'))
       if (!current || current.sceneId !== activeTreeResize.info.sceneId) finishTreeResize(true)
     }
+    applyClosedPanels(document.getElementById('grid'))
     if (root.matches?.('.panel')) installPanel(root)
     root.querySelectorAll?.('.panel').forEach(installPanel)
     for (const panel of [...states.keys()]) {
