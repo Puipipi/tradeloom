@@ -1,0 +1,97 @@
+diff --git a/index.js b/index.js
+index 78d1f95..bf82af4 100644
+--- a/index.js
++++ b/index.js
+@@ -5,6 +5,8 @@ import { loadLayeredEnv, loadProfileDirectory, reportSkippedBundles } from "@dee
+ import { runProfile } from "@deepseek-ai/dsh/profile-boot";
+ import { resolveDshHome } from "@deepseek-ai/dsh-home-paths";
+ import { realpathSync } from "node:fs";
++import { createHash } from "node:crypto";
++import { writeFile } from "node:fs/promises";
+ import { fileURLToPath, pathToFileURL } from "node:url";
+ import * as officeSkills from "@deepseek-ai/dsh-skill-office";
+ import * as workspaceDependencies from "@deepseek-ai/dsh-tool-workspace-dependencies";
+@@ -421,7 +423,83 @@ async function main() {
+ 			session
+ 		});
+ 	});
++// UI18 CLIENT RESOURCE ORIGIN DIAGNOSTIC START (temporary fixed observation only)
++async function writeUi18ClientResourceOrigin(ctx) {
++	const ids = [
++		"@deepseek-ai/dsh-client-ui-settings-general",
++		"@deepseek-ai/dsh-client-ui-theme",
++		"@deepseek-ai/dsh-client-ui-layout"
++	];
++	const items = ids.map((id) => ({ id, status: "error", errorCode: "client_modules_unavailable" }));
++	try {
++		let graph;
++		try {
++			if (ctx.clientModules && typeof ctx.clientModules.graph === "function") graph = ctx.clientModules.graph();
++		} catch {}
++		if (!graph || !Array.isArray(graph.entries)) {
++			for (const row of items) row.errorCode = "client_modules_unavailable";
++		} else {
++			for (let i = 0; i < ids.length; i++) {
++				const id = ids[i];
++				const row = items[i];
++				try {
++					const matches = graph.entries.filter((entry) => entry && entry.id === id);
++					if (matches.length !== 1) {
++						row.errorCode = matches.length === 0 ? "entry_missing" : "entry_ambiguous";
++						continue;
++					}
++					const entry = matches[0];
++					const clientPath = ctx.clientModules.clientPath(id);
++					if (typeof clientPath !== "string" || !/^[A-Za-z]:[\\/](?![\\/])[^<>:"|?*\x00-\x1F]*$/u.test(clientPath)) {
++						row.errorCode = "client_path_invalid";
++						continue;
++					}
++					row.clientPath = clientPath;
++					if (typeof entry.url !== "string" || !entry.url.startsWith("/")) {
++						row.errorCode = "bundle_reference_invalid";
++						continue;
++					}
++					const bundleUrl = new URL(entry.url, origin);
++					if (bundleUrl.origin !== origin || !bundleUrl.pathname.startsWith("/plugins/")) {
++						row.errorCode = "bundle_reference_invalid";
++						continue;
++					}
++					if (typeof entry.rev === "string" && (/^[A-Fa-f0-9]{32,128}$/u.test(entry.rev) || /^\d{1,16}$/u.test(entry.rev))) row.rev = entry.rev;
++					let response;
++					try {
++						response = await ctx.clientModules.fetchBundle(new Request(bundleUrl));
++					} catch {
++						row.errorCode = "bundle_fetch_failed";
++						continue;
++					}
++					if (!response || response.status !== 200) {
++						row.errorCode = "bundle_http_non_200";
++						continue;
++					}
++					try {
++						const bytes = Buffer.from(await response.arrayBuffer());
++						row.responseBytes = bytes.length;
++						row.responseSha256 = createHash("sha256").update(bytes).digest("hex");
++						row.status = "ok";
++						delete row.errorCode;
++					} catch {
++						row.errorCode = "bundle_read_failed";
++					}
++				} catch {
++					row.errorCode = "entry_inspection_failed";
++				}
++			}
++		}
++		const receipt = { processId: Number.isInteger(process.pid) ? process.pid : null, observedAt: new Date().toISOString(), items };
++		const directory = "C:/Users/23825/AppData/Local/Temp/tradeloom-launch-diag-20261031/ui18-controller-runtime-diagnostic-20261101";
++		await writeFile(directory + "/ui18-client-resource-origin.json", JSON.stringify(receipt, null, 2), { encoding: "utf8" });
++	} catch {
++		// Diagnostics must never affect the Host's normal ready flow.
++	}
++}
++// UI18 CLIENT RESOURCE ORIGIN DIAGNOSTIC END
+ 	const origin = new URL(`${ctx.webServer.protocol}//${ctx.webServer.host}:${String(ctx.webServer.port)}`).origin;
++	void Promise.resolve().then(() => writeUi18ClientResourceOrigin(ctx)).catch(() => void 0);
+ 	const url = ctx.connection.authenticatedUrl(origin);
+ 	if (process.connected) process.send?.({
+ 		type: "ready",

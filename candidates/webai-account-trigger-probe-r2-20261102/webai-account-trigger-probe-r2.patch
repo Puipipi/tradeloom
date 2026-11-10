@@ -1,0 +1,107 @@
+--- a/webai-account-trigger-probe.js
++++ b/webai-account-trigger-probe.js
+@@ -60,7 +60,7 @@ export function createAccountMenuTriggerCapture(doc, provider) {
+     try {
+       let node = event.target
+       if (node && node.nodeType !== 1) node = node.parentElement
+-      for (let depth = 0; node && depth < 3; depth += 1) {
++      for (let depth = 0; node && depth < 4; depth += 1) {
+         if (node.nodeType !== 1 || node.ownerDocument !== doc) break
+         path.push(node)
+         node = node.parentElement
+@@ -83,7 +83,24 @@ export function createAccountMenuTriggerCapture(doc, provider) {
+           return neutralProjection(provider, 'menuNotConfirmed')
+         }
+ 
+-        const projectElement = element => {
++        const readCandidateClassTokens = element => {
++          const result = []
++          try {
++            const list = element.classList
++            const length = list?.length
++            if (!Number.isSafeInteger(length) || length < 0) return Object.freeze(result)
++            const limit = Math.min(64, length)
++            for (let index = 0; index < limit; index += 1) {
++              const token = typeof list.item === 'function' ? list.item(index) : list[index]
++              if (typeof token !== 'string' || !/^[A-Za-z_][A-Za-z0-9_-]{0,47}$/.test(token)) continue
++              if (!result.includes(token)) result.push(token)
++              if (result.length === 8) break
++            }
++          } catch { return Object.freeze([]) }
++          return Object.freeze(result)
++        }
++
++        const projectElement = (element, includeClassTokens = false) => {
+           if (!element || element.nodeType !== 1 || element.ownerDocument !== doc) return null
+           let rawTag = ''
+           let rawRole = ''
+@@ -117,15 +134,16 @@ export function createAccountMenuTriggerCapture(doc, provider) {
+             hasPopup,
+             expanded,
+             isConnected,
++            ...(includeClassTokens ? { classTokens: readCandidateClassTokens(element) } : {}),
+           })
+         }
+ 
+         const liveCandidatePath = candidate?.trusted
+           ? candidate.path.filter(element => {
+             try { return element.isConnected === true && element.ownerDocument === doc } catch { return false }
+-          }).slice(0, 3)
++          }).slice(0, 4)
+           : []
+-        const pointerPath = liveCandidatePath.map(projectElement).filter(Boolean).slice(0, 3)
++        const pointerPath = liveCandidatePath.map(element => projectElement(element, true)).filter(Boolean).slice(0, 4)
+         let matched = 0
+         let controlsSupported = false
+         let controlsUnknown = false
+@@ -263,7 +281,7 @@ function isSafeProjection(value, provider) {
+     || !SAFE_EVIDENCE_KINDS.has(value.evidenceKind)
+     || ![0, 1, 2].includes(value.matchedControlsCount)
+     || ![true, false, null].includes(value.ariaControlsElementsAvailable)
+-    || !Array.isArray(value.pointerPath) || value.pointerPath.length > 3) return false
++    || !Array.isArray(value.pointerPath) || value.pointerPath.length > 4) return false
+   if (value.pointerPath.some(item => !isSafeElementProjection(item))) return false
+   if (value.activeElement !== null && !isSafeActiveProjection(value.activeElement)) return false
+   if (!value.menuConfirmed) {
+@@ -281,16 +299,18 @@ function isSafeProjection(value, provider) {
+ 
+ function isSafeElementProjection(value) {
+   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+-  const allowed = ['tag', 'role', 'isButton', 'visible', 'hasAriaControls', 'hasPopup', 'expanded', 'isConnected'].sort()
++  const allowed = ['tag', 'role', 'isButton', 'visible', 'hasAriaControls', 'hasPopup', 'expanded', 'isConnected', 'classTokens'].sort()
+   const keys = Object.keys(value).sort()
+   return keys.every(key => allowed.includes(key)) && keys.includes('tag') && keys.includes('isButton')
+     && keys.includes('visible') && keys.includes('hasAriaControls') && keys.includes('hasPopup')
+-    && keys.includes('expanded') && keys.includes('isConnected')
++    && keys.includes('expanded') && keys.includes('isConnected') && keys.includes('classTokens')
+     && (value.role === undefined || value.role === null || SAFE_ROLES.has(value.role) || value.role === 'other')
+     && (SAFE_TAGS.has(value.tag) || value.tag === 'other')
+     && typeof value.isButton === 'boolean' && [true, false, null].includes(value.visible)
+     && typeof value.hasAriaControls === 'boolean' && typeof value.hasPopup === 'boolean'
+     && ['true', 'false', 'unknown'].includes(value.expanded) && typeof value.isConnected === 'boolean'
++    && Array.isArray(value.classTokens) && value.classTokens.length <= 8
++    && value.classTokens.every(token => typeof token === 'string' && /^[A-Za-z_][A-Za-z0-9_-]{0,47}$/.test(token))
+ }
+ 
+ function isSafeActiveProjection(value) {
+@@ -315,6 +335,7 @@ function sanitizeProjection(value) {
+     hasPopup: item.hasPopup,
+     expanded: item.expanded,
+     isConnected: item.isConnected,
++    classTokens: Object.freeze([...item.classTokens]),
+   })))
+   const activeElement = value.activeElement === null ? null : Object.freeze({
+     tag: value.activeElement.tag,
+
+--- a/webai-account-trigger-probe.d.ts
++++ b/webai-account-trigger-probe.d.ts
+@@ -16,6 +16,8 @@ export interface WebAiTriggerElementProjection {
+   readonly hasPopup: boolean
+   readonly expanded: 'true' | 'false' | 'unknown'
+   readonly isConnected: boolean
++  /** At most eight bounded ASCII class tokens from a trusted pointer candidate; not auth/static evidence. */
++  readonly classTokens: readonly string[]
+ }
+ 
+ export interface WebAiTriggerActiveElementProjection {
+

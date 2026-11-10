@@ -1,0 +1,45 @@
+✖ host route saves, lists, gates agent drafts on confirmation, and runs (0.564ms)
+✖ center tools propose unconfirmed drafts, return issues, and refuse to run drafts (0.1709ms)
+✖ workflow tools are center scoped and reject execution from experts or unknown roles (0.0971ms)
+✔ planner skill installation uses the supplied isolated workspace (14.7641ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 1
+ℹ fail 3
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 121.2846
+
+✖ failing tests:
+
+test at packages\tradeloom-shell\tests\backend-workflow-service.test.js:71:1
+✖ host route saves, lists, gates agent drafts on confirmation, and runs (0.564ms)
+  ReferenceError: withService is not defined
+      at TestContext.<anonymous> (file:///C:/Users/23825/.codex/worktrees/backend-main-20261029/tradeloom/packages/tradeloom-shell/tests/backend-workflow-service.test.js:71:91)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1306:25)
+      at Test.start (node:internal/test_runner/test:1177:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:385:17)
+
+test at packages\tradeloom-shell\tests\backend-workflow-service.test.js:106:1
+✖ center tools propose unconfirmed drafts, return issues, and refuse to run drafts (0.1709ms)
+  ReferenceError: withService is not defined
+      at TestContext.<anonymous> (file:///C:/Users/23825/.codex/worktrees/backend-main-20261029/tradeloom/packages/tradeloom-shell/tests/backend-workflow-service.test.js:106:102)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1306:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:897:18)
+      at Test.postRun (node:internal/test_runner/test:1447:19)
+      at Test.run (node:internal/test_runner/test:1372:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3)
+
+test at packages\tradeloom-shell\tests\backend-workflow-service.test.js:124:1
+✖ workflow tools are center scoped and reject execution from experts or unknown roles (0.0971ms)
+  ReferenceError: withService is not defined
+      at TestContext.<anonymous> (file:///C:/Users/23825/.codex/worktrees/backend-main-20261029/tradeloom/packages/tradeloom-shell/tests/backend-workflow-service.test.js:124:105)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1306:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:897:18)
+      at Test.postRun (node:internal/test_runner/test:1447:19)
+      at Test.run (node:internal/test_runner/test:1372:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:897:7)

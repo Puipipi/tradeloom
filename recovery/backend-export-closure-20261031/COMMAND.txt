@@ -1,0 +1,18 @@
+Working directory: C:\Users\23825\.codex\worktrees\backend-main-20261029\tradeloom
+Branch: codex/feature-additions
+HEAD: 8799523b562325133492114c6cc403043e9dfda9
+
+Final focused verification:
+node --check packages/tradeloom-shell/policy.js
+node --check packages/tradeloom-shell/profile-tool.js
+node --check packages/tradeloom-shell/step-policy.js
+node --check packages/tradeloom-shell/proxy.js
+node --check packages/tradeloom-shell/workflow-tools.js
+node --check packages/tradeloom-shell/tests/backend-export-closure.test.js
+node --check packages/tradeloom-shell/tests/backend-budget-epochs.test.js
+node --check packages/tradeloom-shell/tests/backend-business-proxy.test.js
+node --check packages/tradeloom-shell/tests/backend-workflow-tools-coexistence.test.js
+node --test packages/tradeloom-shell/tests/backend-export-closure.test.js packages/tradeloom-shell/tests/backend-budget-epochs.test.js packages/tradeloom-shell/tests/backend-business-proxy.test.js packages/tradeloom-shell/tests/backend-workflow-tools-coexistence.test.js
+
+Final exit code: 0. See final3.stdout.txt, final3.stderr.txt and final3.exit.txt.
+The optional DSH WebServer test was skipped because TRADELOOM_DSH_WEBSERVER_LIBRARY was unset.

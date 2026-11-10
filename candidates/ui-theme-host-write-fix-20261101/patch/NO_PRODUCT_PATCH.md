@@ -1,0 +1,1 @@
+No product patch was produced. `before/index.js` and `after/index.js` are byte-identical copies of the current compiled SettingsController member. The isolated real-SDK fixture succeeded, so the live `operation-failed` remains unreproduced and no repair is justified by this evidence.

@@ -1,0 +1,12 @@
+✔ declared backend policy/profile/step/proxy/workflow-tools subpaths resolve from the package (26.6187ms)
+✔ profile reader uses its injected store and requires an Agent-backed session (0.9195ms)
+✔ step policy enforces the existing business-preset turn limit (0.5365ms)
+✔ planner skill asset exists at the declared package-relative path (3.7819ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 136.536

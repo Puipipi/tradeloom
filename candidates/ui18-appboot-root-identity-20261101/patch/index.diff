@@ -1,0 +1,121 @@
+diff --git a/index.js b/index.js
+index 39401ea..497efe0 100644
+--- a/index.js
++++ b/index.js
+@@ -3760,6 +3760,96 @@ function loadLayeredEnv(binName, cwd = process.cwd(), warn = (line) => void proc
+ 	]);
+ }
+ const bootstrapIncludes = /* @__PURE__ */ new WeakMap();
++const rootIdentityDiagnosticKey = Symbol.for("tradeloom.ui18.appBootRootIdentity.v1");
++const rootIdentityDiagnosticModule = Object.freeze({});
++const rootIdentityDiagnosticPrefix = "[UI18_ROOT_IDENTITY_V1]";
++function readRootIdentityDiagnosticSlot(create = false) {
++	try {
++		const descriptor = Object.getOwnPropertyDescriptor(globalThis, rootIdentityDiagnosticKey);
++		if (descriptor !== void 0) {
++			const slot = descriptor.value;
++			return slot?.version === 1 && Array.isArray(slot.records) && typeof slot.overflow === "boolean" ? slot : void 0;
++		}
++		if (!create) return void 0;
++		const slot = { version: 1, records: [], overflow: false };
++		Object.defineProperty(globalThis, rootIdentityDiagnosticKey, { configurable: true, value: slot });
++		return slot;
++	} catch {
++		return void 0;
++	}
++}
++function registerRootIdentityDiagnostic(ctx) {
++	try {
++		if (typeof WeakRef !== "function" || ctx === null || typeof ctx !== "object") return;
++		const root = ctx.root;
++		if (root === null || typeof root !== "object") return;
++		const slot = readRootIdentityDiagnosticSlot(true);
++		if (slot === void 0) return;
++		const live = [];
++		for (const record of slot.records) {
++			if (record.context.deref() !== void 0 && record.root.deref() !== void 0 && record.module.deref() !== void 0) live.push(record);
++		}
++		slot.records = live;
++		if (live.some((record) => record.context.deref() === ctx && record.module.deref() === rootIdentityDiagnosticModule)) return;
++		if (live.length >= 9) {
++			slot.overflow = true;
++			return;
++		}
++		live.push({ context: new WeakRef(ctx), root: new WeakRef(root), module: new WeakRef(rootIdentityDiagnosticModule) });
++	} catch {
++		// Temporary diagnostic observation must not change profile boot behavior.
++	}
++}
++function emitRootIdentityDiagnostic(ctx) {
++	const result = { rootCount: 0, moduleCount: 1 };
++	let loader;
++	let bootRoot;
++	try { bootRoot = ctx?.root; }
++	catch { /* An unreadable root remains unknown. */ }
++	if (bootRoot !== null && typeof bootRoot === "object") result.rootCount = 1;
++	try {
++		try {
++			loader = ctx?.loader;
++			if (loader !== null && typeof loader === "object" && loader.root !== null && typeof loader.root === "object" && typeof loader.resolve === "function") {
++				const rootTree = loader.root.tree;
++				if (rootTree !== null && typeof rootTree === "object" && rootTree.store !== null && typeof rootTree.store === "object") {
++					if (!Object.hasOwn(rootTree.store, "include")) {
++						result.rootIncludePresent = false;
++					} else {
++						let entry;
++						try { entry = loader.resolve("include"); }
++						catch { entry = void 0; }
++						if (entry !== void 0) result.rootIncludePresent = entry === rootTree.store.include && entry.options?.id === "include" && entry.options?.name === "cordis:include" && entry.parent === loader.root && entry.parent.tree === rootTree && rootTree.root === loader.root;
++					}
++				}
++			}
++		} catch {
++			// Inaccessible Loader state is unknown, not evidence of a missing Include.
++		}
++		const slot = readRootIdentityDiagnosticSlot(false);
++		if (slot !== void 0 && bootRoot !== null && typeof bootRoot === "object") {
++			const live = [];
++			for (const record of slot.records) {
++				const context = record.context.deref();
++				const root = record.root.deref();
++				const module = record.module.deref();
++				if (context !== void 0 && root !== void 0 && module !== void 0) live.push({ context, root, module });
++			}
++			const roots = [...new Set([...live.map((record) => record.root), bootRoot])];
++			const modules = [...new Set([...live.filter((record) => record.root === bootRoot).map((record) => record.module), rootIdentityDiagnosticModule])];
++			result.rootCount = Math.min(roots.length, 3);
++			result.moduleCount = Math.min(modules.length, 3);
++			const recordedRoots = [...new Set(live.map((record) => record.root))];
++			if (!slot.overflow && recordedRoots.length === 1) result.ownerRootMatchesBootRoot = bootRoot === recordedRoots[0];
++			const contextRecords = live.filter((record) => record.context === ctx && record.root === bootRoot);
++			const contextModules = [...new Set(contextRecords.map((record) => record.module))];
++			if (!slot.overflow && contextModules.length === 1) result.appBootModuleInstanceMatches = contextModules[0] === rootIdentityDiagnosticModule;
++		}
++		console.log(rootIdentityDiagnosticPrefix + JSON.stringify(result));
++	} catch {
++		// Diagnostic output is best-effort and must not replace the original guard error.
++	}
++}
+ const userPatchesSchema = entryListSchema;
+ /**
+ * Recompose the profile from its complete patch list, together with its runtime resolution. The rows the generation no
+@@ -3800,7 +3890,10 @@ async function recompose(ctx, patches, binName, options, withResolution) {
+ 	let stopped = [];
+ 	try {
+ 		const entry = bootstrapIncludes.get(ctx);
+-		if (entry === void 0) throw new Error(`${binName}: profile reload requires the root Include entry`);
++		if (entry === void 0) {
++			emitRootIdentityDiagnostic(ctx);
++			throw new Error(`${binName}: profile reload requires the root Include entry`);
++		}
+ 		const previousFailures = (await inactiveEntries(ctx, false)).map((failure) => ({
+ 			entry: failure.entry,
+ 			fiber: failure.entry.fiber,
+@@ -4149,6 +4242,7 @@ async function mountRootInclude(ctx, absoluteConfigPath, patches = [], bareModul
+ 	if (loader === void 0) return void 0;
+ 	const entry = loader.resolve(includeId);
+ 	bootstrapIncludes.set(ctx, entry);
++	registerRootIdentityDiagnostic(ctx);
+ 	return entry;
+ }
+ const assembledActivationRejections = /* @__PURE__ */ new Map();

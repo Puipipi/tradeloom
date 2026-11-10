@@ -1,0 +1,250 @@
+diff --git a/webai-auth-state.js b/webai-auth-state.js
+index dfa5e58..0ffcc9c 100644
+--- a/webai-auth-state.js
++++ b/webai-auth-state.js
+@@ -32,6 +32,7 @@ const DOUBAO_ACCOUNT_MENU_PROBE_SCRIPT = `(() => {
+   let triggerVisible = false;
+   let hasPopup = false;
+   let linked = false;
++  let accountMenuLinkedVisible = false;
+   let shortcutAttributePresent = false;
+   const triggers = Array.from(document.querySelectorAll('button[aria-controls]'));
+   for (const menu of menus) {
+@@ -51,9 +52,12 @@ const DOUBAO_ACCOUNT_MENU_PROBE_SCRIPT = `(() => {
+         if (!controls.split(/\\s+/).includes(menuId)) continue;
+         linked = true;
+         triggerPresent = true;
+-        triggerVisible ||= visible(trigger);
++        const isVisible = visible(trigger);
++        triggerVisible ||= isVisible;
+         const popup = trigger.getAttribute('aria-haspopup');
+-        hasPopup ||= popup !== null && popup !== '' && popup !== 'false';
++        const hasPopupValue = popup !== null && popup !== '' && popup !== 'false';
++        hasPopup ||= hasPopupValue;
++        if (hasAddAccount && hasLogout && isVisible && hasPopupValue) accountMenuLinkedVisible = true;
+         shortcutAttributePresent ||= Boolean(trigger.getAttribute('aria-keyshortcuts'));
+       }
+     }
+@@ -63,6 +67,7 @@ const DOUBAO_ACCOUNT_MENU_PROBE_SCRIPT = `(() => {
+     addAccountVisible,
+     logoutVisible,
+     sameMenu,
++    accountMenuLinkedVisible,
+     triggerPresent,
+     triggerVisible,
+     hasPopup,
+@@ -238,7 +243,7 @@ function unknownAccountMenu(provider, generation) {
+   })
+   return Object.freeze({
+     status: 'unknown', provider, menuVisible: false, addAccountVisible: false,
+-    logoutVisible: false, sameMenu: false, ...triggerFields, generation,
++    logoutVisible: false, sameMenu: false, accountMenuLinkedVisible: false, ...triggerFields, generation,
+   })
+ }
+ 
+@@ -259,10 +264,28 @@ function isValidDeepSeekAccountMenuRaw(value) {
+   return true
+ }
+ 
++function isValidDoubaoAccountMenuRaw(value) {
++  const keys = [
++    'menuVisible', 'addAccountVisible', 'logoutVisible', 'sameMenu', 'accountMenuLinkedVisible',
++    'triggerPresent', 'triggerVisible', 'hasPopup', 'linked', 'shortcutAttributePresent',
++  ]
++  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
++  const actualKeys = Object.keys(value).sort()
++  if (actualKeys.length !== keys.length || actualKeys.some((key, index) => key !== [...keys].sort()[index])
++    || keys.some(key => typeof value[key] !== 'boolean')) return false
++  if (value.sameMenu && (!value.menuVisible || !value.addAccountVisible || !value.logoutVisible)) return false
++  if (value.accountMenuLinkedVisible && (!value.sameMenu || !value.triggerPresent
++    || !value.triggerVisible || !value.hasPopup || !value.linked)) return false
++  if (!value.menuVisible && (value.addAccountVisible || value.logoutVisible || value.sameMenu
++    || value.accountMenuLinkedVisible || value.triggerPresent || value.triggerVisible
++    || value.hasPopup || value.linked || value.shortcutAttributePresent)) return false
++  return true
++}
++
+ function projectAccountMenu(provider, value, generation) {
+   const keys = provider === 'deepseek'
+     ? ['menuVisible', 'downloadMobileAppVisible', 'settingsVisible', 'helpAndFeedbackVisible', 'logoutVisible', 'sameContainer', 'triggerPresent', 'triggerVisible', 'hasPopup', 'linked', 'shortcutAttributePresent']
+-    : ['menuVisible', 'addAccountVisible', 'logoutVisible', 'sameMenu', 'triggerPresent', 'triggerVisible', 'hasPopup', 'linked', 'shortcutAttributePresent']
++    : ['menuVisible', 'addAccountVisible', 'logoutVisible', 'sameMenu', 'accountMenuLinkedVisible', 'triggerPresent', 'triggerVisible', 'hasPopup', 'linked', 'shortcutAttributePresent']
+   if (!value || typeof value !== 'object' || Array.isArray(value)) return unknownAccountMenu(provider, generation)
+   const actualKeys = Object.keys(value).sort()
+   if (actualKeys.length !== keys.length || actualKeys.some((key, index) => key !== [...keys].sort()[index])
+@@ -420,6 +443,34 @@ export function createWebAiAuthStateAdapter({
+     return current
+   }
+ 
++  function hasCurrentDoubaoPositive(document) {
++    return current.provider === 'doubao'
++      && current.authState === 'authenticated'
++      && current.evidence === 'doubao-account-menu'
++      && sampledDocument !== null
++      && sameDocument(sampledDocument, document)
++  }
++
++  function doubaoMenuIsPositive(menu) {
++    return menu?.provider === 'doubao'
++      && menu.status === 'observed'
++      && menu.sameMenu === true
++      && menu.addAccountVisible === true
++      && menu.logoutVisible === true
++      && menu.accountMenuLinkedVisible === true
++  }
++
++  function publishDoubaoPositive(document) {
++    current = Object.freeze({
++      provider: 'doubao',
++      authState: 'authenticated',
++      evidence: 'doubao-account-menu',
++      generation,
++    })
++    sampledDocument = document
++    return current
++  }
++
+   function publishUnknownForDocument(document) {
+     current = unknown(provider, generation)
+     sampledDocument = document
+@@ -446,6 +497,37 @@ export function createWebAiAuthStateAdapter({
+     catch { return { kind: 'failed', after } }
+   }
+ 
++  async function readDoubaoLoginNegative(epoch, before) {
++    let raw
++    let failed = false
++    try { raw = await executeReadOnlyProbe(DOUBAO_LOGIN_BUTTON_VISIBLE_SCRIPT) }
++    catch { failed = true }
++    if (epoch !== generation || disposed) return { kind: 'stale' }
++    const after = documentIdentity(readDocumentIdentity)
++    if (after === null || !sameDocument(before, after)) {
++      invalidate()
++      return { kind: 'stale' }
++    }
++    if (failed || typeof raw !== 'boolean') return { kind: 'failed', after }
++    return { kind: 'sampled', after, visible: raw }
++  }
++
++  async function readDoubaoAccountMenu(epoch, before) {
++    let raw
++    let failed = false
++    try { raw = await executeReadOnlyProbe(DOUBAO_ACCOUNT_MENU_PROBE_SCRIPT) }
++    catch { failed = true }
++    if (epoch !== generation || disposed) return { kind: 'stale' }
++    const after = documentIdentity(readDocumentIdentity)
++    if (after === null || !sameDocument(before, after)) {
++      invalidate()
++      return { kind: 'stale' }
++    }
++    if (failed || !isValidDoubaoAccountMenuRaw(raw)) return { kind: 'failed', after }
++    try { return { kind: 'sampled', after, menu: projectAccountMenu('doubao', raw, generation) } }
++    catch { return { kind: 'failed', after } }
++  }
++
+   return Object.freeze({
+     getState() {
+       reconcileDocument()
+@@ -482,13 +564,21 @@ export function createWebAiAuthStateAdapter({
+         if (wasPositive) return current
+         return publishUnknownForDocument(sampled.after)
+       } else if (provider === 'doubao' && typeof executeReadOnlyProbe === 'function') {
+-        let present
+-        try { present = await executeReadOnlyProbe(DOUBAO_LOGIN_BUTTON_VISIBLE_SCRIPT) } catch { present = undefined }
+-        if (epoch !== generation || disposed) return current
+-        if (present === true) {
+-          authState = 'unauthenticated'
+-          evidence = 'doubao-login-button'
++        const wasPositive = hasCurrentDoubaoPositive(before)
++        const negative = await readDoubaoLoginNegative(epoch, before)
++        if (negative.kind === 'stale') return current
++        if (negative.kind === 'failed') return publishUnknownForDocument(negative.after)
++        if (negative.visible) {
++          current = Object.freeze({ provider, authState: 'unauthenticated', evidence: 'doubao-login-button', generation })
++          sampledDocument = negative.after
++          return current
+         }
++        const sampled = await readDoubaoAccountMenu(epoch, negative.after)
++        if (sampled.kind === 'stale') return current
++        if (sampled.kind === 'failed') return publishUnknownForDocument(sampled.after)
++        if (doubaoMenuIsPositive(sampled.menu)) return publishDoubaoPositive(sampled.after)
++        if (wasPositive) return current
++        return publishUnknownForDocument(sampled.after)
+       }
+ 
+       const after = documentIdentity(readDocumentIdentity)
+@@ -528,16 +618,27 @@ export function createWebAiAuthStateAdapter({
+         else if (!wasPositive) publishUnknownForDocument(sampled.after)
+         return sampled.menu
+       }
+-      let result
+-      const script = provider === 'deepseek' ? DEEPSEEK_ACCOUNT_MENU_PROBE_SCRIPT : DOUBAO_ACCOUNT_MENU_PROBE_SCRIPT
+-      try { result = await executeReadOnlyProbe(script) } catch { return unknownAccountMenu(provider, generation) }
+-      if (epoch !== generation || disposed) return unknownAccountMenu(provider, generation)
+-      const after = documentIdentity(readDocumentIdentity)
+-      if (!sameDocument(before, after)) {
+-        invalidate()
++      const wasPositive = hasCurrentDoubaoPositive(before)
++      const negative = await readDoubaoLoginNegative(epoch, before)
++      if (negative.kind === 'stale') return unknownAccountMenu(provider, generation)
++      if (negative.kind === 'failed') {
++        publishUnknownForDocument(negative.after)
++        return unknownAccountMenu(provider, generation)
++      }
++      if (negative.visible) {
++        current = Object.freeze({ provider, authState: 'unauthenticated', evidence: 'doubao-login-button', generation })
++        sampledDocument = negative.after
++        return unknownAccountMenu(provider, generation)
++      }
++      const sampled = await readDoubaoAccountMenu(epoch, negative.after)
++      if (sampled.kind === 'stale') return unknownAccountMenu(provider, generation)
++      if (sampled.kind === 'failed') {
++        publishUnknownForDocument(sampled.after)
+         return unknownAccountMenu(provider, generation)
+       }
+-      try { return projectAccountMenu(provider, result, generation) } catch { return unknownAccountMenu(provider, generation) }
++      if (doubaoMenuIsPositive(sampled.menu)) publishDoubaoPositive(sampled.after)
++      else if (!wasPositive) publishUnknownForDocument(sampled.after)
++      return sampled.menu
+     },
+ 
+     async sampleDeepSeekMenuDevelopment() {
+diff --git a/webai-auth-state.d.ts b/webai-auth-state.d.ts
+index 09d1f8d..20f8280 100644
+--- a/webai-auth-state.d.ts
++++ b/webai-auth-state.d.ts
+@@ -1,6 +1,6 @@
+ export type WebAiProvider = 'deepseek' | 'doubao'
+ export type WebAiAuthState = 'unknown' | 'unauthenticated' | 'authenticated'
+-export type WebAiAuthEvidence = 'none' | 'deepseek-sign-in-path' | 'doubao-login-button' | 'deepseek-account-menu'
++export type WebAiAuthEvidence = 'none' | 'deepseek-sign-in-path' | 'doubao-login-button' | 'deepseek-account-menu' | 'doubao-account-menu'
+ export interface WebAiAuthStateDto {
+   readonly provider: WebAiProvider
+   readonly authState: WebAiAuthState
+@@ -27,7 +27,7 @@ export interface WebAiAuthStateAdapterOptions {
+ export interface WebAiAuthStateAdapter {
+   getState(): WebAiAuthStateDto
+   sample(): Promise<WebAiAuthStateDto>
+-  /** Read-only semantic sample; it never changes authState or emits authenticated. */
++  /** Read-only semantic sample; only a fixed provider-specific rule can emit authenticated. */
+   sampleAccountMenu(): Promise<DoubaoAccountMenuEvidence | DeepSeekAccountMenuEvidence>
+   /** Temporary host-only bounded diagnostics; not exposed through normal status. */
+   sampleDeepSeekMenuDevelopment(): Promise<DeepSeekMenuDevelopmentSample>
+@@ -69,6 +69,8 @@ export interface DoubaoAccountMenuEvidence extends WebAiMenuTriggerEvidence {
+   readonly logoutVisible: boolean
+   /** True only when both allowlisted controls are visible in the same role=menu. */
+   readonly sameMenu: boolean
++  /** True only when a visible haspopup trigger controls this same qualifying menu. */
++  readonly accountMenuLinkedVisible: boolean
+   readonly generation: number
+ }
+ 
+@@ -84,7 +86,7 @@ export interface DeepSeekAccountMenuEvidence extends WebAiMenuTriggerEvidence {
+   readonly generation: number
+ }
+ 
+-/** Authenticated is emitted only for the fixed DeepSeek menu rule in this candidate. */
++/** Authenticated is emitted only for the fixed DeepSeek or strict Doubao menu rules in this candidate. */
+ export function createWebAiAuthStateAdapter(options: WebAiAuthStateAdapterOptions): WebAiAuthStateAdapter
+ /** Returns only the fixed read-only script for the known Doubao login control. */
+ export function doubaoLoginButtonVisibleScript(): string

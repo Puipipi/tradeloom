@@ -1,0 +1,17 @@
+packages/tradeloom-shell/policy.js|exit=0
+packages/tradeloom-shell/profile-tool.js|exit=0
+packages/tradeloom-shell/step-policy.js|exit=0
+packages/tradeloom-shell/proxy.js|exit=0
+packages/tradeloom-shell/workflow-tools.js|exit=0
+packages/tradeloom-shell/tests/backend-export-closure.test.js|exit=0
+packages/tradeloom-shell/tests/backend-budget-epochs.test.js|exit=0
+packages/tradeloom-shell/tests/backend-business-proxy.test.js|exit=0
+packages/tradeloom-shell/tests/backend-workflow-tools-coexistence.test.js|exit=0
+packages/tradeloom-shell/skills/wf-planner/SKILL.md|exists=true
+policy.js|sha256=146364DB031FE97AA350503E7823DFADC024B08452D0A0CD992ECDA92D985E89|MATCH
+profile-tool.js|sha256=6A6DDB71A2E777D0A59FAE6B19DDB60E167AC54EBDC68EB3507CD6E4A8848D3B|MATCH
+step-policy.js|sha256=9749399B874A3599548D0B2E21D299611750991EA5297497126A6CB24F930CCE|MATCH
+proxy.js|sha256=C6452B89DD2E8493D67E3AD1692038AF6B016D7C232D05D07C3D655C66C4BA63|MATCH
+workflow-tools.js|sha256=E279172F4E053CB0247A446E8209CE6FE22C76F40D17B7F903CC76416FBB7D4D|MATCH
+skills\wf-planner\SKILL.md|sha256=AAEC14BD5EC85D4252AEBF905A95F017F52F8DD56A6ECACCE47D853B590811D6|MATCH
+manifest exports/files|PASS

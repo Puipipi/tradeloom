@@ -1,0 +1,14 @@
+Owned workflow-tools behavior regression
+
+Initial four-case run (preserved as workflow-behavior.*):
+node --test --test-name-pattern='^(host route saves, lists, gates agent drafts on confirmation, and runs|center tools propose unconfirmed drafts, return issues, and refuse to run drafts|workflow tools are center scoped and reject execution from experts or unknown roles|planner skill installation uses the supplied isolated workspace)$' packages/tradeloom-shell/tests/backend-workflow-service.test.js
+
+Final focused rerun after adapting the stored-document assertion to this branch's versioned envelope:
+node --check packages/tradeloom-shell/tests/backend-workflow-service.test.js
+node --test --test-name-pattern='^host route saves, lists, gates agent drafts on confirmation, and runs$' packages/tradeloom-shell/tests/backend-workflow-service.test.js
+
+Current curated-file default-entry validation (no name filter; exactly four tests remain in the file):
+node --check packages/tradeloom-shell/tests/backend-workflow-service.test.js
+node --test packages/tradeloom-shell/tests/backend-workflow-service.test.js
+
+The test file retains only the four named backend cases plus their required helpers. The removed source copy is preserved as `backend-workflow-service.before-curation.source.txt`, which is not a discovered test file. Temporary directories are created under this directory's OWNER.txt-guarded workflow-behavior root and cleaned only as exact child directories by the test. No HTTP server is started.

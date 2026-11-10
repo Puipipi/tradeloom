@@ -1,0 +1,104 @@
+diff --git a/host.js b/host.js
+index e5167cc..3b90e12 100644
+--- a/host.js
++++ b/host.js
+@@ -62,6 +62,20 @@ function roleBindingMetadata(role, binding, registry, bindingRevision) {
+   }
+ }
+ 
++function completedOperationBindingMetadata(operation, registry, state) {
++  if (!operation || typeof operation.role !== 'string' || typeof operation.sessionId !== 'string') return undefined
++  const bindingRevision = typeof operation.bindingRevision === 'string'
++    ? operation.bindingRevision
++    : state?.roles?.[operation.role]?.sessionId === operation.sessionId
++      ? getRoleBindingRevision(state, operation.role)
++      : null
++  if (typeof bindingRevision !== 'string') return undefined
++  return roleBindingMetadata(operation.role, {
++    sessionId: operation.sessionId,
++    workspaceId: operation.workspaceId ?? null,
++  }, registry, bindingRevision)
++}
++
+ async function ensureDurableRoleSession(ctx, sessionId, workspace, workspacePath, preset, requireLive = true) {
+   try {
+     const id = sessionId
+@@ -242,6 +256,7 @@ export function createNewSessionHandler(ctx, dependencies = {}) {
+               sessionId: currentOperation.sessionId,
+               bindingRevision: currentOperation.bindingRevision
+                 ?? (state.roles[role]?.sessionId === currentOperation.sessionId ? getRoleBindingRevision(state, role) : null),
++              binding: completedOperationBindingMetadata(currentOperation, ctx.workspaceRegistry, state),
+             }
+             return { operation: currentOperation }
+           }
+@@ -260,6 +275,7 @@ export function createNewSessionHandler(ctx, dependencies = {}) {
+         if (reserved.completed) return { status: 200, body: {
+           role, sessionId: reserved.sessionId, operationId, replayed: true,
+           ...(typeof reserved.bindingRevision === 'string' ? { bindingRevision: reserved.bindingRevision } : {}),
++          ...(reserved.binding ? { binding: reserved.binding } : {}),
+         } }
+         let operation = reserved.operation
+         if (operation.status === 'outcome_unknown' || operation.status === 'created_unbound') {
+@@ -354,7 +370,13 @@ export function createNewSessionHandler(ctx, dependencies = {}) {
+         // when a flush rejected while the previous role binding changed.
+         const conflict = await store.transact(state => {
+           const current = state.sessionCreateOperations[operationId]
+-          if (current?.status === 'completed') return { completed: true, sessionId: current.sessionId, bindingRevision: current.bindingRevision }
++          if (current?.status === 'completed') return {
++            completed: true,
++            sessionId: current.sessionId,
++            binding: completedOperationBindingMetadata(current, ctx.workspaceRegistry, state),
++            bindingRevision: current.bindingRevision
++              ?? (state.roles[role]?.sessionId === current.sessionId ? getRoleBindingRevision(state, role) : null),
++          }
+           if (!current) return { error: 'session-create-outcome-unknown' }
+           if (state.pendingSessionCreateByRole[role] !== operationId
+             || (state.roles[role]?.sessionId ?? null) !== normalized.expectedSessionId) {
+@@ -365,7 +387,9 @@ export function createNewSessionHandler(ctx, dependencies = {}) {
+           return null
+         })
+         if (conflict?.completed) return { status: 200, body: { role, sessionId: conflict.sessionId, operationId, replayed: true,
+-          ...(typeof conflict.bindingRevision === 'string' ? { bindingRevision: conflict.bindingRevision } : {}) } }
++          ...(typeof conflict.bindingRevision === 'string' ? { bindingRevision: conflict.bindingRevision } : {}),
++          ...(conflict.binding ? { binding: conflict.binding } : {}),
++        } }
+         if (conflict) return { status: 409, body: { error: conflict.error, operationId } }
+         workspace = ctx.workspaceRegistry.get(operation.workspaceId)
+         observed = await observePendingSession(ctx, operation.sessionId)
+@@ -377,9 +401,15 @@ export function createNewSessionHandler(ctx, dependencies = {}) {
+ 
+         const result = await store.transact(state => {
+           const current = state.sessionCreateOperations[operationId]
+-          if (!current || current.status === 'completed') return current?.status === 'completed'
+-            ? { ok: true, replayed: true, sessionId: current.sessionId, bindingRevision: current.bindingRevision }
+-            : { ok: false, error: 'session-create-outcome-unknown' }
++          if (!current || current.status === 'completed') {
++            if (current?.status !== 'completed') return { ok: false, error: 'session-create-outcome-unknown' }
++            return {
++              ok: true, replayed: true, sessionId: current.sessionId,
++              bindingRevision: current.bindingRevision
++                ?? (state.roles[role]?.sessionId === current.sessionId ? getRoleBindingRevision(state, role) : null),
++              binding: completedOperationBindingMetadata(current, ctx.workspaceRegistry, state),
++            }
++          }
+           if (state.pendingSessionCreateByRole[role] !== operationId
+             || (state.roles[role]?.sessionId ?? null) !== normalized.expectedSessionId) {
+             current.status = 'created_unbound'
+@@ -403,12 +433,16 @@ export function createNewSessionHandler(ctx, dependencies = {}) {
+           current.bindingRevision = bindingRevision
+           current.status = 'completed'
+           delete state.pendingSessionCreateByRole[role]
+-          return { ok: true, replayed: false, sessionId: operation.sessionId, bindingRevision }
++          return {
++            ok: true, replayed: false, sessionId: operation.sessionId, bindingRevision,
++            binding: roleBindingMetadata(role, state.roles[role], ctx.workspaceRegistry, bindingRevision),
++          }
+         })
+         return result.ok
+           ? { status: result.replayed ? 200 : 201, body: {
+             role, sessionId: result.sessionId, operationId,
+             ...(typeof result.bindingRevision === 'string' ? { bindingRevision: result.bindingRevision } : {}),
++            ...(result.binding ? { binding: result.binding } : {}),
+             ...(result.replayed ? { replayed: true } : {}),
+           } }
+           : { status: 409, body: { error: result.error, operationId } }

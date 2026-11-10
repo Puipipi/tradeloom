@@ -1,0 +1,71 @@
+diff --git a/index.js b/index.js
+index 2f5c3ab..0597819 100644
+--- a/index.js
++++ b/index.js
+@@ -439,7 +439,7 @@ let SettingsController = (() => {
+ 				writeThemeReceipt(receipt, "host-result", true, "none", safeResultThemeRevision(result), false);
+ 				return result;
+ 			} catch (error) {
+-				writeThemeReceipt(receipt, "host-error", false, themeReceiptErrorCode(error), receipt.revision);
++				writeThemeReceipt(receipt, "host-error", false, themeReceiptErrorCode(error), receipt.revision, true, themeReceiptFailureLocation(error));
+ 				throw error;
+ 			}
+ 		}
+@@ -523,13 +523,56 @@ function themeReceiptErrorCode(error) {
+ 		return "operation-failed";
+ 	}
+ }
+-function writeThemeReceipt(receipt, stage, ok, code, revision, useExpectedRevision = true) {
++function themeReceiptFailureLocation(error) {
++	try {
++		let failure = error;
++		if ((typeof error === "object" && error !== null) || typeof error === "function") {
++			const cause = Reflect.get(error, "cause");
++			if (cause !== void 0 && cause !== null) failure = cause;
++		}
++		if (((typeof failure !== "object" || failure === null) && typeof failure !== "function")) return void 0;
++		const stack = Reflect.get(failure, "stack");
++		if (typeof stack !== "string" || stack.length > 8192) return void 0;
++		const frames = stack.split(/\r?\n/).filter(line => /^\s*at\s/.test(line));
++		if (frames.length > 12) return void 0;
++		for (const line of frames) {
++			let frame = line.trim().slice(3).trim();
++			const callsite = frame.indexOf(" (");
++			if (callsite >= 0) frame = frame.slice(callsite + 2);
++			if (frame.endsWith(")")) frame = frame.slice(0, -1);
++			const coordinates = /^(.*):(\d+):(\d+)$/.exec(frame);
++			if (!coordinates) continue;
++			const file = coordinates[1].replace(/\\/g, "/").replace(/^file:\/\//i, "").toLowerCase();
++			let failureSite;
++			if (file.endsWith("/@deepseek-ai/dsh-api-settings-controller/lib/index.js")) failureSite = "controller-compiled";
++			else if (file.endsWith("/@deepseek-ai/dsh-settings/lib/index.js")) failureSite = "forms-compiled";
++			else if (file.endsWith("/@deepseek-ai/dsh-config-editor/lib/index.js")) failureSite = "editor-compiled";
++			else if (file.endsWith("/packages/api/settings-controller/src/index.ts")) failureSite = "controller-source";
++			else if (file.endsWith("/packages/settings/settings/src/index.ts")) failureSite = "forms-source";
++			else if (file.endsWith("/packages/boot/config-editor/src/index.ts")) failureSite = "editor-source";
++			else continue;
++			const failureLine = Number(coordinates[2]);
++			const failureColumn = Number(coordinates[3]);
++			if (!Number.isSafeInteger(failureLine) || failureLine < 0 || !Number.isSafeInteger(failureColumn) || failureColumn < 0) return void 0;
++			return { failureSite, failureLine, failureColumn };
++		}
++	} catch {
++		return void 0;
++	}
++	return void 0;
++}
++function writeThemeReceipt(receipt, stage, ok, code, revision, useExpectedRevision = true, failureLocation) {
+ 	try {
+ 		const row = { diagnosticBuild: receipt.diagnosticBuild, stage, code };
+ 		if (ok !== void 0) row.ok = ok;
+ 		if (receipt.preference !== void 0) row.preference = receipt.preference;
+ 		const finalRevision = safeThemeRevision(revision) ?? (useExpectedRevision ? receipt.revision : void 0);
+ 		if (finalRevision !== void 0) row.revision = finalRevision;
++		if (stage === "host-error" && failureLocation !== void 0) {
++			row.failureSite = failureLocation.failureSite;
++			row.failureLine = failureLocation.failureLine;
++			row.failureColumn = failureLocation.failureColumn;
++		}
+ 		console.log(`[UI18_THEME_RECEIPT_V1]${JSON.stringify(row)}`);
+ 	} catch {
+ 		// Diagnostics must never change the settings write result or exception.

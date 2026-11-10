@@ -1,0 +1,27 @@
+{
+  "result": "passed",
+  "workspace": "C:\\Users\\23825\\AppData\\Local\\Temp\\tl-o09-pg-uofpx1at",
+  "database": "tradeloom_o09_6167c28d5e64",
+  "postgresPort": 63780,
+  "djangoPort": 63781,
+  "pgCtl": "C:\\Users\\23825\\AppData\\Local\\Temp\\tlr4p\\targets\\win-x64\\unsigned-artifacts\\win-unpacked\\resources\\tradeloom\\postgresql\\pgsql\\bin\\pg_ctl.exe",
+  "python": "C:\\Users\\23825\\AppData\\Local\\Temp\\tlr4p\\targets\\win-x64\\unsigned-artifacts\\win-unpacked\\resources\\runtime\\primary-runtime\\dependencies\\python\\python.exe",
+  "create": {
+    "runId": "0573c47c-4ff8-457e-8562-97f28576a638"
+  },
+  "recovery": {
+    "runId": "0573c47c-4ff8-457e-8562-97f28576a638",
+    "status": "interrupted",
+    "doneNode": "done",
+    "activeNode": "interrupted",
+    "unknownNode": "unknown",
+    "resumeEligible": false,
+    "completedNodeIds": [
+      "done_node"
+    ],
+    "blockedNodeIds": [
+      "active_node",
+      "unknown_node"
+    ]
+  }
+}

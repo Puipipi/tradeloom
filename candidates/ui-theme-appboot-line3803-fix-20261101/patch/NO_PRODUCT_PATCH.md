@@ -1,0 +1,1 @@
+No product patch was identified or made. The focused compiled-module fixture succeeded and did not reproduce the live `bootstrapIncludes.get(ctx) === undefined` condition. Preserve the guard; do not apply this candidate.

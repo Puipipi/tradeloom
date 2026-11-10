@@ -1,0 +1,12 @@
+✔ host route saves, lists, gates agent drafts on confirmation, and runs (82.8064ms)
+✔ center tools propose unconfirmed drafts, return issues, and refuse to run drafts (8.9947ms)
+✔ workflow tools are center scoped and reject execution from experts or unknown roles (3.2533ms)
+✔ planner skill installation uses the supplied isolated workspace (9.7918ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 204.9883

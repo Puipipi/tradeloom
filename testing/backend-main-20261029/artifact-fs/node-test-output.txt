@@ -1,0 +1,21 @@
+✔ one-shot native directory grant sends only verified bytes and no private paths to UI (30.0931ms)
+✔ list, wrong owner and unavailable services fail closed without leaking inputs (4.971ms)
+✔ link escape, changing event and disposal do not dispatch backend (10.819ms)
+✔ changed event, native chooser cancellation and changed file version never submit (19.5142ms)
+✔ safe bytes are served only after owner recheck and unsafe preview is refused (3.8552ms)
+✔ event replacement during chooser and changed source after backend are never accepted (20.7608ms)
+✔ backend metadata from another source or incorrect content hash is not returned (35.0716ms)
+✔ directory selection alone never grants reading or backend import (9.7474ms)
+✔ one-shot confirmation denial and ownership changes prevent reads (28.9019ms)
+✔ optional stat size is accepted when actual bounded bytes and versions match (17.6445ms)
+✔ invalid pagination and boolean confirmation never authorize (10.4456ms)
+✔ disposal aborts pending chooser before any read or backend (4.3914ms)
+✔ wrong session or event sequence is rejected before file reads and import (3.6182ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 344.3944

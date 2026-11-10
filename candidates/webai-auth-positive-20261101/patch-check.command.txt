@@ -1,0 +1,1 @@
+git apply --check --no-index webai-auth-state.patch (cwd: patch-check; fixture copied from before/webai-auth-state.js)

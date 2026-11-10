@@ -1,0 +1,114 @@
+✔ a stable center session receives an independent four-delegation bucket for each human RPC (78.6735ms)
+✔ the fifth failed-or-successful delegation is counted, natively cancelled, and remains exhausted after restart (62.2421ms)
+✔ the seventeenth message attempt is counted and cancelled through the native hook (111.819ms)
+✔ a downstream hook failure still consumes the pre-execution attempt (18.8475ms)
+✔ child ownership survives restart and delayed relay or settlement stays on its original request bucket (33.4074ms)
+✔ a disposed child retains only its last attribution until the following settlement is inserted (37.5136ms)
+✔ settlement after a child switches from request A to request B is attributed to B (51.0511ms)
+✔ an already inserted A settlement keeps its A snapshot after the child moves to B (55.1777ms)
+✔ a cold-resumed child session uses the new request while retaining attribution history (49.1109ms)
+✔ a child started during an unowned parent turn receives a persistent deny marker (34.4817ms)
+✔ the child first step joins start-event attribution without awaiting emit listeners (29.8788ms)
+✔ the initial child inbox snapshot waits for the non-awaited start mapping to persist (45.5524ms)
+✔ an already-inboxed old child reply keeps its insertion-time bucket after a newer follow-up (55.5085ms)
+✔ mixed human and delayed-child messages debit both scopes; unknown automatic attribution fails closed (39.4435ms)
+✔ role, depth, and unrelated tools preserve their existing gates (20.7357ms)
+✔ the real state file retains legacy budget history and serializes new attribution fields (21.6955ms)
+✔ root budget hooks are global and foreign presets pass through without reading TradeLoom state (2.8472ms)
+✔ global starts inherit only from the agent named by the registered child parentSession (33.0365ms)
+✔ disposing an older Agent with a reused id does not forget the live Agent mapping (29.63ms)
+✔ task multipart without content length reaches Django as a complete bounded body (3.4475ms)
+✔ business proxy registers only four fixed prefixes and leaves native DSH API routes alone (0.3047ms)
+﹣ registered prefixes match the pinned DSH WebServer contract (0.0715ms) # SKIP
+✔ four aliases stream request and response bytes, preserve download headers, and translate redirects (40.8653ms)
+✔ unauthorized requests stop before body consumption or upstream access (0.2137ms)
+✔ streamed JSON requests get a precise Content-Length before reaching Django (9.2768ms)
+✔ oversized JSON is rejected before upstream and chunked multipart stays streaming (8.9426ms)
+✔ multipart source uploads without a length are bounded and preserve their exact envelope (40.9705ms)
+✔ multipart narrative uploads without a length are bounded and preserve their exact envelope (9.0182ms)
+✔ interrupted narrative multipart upload is rejected before upstream access (0.2809ms)
+✔ interrupted intake multipart upload is rejected before upstream access (0.1214ms)
+✔ aborted streamed JSON is not forwarded partially (0.1046ms)
+✔ declared backend policy/profile/step/proxy/workflow-tools subpaths resolve from the package (28.9442ms)
+✔ profile reader uses its injected store and requires an Agent-backed session (0.945ms)
+✔ step policy enforces the existing business-preset turn limit (0.9696ms)
+✔ planner skill asset exists at the declared package-relative path (3.0818ms)
+✖ center registers seven exact schemas and forwards actual execution context unchanged (2.1705ms)
+✔ non-center configuration registers nothing (0.2269ms)
+✔ runtime rejects extra authority and identity fields before calling service (1.15ms)
+✔ service errors do not disclose raw error text (0.2522ms)
+✖ submit documents graph limit and only fixed safe service codes are public (0.6643ms)
+✔ partial registration failure unregisters already registered definitions (0.246ms)
+✔ composition uses trusted factories, lazy owned home, paired port and no recovery (0.5704ms)
+✔ composition validates trusted port before initialization and ignores non-center completely (0.363ms)
+✔ composition defaults to exact trusted Host pair and copies explicit configuration (0.5565ms)
+✔ explicit incorrect Host pair reaches real PG validation and never falls back (0.9717ms)
+✖ submit expected revisions are optional comparisons with strict wire types (0.3318ms)
+✔ native registration coexists with old local mock tool without replacement (0.2244ms)
+ℹ tests 47
+ℹ suites 0
+ℹ pass 43
+ℹ fail 3
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 924.0632
+
+✖ failing tests:
+
+test at packages\tradeloom-shell\tests\backend-workflow-tools-coexistence.test.js:18:1
+✖ center registers seven exact schemas and forwards actual execution context unchanged (2.1705ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///C:/Users/23825/.codex/worktrees/backend-main-20261029/tradeloom/packages/tradeloom-shell/tests/backend-workflow-tools-coexistence.test.js:30:12)
+      at async Test.run (node:internal/test_runner/test:1313:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at packages\tradeloom-shell\tests\backend-workflow-tools-coexistence.test.js:69:1
+✖ submit documents graph limit and only fixed safe service codes are public (0.6643ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    {
+      data: '{}',
+  +   error_code: 'native_workflow_unavailable',
+  -   error_code: 'unsupported_workflow_graph',
+      ok: false
+    }
+  
+      at TestContext.<anonymous> (file:///C:/Users/23825/.codex/worktrees/backend-main-20261029/tradeloom/packages/tradeloom-shell/tests/backend-workflow-tools-coexistence.test.js:77:12)
+      at async Test.run (node:internal/test_runner/test:1313:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:897:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: { ok: false, data: '{}', error_code: 'native_workflow_unavailable' },
+    expected: { ok: false, data: '{}', error_code: 'unsupported_workflow_graph' },
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at packages\tradeloom-shell\tests\backend-workflow-tools-coexistence.test.js:167:1
+✖ submit expected revisions are optional comparisons with strict wire types (0.3318ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///C:/Users/23825/.codex/worktrees/backend-main-20261029/tradeloom/packages/tradeloom-shell/tests/backend-workflow-tools-coexistence.test.js:172:10)
+      at async Test.run (node:internal/test_runner/test:1313:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:897:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

@@ -1,0 +1,1 @@
+No product patch was created. The one authorized Desktop-shape fixture passed, but it did not load the actual installed bundle composition and therefore did not reproduce the field failure. Do not apply or deploy this candidate.

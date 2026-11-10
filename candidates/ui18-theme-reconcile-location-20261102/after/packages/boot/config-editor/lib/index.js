@@ -1,0 +1,215 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { isDeepStrictEqual } from "node:util";
+import { Service, resolveConfig } from "@deepseek-ai/cordis";
+import { entryListSchema } from "@deepseek-ai/cordis-plugin-include";
+import yaml from "js-yaml";
+import { composeEntries, loadProfileDirectory, readProfilePatches, reconcileProfilePatches, validateReconcileFailureLocation } from "@deepseek-ai/dsh-app-boot";
+import { withFileLock, writeFileAtomic } from "@deepseek-ai/dsh-atomic-write";
+import { Scalar, isMap, isSeq, parseDocument, visit } from "yaml";
+//#region lib/types/index.js
+/** Profile-owned configuration edits, serialized with Loader hot reload. */
+function flatten(rows) {
+	return rows.flatMap((row) => [row, ...row.group && Array.isArray(row.config) ? flatten(row.config) : []]);
+}
+const THEME_RECONCILE_SUMMARY = Symbol.for("tradeloom.ui18.themeReconcileSummary.v1");
+const RECONCILE_FAMILIES = new Set(["ui-theme", "ui-settings", "ui-layout", "business-shell", "config-editor", "app-boot", "settings-controller", "other", "multiple", "unknown"]);
+const RECONCILE_ERROR_CODES = new Set(["ERR_MODULE_NOT_FOUND", "ERR_PACKAGE_PATH_NOT_EXPORTED", "ERR_REQUIRE_ESM", "ERR_UNKNOWN_FILE_EXTENSION", "ERR_INVALID_ARG_TYPE", "ERR_INVALID_ARG_VALUE", "ENOENT", "EACCES", "EPERM", "EEXIST", "ETIMEDOUT", "SETTINGS_CONFLICT", "multiple", "unknown"]);
+function readReconcileFailure(error) {
+	try {
+		const inspect = (candidate) => {
+			if (((typeof candidate !== "object" || candidate === null) && typeof candidate !== "function")) return void 0;
+			const descriptor = Object.getOwnPropertyDescriptor(candidate, THEME_RECONCILE_SUMMARY);
+			const summary = descriptor && "value" in descriptor ? descriptor.value : void 0;
+			if (summary === null || typeof summary !== "object") return void 0;
+			const own = (key) => Object.getOwnPropertyDescriptor(summary, key)?.value;
+			if (own("failureCode") !== "profile-reconcile-inactive") return void 0;
+			const family = own("introducedFailureFamily");
+			const code = own("introducedFailureCode");
+			if (!RECONCILE_FAMILIES.has(family) || !RECONCILE_ERROR_CODES.has(code)) return void 0;
+			const location = validateReconcileFailureLocation(own("introducedFailureLocation"));
+			return { family, code, ...(location ? { location } : {}) };
+		};
+		const direct = inspect(error);
+		if (direct !== void 0) return direct;
+		if (((typeof error !== "object" || error === null) && typeof error !== "function")) return void 0;
+		const cause = Object.getOwnPropertyDescriptor(error, "cause");
+		return cause && "value" in cause ? inspect(cause.value) : void 0;
+	} catch {
+		return void 0;
+	}
+}
+function attachEditorPhase(error, editorPhase, applyFailure) {
+	try {
+		if ((typeof error !== "object" || error === null) && typeof error !== "function") return;
+		const descriptor = Object.getOwnPropertyDescriptor(error, THEME_RECONCILE_SUMMARY);
+		const summary = descriptor && "value" in descriptor ? descriptor.value : void 0;
+		if (summary === null || typeof summary !== "object") return;
+		const own = (key) => Object.getOwnPropertyDescriptor(summary, key)?.value;
+		const failureCode = own("failureCode");
+		const inactive = own("introducedInactiveCount");
+		const failed = own("introducedFailedCount");
+		const pending = own("introducedPendingCount");
+		const family = own("introducedFailureFamily");
+		const code = own("introducedFailureCode");
+		const bucket = (value) => value === "0" || value === "1" || value === "2_plus";
+		if (failureCode !== "profile-reconcile-inactive" || !bucket(inactive) || !bucket(failed) || !bucket(pending)) return;
+		const safeFailure = readReconcileFailure(error) ?? {
+			family: RECONCILE_FAMILIES.has(family) ? family : "unknown",
+			code: RECONCILE_ERROR_CODES.has(code) ? code : "unknown",
+			location: validateReconcileFailureLocation(own("introducedFailureLocation"))
+		};
+		Object.defineProperty(error, THEME_RECONCILE_SUMMARY, {
+			value: Object.freeze({
+				failureCode,
+				introducedInactiveCount: inactive,
+				introducedFailedCount: failed,
+				introducedPendingCount: pending,
+				introducedFailureFamily: safeFailure.family,
+				introducedFailureCode: safeFailure.code,
+				...(safeFailure.location ? { introducedFailureLocation: safeFailure.location } : {}),
+				...(applyFailure ? { applyFailureFamily: applyFailure.family, applyFailureCode: applyFailure.code } : {}),
+				...(applyFailure?.location ? { applyFailureLocation: applyFailure.location } : {}),
+				editorPhase
+			}),
+			enumerable: false,
+			configurable: true
+		});
+	} catch {}
+}
+/** Persist complete raw configs and apply them through the normal Loader path. */
+var ConfigEditor = class extends Service {
+	ownerContext;
+	static inject = ["loader", "profileContext"];
+	constructor(ownerContext) {
+		super(ownerContext, "configEditor");
+		this.ownerContext = ownerContext;
+	}
+	/** The profile patch edited by this service. */
+	get documentPath() {
+		return this.ownerContext.profileContext.patchPath;
+	}
+	/** Addressable profile rows; nested Includes have independent configuration ownership.
+	* @returns Active entries with unique profile patch ids.
+	*/
+	entries() {
+		const candidates = [...this.ownerContext.loader.entries()].filter((entry) => entry.parent.tree.ctx.fiber.entry?.id === "include");
+		const counts = /* @__PURE__ */ new Map();
+		for (const entry of candidates) counts.set(entry.options.id, (counts.get(entry.options.id) ?? 0) + 1);
+		return candidates.filter((entry) => counts.get(entry.options.id) === 1);
+	}
+	/** Read inherited and explicit profile values for the active entries.
+	* @returns Detached layer values alongside their Loader entries.
+	*/
+	configuration() {
+		const profile = this.ownerContext.profileContext;
+		const loaded = loadProfileDirectory("dsh", profile.dir, profile.installAnchor);
+		const entries = this.entries();
+		const overridden = new Set(loaded.patches.filter((patch) => patch.insert === void 0 && Object.hasOwn(patch, "config")).map((patch) => patch.id));
+		const composed = /* @__PURE__ */ new Map();
+		if (entries.some((entry) => !overridden.has(entry.options.id))) {
+			for (const row of flatten(composeEntries([...loaded.layers.map((layer) => layer.patches), loaded.patches]))) if (!composed.has(row.id)) composed.set(row.id, row);
+		}
+		return entries.map((entry) => ({
+			entry,
+			inherited: overridden.has(entry.options.id) ? this.inherited(entry, loaded) : structuredClone(composed.get(entry.options.id)?.config ?? {}),
+			override: structuredClone(loaded.patches.findLast((row) => row.id === entry.options.id && row.config !== void 0)?.config ?? {})
+		}));
+	}
+	inherited(entry, loaded) {
+		const patches = loaded.patches.map((patch) => {
+			if (patch.id !== entry.options.id || patch.insert !== void 0) return patch;
+			const rest = { ...patch };
+			Reflect.deleteProperty(rest, "config");
+			return rest;
+		});
+		const row = flatten(composeEntries([...loaded.layers.map((layer) => layer.patches), patches])).find((row) => row.id === entry.options.id);
+		return structuredClone(row?.config ?? {});
+	}
+	/** Validate, persist, and reconcile a plugin's next config; ordinary fields keep normal lifecycle rules.
+	* @param entry Current Loader entry, also used to detect replacement during the write.
+	* @param change Derive a raw config from the current entry and its inherited layer.
+	* @returns Fulfillment after Loader reconciliation completes.
+	*/
+	async edit(entry, change) {
+		const run = async () => {
+			const path = this.documentPath;
+			await withFileLock(join(this.ownerContext.profileContext.dir, "package.json"), async () => {
+				if (!this.entries().includes(entry) || entry.fiber === void 0) throw new Error("Configuration entry is no longer available");
+				const beforePatches = readProfilePatches("dsh", this.ownerContext.profileContext);
+				try {
+					await reconcileProfilePatches(this.ownerContext.root, beforePatches, "dsh");
+				} catch (error) {
+					attachEditorPhase(error, "before");
+					throw error;
+				}
+				if (!this.entries().includes(entry)) throw new Error("Configuration entry changed during reload");
+				const current = structuredClone(entry.options.config ?? {});
+				const inherited = this.inherited(entry, loadProfileDirectory("dsh", this.ownerContext.profileContext.dir, this.ownerContext.profileContext.installAnchor));
+				const next = change(current, inherited);
+				const fiber = entry.fiber;
+				if (fiber.state !== 2) throw new Error("Configuration plugin is no longer active");
+				const resolved = fiber.ctx.waterfall(fiber, "internal/config", next, () => next);
+				resolveConfig(fiber.runtime, resolved);
+				let before;
+				try {
+					before = await readFile(path, "utf8");
+				} catch (error) {
+					if (error.code !== "ENOENT") throw error;
+					before = "[]\n";
+				}
+				const document = parseDocument(before, { customTags: [{
+					tag: "tag:yaml.org,2002:js",
+					resolve: (value) => value
+				}] });
+				if (document.errors[0] !== void 0) throw document.errors[0];
+				if (!isSeq(document.contents)) throw new Error("Profile patch must be a YAML sequence");
+				document.contents.flow = false;
+				const index = document.contents.items.findLastIndex((item, index) => isMap(item) && document.getIn([index, "id"]) === entry.options.id && !item.has("insert") && (!item.has("name") || document.getIn([index, "name"]) === entry.options.name));
+				if (isDeepStrictEqual(next, inherited)) for (let index = document.contents.items.length - 1; index >= 0; index--) {
+					const row = document.contents.items[index];
+					if (!isMap(row) || document.getIn([index, "id"]) !== entry.options.id || row.has("insert")) continue;
+					row.delete("config");
+					if (row.items.length === Number(row.has("id")) + Number(row.has("name"))) document.delete(index);
+				}
+				else if (index < 0) document.add(document.createNode({
+					id: entry.options.id,
+					name: entry.options.name,
+					config: next
+				}));
+				else document.setIn([index, "config"], document.createNode(next));
+				visit(document, { Map(_key, node) {
+					if (node.items.length !== 1 || typeof node.get("__jsExpr") !== "string") return;
+					const expression = new Scalar(node.get("__jsExpr"));
+					expression.tag = "tag:yaml.org,2002:js";
+					return expression;
+				} });
+				const profile = this.ownerContext.profileContext;
+				const patches = readProfilePatches("dsh", profile, {
+					...loadProfileDirectory("dsh", profile.dir, profile.installAnchor),
+					patches: yaml.load(String(document), { schema: entryListSchema })
+				});
+				if (!isDeepStrictEqual(flatten(composeEntries([patches])).find((row) => row.id === entry.options.id)?.config ?? {}, next)) throw new Error(`Configuration for "${entry.options.id}" is overridden by a home patch or command-line overlay`);
+				await writeFileAtomic(path, String(document), { mode: 384 });
+				try {
+					await reconcileProfilePatches(this.ownerContext.root, patches, "dsh", [entry.options.id]);
+				} catch (error) {
+					attachEditorPhase(error, "apply");
+					const applyFailure = readReconcileFailure(error) ?? { family: "unknown", code: "unknown" };
+					try {
+						await writeFileAtomic(path, before, { mode: 384 });
+						await reconcileProfilePatches(this.ownerContext.root, beforePatches, "dsh");
+					} catch (rollbackError) {
+						attachEditorPhase(rollbackError, "rollback", applyFailure);
+						throw rollbackError;
+					}
+					throw error;
+				}
+			});
+		};
+		const hmr = this.ownerContext.get("hmr");
+		await (hmr === void 0 ? run() : hmr.runExclusive(run));
+	}
+};
+//#endregion
+export { ConfigEditor, ConfigEditor as default };

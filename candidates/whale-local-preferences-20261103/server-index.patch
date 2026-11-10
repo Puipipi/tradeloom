@@ -1,0 +1,63 @@
+diff --git a/server/lib/index.js b/server/lib/index.js
+--- a/server/lib/index.js
++++ b/server/lib/index.js
+@@ -822,7 +822,7 @@ export default {
+     const ADMIN_AUTHORITIES = String(process.env.DSHW_ADMIN_HOSTS || '')
+       .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean)
+     const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
+-    function writeRejection(req) {
++    function writeRejection(req, route, fenceAvailable) {
+       try {
+         const method = String((req && req.method) || 'GET').toUpperCase()
+         if (!WRITE_METHODS.has(method)) return null
+@@ -833,6 +833,20 @@ export default {
+         const authority = hostUrl.host.toLowerCase()
+         const hostname = hostUrl.hostname.toLowerCase()
+         if (ADMIN_AUTHORITIES.some((e) => (e.indexOf(':') >= 0 ? e === authority : e === hostname))) return null
++        // Only these two routes store Whale display/usage preferences; they do not accept credentials or remote targets.
++        // Their LAN exception still requires the Host fence and an explicit same-authority HTTP(S) Origin.
++        if (method === 'PUT' && fenceAvailable && route && route.kind === 'exact'
++          && (route.path === '/dsh-whale/size.json' || route.path === '/dsh-whale/usage-settings.json')) {
++          const site = String(headers['sec-fetch-site'] || '').trim().toLowerCase()
++          if (site !== 'cross-site' && typeof headers.origin === 'string' && headers.origin && headers.origin !== 'null') {
++            try {
++              const originUrl = new URL(headers.origin)
++              if ((originUrl.protocol === 'http:' || originUrl.protocol === 'https:')
++                && headers.origin === originUrl.origin
++                && originUrl.host.toLowerCase() === authority) return null
++            } catch (err) {}
++          }
++        }
+         if (!writeRejection.warned) {
+           writeRejection.warned = true
+           try {
+@@ -845,7 +858,7 @@ export default {
+         return 403
+       } catch (err) { return 403 } // 自身出错 → 拒绝（fail-closed）
+     }
+-    function rejected(req, res) {
++    function rejected(req, res, route) {
+       const deny = (code) => {
+         try { res.statusCode = code || 403; res.end() } catch (err) {}
+         return true
+@@ -855,7 +868,7 @@ export default {
+       const self = selfRejection(req, { fenceAvailable: !!conn })
+       if (self !== null) return deny(self)
+       // v761（安全修复 S1）：写完再放行 —— 读请求不受影响
+-      const write = writeRejection(req)
++      const write = writeRejection(req, route, !!conn)
+       if (write !== null) return deny(write)
+       if (!conn) return false // 已通过自校验；此刻没有宿主栅栏可委托（加载时已 warn）
+       let code
+@@ -875,9 +888,10 @@ export default {
+     // 统一注册入口：所有路由自动套上信任栅栏
+     function registerRoute(route) {
+       const inner = route && route.handler
++      const registeredRoute = route && { kind: route.kind, path: route.path }
+       const wrapped = Object.assign({}, route, {
+         handler: async (req, res) => {
+-          if (rejected(req, res)) return
++          if (rejected(req, res, registeredRoute)) return
+           return inner(req, res)
+         },
+       })

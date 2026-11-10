@@ -1,0 +1,17 @@
+--- a/webai-account-trigger-probe.js
++++ b/webai-account-trigger-probe.js
+@@ -73,2 +73,13 @@
+   const capture = Object.freeze({
++    /** Fixed account-entry candidate hook; call only inside the existing strict-positive menu branch. */
++    projectFixedAccountEntry(menuElement) {
++      if (disposed || !menuElement || menuElement.ownerDocument !== doc || menuElement.isConnected !== true) return null
++      const probe = globalThis[Symbol.for(`tradeloom.webai.fixed-account-entry.v1.${provider}`)]
++      const trustedPath = candidate?.trusted
++        ? candidate.path.filter(element => {
++          try { return element.isConnected === true && element.ownerDocument === doc } catch { return false }
++        }).slice(0, 4)
++        : []
++      try { return probe?.confirmMenu(menuElement, trustedPath) ?? null } catch { return null }
++    },
+     projectConfirmedMenuTrigger(menuElement) {
+       if (disposed) return neutralProjection(provider, 'captureClosed')

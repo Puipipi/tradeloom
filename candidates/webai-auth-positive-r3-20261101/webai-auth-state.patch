@@ -1,0 +1,170 @@
+diff --git a/webai-auth-state.js b/webai-auth-state.js
+index 0ffcc9c..8044a41 100644
+--- a/webai-auth-state.js
++++ b/webai-auth-state.js
+@@ -387,6 +387,16 @@ export function createWebAiAuthStateAdapter({
+   let current = unknown(provider, generation)
+   let sampledDocument = null
+   let unsubscribe
++  let nextSampleOrder = 0
++  let latestDecisionOrder = 0
++
++  function isOlderSample(order) {
++    return order < latestDecisionOrder
++  }
++
++  function commitDecision(order) {
++    if (order > latestDecisionOrder) latestDecisionOrder = order
++  }
+ 
+   const invalidate = ({ close = false } = {}) => {
+     if (disposed) return
+@@ -537,6 +547,7 @@ export function createWebAiAuthStateAdapter({
+     async sample() {
+       reconcileDocument()
+       if (disposed) return current
++      const sampleOrder = ++nextSampleOrder
+       const epoch = generation
+       const before = documentIdentity(readDocumentIdentity)
+       if (before === null || before.origin !== PROVIDERS[provider]) return current
+@@ -544,6 +555,7 @@ export function createWebAiAuthStateAdapter({
+       let evidence = 'none'
+       let authState = 'unknown'
+       if (provider === 'deepseek' && before.pathname === '/sign_in') {
++        if (isOlderSample(sampleOrder)) return current
+         authState = 'unauthenticated'
+         evidence = 'deepseek-sign-in-path'
+         const after = documentIdentity(readDocumentIdentity)
+@@ -554,31 +566,49 @@ export function createWebAiAuthStateAdapter({
+         }
+         current = Object.freeze({ provider, authState, evidence, generation })
+         sampledDocument = after
++        commitDecision(sampleOrder)
+         return current
+       } else if (provider === 'deepseek') {
+-        const wasPositive = hasCurrentDeepSeekPositive(before)
+         const sampled = await readDeepSeekAccountMenu(epoch, before)
+         if (sampled.kind === 'stale') return current
+-        if (sampled.kind === 'failed') return publishUnknownForDocument(sampled.after)
+-        if (deepSeekMenuIsPositive(sampled.menu)) return publishDeepSeekPositive(sampled.after)
+-        if (wasPositive) return current
+-        return publishUnknownForDocument(sampled.after)
++        if (isOlderSample(sampleOrder)) return current
++        if (sampled.kind === 'failed') {
++          commitDecision(sampleOrder)
++          return publishUnknownForDocument(sampled.after)
++        }
++        if (deepSeekMenuIsPositive(sampled.menu)) {
++          commitDecision(sampleOrder)
++          return publishDeepSeekPositive(sampled.after)
++        }
++        if (hasCurrentDeepSeekPositive(sampled.after)) return current
++        return current
+       } else if (provider === 'doubao' && typeof executeReadOnlyProbe === 'function') {
+-        const wasPositive = hasCurrentDoubaoPositive(before)
+         const negative = await readDoubaoLoginNegative(epoch, before)
+         if (negative.kind === 'stale') return current
+-        if (negative.kind === 'failed') return publishUnknownForDocument(negative.after)
++        if (isOlderSample(sampleOrder)) return current
++        if (negative.kind === 'failed') {
++          commitDecision(sampleOrder)
++          return publishUnknownForDocument(negative.after)
++        }
+         if (negative.visible) {
+           current = Object.freeze({ provider, authState: 'unauthenticated', evidence: 'doubao-login-button', generation })
+           sampledDocument = negative.after
++          commitDecision(sampleOrder)
+           return current
+         }
+         const sampled = await readDoubaoAccountMenu(epoch, negative.after)
+         if (sampled.kind === 'stale') return current
+-        if (sampled.kind === 'failed') return publishUnknownForDocument(sampled.after)
+-        if (doubaoMenuIsPositive(sampled.menu)) return publishDoubaoPositive(sampled.after)
+-        if (wasPositive) return current
+-        return publishUnknownForDocument(sampled.after)
++        if (isOlderSample(sampleOrder)) return current
++        if (sampled.kind === 'failed') {
++          commitDecision(sampleOrder)
++          return publishUnknownForDocument(sampled.after)
++        }
++        if (doubaoMenuIsPositive(sampled.menu)) {
++          commitDecision(sampleOrder)
++          return publishDoubaoPositive(sampled.after)
++        }
++        if (hasCurrentDoubaoPositive(sampled.after)) return current
++        return current
+       }
+ 
+       const after = documentIdentity(readDocumentIdentity)
+@@ -595,49 +625,65 @@ export function createWebAiAuthStateAdapter({
+     async sampleAccountMenu() {
+       reconcileDocument()
+       if (disposed || typeof executeReadOnlyProbe !== 'function') return unknownAccountMenu(provider, generation)
++      const sampleOrder = ++nextSampleOrder
+       const epoch = generation
+       const before = documentIdentity(readDocumentIdentity)
+       if (before === null || before.origin !== PROVIDERS[provider]) return unknownAccountMenu(provider, generation)
+       if (provider === 'deepseek' && before.pathname === '/sign_in') {
+         const after = documentIdentity(readDocumentIdentity)
+         if (epoch === generation && !disposed && sameDocument(before, after)) {
++          if (isOlderSample(sampleOrder)) return unknownAccountMenu(provider, generation)
+           current = Object.freeze({ provider, authState: 'unauthenticated', evidence: 'deepseek-sign-in-path', generation })
+           sampledDocument = after
++          commitDecision(sampleOrder)
+         }
+         return unknownAccountMenu(provider, generation)
+       }
+       if (provider === 'deepseek') {
+-        const wasPositive = hasCurrentDeepSeekPositive(before)
+         const sampled = await readDeepSeekAccountMenu(epoch, before)
+         if (sampled.kind === 'stale') return unknownAccountMenu(provider, generation)
++        if (isOlderSample(sampleOrder)) return unknownAccountMenu(provider, generation)
+         if (sampled.kind === 'failed') {
++          commitDecision(sampleOrder)
+           publishUnknownForDocument(sampled.after)
+           return unknownAccountMenu(provider, generation)
+         }
+-        if (deepSeekMenuIsPositive(sampled.menu)) publishDeepSeekPositive(sampled.after)
+-        else if (!wasPositive) publishUnknownForDocument(sampled.after)
++        if (deepSeekMenuIsPositive(sampled.menu)) {
++          commitDecision(sampleOrder)
++          publishDeepSeekPositive(sampled.after)
++        } else if (!hasCurrentDeepSeekPositive(sampled.after)) {
++          return sampled.menu
++        }
+         return sampled.menu
+       }
+-      const wasPositive = hasCurrentDoubaoPositive(before)
+       const negative = await readDoubaoLoginNegative(epoch, before)
+       if (negative.kind === 'stale') return unknownAccountMenu(provider, generation)
++      if (isOlderSample(sampleOrder)) return unknownAccountMenu(provider, generation)
+       if (negative.kind === 'failed') {
++        commitDecision(sampleOrder)
+         publishUnknownForDocument(negative.after)
+         return unknownAccountMenu(provider, generation)
+       }
+       if (negative.visible) {
+         current = Object.freeze({ provider, authState: 'unauthenticated', evidence: 'doubao-login-button', generation })
+         sampledDocument = negative.after
++        commitDecision(sampleOrder)
+         return unknownAccountMenu(provider, generation)
+       }
+       const sampled = await readDoubaoAccountMenu(epoch, negative.after)
+       if (sampled.kind === 'stale') return unknownAccountMenu(provider, generation)
++      if (isOlderSample(sampleOrder)) return unknownAccountMenu(provider, generation)
+       if (sampled.kind === 'failed') {
++        commitDecision(sampleOrder)
+         publishUnknownForDocument(sampled.after)
+         return unknownAccountMenu(provider, generation)
+       }
+-      if (doubaoMenuIsPositive(sampled.menu)) publishDoubaoPositive(sampled.after)
+-      else if (!wasPositive) publishUnknownForDocument(sampled.after)
++      if (doubaoMenuIsPositive(sampled.menu)) {
++        commitDecision(sampleOrder)
++        publishDoubaoPositive(sampled.after)
++      } else if (!hasCurrentDoubaoPositive(sampled.after)) {
++        return sampled.menu
++      }
+       return sampled.menu
+     },
+ 

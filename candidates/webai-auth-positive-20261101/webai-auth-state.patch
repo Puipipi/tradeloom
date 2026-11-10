@@ -1,0 +1,158 @@
+diff --git a/webai-auth-state.js b/webai-auth-state.js
+index c8a001f..dfa5e58 100644
+--- a/webai-auth-state.js
++++ b/webai-auth-state.js
+@@ -78,7 +78,7 @@ const DEEPSEEK_ACCOUNT_MENU_PROBE_SCRIPT = `(() => {
+     return style.display !== 'none' && style.visibility !== 'hidden' && style.visibility !== 'collapse'
+       && Number.isFinite(opacity) && opacity > 0 && element.getClientRects().length > 0;
+   };
+-  const menus = Array.from(document.querySelectorAll('[role="menu"]')).filter(visible);
++  const menus = Array.from(document.querySelectorAll('[role="menu"].ds-dropdown-menu.ds-elevated')).filter(visible);
+   const labels = ['下载手机应用', '系统设置', '帮助与反馈', '退出登录'];
+   const presence = Object.fromEntries(labels.map(label => [label, false]));
+   let sameContainer = false;
+@@ -242,6 +242,23 @@ function unknownAccountMenu(provider, generation) {
+   })
+ }
+ 
++function isValidDeepSeekAccountMenuRaw(value) {
++  const keys = [
++    'menuVisible', 'downloadMobileAppVisible', 'settingsVisible', 'helpAndFeedbackVisible',
++    'logoutVisible', 'sameContainer', 'triggerPresent', 'triggerVisible', 'hasPopup',
++    'linked', 'shortcutAttributePresent',
++  ]
++  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
++  const actualKeys = Object.keys(value).sort()
++  if (actualKeys.length !== keys.length || actualKeys.some((key, index) => key !== [...keys].sort()[index])
++    || keys.some(key => typeof value[key] !== 'boolean')) return false
++  const labelsPresent = [value.downloadMobileAppVisible, value.settingsVisible, value.helpAndFeedbackVisible, value.logoutVisible]
++  if (value.sameContainer && (!value.menuVisible || labelsPresent.some(present => !present))) return false
++  if (!value.menuVisible && (labelsPresent.some(Boolean) || value.sameContainer
++    || value.triggerPresent || value.triggerVisible || value.hasPopup || value.linked || value.shortcutAttributePresent)) return false
++  return true
++}
++
+ function projectAccountMenu(provider, value, generation) {
+   const keys = provider === 'deepseek'
+     ? ['menuVisible', 'downloadMobileAppVisible', 'settingsVisible', 'helpAndFeedbackVisible', 'logoutVisible', 'sameContainer', 'triggerPresent', 'triggerVisible', 'hasPopup', 'linked', 'shortcutAttributePresent']
+@@ -328,7 +345,6 @@ function sameDocument(left, right) {
+ /**
+  * Host-only auth-state projection. The injected callbacks must close over the
+  * already-owned WebContents; never expose this factory or its callbacks to a renderer.
+- * This candidate intentionally has no authenticated-positive evidence rule.
+  */
+ export function createWebAiAuthStateAdapter({
+   provider,
+@@ -375,6 +391,61 @@ export function createWebAiAuthStateAdapter({
+     }
+   }
+ 
++  function hasCurrentDeepSeekPositive(document) {
++    return current.provider === 'deepseek'
++      && current.authState === 'authenticated'
++      && current.evidence === 'deepseek-account-menu'
++      && sampledDocument !== null
++      && sameDocument(sampledDocument, document)
++  }
++
++  function deepSeekMenuIsPositive(menu) {
++    return menu?.provider === 'deepseek'
++      && menu.status === 'observed'
++      && menu.sameContainer === true
++      && menu.downloadMobileAppVisible === true
++      && menu.settingsVisible === true
++      && menu.helpAndFeedbackVisible === true
++      && menu.logoutVisible === true
++  }
++
++  function publishDeepSeekPositive(document) {
++    current = Object.freeze({
++      provider: 'deepseek',
++      authState: 'authenticated',
++      evidence: 'deepseek-account-menu',
++      generation,
++    })
++    sampledDocument = document
++    return current
++  }
++
++  function publishUnknownForDocument(document) {
++    current = unknown(provider, generation)
++    sampledDocument = document
++    return current
++  }
++
++  async function readDeepSeekAccountMenu(epoch, before) {
++    let raw
++    let failed = false
++    try { raw = await executeReadOnlyProbe(DEEPSEEK_ACCOUNT_MENU_PROBE_SCRIPT) }
++    catch { failed = true }
++    if (epoch !== generation || disposed) return { kind: 'stale' }
++    const after = documentIdentity(readDocumentIdentity)
++    if (after === null) {
++      invalidate()
++      return { kind: 'stale' }
++    }
++    if (!sameDocument(before, after)) {
++      invalidate()
++      return { kind: 'stale' }
++    }
++    if (failed || !isValidDeepSeekAccountMenuRaw(raw)) return { kind: 'failed', after }
++    try { return { kind: 'sampled', after, menu: projectAccountMenu('deepseek', raw, generation) } }
++    catch { return { kind: 'failed', after } }
++  }
++
+   return Object.freeze({
+     getState() {
+       reconcileDocument()
+@@ -393,6 +464,23 @@ export function createWebAiAuthStateAdapter({
+       if (provider === 'deepseek' && before.pathname === '/sign_in') {
+         authState = 'unauthenticated'
+         evidence = 'deepseek-sign-in-path'
++        const after = documentIdentity(readDocumentIdentity)
++        if (epoch !== generation || disposed) return current
++        if (!sameDocument(before, after)) {
++          invalidate()
++          return current
++        }
++        current = Object.freeze({ provider, authState, evidence, generation })
++        sampledDocument = after
++        return current
++      } else if (provider === 'deepseek') {
++        const wasPositive = hasCurrentDeepSeekPositive(before)
++        const sampled = await readDeepSeekAccountMenu(epoch, before)
++        if (sampled.kind === 'stale') return current
++        if (sampled.kind === 'failed') return publishUnknownForDocument(sampled.after)
++        if (deepSeekMenuIsPositive(sampled.menu)) return publishDeepSeekPositive(sampled.after)
++        if (wasPositive) return current
++        return publishUnknownForDocument(sampled.after)
+       } else if (provider === 'doubao' && typeof executeReadOnlyProbe === 'function') {
+         let present
+         try { present = await executeReadOnlyProbe(DOUBAO_LOGIN_BUTTON_VISIBLE_SCRIPT) } catch { present = undefined }
+@@ -420,6 +508,26 @@ export function createWebAiAuthStateAdapter({
+       const epoch = generation
+       const before = documentIdentity(readDocumentIdentity)
+       if (before === null || before.origin !== PROVIDERS[provider]) return unknownAccountMenu(provider, generation)
++      if (provider === 'deepseek' && before.pathname === '/sign_in') {
++        const after = documentIdentity(readDocumentIdentity)
++        if (epoch === generation && !disposed && sameDocument(before, after)) {
++          current = Object.freeze({ provider, authState: 'unauthenticated', evidence: 'deepseek-sign-in-path', generation })
++          sampledDocument = after
++        }
++        return unknownAccountMenu(provider, generation)
++      }
++      if (provider === 'deepseek') {
++        const wasPositive = hasCurrentDeepSeekPositive(before)
++        const sampled = await readDeepSeekAccountMenu(epoch, before)
++        if (sampled.kind === 'stale') return unknownAccountMenu(provider, generation)
++        if (sampled.kind === 'failed') {
++          publishUnknownForDocument(sampled.after)
++          return unknownAccountMenu(provider, generation)
++        }
++        if (deepSeekMenuIsPositive(sampled.menu)) publishDeepSeekPositive(sampled.after)
++        else if (!wasPositive) publishUnknownForDocument(sampled.after)
++        return sampled.menu
++      }
+       let result
+       const script = provider === 'deepseek' ? DEEPSEEK_ACCOUNT_MENU_PROBE_SCRIPT : DOUBAO_ACCOUNT_MENU_PROBE_SCRIPT
+       try { result = await executeReadOnlyProbe(script) } catch { return unknownAccountMenu(provider, generation) }

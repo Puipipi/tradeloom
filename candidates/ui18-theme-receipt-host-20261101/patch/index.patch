@@ -1,0 +1,73 @@
+diff --git a/index.js b/index.js
+index 587ed53..2f5c3ab 100644
+--- a/index.js
++++ b/index.js
+@@ -431,7 +431,17 @@ let SettingsController = (() => {
+ 		* @throws RemoteError when the request is invalid, no provider is mounted, or the provider refuses the write.
+ 		*/
+ 		async mutate(ns, ops, expectedRevision) {
+-			return this.write(ns, "mutate", ops, expectedRevision);
++			const receipt = themeMutationReceipt(ns, ops, expectedRevision);
++			if (receipt === void 0) return this.write(ns, "mutate", ops, expectedRevision);
++			writeThemeReceipt(receipt, "host-request", void 0, "none");
++			try {
++				const result = await this.write(ns, "mutate", ops, expectedRevision);
++				writeThemeReceipt(receipt, "host-result", true, "none", safeResultThemeRevision(result), false);
++				return result;
++			} catch (error) {
++				writeThemeReceipt(receipt, "host-error", false, themeReceiptErrorCode(error), receipt.revision);
++				throw error;
++			}
+ 		}
+ 		/**
+ 		* Materialize the provider-owned settings document and open it in a native text editor.
+@@ -482,6 +492,49 @@ let SettingsController = (() => {
+ 		}
+ 	};
+ })();
++function safeThemeRevision(value) {
++	return Number.isSafeInteger(value) && value >= 0 ? value : void 0;
++}
++function safeResultThemeRevision(result) {
++	try {
++		return safeThemeRevision(result?.revision);
++	} catch {
++		return void 0;
++	}
++}
++function themeMutationReceipt(ns, ops, expectedRevision) {
++	try {
++		if (ns !== "ui-theme" || !Array.isArray(ops)) return void 0;
++		const op = ops.find((candidate) => candidate && candidate.op === "set" && Array.isArray(candidate.path) && candidate.path.length === 1 && candidate.path[0] === "preference");
++		if (op === void 0) return void 0;
++		const value = op.value;
++		const receipt = { diagnosticBuild: "ui18-theme-r1", preference: ["light", "dark", "system"].includes(value) ? value : void 0, revision: safeThemeRevision(expectedRevision) };
++		if (receipt.preference === void 0) delete receipt.preference;
++		if (receipt.revision === void 0) delete receipt.revision;
++		return receipt;
++	} catch {
++		return void 0;
++	}
++}
++function themeReceiptErrorCode(error) {
++	try {
++		return error?.code === "settings/conflict" ? "revision-conflict" : "operation-failed";
++	} catch {
++		return "operation-failed";
++	}
++}
++function writeThemeReceipt(receipt, stage, ok, code, revision, useExpectedRevision = true) {
++	try {
++		const row = { diagnosticBuild: receipt.diagnosticBuild, stage, code };
++		if (ok !== void 0) row.ok = ok;
++		if (receipt.preference !== void 0) row.preference = receipt.preference;
++		const finalRevision = safeThemeRevision(revision) ?? (useExpectedRevision ? receipt.revision : void 0);
++		if (finalRevision !== void 0) row.revision = finalRevision;
++		console.log(`[UI18_THEME_RECEIPT_V1]${JSON.stringify(row)}`);
++	} catch {
++		// Diagnostics must never change the settings write result or exception.
++	}
++}
+ function messageOf(error) {
+ 	return error instanceof Error ? error.message : String(error);
+ }

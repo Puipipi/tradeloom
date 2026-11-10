@@ -1,0 +1,6 @@
+pg_ctl: another server might be running; trying to start server anyway
+waiting for server to start....Access is denied.
+ stopped waiting
+pg_ctl: could not start server
+Examine the log output.
+PG_CTL_EXIT=1

@@ -1,0 +1,15 @@
+Working directory: C:\Users\23825\.codex\worktrees\backend-main-20261029\tradeloom
+Branch: codex/feature-additions
+HEAD: 8799523b562325133492114c6cc403043e9dfda9
+SDK root: C:\Users\23825\Desktop\ICT\workspace\runtime\tradeloom-harness\releases\rep12
+
+Package metadata source: packages/host/webserver/package.json
+Package name/version: @deepseek-ai/dsh-host-webserver 0.2.1-rc.3
+Manifest main: lib/index.js
+Resolved compiled file: C:\Users\23825\Desktop\ICT\workspace\runtime\tradeloom-harness\releases\rep12\packages\host\webserver\lib\index.js
+
+Command:
+$env:TRADELOOM_DSH_WEBSERVER_LIBRARY='C:\Users\23825\Desktop\ICT\workspace\runtime\tradeloom-harness\releases\rep12\packages\host\webserver\lib\index.js'
+node --test --test-name-pattern='registered prefixes match the pinned DSH WebServer contract' packages/tradeloom-shell/tests/backend-business-proxy.test.js
+
+Exit code: 0 (captured in contract.exit.txt). Only the named contract case ran; all other cases were filtered by name pattern.

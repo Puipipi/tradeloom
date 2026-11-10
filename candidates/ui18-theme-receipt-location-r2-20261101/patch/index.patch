@@ -1,0 +1,11 @@
+--- a/index.js
++++ b/index.js
+@@ -550,6 +550,8 @@
+ 			else if (file.endsWith("/packages/api/settings-controller/src/index.ts")) failureSite = "controller-source";
+ 			else if (file.endsWith("/packages/settings/settings/src/index.ts")) failureSite = "forms-source";
+ 			else if (file.endsWith("/packages/boot/config-editor/src/index.ts")) failureSite = "editor-source";
++			else if (file.endsWith("/@deepseek-ai/dsh-app-boot/lib/index.js")) failureSite = "app-boot-compiled";
++			else if (file.endsWith("/packages/boot/app-boot/src/index.ts")) failureSite = "app-boot-source";
+ 			else continue;
+ 			const failureLine = Number(coordinates[2]);
+ 			const failureColumn = Number(coordinates[3]);

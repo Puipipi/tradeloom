@@ -1,0 +1,34 @@
+✖ host route saves, lists, gates agent drafts on confirmation, and runs (14.1157ms)
+✔ center tools propose unconfirmed drafts, return issues, and refuse to run drafts (10.51ms)
+✔ workflow tools are center scoped and reject execution from experts or unknown roles (3.985ms)
+✔ planner skill installation uses the supplied isolated workspace (9.3737ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 3
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 133.0912
+
+✖ failing tests:
+
+test at packages\tradeloom-shell\tests\backend-workflow-service.test.js:171:1
+✖ host route saves, lists, gates agent drafts on confirmation, and runs (14.1157ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + undefined
+  - 'demo'
+  
+      at file:///C:/Users/23825/.codex/worktrees/backend-main-20261029/tradeloom/packages/tradeloom-shell/tests/backend-workflow-service.test.js:178:10
+      at async withService (file:///C:/Users/23825/.codex/worktrees/backend-main-20261029/tradeloom/packages/tradeloom-shell/tests/backend-workflow-service.test.js:167:5)
+      at async Test.run (node:internal/test_runner/test:1313:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: 'demo',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

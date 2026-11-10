@@ -1,0 +1,62 @@
+{% load static business_urls %}
+<!doctype html>
+<html lang="zh-CN" data-business-embed="{{ business_embed|yesno:'true,false' }}" data-color-scheme="light">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="csrf-token" content="{{ csrf_token }}">
+    <title>织贸助手（TradeWeave） · 产品资料工作台</title>
+    {% block stylesheets %}<link rel="stylesheet" href="{{ '/static/workbench/styles.css?v=business-ui-scrollbars12'|business_url }}">{% endblock %}
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">跳到主要内容</a>
+    <div class="app-shell">
+      {% if not business_embed %}<aside class="sidebar" aria-label="主导航">
+        <a class="brand" href="{% business_path '/home' %}" data-testid="brand">
+          <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span class="brand-copy"><strong>织贸助手（TradeWeave）</strong><small>产品资料工作台</small></span>
+        </a>
+        <nav class="main-nav" aria-label="五个主板块" data-testid="main-nav">
+          <a class="nav-link {% if page == 'home' %}active{% endif %}" href="{% business_path '/home' %}" data-testid="nav-home" {% if page == 'home' %}aria-current="page"{% endif %}>首页</a>
+          <a class="nav-link {% if page == 'products' %}active{% endif %}" href="{% business_path '/products' %}" data-testid="nav-products" {% if page == 'products' %}aria-current="page"{% endif %}>产品资料</a>
+          <a class="nav-link {% if page == 'agent_center' %}active{% endif %}" href="{% business_path '/agent-center' %}" data-testid="nav-agent-center" {% if page == 'agent_center' %}aria-current="page"{% endif %}>工作流</a>
+          <a class="nav-link {% if page == 'artifacts' %}active{% endif %}" href="{% business_path '/artifacts' %}" data-testid="nav-artifacts" {% if page == 'artifacts' %}aria-current="page"{% endif %}>交付物</a>
+          <a class="nav-link {% if page == 'runs' %}active{% endif %}" href="{% business_path '/runs' %}" data-testid="nav-runs" {% if page == 'runs' %}aria-current="page"{% endif %}>运行记录</a>
+        </nav>
+        <nav class="secondary-nav" aria-label="旧工作台入口">
+          <p class="nav-group-label">任务工具</p>
+          <a class="nav-link secondary {% if page == 'tasks' %}active{% endif %}" href="{% business_path '/' %}" data-testid="nav-tasks" {% if page == 'tasks' %}aria-current="page"{% endif %}>任务列表</a>
+          <a class="nav-link secondary {% if page == 'new' %}active{% endif %}" href="{% business_path '/tasks/new' %}" data-testid="nav-new" {% if page == 'new' %}aria-current="page"{% endif %}>新建任务</a>
+          <a class="nav-link secondary {% if page == 'agents' %}active{% endif %}" href="{% business_path '/agents' %}" data-testid="nav-agents" {% if page == 'agents' %}aria-current="page"{% endif %}>Agent 能力</a>
+        </nav>
+        <div class="sidebar-note" data-testid="mode-note">
+          <span class="mode-dot" aria-hidden="true"></span>
+          <div>
+            <strong><span class="mono">{{ planning_mode }}</span> · 模拟模式</strong>
+            <p>{{ planning_status }}。{{ agent_orchestration }}<br>产品资料整理由本地程序执行（<span class="mono">{{ local_executor_mode }}</span>）；{{ agentarts_label }}。</p>
+          </div>
+        </div>
+      </aside>{% endif %}
+      <div class="workspace">
+        {% if not business_embed %}<header class="topbar">
+          <div>
+            <p class="eyebrow">{% block page_eyebrow %}织贸助手 · 产品资料工作台{% endblock %}</p>
+            <h1>{% block page_title %}织贸助手{% endblock %}</h1>
+          </div>
+          <div class="runtime-status" data-testid="mode-badge">
+            <span class="mono">{{ planning_mode }}</span>
+            <span class="runtime-divider" aria-hidden="true"></span>
+            <span>{{ planning_status }}</span>
+          </div>
+        </header>{% endif %}
+        <main class="content-area" id="main-content">
+          {% block content %}{% endblock %}
+        </main>
+      </div>
+    </div>
+    <script src="{{ '/static/workbench/agent-run-receipts.js'|business_url }}" defer></script>
+    <script src="{{ '/static/workbench/business-url.js?v=popout-bridge1'|business_url }}" defer></script>
+    <script src="{{ '/static/workbench/app.js?v=business-popout-bridge1'|business_url }}" defer></script>
+    {% block scripts %}{% endblock %}
+  </body>
+</html>

@@ -1,0 +1,202 @@
+diff --git a/webai-auth-state.js b/webai-auth-state.js
+index c8a001f..086db00 100644
+--- a/webai-auth-state.js
++++ b/webai-auth-state.js
+@@ -131,8 +131,11 @@ const DEEPSEEK_MENU_DEVELOPMENT_PROBE_SCRIPT = `(() => {
+   const safeRoles = new Set(['button', 'dialog', 'group', 'list', 'listitem', 'menu', 'menuitem', 'navigation', 'option', 'tab', 'toolbar']);
+   const blockedTags = new Set(['html', 'body', 'main', 'article']);
+   const blockedRoles = new Set(['article', 'feed', 'log', 'main']);
+-  const empty = (status) => ({
+-    status,
++  const empty = (status, reason, budgetKind = 'none', rootCount = 0, visitedNodes = 0, processedRoots = 0) => ({
++    status, reason, budgetKind,
++    rootCount: Math.min(33, Math.max(0, rootCount)),
++    visitedNodes: Math.min(512, Math.max(0, visitedNodes)),
++    processedRoots: Math.min(32, Math.max(0, processedRoots)),
+     downloadMobileAppVisible: false,
+     settingsVisible: false,
+     helpAndFeedbackVisible: false,
+@@ -168,24 +171,33 @@ const DEEPSEEK_MENU_DEVELOPMENT_PROBE_SCRIPT = `(() => {
+     return false;
+   };
+   const roots = Array.from(document.querySelectorAll('nav,header,[role="navigation"],[role="menu"],[role="dialog"],[aria-expanded="true"],[aria-haspopup],[class*="dropdown" i],[class*="popover" i],[class*="popper" i],[class*="menu" i],[data-state="open"],[data-side],[data-popper-placement]'));
+-  if (roots.length === 0 || roots.length > 32) return empty('unknown');
++  const rootCount = Math.min(33, roots.length);
++  if (roots.length === 0) return empty('unknown', 'roots_missing', 'none', rootCount);
++  if (roots.length > 32) return empty('unknown', 'roots_over_limit', 'none', rootCount);
+   const globalPresence = Object.fromEntries(labels.map(label => [label, false]));
+   let matchedRoot = null;
+   let totalNodes = 0;
+   let incomplete = false;
++  let budgetKind = 'none';
++  let processedRoots = 0;
+   for (const root of roots) {
++    processedRoots += 1;
+     if (!visible(root) || blocked(root)) continue;
+     const found = new Set();
+     const stack = [root];
+     let rootNodes = 0;
+     while (stack.length > 0) {
+-      if (rootNodes >= 128 || totalNodes >= 512) { incomplete = true; break; }
++       if (rootNodes >= 128 || totalNodes >= 512) {
++         incomplete = true;
++         budgetKind = rootNodes >= 128 ? 'per_root' : 'total_nodes';
++         break;
++       }
+       const node = stack.pop();
+       if (!visible(node) || blocked(node)) continue;
+       rootNodes += 1;
+       totalNodes += 1;
+       const childNodes = node.childNodes || [];
+-      if (childNodes.length > 64) { incomplete = true; break; }
++       if (childNodes.length > 64) { incomplete = true; budgetKind = 'direct_children'; break; }
+       for (let childIndex = 0; childIndex < childNodes.length; childIndex += 1) {
+         const child = childNodes[childIndex];
+         if (child.nodeType !== 3 || typeof child.nodeValue !== 'string') continue;
+@@ -193,14 +205,15 @@ const DEEPSEEK_MENU_DEVELOPMENT_PROBE_SCRIPT = `(() => {
+         if (labels.includes(text)) found.add(text);
+       }
+       const children = Array.from(node.children || []);
+-      if (children.length > 128 || stack.length + children.length > 256) { incomplete = true; break; }
++       if (children.length > 128) { incomplete = true; budgetKind = 'children'; break; }
++       if (stack.length + children.length > 256) { incomplete = true; budgetKind = 'stack'; break; }
+       for (let index = children.length - 1; index >= 0; index -= 1) stack.push(children[index]);
+     }
+     if (incomplete) break;
+     for (const label of found) globalPresence[label] = true;
+     if (matchedRoot === null && labels.every(label => found.has(label))) matchedRoot = root;
+   }
+-  if (incomplete) return empty('unknown');
++  if (incomplete) return empty('unknown', 'traversal_budget_exceeded', budgetKind, rootCount, totalNodes, processedRoots);
+   let containerPath = [];
+   if (matchedRoot !== null) {
+     let node = matchedRoot;
+@@ -216,6 +229,11 @@ const DEEPSEEK_MENU_DEVELOPMENT_PROBE_SCRIPT = `(() => {
+   }
+   return {
+     status: 'observed',
++    reason: matchedRoot === null ? 'no_same_container_match' : 'matched',
++    budgetKind: 'none',
++    rootCount,
++    visitedNodes: Math.min(512, totalNodes),
++    processedRoots: Math.min(32, processedRoots),
+     downloadMobileAppVisible: globalPresence['下载手机应用'],
+     settingsVisible: globalPresence['系统设置'],
+     helpAndFeedbackVisible: globalPresence['帮助与反馈'],
+@@ -258,9 +276,10 @@ function projectAccountMenu(provider, value, generation) {
+   })
+ }
+ 
+-function unknownDeepSeekDevelopment(generation) {
++function unknownDeepSeekDevelopment(generation, reason = 'adapter_unavailable') {
+   return Object.freeze({
+-    status: 'unknown', provider: 'deepseek',
++    status: 'unknown', provider: 'deepseek', reason, budgetKind: 'none',
++    rootCount: 0, visitedNodes: 0, processedRoots: 0,
+     downloadMobileAppVisible: false, settingsVisible: false,
+     helpAndFeedbackVisible: false, logoutVisible: false,
+     sameRestrictedContainer: false, containerPath: [], generation,
+@@ -272,17 +291,30 @@ function projectDeepSeekDevelopment(value, generation) {
+     'downloadMobileAppVisible', 'settingsVisible', 'helpAndFeedbackVisible',
+     'logoutVisible', 'sameRestrictedContainer',
+   ]
+-  const keys = ['status', ...boolKeys, 'containerPath']
+-  if (!value || typeof value !== 'object' || Array.isArray(value)) return unknownDeepSeekDevelopment(generation)
++  const countKeys = ['rootCount', 'visitedNodes', 'processedRoots']
++  const keys = ['status', 'reason', 'budgetKind', ...boolKeys, ...countKeys, 'containerPath']
++  const reasons = new Set([
++    'matched', 'no_same_container_match', 'roots_missing', 'roots_over_limit',
++    'traversal_budget_exceeded', 'probe_error', 'document_identity_unavailable',
++    'unsupported_origin', 'generation_changed_or_disposed', 'document_changed',
++    'projection_rejected', 'adapter_unavailable',
++  ])
++  const budgetKinds = new Set(['none', 'per_root', 'total_nodes', 'direct_children', 'children', 'stack'])
++  const rejected = () => unknownDeepSeekDevelopment(generation, 'projection_rejected')
++  if (!value || typeof value !== 'object' || Array.isArray(value)) return rejected()
+   const actualKeys = Object.keys(value).sort()
+   if (actualKeys.length !== keys.length || actualKeys.some((key, index) => key !== [...keys].sort()[index])
+     || !['observed', 'unknown'].includes(value.status)
++    || !reasons.has(value.reason) || !budgetKinds.has(value.budgetKind)
++    || countKeys.some(key => !Number.isInteger(value[key]) || value[key] < 0)
++    || value.rootCount > 33 || value.visitedNodes > 512 || value.processedRoots > 32
++    || (value.reason === 'traversal_budget_exceeded') !== (value.budgetKind !== 'none')
+     || boolKeys.some(key => typeof value[key] !== 'boolean')
+-    || !Array.isArray(value.containerPath) || value.containerPath.length > 3) return unknownDeepSeekDevelopment(generation)
++    || !Array.isArray(value.containerPath) || value.containerPath.length > 3) return rejected()
+   const safeRoles = new Set(['button', 'dialog', 'group', 'list', 'listitem', 'menu', 'menuitem', 'navigation', 'option', 'tab', 'toolbar'])
+   const path = []
+   for (const entry of value.containerPath) {
+-    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return unknownDeepSeekDevelopment(generation)
++    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return rejected()
+     const entryKeys = Object.keys(entry).sort()
+     if (entryKeys.some(key => !['classes', 'role', 'tag'].includes(key))
+       || !entryKeys.includes('tag') || !entryKeys.includes('classes')
+@@ -290,17 +322,28 @@ function projectDeepSeekDevelopment(value, generation) {
+       || (entry.role !== undefined && (typeof entry.role !== 'string' || !safeRoles.has(entry.role)))
+       || !Array.isArray(entry.classes) || entry.classes.length > 8
+       || entry.classes.some(token => typeof token !== 'string' || !/^[A-Za-z_][A-Za-z0-9_-]{0,47}$/.test(token))) {
+-      return unknownDeepSeekDevelopment(generation)
++      return rejected()
+     }
+     path.push(Object.freeze({ tag: entry.tag, ...(entry.role ? { role: entry.role } : {}), classes: Object.freeze([...entry.classes]) }))
+   }
+   const complete = boolKeys.slice(0, 4).every(key => value[key])
+-  if (value.status === 'unknown' && (boolKeys.some(key => value[key]) || path.length > 0)) return unknownDeepSeekDevelopment(generation)
+-  if (value.sameRestrictedContainer && (!complete || path.length === 0)) return unknownDeepSeekDevelopment(generation)
+-  if (!value.sameRestrictedContainer && path.length > 0) return unknownDeepSeekDevelopment(generation)
++  if (value.status === 'unknown' && (boolKeys.some(key => value[key]) || path.length > 0)) return unknownDeepSeekDevelopment(generation, 'projection_rejected')
++  if (value.sameRestrictedContainer && (!complete || path.length === 0)) return rejected()
++  if (!value.sameRestrictedContainer && path.length > 0) return rejected()
++  const isUnknownReason = !['matched', 'no_same_container_match'].includes(value.reason)
++  if (isUnknownReason && (value.status !== 'unknown' || boolKeys.some(key => value[key]) || path.length > 0)) return rejected()
++  if ((value.reason === 'matched') !== value.sameRestrictedContainer
++    || (value.reason === 'no_same_container_match' && (value.status !== 'observed' || value.sameRestrictedContainer))) {
++    return unknownDeepSeekDevelopment(generation, 'projection_rejected')
++  }
+   return Object.freeze({
+     status: value.status,
+     provider: 'deepseek',
++    reason: value.reason,
++    budgetKind: value.budgetKind,
++    rootCount: value.rootCount,
++    visitedNodes: value.visitedNodes,
++    processedRoots: value.processedRoots,
+     ...Object.fromEntries(boolKeys.map(key => [key, value[key]])),
+     containerPath: Object.freeze(path),
+     generation,
+@@ -434,23 +477,27 @@ export function createWebAiAuthStateAdapter({
+ 
+     async sampleDeepSeekMenuDevelopment() {
+       reconcileDocument()
+-      if (disposed || provider !== 'deepseek' || typeof executeReadOnlyProbe !== 'function') {
+-        return unknownDeepSeekDevelopment(generation)
+-      }
++      if (disposed) return unknownDeepSeekDevelopment(generation, 'generation_changed_or_disposed')
++      if (provider !== 'deepseek' || typeof executeReadOnlyProbe !== 'function') return unknownDeepSeekDevelopment(generation, 'adapter_unavailable')
+       const epoch = generation
+       const before = documentIdentity(readDocumentIdentity)
+-      if (before === null || before.origin !== PROVIDERS.deepseek) return unknownDeepSeekDevelopment(generation)
++      if (before === null) return unknownDeepSeekDevelopment(generation, 'document_identity_unavailable')
++      if (before.origin !== PROVIDERS.deepseek) return unknownDeepSeekDevelopment(generation, 'unsupported_origin')
+       let result
+       try { result = await executeReadOnlyProbe(DEEPSEEK_MENU_DEVELOPMENT_PROBE_SCRIPT) }
+-      catch { return unknownDeepSeekDevelopment(generation) }
+-      if (epoch !== generation || disposed) return unknownDeepSeekDevelopment(generation)
++      catch { return unknownDeepSeekDevelopment(generation, 'probe_error') }
++      if (epoch !== generation || disposed) return unknownDeepSeekDevelopment(generation, 'generation_changed_or_disposed')
+       const after = documentIdentity(readDocumentIdentity)
++      if (after === null) {
++        invalidate()
++        return unknownDeepSeekDevelopment(generation, 'document_identity_unavailable')
++      }
+       if (!sameDocument(before, after)) {
+         invalidate()
+-        return unknownDeepSeekDevelopment(generation)
++        return unknownDeepSeekDevelopment(generation, 'document_changed')
+       }
+       try { return projectDeepSeekDevelopment(result, generation) }
+-      catch { return unknownDeepSeekDevelopment(generation) }
++      catch { return unknownDeepSeekDevelopment(generation, 'projection_rejected') }
+     },
+ 
+     dispose() {

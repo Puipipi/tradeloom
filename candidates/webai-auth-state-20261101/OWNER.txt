@@ -1,0 +1,1 @@
+Owned candidate directory for WebAI auth state adapter; no production runtime mounted.

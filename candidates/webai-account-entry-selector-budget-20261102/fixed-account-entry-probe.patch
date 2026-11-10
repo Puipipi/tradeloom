@@ -1,0 +1,108 @@
+diff --git a/fixed-account-entry-probe.js b/fixed-account-entry-probe.js
+index f9ea6d3..f32209f 100644
+--- a/fixed-account-entry-probe.js
++++ b/fixed-account-entry-probe.js
+@@ -64,25 +64,22 @@ export function createFixedAccountEntryProbe(doc, provider) {
+       return unique.slice(0, 32)
+     } catch { return null }
+   }
+-  const walk = root => {
+-    const stack = [root]
+-    const seen = []
+-    while (stack.length && seen.length < 128) {
+-      const node = stack.pop()
+-      if (!isElement(node, doc)) continue
+-      seen.push(node)
+-      let children
+-      try { children = node.children } catch { return null }
+-      let length
+-      try { length = children?.length } catch { return null }
+-      if (!Number.isSafeInteger(length) || length < 0) return null
+-      const count = Math.min(length, 128)
+-      for (let i = count - 1; i >= 0; i -= 1) {
+-        try { stack.push(children[i]) } catch { return null }
++  const popupButtonsInNavigation = navigationRoots => {
++    try {
++      const buttons = new Set()
++      for (const root of navigationRoots) {
++        const list = root.querySelectorAll('button[aria-haspopup="menu"]')
++        const length = list?.length
++        if (!Number.isSafeInteger(length) || length < 0 || length > 64) return null
++        for (let index = 0; index < length; index += 1) {
++          const button = list[index]
++          if (!isElement(button, doc) || button.tagName?.toLowerCase() !== 'button') continue
++          if (visible(button)) buttons.add(button)
++          if (buttons.size > 64) return null
++        }
+       }
+-      if (length > 128) return null
+-    }
+-    return stack.length ? null : seen
++      return buttons
++    } catch { return null }
+   }
+   const linked = (button, menu) => {
+     try {
+@@ -166,27 +163,12 @@ export function createFixedAccountEntryProbe(doc, provider) {
+         const navigationRoots = roots()
+         if (!navigationRoots) return empty(provider)
+         const navigation = new Set(navigationRoots)
++        const popupCandidates = popupButtonsInNavigation(navigationRoots)
++        if (!popupCandidates) return empty(provider, 'open', 'bounded_unknown')
+         const candidates = new Set()
+-        const popupCandidates = new Set()
+-        let walked = 0
+-        for (const root of navigationRoots) {
+-          const nodes = walk(root)
+-          if (!nodes) return empty(provider)
+-          walked += nodes.length
+-          if (walked > 512) return empty(provider)
+-          for (const node of nodes) {
+-            let tag
+-            let controls
+-            let popup
+-            try {
+-              tag = node.tagName?.toLowerCase()
+-              if (tag !== 'button') continue
+-              controls = node.hasAttribute('aria-controls')
+-              popup = node.getAttribute('aria-haspopup')
+-            } catch { continue }
+-            if (popup === 'menu' && visible(node)) popupCandidates.add(node)
+-            if (controls && popup === 'menu' && visible(node)) candidates.add(node)
+-          }
++        for (const button of popupCandidates) {
++          try { if (button.hasAttribute('aria-controls')) candidates.add(button) }
++          catch { return empty(provider, 'open', 'bounded_unknown') }
+         }
+         const count = candidates.size === 0 ? 0 : candidates.size === 1 ? 1 : '2_plus'
+         const inside = trustedPath.some(element => navigation.has(element) || navigationRoots.some(root => {
+@@ -241,19 +223,16 @@ export function createFixedAccountEntryProbe(doc, provider) {
+           closedHasAriaControls: null, closedHasPopupMenu: null, closedUniqueCandidate: null,
+           visiblePopupMenuButtonCountInNavigation: 'unknown', capturedButtonIsUniquePopupCandidate: null,
+         })
+-        const nodes = walk(navRoots.find(root => { try { return root.contains(button) } catch { return false } }))
+-        if (!nodes || nodes.length > 128) return empty(provider, 'closed')
+-        const buttonCandidates = nodes.filter(node => {
+-          try { return node.tagName?.toLowerCase() === 'button' && node.hasAttribute('aria-controls')
+-            && node.getAttribute('aria-haspopup') === 'menu' && visible(node) } catch { return false }
+-        })
+-        const popupCandidates = nodes.filter(node => {
+-          try { return node.tagName?.toLowerCase() === 'button'
+-            && node.getAttribute('aria-haspopup') === 'menu' && visible(node) } catch { return false }
+-        })
+-        const unique = buttonCandidates.length === 1 && buttonCandidates[0] === button
+-        const popupCount = countValue(popupCandidates.length)
+-        const uniquePopup = popupCount === 1 && popupCandidates[0] === button
++        const popupCandidates = popupButtonsInNavigation(navRoots)
++        if (!popupCandidates) return empty(provider, 'closed', 'bounded_unknown')
++        const buttonCandidates = new Set()
++        for (const candidate of popupCandidates) {
++          try { if (candidate.hasAttribute('aria-controls')) buttonCandidates.add(candidate) }
++          catch { return empty(provider, 'closed', 'bounded_unknown') }
++        }
++        const unique = buttonCandidates.size === 1 && buttonCandidates.has(button)
++        const popupCount = countValue(popupCandidates.size)
++        const uniquePopup = popupCount === 1 && popupCandidates.has(button)
+         const menu = confirmedMenu
+         let closed = false
+         try { closed = Boolean(menu && menu.ownerDocument === doc && (menu.isConnected !== true || !visible(menu))) } catch {}

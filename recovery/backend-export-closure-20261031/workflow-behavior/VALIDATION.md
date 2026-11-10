@@ -1,0 +1,9 @@
+# Legacy workflow-tools behavior regression
+
+The original copied main test file contained unrelated Host/client/canvas cases. It is retained outside test discovery as `backend-workflow-service.before-curation.source.txt`; the active test file now contains only the four requested backend cases and their required helpers. The first four-case run recorded 3 pass / 1 fail / 0 skip in `workflow-behavior.stdout.txt`; the failure was the old assertion that raw `demo.json` had an `id` property. This branch's existing `workflow-engine.js` stores a versioned envelope, so the test-only assertion was adapted to verify `formatVersion: 1`, `revision: 1`, `deleted: false`, `document.id: "demo"`, and `definitionRevision: null`. The public save response, confirm/run behavior, and remaining case assertions were left intact.
+
+After that narrow adaptation, only the failed case was rerun: 1 pass / 0 fail / 0 skip, exit 0. Its output is `workflow-save-envelope.stdout.txt`, stderr is empty, and `workflow-save-envelope.exit.txt` contains `0`. After curating the test file, an initial unfiltered invocation exposed a missing helper in the curated prefix (3 fail, 1 pass); that output is retained as `workflow-curated-default.*` and is not acceptance evidence. The required helpers were restored from the owned source copy. The current unfiltered command then ran the file's four tests by default and passed 4/4, zero skips, exit 0; see `workflow-curated-default2.*`. This is legacy workflow-tools fixture coverage, not production Host or native SDK acceptance.
+
+The temporary directory fixture is confined to this directory, whose owner marker is `OWNER.txt`. The test uses an in-process request/response handler and starts no HTTP listener.
+
+See [`COMMAND.txt`](COMMAND.txt) for commands and [`../SOURCE-SHA256.txt`](../SOURCE-SHA256.txt) for current test/evidence hashes.
