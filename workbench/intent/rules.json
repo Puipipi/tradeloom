@@ -1,0 +1,23 @@
+{
+  "version": "task-intent-rules-v1",
+  "prepare_product_data": {
+    "zh": ["整理产品资料", "整理本批产品资料", "准备产品资料", "准备本批资料", "补齐产品资料"],
+    "en": ["prepare product data", "organize product data", "organise product data"]
+  },
+  "generate_deliverables": {
+    "zh": ["生成目录", "生成英文目录", "制作目录", "准备展会目录", "生成交付物"],
+    "en": ["generate catalog", "generate catalogue", "create catalog", "make catalog", "generate deliverables"]
+  },
+  "out_of_scope": {
+    "zh": ["报价", "询价", "联系客户", "客户开发", "收款", "付款", "安排交期", "发邮件", "发送邮件", "营销", "审批"],
+    "en": ["quotation", "quote", "pricing", "contact customer", "customer outreach", "payment", "arrange delivery", "send email", "send an email", "marketing", "approval", "approve"]
+  },
+  "negation": {
+    "zh": ["不要", "不生成", "不整理", "不制作", "不需要", "无需", "别"],
+    "en": ["don't", "do not", "doesn't", "not generate", "not organize", "not organise", "not prepare", "not need", "no need"]
+  },
+  "combination": {
+    "zh": ["并", "同时", "然后", "再"],
+    "en": ["and", "then", "also"]
+  }
+}

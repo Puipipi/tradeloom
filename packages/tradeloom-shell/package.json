@@ -1,0 +1,34 @@
+{
+  "name": "@tradeloom/dsh-business-shell",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./host.js",
+    "./client": "./client.js",
+    "./policy": "./policy.js",
+    "./profile": "./profile-tool.js",
+    "./business-tools": "./business-tools.js",
+    "./step-policy": "./step-policy.js",
+    "./state": "./state.js",
+    "./proxy": "./proxy.js",
+    "./tool-policy": "./tool-policy.js",
+    "./workflow-tools": "./workflow-tools.js",
+    "./workflow-schema": "./workflow-schema.js",
+    "./workflow-engine": "./workflow-engine.js",
+    "./workflow-native-tools": "./workflow-native-tools.js",
+    "./native-task-authority": "./workflow-native-task-authority.js",
+    "./webai-file-tools": "./webai-file-tools.js",
+    "./webai-local-directory": "./webai-local-directory.js",
+    "./webai-tool-envelope": "./webai-tool-envelope.js",
+    "./webai-runtime-files": "./webai-runtime-files.js"
+  },
+  "files": ["host.js", "agent-configuration.js", "tool-policy.js", "client.js", "client.scenes.js", "client.mobile-qr.js", "client.dockview.js", "capabilities.js", "scenes.json", "scene-layout.js", "dock-layout.js", "policy.js", "profile-tool.js", "business-tools.js", "step-policy.js", "state.js", "roles.js", "proxy.js", "cordis.patch.yml", "assets/tradeloom-mark.svg", "vendor/dockview-entry.ts", "vendor/dockview.css", "vendor/dockview-package-lock.json", "vendor/LICENSE.dockview-react", "vendor/qrcode-generator-2.0.4.js", "vendor/LICENSE.qrcode-generator", "scripts/build-dockview-chunk.mjs", "scripts/build-mobile-qr-chunk.mjs", "workflow-engine.js", "workflow-schema.js", "workflow-tools.js", "client.workflow.js", "skills/wf-planner/SKILL.md", "workflow-definition.js", "workflow-postgres.js", "workflow-run-journal.js", "workflow-native-graph.js", "workflow-native-binding.js", "workflow-native-executor.js", "workflow-native-service.js", "workflow-native-tools.js", "workflow-native-ui.js", "workflow-native-artifact-http.js", "workflow-artifact-source.js", "webai-file-tools.js", "webai-local-directory.js", "webai-tool-envelope.js", "webai-runtime-files.js", "workflow-native-ui-gate.js", "workflow-native-command-attribution.js", "workflow-native-task-authority.js"],
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": { "platform": "web", "immediately": true, "inject": ["@deepseek-ai/dsh-client-ui-conversation", "@deepseek-ai/dsh-client-ui-layout", "@deepseek-ai/dsh-client-ui-sidebar", "@deepseek-ai/dsh-client-ui-workspace", "@deepseek-ai/dsh-client-ui-model-selection"], "external": ["react", "react-dom", "react-dom/client", "react/jsx-runtime"] }
+  },
+  "scripts": { "build:dockview": "node scripts/build-dockview-chunk.mjs", "build:mobile-qr": "node scripts/build-mobile-qr-chunk.mjs", "test": "node --test tests/*.test.js", "test:intake-ui": "node --test tests/intake-ui.test.js" },
+  "peerDependencies": { "@deepseek-ai/dsh-scope": "0.2.1-rc.3" },
+  "devDependencies": { "jsdom": "30.1.3" }
+}
