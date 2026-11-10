@@ -96,12 +96,15 @@ async function call(handler, method = 'GET', url = '/tradeloom/agent-configurati
   return { res, body: res.body ? JSON.parse(res.body) : undefined }
 }
 
-test('host exposes the protected role configuration resource', () => {
+test('host exposes the protected role configuration resource', async () => {
   const routes = []
+  const services = new Map()
   const ctx = {
     tools: {},
     agents: { get() { return undefined } },
     connection: { requestRejection() { return undefined } },
+    provide(name, service) { services.set(name, service) },
+    get(name) { return services.get(name) },
     webServer: { register(route) { routes.push(route); return () => {} } },
     workspaceRegistry: {},
     sessionController: {},
@@ -112,7 +115,7 @@ test('host exposes the protected role configuration resource', () => {
   applyHost(ctx)
   assert.ok(routes.some(route => route.kind === 'exact' && route.path === '/tradeloom/agent-configuration'),
     'Host must expose the role configuration API on its protected same-origin router')
-  ctx.cleanup()
+  await ctx.cleanup()
 })
 
 test('configuration API checks same-origin rejection and strict role query before profile access', async t => {
@@ -470,7 +473,7 @@ test('GET remains readable when official preset resolution is unavailable but PU
   assert.equal(setup.entry.options.config.plugins.length, 2, 'no configuration write occurs without the official resolver')
 })
 
-test('same-role saves serialize across validation and application, while another role can save independently', async t => {
+test('same-role saves serialize across validation and application, while another role waits for the Host-wide write lock', async t => {
   const setup = await fixture(t)
   const center = await call(setup.handler)
   const productEntry = {
@@ -483,6 +486,7 @@ test('same-role saves serialize across validation and application, while another
   const originalEdit = setup.editor.edit
   setup.editor.entries = () => [...originalEntries(), productEntry]
   let releaseCenter
+  let productEdited = false
   let centerEntered
   const entered = new Promise(resolve => { centerEntered = resolve })
   const centerGate = new Promise(resolve => { releaseCenter = resolve })
@@ -493,6 +497,7 @@ test('same-role saves serialize across validation and application, while another
       await centerGate
     }
     if (entry === productEntry) {
+      productEdited = true
       productEntry.options.config = structuredClone(callback(structuredClone(productEntry.options.config), { plugins: [] }))
       return
     }
@@ -508,13 +513,12 @@ test('same-role saves serialize across validation and application, while another
   }
   const productGet = await call(setup.handler, 'GET', '/tradeloom/agent-configuration?role=product')
   productBody.expectedRevision = productGet.body.revision
-  let productResult
-  try {
-    productResult = await Promise.race([
-      call(setup.handler, 'PUT', '/tradeloom/agent-configuration?role=product', productBody),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('product role write was blocked by center role')), 500)),
-    ])
-  } finally { releaseCenter() }
+  const productPending = call(setup.handler, 'PUT', '/tradeloom/agent-configuration?role=product', productBody)
+  await new Promise(resolve => setImmediate(resolve))
+  const productEditedBeforeRelease = productEdited
+  releaseCenter()
+  const productResult = await productPending
+  assert.equal(productEditedBeforeRelease, false, 'the product role cannot enter ConfigEditor while the Host-wide center write is pending')
   assert.equal(productResult.res.statusCode, 200)
   assert.equal((await centerFirst).res.statusCode, 200)
   assert.equal((await centerSecond).res.statusCode, 409, 'the queued stale write cannot apply over the first save')

@@ -87,7 +87,7 @@ export function defaultDockLayout(scene) {
   if (activePanels.length === 0) fail('scene must have panels')
   const groups = chatPanels.length > 0 && businessPanels.length > 0
     ? buildRecommendation(scene, businessPanels, chatPanels)
-    : buildLayout(scene.panels, [])
+    : buildLayout(activePanels, [])
   return {
     ...groups,
     version: 2,

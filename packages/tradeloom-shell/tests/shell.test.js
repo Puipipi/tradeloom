@@ -320,7 +320,7 @@ test('pinned Cordis Loader unwrap keeps all business plugin namespaces and injec
     ['../proxy.js', '@tradeloom/dsh-business-shell/proxy', ['connection', 'webServer']],
     ['../policy.js', '@tradeloom/dsh-business-shell/policy', ['tools', 'agents']],
     ['../profile-tool.js', '@tradeloom/dsh-business-shell/profile', ['tools']],
-    ['../business-tools.js', '@tradeloom/dsh-business-shell/business-tools', ['tools', 'webServer']],
+    ['../business-tools.js', '@tradeloom/dsh-business-shell/business-tools', ['tools', 'webServer', 'agents', 'sceneMemoryOriginAuthority']],
     ['../step-policy.js', '@tradeloom/dsh-business-shell/step-policy', []],
   ]
   for (const [specifier, expectedName, expectedInject] of plugins) {
@@ -341,9 +341,12 @@ test('budget policy is installed once from the top-level Host plugin', async () 
   const registrations = []
   const routes = []
   const disposed = []
+  const services = new Map()
   const ctx = {
     tools: {}, agents: { get() { return undefined } },
     connection: { requestRejection() {} },
+    provide(name, service) { services.set(name, service) },
+    get(name) { return services.get(name) },
     webServer: { register(route) { routes.push(route); return () => { disposed.push(route.path) } } },
     workspaceRegistry: {}, sessionController: {},
     on(name, callback, options) { registrations.push({ name, callback, options }) },
@@ -357,7 +360,7 @@ test('budget policy is installed once from the top-level Host plugin', async () 
   for (const name of ['agent/pre-step', 'agent/created', 'tools/pre-execute', 'agent/disposed']) {
     assert.equal(registrations.filter(item => item.name === name && item.options?.global === true).length, 1, `${name} must be installed once globally`)
   }
-  ctx.cleanup()
+  await ctx.cleanup()
   assert.ok(disposed.includes('/tradeloom/diagnostics'), 'Host cleanup unregisters the diagnostics route')
   const response = { statusCode: 0, destroyed: false, writableEnded: false, headers: {}, setHeader(name, value) { this.headers[name] = value }, end(body = '') { this.body = body; this.writableEnded = true } }
   await diagnosticsRoute.handler({ url: '/tradeloom/diagnostics', method: 'GET' }, response)
@@ -1221,11 +1224,14 @@ test('official DSH patch composer applies the real web bundle then TradeLoom ove
   const centerPreset = businessPresets.find(entry => entry.config.id === ROLE_PRESETS.center)
   const delegation = centerPreset.config.plugins.find(plugin => plugin.id === 'delegation')
   assert.deepEqual(delegation.isolate, { subagents: true, workflowEngine: true }, 'the native delegation group must isolate every service required by its real providers')
-  for (const disabledId of ['preset-standard', 'preset-ptc', 'preset-minimal', 'preset-cordis']) {
-    assert.equal(entries.find(entry => entry.id === disabledId)?.disabled, true, `${disabledId} must be disabled by an update patch`)
+  for (const retainedId of ['preset-standard', 'preset-ptc', 'preset-minimal', 'preset-cordis']) {
+    assert.ok(entries.some(entry => entry.id === retainedId && entry.disabled !== true), `${retainedId} must remain available for non-default use`)
   }
-  for (const disabledId of ['deepseek-account', 'llm-deepseek-account', 'account-controller', 'ui-settings-account', 'product-analytics']) {
-    assert.equal(entries.find(entry => entry.id === disabledId)?.disabled, true, `${disabledId} account login must be disabled in the product profile`)
+  for (const retainedId of ['deepseek-account', 'llm-deepseek-account', 'account-controller', 'ui-settings-account']) {
+    assert.ok(entries.some(entry => entry.id === retainedId && entry.disabled !== true), `${retainedId} account support must remain available`)
+  }
+  for (const disabledId of ['product-analytics', 'ui-brand-official']) {
+    assert.equal(entries.find(entry => entry.id === disabledId)?.disabled, true, `${disabledId} must remain disabled by the product patch`)
   }
   for (const retainedId of ['authorization', 'credentials', 'llm-pi-ai', 'llm-deepseek']) {
     assert.ok(entries.some(entry => entry.id === retainedId && entry.disabled !== true), `${retainedId} must remain available for API-key/custom-provider configuration`)

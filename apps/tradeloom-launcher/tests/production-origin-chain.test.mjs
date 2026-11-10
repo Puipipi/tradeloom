@@ -46,10 +46,10 @@ function issuer(home) {
   }
 }
 
-async function claim(authority, home, endpoint = 'agent/send', body = Buffer.from('{"payload":{"text":"hello"}}')) {
+async function claim(authority, home, endpoint = 'agent/send', body = Buffer.from('{"payload":{"text":"hello"}}'), rpcId = 'rpc-1') {
   const grant = await authority.registerGrant({ issuer: issuer(home), bodyBytes: body, endpoint, httpMethod: 'POST' })
   const origin = await authority.verifyRequest({
-    token: grant.token, endpoint, httpMethod: 'POST', method: endpoint, rpcId: 'rpc-1', bodyBytes: body,
+    token: grant.token, endpoint, httpMethod: 'POST', method: endpoint, rpcId, bodyBytes: body,
     bodyDigest: createHash('sha256').update(body).digest('hex'), peerId: 'browser-owner', peerPrincipal: 'owner',
   })
   return { grant, origin, body }
@@ -695,7 +695,7 @@ test('legacy preimage binding survives concurrent and expired claims, ignores un
   const rawPreimage = await readFile(f.stateStore.paths.statePath)
   let now = 1_000
   const authority = createExecutionOriginAuthority({ stateStore: f.stateStore, now: () => now, isSessionLive: () => true, isSessionDurable: async () => true })
-  const [first, second] = await Promise.all([claim(authority, f.home), claim(authority, f.home)])
+  const [first, second] = await Promise.all([claim(authority, f.home, 'agent/send', Buffer.from('{"payload":{"text":"hello"}}'), 'rpc-1'), claim(authority, f.home, 'agent/send', Buffer.from('{"payload":{"text":"hello"}}'), 'rpc-2')])
   const backupDir = join(f.home, 'tradeloom-state', 'scene-memory-backups')
   const rawDigest = createHash('sha256').update(rawPreimage).digest('hex')
   const boundName = `legacy-${rawDigest}.json`

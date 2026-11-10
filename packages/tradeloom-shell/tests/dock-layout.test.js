@@ -11,6 +11,7 @@ import {
 
 const config = JSON.parse(await readFile(new URL('../scenes.json', import.meta.url), 'utf8'))
 const center = config.scenes.find(scene => scene.id === 'center')
+const optionalClosedPanelIds = center.panels.filter(panel => panel.optional === true).map(panel => panel.id)
 test('chat-only scenes have one valid default group', () => {
   const scene = { id: 'chat-only', panels: [{ id: 'native-chat', type: 'native-chat', title: '中心助手' }] }
   const layout = defaultDockLayout(scene)
@@ -23,7 +24,7 @@ const serializedDockviewFixture = {
     root: {
       type: 'branch',
       data: [
-        { type: 'leaf', data: { views: ['business-main', 'auxiliary', 'reference'], activeView: 'reference', id: '1' }, size: 100 },
+        { type: 'leaf', data: { views: ['business-main', 'files', 'preview'], activeView: 'preview', id: '1' }, size: 100 },
         { type: 'leaf', data: { views: ['native-chat'], activeView: 'native-chat', id: '2' }, size: 100 },
       ],
       size: 100,
@@ -34,8 +35,8 @@ const serializedDockviewFixture = {
   },
   panels: {
     'business-main': { id: 'business-main', contentComponent: 'business-iframe', title: '总览', renderer: 'always' },
-    auxiliary: { id: 'auxiliary', contentComponent: 'business-iframe', title: '商品', renderer: 'always' },
-    reference: { id: 'reference', contentComponent: 'business-iframe', title: '资料', renderer: 'always' },
+    files: { id: 'files', contentComponent: 'business-iframe', title: '文件', renderer: 'always' },
+    preview: { id: 'preview', contentComponent: 'business-iframe', title: '预览', renderer: 'always' },
     'native-chat': { id: 'native-chat', contentComponent: 'native-chat', title: '中心助手', renderer: 'always' },
   },
   activeGroup: '2',
@@ -51,36 +52,38 @@ function legacyDefaults(scene) {
 }
 
 test('pinned Dockview api.toJSON trees validate, including one group and no open panels', () => {
-  assert.equal(validateDockviewLayout(center, serializedDockviewFixture, []), true)
+  assert.equal(validateDockviewLayout(center, serializedDockviewFixture, optionalClosedPanelIds), true)
   const oneGroup = structuredClone(serializedDockviewFixture)
-  oneGroup.grid.root.data = [{ type: 'leaf', data: { views: ['business-main', 'auxiliary', 'reference', 'native-chat'], activeView: 'reference', id: '1' }, size: 100 }]
+  oneGroup.grid.root.data = [{ type: 'leaf', data: { views: ['business-main', 'files', 'preview', 'native-chat'], activeView: 'preview', id: '1' }, size: 100 }]
   oneGroup.activeGroup = '1'
-  assert.equal(validateDockviewLayout(center, oneGroup, []), true)
+  assert.equal(validateDockviewLayout(center, oneGroup, optionalClosedPanelIds), true)
   const onePanel = structuredClone(serializedDockviewFixture)
   onePanel.grid.root.data = [{ type: 'leaf', data: { views: ['business-main'], activeView: 'business-main', id: '1' }, size: 100 }]
   onePanel.panels = { 'business-main': onePanel.panels['business-main'] }
   onePanel.activeGroup = '1'
-  assert.equal(validateDockviewLayout(center, onePanel, ['auxiliary', 'reference', 'native-chat']), true)
+  assert.equal(validateDockviewLayout(center, onePanel, [...optionalClosedPanelIds, 'files', 'preview', 'native-chat']), true)
   const noPanels = structuredClone(serializedDockviewFixture)
   noPanels.grid.root.data = []
   noPanels.panels = {}
   delete noPanels.activeGroup
-  assert.equal(validateDockviewLayout(center, noPanels, ['business-main', 'auxiliary', 'reference', 'native-chat']), true)
+  assert.equal(validateDockviewLayout(center, noPanels, center.panels.map(panel => panel.id)), true)
 
   const result = defaultDockLayout(center)
   assert.equal(validateDockviewLayout(center, result.dockview, result.closedPanelIds), true)
-  assert.deepEqual(result.dockview.grid.root.data.map(group => group.size), [32, 68], 'center keeps business context on the left and gives native chat the full-height lead')
-  assert.equal(result.dockview.activeGroup, '2', 'assistant-led center opens on the native conversation')
-  assert.deepEqual(result.dockview.grid.root.data[0].data.views, ['business-main', 'auxiliary', 'reference'])
-  assert.deepEqual(result.dockview.grid.root.data[1].data.views, ['native-chat'])
+  assert.deepEqual(result.dockview.grid.root.data.map(group => group.size), [60, 40], 'center keeps the configured 60/40 collaboration rows')
+  assert.equal(result.dockview.activeGroup, 'topa', 'collaboration center opens on the main business panel')
+  assert.deepEqual(result.dockview.grid.root.data[0].data.map(group => group.data.views), [['business-main'], ['files']])
+  assert.deepEqual(result.dockview.grid.root.data[1].data.map(group => group.data.views), [['preview'], ['native-chat']])
   assert.ok(Object.values(result.dockview.panels).every(panel => panel.renderer === 'always'))
   assert.deepEqual(Object.entries(result.dockview.panels).map(([panelId, panel]) => [panelId, panel.params]),
     Object.keys(result.dockview.panels).map(panelId => [panelId, { panelId }]))
 
   const withoutChat = { ...center, panels: center.panels.filter(panel => panel.type !== 'native-chat') }
   const oneGroupDefault = defaultDockLayout(withoutChat)
+  assert.equal(validateDockviewLayout(withoutChat, oneGroupDefault.dockview, oneGroupDefault.closedPanelIds), true,
+    'a no-chat default cannot open optional panels that are also marked closed')
   assert.equal(oneGroupDefault.dockview.grid.root.data.length, 1)
-  assert.deepEqual(oneGroupDefault.dockview.grid.root.data[0].data.views, ['business-main', 'auxiliary', 'reference'])
+  assert.deepEqual(oneGroupDefault.dockview.grid.root.data[0].data.views, ['business-main', 'files', 'preview'])
 })
 
 test('each configured scene gets its mapped recommendation while four-panel scenes preserve the screenshot grid', () => {
@@ -94,8 +97,8 @@ test('each configured scene gets its mapped recommendation while four-panel scen
       assert.equal(top.type, 'branch')
       assert.equal(bottom.type, 'branch')
       assert.deepEqual([top.size, bottom.size], [60, 40])
-      assert.deepEqual(top.data.map(group => [group.size, group.data.views[0]]), [[75, 'business-main'], [25, 'auxiliary']])
-      assert.deepEqual(bottom.data.map(group => [group.size, group.data.views[0]]), [[50, 'reference'], [50, 'native-chat']])
+      assert.deepEqual(top.data.map(group => [group.size, group.data.views[0]]), [[75, 'business-main'], [25, 'files']])
+      assert.deepEqual(bottom.data.map(group => [group.size, group.data.views[0]]), [[40, 'preview'], [60, 'native-chat']])
       if (scene.id === 'products') {
         collaborationCustom = structuredClone(recommendation)
         collaborationCustom.dockview.grid.root.data[0].data[0].size = 70
@@ -110,25 +113,32 @@ test('each configured scene gets its mapped recommendation while four-panel scen
   assert.deepEqual(normalizedCustom.scenes.products, collaborationCustom,
     'a saved custom four-panel layout remains unchanged when recommendation profiles are introduced')
   const customWithClosedPanel = structuredClone(collaborationCustom)
-  customWithClosedPanel.closedPanelIds = ['auxiliary']
+  customWithClosedPanel.closedPanelIds = [...customWithClosedPanel.closedPanelIds, 'files']
   const [topRow, bottomRow] = customWithClosedPanel.dockview.grid.root.data
   customWithClosedPanel.dockview.grid.root.data = [
     { type: 'leaf', size: topRow.size, data: { ...topRow.data[0].data, id: topRow.data[0].data.id } },
     bottomRow,
   ]
-  delete customWithClosedPanel.dockview.panels.auxiliary
+  delete customWithClosedPanel.dockview.panels.files
   const restoredCustom = normalizeDockLayouts(config, { version: 2, scenes: { products: customWithClosedPanel } })
   assert.deepEqual(restoredCustom.scenes.products, customWithClosedPanel,
     'custom proportions and closed-panel state survive recommendation changes')
 })
 
 test('unchanged v1 geometry upgrades to the wider dock default and keeps its first snapshot', () => {
-  const snapshot = legacyDefaults(center)
+  const current = legacyDefaults(center)
+  const snapshot = {
+    ...current,
+    panels: Object.fromEntries(Object.entries(current.panels).map(([id, panel]) => [
+      id === 'files' ? 'auxiliary' : id === 'preview' ? 'reference' : id, panel,
+    ])),
+  }
   const migrated = migrateLegacyDockLayout(center, snapshot)
   assert.equal(migrated.migration.status, 'default_upgrade')
   assert.equal(migrated.migration.reason, 'matches-scene-default')
   assert.deepEqual(migrated.legacyV1Snapshot, snapshot)
-  assert.deepEqual(migrated.dockview.grid.root.data[0].data.views, ['business-main', 'auxiliary', 'reference'])
+  assert.deepEqual(migrated.dockview.grid.root.data[0].data.map(group => group.data.views), [['business-main'], ['files']],
+    'legacy auxiliary/reference IDs migrate to files/preview while the original snapshot remains unchanged')
 
   const edited = structuredClone(migrated)
   edited.legacyV1Snapshot.panels['business-main'].w = 1
@@ -143,12 +153,13 @@ test('simple custom business/chat geometry maps proportions into Dockview group 
   const custom = legacyDefaults(center)
   custom.panels['business-main'] = { col: 1, row: 1, w: 3, h: 4, visible: true }
   custom.panels['native-chat'] = { col: 4, row: 1, w: 1, h: 4, visible: true }
-  custom.panels.auxiliary = { col: 1, row: 1, w: 1, h: 1, visible: false }
-  custom.panels.reference = { col: 1, row: 1, w: 1, h: 1, visible: false }
+  custom.panels.files = { col: 1, row: 1, w: 1, h: 1, visible: false }
+  custom.panels.preview = { col: 1, row: 1, w: 1, h: 1, visible: false }
+  for (const panel of center.panels.filter(panel => panel.optional === true)) custom.panels[panel.id].visible = false
   const migrated = migrateLegacyDockLayout(center, custom)
   assert.equal(migrated.migration.status, 'mapped')
   assert.deepEqual(migrated.dockview.grid.root.data.map(group => group.size), [75, 25])
-  assert.deepEqual(migrated.closedPanelIds.sort(), ['auxiliary', 'reference'])
+  assert.deepEqual(migrated.closedPanelIds.sort(), [...optionalClosedPanelIds, 'files', 'preview'].sort())
   assert.deepEqual(migrated.legacyV1Snapshot, custom)
 })
 
@@ -171,13 +182,13 @@ test('dock layout validation rejects unknown panels and malformed serialized tre
   assert.throws(() => validateDockviewLayout(center, malformed, []), /view/)
   const unknownComponent = structuredClone(serializedDockviewFixture)
   unknownComponent.panels['business-main'].contentComponent = 'unregistered-component'
-  assert.throws(() => validateDockviewLayout(center, unknownComponent, []), /registered component/)
+  assert.throws(() => validateDockviewLayout(center, unknownComponent, optionalClosedPanelIds), /registered component/)
   const unknownParams = structuredClone(serializedDockviewFixture)
   unknownParams.panels['business-main'].params = { panelId: 'business-main', arbitrary: true }
-  assert.throws(() => validateDockviewLayout(center, unknownParams, []), /not allowlisted/)
+  assert.throws(() => validateDockviewLayout(center, unknownParams, optionalClosedPanelIds), /not allowlisted/)
   const unprojectedDockviewDefaults = structuredClone(serializedDockviewFixture)
   unprojectedDockviewDefaults.panels['business-main'].pinned = false
-  assert.throws(() => validateDockviewLayout(center, unprojectedDockviewDefaults, []), /registered component/,
+  assert.throws(() => validateDockviewLayout(center, unprojectedDockviewDefaults, optionalClosedPanelIds), /registered component/,
     'the server validator remains strict for Dockview UI metadata that survives JSON serialization')
 })
 
@@ -185,15 +196,15 @@ test('normalization initializes dock layouts and legacy scene-layout writes do n
   const legacy = { center: legacyDefaults(center) }
   const first = normalizeDockLayouts(config, undefined, legacy)
   const saved = structuredClone(first)
-  saved.scenes.center.dockview.activeGroup = '2'
+  saved.scenes.center.dockview.activeGroup = 'topb'
   const normalized = validateDockLayouts(config, saved, { existingDockLayouts: first, legacySceneLayouts: legacy })
-  assert.equal(normalized.scenes.center.dockview.activeGroup, '2')
+  assert.equal(normalized.scenes.center.dockview.activeGroup, 'topb')
   const later = normalizeDockLayouts(config, normalized, { center: legacyDefaults(center) })
   assert.deepEqual(later.scenes.center, normalized.scenes.center)
   assert.deepEqual(later.scenes.center.legacyV1Snapshot, legacy.center)
 
   const corrupted = structuredClone(normalized)
-  corrupted.scenes.center.dockview.grid.root.data[0].data.views.push('unknown-panel')
+  corrupted.scenes.center.dockview.grid.root.data[0].data[0].data.views.push('unknown-panel')
   const changedLegacy = legacyDefaults(center)
   changedLegacy.panels['business-main'].visible = false
   const recovered = normalizeDockLayouts(config, corrupted, { center: changedLegacy })

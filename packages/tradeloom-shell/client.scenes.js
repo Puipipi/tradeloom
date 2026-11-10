@@ -1491,7 +1491,7 @@ window.__ModuleLoader__.load({
             layoutContext.assistantOptions?.length ? h('span', { className: 'tl-layout-menu-section' }, '并排协作助手') : null,
             ...(layoutContext.assistantOptions ?? []).map(panel => h('button', { key: panel.id, type: 'button',
               onClick: runLayoutAction(() => layoutContext.addAssistantPanel?.(panel.id)) }, assistantLabel(panel.roleId))),
-            ...(layoutContext.closedPanels ?? []).map(closed => h('button', { key: closed.id, type: 'button',
+            ...(layoutContext.closedPanels ?? []).map(closed => h('button', { key: `restore-${closed.id}`, type: 'button',
               onClick: runLayoutAction(() => layoutContext.selectPanel?.(closed.id)) }, `恢复${closed.title}`)),
             layoutContext.saveError ? h('button', { type: 'button', onClick: runLayoutAction(layoutContext.retrySave) }, '重试保存布局') : null,
             layoutContext.error ? h('button', { type: 'button', onClick: runLayoutAction(layoutContext.resetLayout) }, '重试推荐布局') : null)) : null,
@@ -3718,38 +3718,20 @@ window.__ModuleLoader__.load({
       }
       function restoreGridGeometry(currentApi, layout) {
         const target = activeViewport()
-        if (!target) return
-        const width = Math.round(target.width)
-        const height = Math.round(target.height)
-        const gap = 10
-        const sizeGroups = (node, vertical, availableWidth, availableHeight, sourceWidth, sourceHeight) => {
-          if (node.type === 'leaf') {
-            const member = node.data?.views?.map(id => currentApi.getPanel(id)).find(Boolean)
-            if (member) {
-              const groupApi = member.api.group.api
-              groupApi.setSize({ width: availableWidth, height: availableHeight })
-              // Spaced themes subtract each split's gap share from the
-              // requested slot. Correct against the public live size.
-              groupApi.setSize({ width: availableWidth + (availableWidth - groupApi.width),
-                height: availableHeight + (availableHeight - groupApi.height) })
-            }
-            return
-          }
+        if (!target || !layout?.grid?.root) return
+        const scaled = JSON.parse(JSON.stringify(layout))
+        scaled.grid.width = Math.round(target.width)
+        scaled.grid.height = Math.round(target.height)
+        const scaleNode = (node, extent) => {
+          node.size = extent
+          if (node.type === 'leaf') return
           const children = node.data ?? []
-          const gapShare = gap * Math.max(0, children.length - 1) / Math.max(1, children.length)
-          const savedTotal = children.reduce((sum, child) => sum + child.size, 0)
-          // Recommended layouts use relative slot weights; persisted layouts
-          // contain rendered pixels with the gap already removed.
-          const sourceExtent = vertical ? sourceHeight : sourceWidth
-          const savedGapShare = Math.abs(savedTotal - sourceExtent) < 0.75 ? 0 : gapShare
-          const total = savedTotal + savedGapShare * children.length
-          for (const child of children) {
-            const extent = (child.size + savedGapShare) / total * (vertical ? availableHeight : availableWidth) - gapShare
-            sizeGroups(child, !vertical, vertical ? availableWidth : extent, vertical ? extent : availableHeight,
-              vertical ? sourceWidth : child.size, vertical ? child.size : sourceHeight)
-          }
+          const total = children.reduce((sum, child) => sum + child.size, 0)
+          if (!total) return
+          for (const child of children) scaleNode(child, child.size / total * extent)
         }
-        sizeGroups(layout.grid.root, layout.grid.orientation === 'VERTICAL', width, height, layout.grid.width, layout.grid.height)
+        scaleNode(scaled.grid.root, scaled.grid.orientation === 'VERTICAL' ? scaled.grid.height : scaled.grid.width)
+        currentApi.fromJSON(scaled, { reuseExistingPanels: true })
       }
       function applyInitialGeometry(currentApi, viewport) {
         const canonical = initialGeometryPendingRef.current
@@ -3776,13 +3758,7 @@ window.__ModuleLoader__.load({
         try {
           currentApi.layout(Math.round(viewport.width), Math.round(viewport.height), true)
           currentApi.exitMaximizedGroup?.()
-          if (layout) {
-            const restored = currentApi.toJSON()
-            if (JSON.stringify(restored?.grid?.root) !== JSON.stringify(layout?.grid?.root)) {
-              currentApi.fromJSON(layout, { reuseExistingPanels: true })
-            }
-            restoreGridGeometry(currentApi, layout)
-          }
+          if (layout) restoreGridGeometry(currentApi, layout)
         } finally { layoutTransitionRef.current = false }
         if (activeWideViewport() && !currentApi.hasMaximizedGroup?.()) {
           lastWideLayoutRef.current = JSON.parse(JSON.stringify(currentApi.toJSON()))
@@ -3802,11 +3778,21 @@ window.__ModuleLoader__.load({
           panel.api.maximize()
         }
         if (before) {
-          maximizeStartFrameRef.current = requestAnimationFrame(() => {
-            maximizeStartFrameRef.current = 0
-            const restoredGroupElement = panel.api.group?.element
-            if (restoredGroupElement?.isConnected) animateDockviewGeometry(restoredGroupElement, before)
-          })
+          const animateRestoredGroup = remainingFrames => {
+            const restoredGroupElement = currentApi.getPanel(panel.id)?.api.group?.element ?? panel.api.group?.element
+            if (restoredGroupElement?.isConnected) {
+              const rect = restoredGroupElement.getBoundingClientRect()
+              if (rect.width > 0 && rect.height > 0) {
+                maximizeStartFrameRef.current = 0
+                animateDockviewGeometry(restoredGroupElement, before)
+                return
+              }
+            }
+            if (remainingFrames > 0) {
+              maximizeStartFrameRef.current = requestAnimationFrame(() => animateRestoredGroup(remainingFrames - 1))
+            } else maximizeStartFrameRef.current = 0
+          }
+          maximizeStartFrameRef.current = requestAnimationFrame(() => animateRestoredGroup(3))
         }
       }
       function toggleInAppFloatingPanel(panel) {
@@ -4217,7 +4203,7 @@ window.__ModuleLoader__.load({
         if (narrow && !narrowRef.current) {
           narrowRef.current = true
           const panel = currentApi.getPanel(activePanelId) ?? currentApi.getPanel(currentApi.activePanel?.id) ?? currentApi.getPanel(scene.panels[0]?.id)
-          if (panel) { panel.api.setActive(); rememberRestorableLayout(currentApi, true); currentApi.maximizeGroup(panel) }
+          if (panel) { panel.api.setActive(); rememberRestorableLayout(currentApi, true); panel.api.maximize() }
         } else if (!narrow && narrowRef.current) {
           narrowRef.current = false
           if (currentApi.hasMaximizedGroup()) restoreMaximizedLayout(currentApi)

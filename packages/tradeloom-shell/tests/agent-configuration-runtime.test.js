@@ -473,6 +473,8 @@ test('new-session route creates through official SessionController and replays i
       owner.provide('storageDomain', facility)
       const persistedSessions = new Map()
       owner.provide('sessionPersistence', {
+        identity: Object.freeze({ fixture: 'runtime-session-persistence' }),
+        async flush() {},
         async list() { return [...persistedSessions.values()].map(record => ({ header: record.header, revision: `runtime-${record.header.id}` })) },
         async create(header) {
           const record = { header: structuredClone(header), events: [] }
@@ -523,6 +525,8 @@ test('new-session route creates through official SessionController and replays i
   }
   const handler = createNewSessionHandler({
     connection: { requestRejection: () => undefined },
+    agents: ctx.agents,
+    get: name => ctx.get(name),
     workspaceRegistry: ctx.workspaceRegistry,
     sessionController: ctx.sessionController,
     sessionQuery: ctx.sessionQuery,

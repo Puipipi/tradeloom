@@ -8,7 +8,7 @@ import test from 'node:test'
 import { createAgentConfigurationResources } from '../agent-configuration.js'
 import { createAgentConfigurationSnapshotsHandler } from '../agent-configuration-snapshots.js'
 import { ROLE_PRESETS } from '../roles.js'
-import { HOME_MARKER, HOME_MARKER_VALUE } from '../state.js'
+import { createStateStore, HOME_MARKER, HOME_MARKER_VALUE } from '../state.js'
 
 function canonical(value) {
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`
@@ -124,6 +124,7 @@ async function fixture(t, { rejected, unsupported = false, roles = ['center'], e
     : env
   const dependencies = {
     resolveOwnedHome: async () => home,
+    createStateStore: () => createStateStore({ env: { ...fixtureEnv, DSH_HOME: home, TRADELOOM_DSH_APP_HOME: home } }),
     FiberState: { ACTIVE: 'active' }, env: fixtureEnv, toolNames: ['search_web'], roleWorkspacePath,
     ...(defaultReadOnlyWorkspace ? {} : { roleWorkspacePathReadOnly }),
     snapshotHooks,

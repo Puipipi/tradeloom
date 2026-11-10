@@ -583,6 +583,8 @@ export function createExecutionOriginAuthority({ stateStore, isSessionLive, isSe
     },
 
     async revoke(origin) {
+      const existing = active.get(origin?.operationId)
+      if (existing?.status === 'terminal' && sameOriginTuple(existing.origin, origin)) return
       const record = assertActive(origin)
       record.status = 'revoking'
       try {

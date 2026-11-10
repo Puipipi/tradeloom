@@ -49,12 +49,24 @@ test('embedded business theme bridge accepts only same-origin messages with the 
     parent, location: { origin: 'http://localhost:3088' },
     addEventListener(type, listener) { if (type === 'message') messageHandler = listener },
   }
-  runInNewContext(appSource, { document, window, URL, URLSearchParams, globalThis: {} })
+  runInNewContext(appSource, { document, window, URL, URLSearchParams, globalThis: {
+    TradeLoomBusiness: {
+      isTrustedBridgeEvent: event => event.source === parent && event.origin === window.location.origin,
+      bridgeTarget: () => parent,
+    },
+  } })
   const palette = {
     canvas: '#0c1017', panel: '#131925', header: '#171f2c', border: '#293345',
-    text: '#dfe7f3', muted: '#8b97ab', accent: '#4d83dd', teal: '#37b5a9',
+    text: '#dfe7f3', muted: '#8b97ab', accent: '#4d83dd', accentStrong: '#6b9bf5', accentSoft: '#1d2538',
+    teal: '#37b5a9', buttonInk: '#10131b', danger: '#ed7373', dangerBackground: '#392729', dangerBorder: '#623c42',
+    warning: '#d6ad5b', warningBackground: '#302a20', warningBorder: '#5a4b32', success: '#39d5a1', successBackground: '#1e3735',
   }
-  const event = data => messageHandler({ source: parent, origin: window.location.origin, data })
+  const ui = {
+    controlHeight: 32, cornerRadius: 8, dockTabHeight: 32, fontBody: 14, fontCompact: 12,
+    fontFamily: 'Segoe UI', iconSize: 16, lineHeight: 1.4, modelControl: 32,
+    navHeight: 48, sceneTabHeight: 36, toolbarHeight: 40, topRowHeight: 48,
+  }
+  const event = data => messageHandler({ source: parent, origin: window.location.origin, data: { ui, ...data } })
   event({ type: 'tradeloom:theme', colorScheme: 'dark', palette })
   assert.equal(html.dataset.colorScheme, 'dark')
   assert.equal(variables.get('--wb-theme-canvas'), '#0c1017')

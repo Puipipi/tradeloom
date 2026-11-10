@@ -7,7 +7,7 @@ import test from 'node:test'
 import { createAgentConfigurationResources } from '../agent-configuration.js'
 import { createAgentConfigurationSnapshotsHandler } from '../agent-configuration-snapshots.js'
 import { ROLE_PRESETS } from '../roles.js'
-import { HOME_MARKER, HOME_MARKER_VALUE } from '../state.js'
+import { createStateStore, HOME_MARKER, HOME_MARKER_VALUE } from '../state.js'
 
 const ownedRoot = process.env.TRADELOOM_AGENT_CONFIGURATION_TEST_ROOT
 if (!ownedRoot) throw new Error('TRADELOOM_AGENT_CONFIGURATION_TEST_ROOT must be an explicit workspace-owned path')
@@ -188,7 +188,9 @@ test('real rep12 ConfigEditor snapshot restores managed config on disk for futur
     },
   }
   const dependencies = {
-    resolveOwnedHome: async () => setup.home, env, toolNames: ['search_web'],
+    resolveOwnedHome: async () => setup.home,
+    createStateStore: () => createStateStore({ env: { ...env, DSH_HOME: setup.home, TRADELOOM_DSH_APP_HOME: setup.home } }),
+    env, toolNames: ['search_web'],
     async roleWorkspacePath(role) { const path = join(setup.home, 'tradeloom-workspaces', role); await mkdir(path, { recursive: true }); return path },
     roleWorkspacePathReadOnly(role) { return join(setup.home, 'tradeloom-workspaces', role) },
   }
@@ -199,8 +201,23 @@ test('real rep12 ConfigEditor snapshot restores managed config on disk for futur
   assert.equal(before.status, 200, JSON.stringify(before.value))
   const editor = setup.ctx.get('configEditor')
   assert.ok(editor, 'official rep12 ConfigEditor is loaded')
+  t.diagnostic(JSON.stringify({
+    sameEditorIdentity: setup.ctx.get('configEditor') === editor,
+    sameProfileIdentity: setup.ctx.get('profileContext') === setup.ctx.get('profileContext'),
+    configEntries: editor.entries().map(entry => ({
+    id: entry.options.id, name: entry.options.name, configId: entry.options.config?.id,
+    fiberState: entry.fiber?.state, enabled: entry.enabled, disabled: entry.disabled,
+  })) }))
   const presetEntry = editor.entries().find(entry => entry.options.id === 'center-preset')
   assert.ok(presetEntry)
+  const officialEdit = editor.edit.bind(editor)
+  editor.edit = async (...args) => {
+    const result = await officialEdit(...args)
+    t.diagnostic(JSON.stringify({ postEditEntries: editor.entries().map(entry => ({
+      id: entry.options.id, fiberState: entry.fiber?.state, enabled: entry.enabled, disabled: entry.disabled,
+    })) }))
+    return result
+  }
   const originalUnmanaged = structuredClone(presetEntry.options.config.plugins[0])
   const captured = await invoke(snapshotHandler, 'POST', '/tradeloom/agent-configuration/snapshots', { action: 'capture', role: 'center' })
   assert.equal(captured.status, 201, JSON.stringify(captured.value))
@@ -274,6 +291,7 @@ test('real rep12 preset registry and new Agents enforce restored tool policy wit
   const env = {}
   const dependencies = {
     resolveOwnedHome: async () => setup.home,
+    createStateStore: () => createStateStore({ env: { ...env, DSH_HOME: setup.home, TRADELOOM_DSH_APP_HOME: setup.home } }),
     env,
     toolNames: ['snapshot_probe'],
     async roleWorkspacePath(role) { const path = join(setup.home, 'tradeloom-workspaces', role); await mkdir(path, { recursive: true }); return path },

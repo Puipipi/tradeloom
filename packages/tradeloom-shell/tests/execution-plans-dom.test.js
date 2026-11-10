@@ -100,10 +100,9 @@ test('execution plan selectors use the existing light and dark theme tokens', ()
   assert.match(block, /var\(--surface-soft\)/)
   assert.match(block, /border-radius: 8px/)
   assert.doesNotMatch(block, /--wb-(?:border|surface|radius)/)
-  for (const theme of [light, dark]) {
-    assert.match(theme, /--line:/)
-    assert.match(theme, /--surface-soft:/)
-  }
+  assert.match(light, /--line:/)
+  assert.match(light, /--surface-soft:/)
+  assert.match(dark, /color-scheme:\s*dark/)
 })
 
 test('late history response for another exact requirement cannot replace the selected requirement history', async () => {

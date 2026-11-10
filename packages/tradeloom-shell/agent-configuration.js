@@ -113,6 +113,10 @@ function contextService(ctx, name) {
   catch { return undefined }
 }
 
+function serviceIdentity(value) {
+  return value?.[Symbol.for('cordis.original')] ?? value
+}
+
 async function accessForRole(ctx, role, dependencies, { providerGuard } = {}) {
   const editor = contextService(ctx, 'configEditor')
   const profile = contextService(ctx, 'profileContext')
@@ -572,13 +576,14 @@ function sendFailure(res, failure) {
 function providerIdentity(access, role) {
   return {
     home: resolve(access.home).toLocaleLowerCase('en-US'), role, preset: ROLE_PRESETS[role],
-    profile: access.profile, editor: access.editor,
+    profile: serviceIdentity(access.profile), editor: serviceIdentity(access.editor),
   }
 }
 
 function sameProviderIdentity(left, right) {
   return Boolean(left && right && left.home === right.home && left.role === right.role && left.preset === right.preset
-    && left.profile === right.profile && left.editor === right.editor)
+    && serviceIdentity(left.profile) === serviceIdentity(right.profile)
+    && serviceIdentity(left.editor) === serviceIdentity(right.editor))
 }
 
 function snapshotRestoreFailure(restore) {
@@ -689,7 +694,8 @@ async function applyManagedConfigurationCore(ctx, access, role, rawInput, depend
       let verifiedConfig
       try {
         await providerGuard('after-edit-reject-resolve')
-        if (contextService(ctx, 'configEditor') !== access.editor || contextService(ctx, 'profileContext') !== access.profile) {
+        if (serviceIdentity(contextService(ctx, 'configEditor')) !== serviceIdentity(access.editor)
+          || serviceIdentity(contextService(ctx, 'profileContext')) !== serviceIdentity(access.profile)) {
           throw new ConfigurationError('snapshot-restore-outcome-unknown', 503)
         }
         verifiedConfig = activePresetEntry(access, role).options.config
@@ -836,11 +842,14 @@ export function createManagedConfigurationSequenceTracker(ctx, dependencies = {}
       })
       return token
     },
-    async finish(token, { error } = {}) {
+    async finish(token, { error, outcome } = {}) {
       const store = await storeFactory()
       let observedDigest
-      try { observedDigest = await readDigest(token.role) }
-      catch { throw new ConfigurationError('managed-configuration-reconcile-retry', 503) }
+      if (outcome === 'before') observedDigest = token.beforeDigest
+      else if (outcome !== 'unknown') {
+        try { observedDigest = await readDigest(token.role) }
+        catch { throw new ConfigurationError('managed-configuration-reconcile-retry', 503) }
+      }
       const result = await store.transact(state => {
         const row = state.managedConfigurationMutation
         if (row?.sequence !== token.sequence || row.role !== token.role) {
@@ -860,7 +869,7 @@ export function createManagedConfigurationSequenceTracker(ctx, dependencies = {}
         }
         return row.status
       })
-      if (result === 'unknown') throw new ConfigurationError('managed-configuration-outcome-unknown', 503)
+      if (result === 'unknown' && outcome === undefined) throw new ConfigurationError('managed-configuration-outcome-unknown', 503)
     },
     async readIdentity(role) {
       return await withLock(role, () => readIdentityUnderLock(role))
@@ -881,18 +890,30 @@ async function applyManagedConfiguration(ctx, access, role, rawInput, dependenci
   let result
   try { result = await applyManagedConfigurationCore(ctx, access, role, rawInput, dependencies, { ...options, onWriteStart }) }
   catch (error) {
-    if (token) await tracker.finish(token, { error })
+    if (token) {
+      const outcome = options.providerGuard && typeof error?.code === 'string' && error.code.startsWith('snapshot-restore-')
+        ? error.restoreStatus === 'restored' ? 'before' : 'unknown'
+        : undefined
+      await tracker.finish(token, { error, ...(outcome ? { outcome } : {}) })
+    }
     throw error
   }
-  if (token) await tracker.finish(token)
+  if (token) {
+    try { await tracker.finish(token) }
+    catch (error) {
+      if (!options.providerGuard) throw error
+      throw snapshotRestoreFailure(await compensateSnapshotUpdate(ctx, access, role,
+        result.previousConfig, result.updatedConfig, dependencies, options.providerGuard, result.beforeHealthy))
+    }
+  }
   return result
 }
 
 function createAgentConfigurationController(ctx, dependencies = {}) {
   const assertSnapshotServices = (expectedIdentity, afterWrite = false) => {
     if (!expectedIdentity) return
-    if (contextService(ctx, 'configEditor') !== expectedIdentity.editor
-      || contextService(ctx, 'profileContext') !== expectedIdentity.profile) {
+    if (serviceIdentity(contextService(ctx, 'configEditor')) !== serviceIdentity(expectedIdentity.editor)
+      || serviceIdentity(contextService(ctx, 'profileContext')) !== serviceIdentity(expectedIdentity.profile)) {
       throw new ConfigurationError(afterWrite ? 'snapshot-restore-outcome-unknown' : 'configuration-unavailable', 503)
     }
   }
@@ -901,8 +922,10 @@ function createAgentConfigurationController(ctx, dependencies = {}) {
     assertSnapshotServices(expectedIdentity, afterWrite)
     const access = await accessForRole(ctx, role, dependencies, {
       providerGuard: ({ editor, profile }) => {
-        const matchesContext = contextService(ctx, 'configEditor') === editor && contextService(ctx, 'profileContext') === profile
-        const matchesExpected = !expectedIdentity || expectedIdentity.editor === editor && expectedIdentity.profile === profile
+        const matchesContext = serviceIdentity(contextService(ctx, 'configEditor')) === serviceIdentity(editor)
+          && serviceIdentity(contextService(ctx, 'profileContext')) === serviceIdentity(profile)
+        const matchesExpected = !expectedIdentity || serviceIdentity(expectedIdentity.editor) === serviceIdentity(editor)
+          && serviceIdentity(expectedIdentity.profile) === serviceIdentity(profile)
         if (!matchesContext || !matchesExpected) {
           throw new ConfigurationError(afterWrite ? 'snapshot-restore-outcome-unknown' : 'configuration-unavailable', 503)
         }
@@ -920,8 +943,8 @@ function createAgentConfigurationController(ctx, dependencies = {}) {
     try { latest = await accessForSnapshotRole(role, active.providerIdentity, afterWrite) }
     catch (error) {
       if (afterWrite) {
-        const sameServiceOwner = contextService(ctx, 'configEditor') === active.providerIdentity.editor
-          && contextService(ctx, 'profileContext') === active.providerIdentity.profile
+        const sameServiceOwner = serviceIdentity(contextService(ctx, 'configEditor')) === serviceIdentity(active.providerIdentity.editor)
+          && serviceIdentity(contextService(ctx, 'profileContext')) === serviceIdentity(active.providerIdentity.profile)
         if (sameServiceOwner && error?.code !== 'snapshot-restore-outcome-unknown') {
           throw new ConfigurationError('snapshot-restore-readback-failed', 503)
         }

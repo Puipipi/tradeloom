@@ -30,8 +30,10 @@ async function sourceWithPatch() {
     const target = join(work, ...gatewayEntry.split("/"))
     await mkdir(dirname(target), { recursive: true })
     await writeFile(target, original, { flag: "wx" })
-    execFileSync("git", ["-c", "core.longpaths=true", "apply", "--check", patchPath], { cwd: work, stdio: "pipe" })
-    execFileSync("git", ["-c", "core.longpaths=true", "apply", patchPath], { cwd: work, stdio: "pipe" })
+    const normalizedPatch = join(work, "session-list-failure-phase.patch")
+    await writeFile(normalizedPatch, (await readFile(patchPath, "utf8")).replace(/\r\n?/g, "\n"), { flag: "wx" })
+    execFileSync("git", ["-c", "core.longpaths=true", "apply", "--check", normalizedPatch], { cwd: work, stdio: "pipe" })
+    execFileSync("git", ["-c", "core.longpaths=true", "apply", normalizedPatch], { cwd: work, stdio: "pipe" })
     return await readFile(target, "utf8")
   } finally {
     await rm(work, { recursive: true, force: true })

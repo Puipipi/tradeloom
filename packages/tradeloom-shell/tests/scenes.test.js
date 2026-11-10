@@ -1174,7 +1174,10 @@ test('narrow scene navigation focuses the requested panel when mounting an unvis
       'the HTTP queue never persists temporary maximized geometry')
 
     await resizeProductHost({ width: 959, height: 650 })
-    const erpTab = host.querySelector('button.tl-scene-tab[aria-label="ERPNext"]')
+    const toolsTrigger = [...host.querySelectorAll('button')].find(button => button.textContent === '工具')
+    assert.ok(toolsTrigger, 'ERPNext is reached through the production tools menu')
+    await act(async () => { toolsTrigger.click(); await new Promise(resolve => setTimeout(resolve, 0)) })
+    const erpTab = host.querySelector('#tl-scene-tools-menu button[aria-label="ERPNext"]')
     assert.ok(erpTab)
     await act(async () => {
       erpTab.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
@@ -1183,7 +1186,7 @@ test('narrow scene navigation focuses the requested panel when mounting an unvis
     const activeScene = host.querySelector('.tl-dock-scene.is-active[aria-label="ERPNext工作区"]')
     assert.ok(activeScene, 'clicking the scene navigator makes ERPNext the active visible workbench')
     assert.equal(activeScene.style.display, 'flex')
-    assert.equal(host.querySelector('button.tl-scene-tab[aria-label="ERPNext"]').getAttribute('aria-current'), 'page')
+    assert.equal(host.querySelector('#tl-scene-tools-menu button[aria-label="ERPNext"]').getAttribute('aria-current'), 'page')
     assert.ok(activeScene.querySelector('select[aria-label="选择当前面板"]'), 'the 959px canvas enters narrow single-pane mode')
     assert.equal(activeScene.querySelector('.test-dockview')?.getAttribute('data-disable-dnd'), 'true')
     const visiblePanel = activeScene.querySelector('.tl-dock-panel')
@@ -1558,8 +1561,10 @@ test('client entry passes the real Cordis context through to scene registration'
       serviceCtx.reflect.provide('uiWorkspace', uiWorkspace)
       serviceCtx.reflect.provide('sessions', sessions)
       serviceCtx.reflect.provide('modelDirectories', { directoryFor() { throw new Error('not used in this test') } })
-      serviceCtx.reflect.provide('remote', { session: remoteSession })
+      serviceCtx.reflect.provide('remote', { session: remoteSession, pluginInventory: {} })
       serviceCtx.reflect.provide('remote.session', remoteSession)
+      serviceCtx.reflect.provide('remote.pluginInventory', {})
+      serviceCtx.reflect.provide('locale', {})
       serviceCtx.reflect.provide('theme', theme)
     },
   })
@@ -1569,6 +1574,7 @@ test('client entry passes the real Cordis context through to scene registration'
     useState: initial => [initial, value => stateUpdates.push(typeof value === 'function' ? value(initial) : value)],
     useRef: initial => ({ current: initial }),
     useEffect(effect) { effect() },
+    useLayoutEffect(effect) { effect() },
   }
   const stateUpdates = []
   const entrySource = await readFile(new URL('../client.js', import.meta.url), 'utf8')
@@ -1626,6 +1632,7 @@ test('client entry passes the real Cordis context through to scene registration'
     },
   })
   await clientFiber
+  await new Promise(resolve => setImmediate(resolve))
   assert.deepEqual(selectedPanels, [['scene-workbench']], 'the first client load selects the formal workbench before an old full-screen conversation is restored')
 
   assert.ok(registrations.some(item => item.type === 'slot' && item.spec.key === 'scene-workbench'),
