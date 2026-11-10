@@ -3247,6 +3247,12 @@ window.__ModuleLoader__.load({
       }
       const stopGroupActivation = event => event?.stopPropagation?.()
       const actionIcon = path => h('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true', fill: 'none', stroke: 'currentColor', strokeWidth: 1.5 }, h('path', { d: path }))
+      const openPanelCount = (() => {
+        const dockApi = dockviewApis.get(sceneId)
+        const panelsRecord = dockApi?.toJSON?.()?.panels
+        if (panelsRecord && typeof panelsRecord === 'object') return Object.keys(panelsRecord).length
+        return context.panels?.length ?? 0
+      })()
       const actions = [
         h('button', { type: 'button', 'data-pane-action':'refresh', title: `刷新${label}`, 'aria-label': `刷新${label}`,
           onPointerDown: stopGroupActivation, onMouseDown: stopGroupActivation,
@@ -3274,6 +3280,21 @@ window.__ModuleLoader__.load({
         canFloat && !floatingPanel ? h('button', { type: 'button', 'data-pane-action':'popout', title:`独立窗口${label}`,
           'aria-label':`独立窗口${label}`, onPointerDown:stopGroupActivation, onMouseDown:stopGroupActivation,
           onClick:runWithoutActivatingGroup(() => context.togglePopout?.(panel.id)) }, actionIcon('M13 4h7v7M20 4l-9 9M10 4H4v16h16v-6'), '独立窗口') : null,
+        typeof context.closePanel === 'function' ? h('button', { type:'button', 'data-pane-action':'capabilities',
+          title:'助手能力与已保存配置', 'aria-label':'助手能力与已保存配置',
+          onPointerDown: stopGroupActivation, onMouseDown: stopGroupActivation,
+          onClick: runWithoutActivatingGroup(() => {
+            const view = panel?.ownerDocument?.defaultView ?? window
+            view.dispatchEvent(new view.CustomEvent('tradeloom:open-agent-capabilities', { detail: { roleId: chatRoleId ?? '' } }))
+          }) }, actionIcon('M12 3l2.4 5 5.6.8-4 3.9.9 5.5-4.9-2.6-4.9 2.6.9-5.5-4-3.9 5.6-.8z'), '助手能力') : null,
+        openPanelCount > 1 ? h('button', { type:'button', 'data-pane-action':'close',
+          title:`关闭${label}`, 'aria-label':`关闭${label}`,
+          onPointerDown: stopGroupActivation, onMouseDown: stopGroupActivation,
+          onClick: runWithoutActivatingGroup(() => context.closePanel?.(panel.id)) }, actionIcon('M6 6l12 12M18 6L6 18'), '关闭面板') : null,
+        ...(context.closedPanels ?? []).map(closed => h('button', { key: `restore-${closed.id}`, type:'button',
+          'data-pane-action': `restore-${closed.id}`, title: `恢复${closed.title}`, 'aria-label': `恢复${closed.title}`,
+          onPointerDown: stopGroupActivation, onMouseDown: stopGroupActivation,
+          onClick: runWithoutActivatingGroup(() => context.selectPanel?.(closed.id)) }, actionIcon('M12 5v14M5 12h14'), `恢复${closed.title}`)),
         chatRoleId ? h('button', { type:'button', 'data-pane-action':'open-native', title:'打开此助手的完整原生会话', 'aria-label':`打开${label}原生会话`,
           disabled:!boundSession || typeof uiWorkspaceApi?.openSession !== 'function',
           onPointerDown:stopGroupActivation, onMouseDown:stopGroupActivation,

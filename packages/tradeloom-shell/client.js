@@ -2386,10 +2386,12 @@ window.__ModuleLoader__.load({
           if (capabilityRequest.current === requestId) setCapabilityInfo({ status: 'error', data: null, error: '能力信息暂时无法读取，请重试。' })
         }
       }
-      function showCapabilities() {
+      function showCapabilities(preferredRole) {
         const current = sceneApi?.getSnapshot?.()
         const activeScene = current?.config?.scenes?.find(item => item.id === current.activeSceneId)
-        const role = typeof props.resolveCapabilityRole === 'function'
+        const role = typeof preferredRole === 'string' && preferredRole
+          ? preferredRole
+          : typeof props.resolveCapabilityRole === 'function'
           ? props.resolveCapabilityRole()
           : current?.roleByScene?.[current.activeSceneId] ?? activeScene?.roleId ?? roles[0]?.id
         if (typeof props.resolveCapabilityRole === 'function' && !roles.some(item => item.id === role)) {
@@ -2402,6 +2404,13 @@ window.__ModuleLoader__.load({
         setCapabilityTab('current')
         void loadCapabilities(role)
       }
+      React.useEffect(() => {
+        const target = typeof window === 'undefined' ? undefined : window
+        if (!target?.addEventListener) return undefined
+        const openCapabilities = event => { showCapabilities(event?.detail?.roleId) }
+        target.addEventListener('tradeloom:open-agent-capabilities', openCapabilities)
+        return () => target.removeEventListener('tradeloom:open-agent-capabilities', openCapabilities)
+      }, [])
       function updateCapabilityPanelBounds() {
         const visualViewport = window.visualViewport
         const viewportWidth = Number(visualViewport?.width) > 0 ? Number(visualViewport.width) : Math.max(0, window.innerWidth || document.documentElement?.clientWidth || 0)

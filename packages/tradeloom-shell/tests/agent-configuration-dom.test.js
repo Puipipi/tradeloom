@@ -164,6 +164,16 @@ test('capability configuration uses real React and JSDOM for role editing, busy 
     })
     assert.equal(dom.window.document.querySelector('.tl-agent-capabilities'), null, 'Escape closes the open modal panel')
     assert.equal(dom.window.document.activeElement, selector, 'closing returns focus to the still-mounted Agent selector')
+    await act(async () => {
+      dom.window.dispatchEvent(new dom.window.CustomEvent('tradeloom:open-agent-capabilities', { detail: { roleId: 'product' } }))
+      await new Promise(resolve => setImmediate(resolve))
+    })
+    assert.ok(dom.window.document.querySelector('.tl-agent-capabilities'),
+      'the panel-menu capability entry opens the same assistant capability dialog')
+    await act(async () => {
+      dom.window.document.querySelector('.tl-agent-capabilities button[aria-label="关闭助手能力与配置"]').click()
+      await new Promise(resolve => setImmediate(resolve))
+    })
     await act(async () => { selector.click() })
     await act(async () => { button('查看 MCP 与 Skill 能力').click() })
     await act(async () => { choose('product'); await new Promise(resolve => setImmediate(resolve)) })

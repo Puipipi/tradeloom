@@ -740,6 +740,15 @@ test('real Dockview snapshot survives the client HTTP save and server restore co
     assert.deepEqual(extraKeysAfterJson, [], 'undefined Dockview UI defaults disappear at the real JSON HTTP boundary; persisted fields match the strict schema')
     assert.deepEqual(validatorErrors, [], 'the production server layout validator accepts the HTTP payload')
 
+    const closeActions = [...host.querySelectorAll('[data-pane-action="close"]')]
+    assert.ok(closeActions.length >= 1, 'an open panel exposes a close action in the visible panel menu')
+    const restoreActions = [...host.querySelectorAll('[data-pane-action="restore-files"]')]
+    assert.ok(restoreActions.length >= 1, 'a closed panel exposes a restore action in the visible panel menu')
+    await act(async () => { restoreActions[0].click(); await settle(90) })
+    assert.ok(api.getPanel('files'), 'the visible restore action recreates the closed panel')
+    assert.equal(Object.keys(api.toJSON().panels).filter(id => id === 'files').length, 1,
+      'the visible restore action creates exactly one files panel')
+
     const normalized = normalizeDockLayouts(config, bodyOverHttp).scenes.products
     const beforeRestore = walkLeaves(normalized.dockview.grid.root)
     await act(async () => { api.fromJSON(normalized.dockview); await settle() })
