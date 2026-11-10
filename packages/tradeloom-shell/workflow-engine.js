@@ -1,45 +1,191 @@
 import { randomUUID } from 'node:crypto'
-import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { mkdir, open, readdir, readFile, rename, rm, unlink } from 'node:fs/promises'
+import { dirname, join, resolve } from 'node:path'
 import { ROLE_LABELS } from './roles.js'
 import { validateWorkflow, WorkflowValidationError } from './workflow-schema.js'
+import { createConfirmedWorkflowDefinition } from './workflow-definition.js'
 
 const MAX_RUNS = 30
+const WORKFLOW_STORE_FORMAT = 1
+const workflowWriteQueues = new Map()
+
+function workflowStoreError(code) {
+  return Object.assign(new Error(code), { code })
+}
+
+function exactObject(value, keys) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key))
+}
+
+function canonicalTime(value) {
+  try { return typeof value === 'string' && new Date(value).toISOString() === value } catch { return false }
+}
+
+function workflowDefinitionRevision(document) {
+  return document.confirmed === true ? createConfirmedWorkflowDefinition(document).definitionRevision : null
+}
+
+async function withWorkflowFileLock(path, operation) {
+  const key = resolve(path).toLocaleLowerCase('en-US')
+  const previous = workflowWriteQueues.get(key) ?? Promise.resolve()
+  let release
+  const gate = new Promise(resolveGate => { release = resolveGate })
+  const tail = previous.then(() => gate)
+  workflowWriteQueues.set(key, tail)
+  await previous
+  try {
+    return await operation()
+  } finally {
+    release()
+    if (workflowWriteQueues.get(key) === tail) workflowWriteQueues.delete(key)
+  }
+}
 
 // wf 定义存为 <dir>/<id>.json；id 已被 schema 限定为安全文件名。
-export function createWorkflowStore(dir) {
+export function createWorkflowStore(dir, options = {}) {
+  const testHooks = options?._testHooks ?? Object.create(null)
   const file = id => {
     if (typeof id !== 'string' || !/^[a-z0-9][a-z0-9_-]{0,47}$/.test(id)) throw new WorkflowValidationError(['invalid workflow id'])
     return join(dir, `${id}.json`)
   }
+  async function readStored(id) {
+    const target = file(id)
+    let text
+    try { text = await readFile(target, 'utf8') } catch (error) {
+      if (error.code === 'ENOENT') return { document: null, revision: 0, updatedAt: null, definitionRevision: null }
+      throw workflowStoreError('workflow_store_read_failed')
+    }
+    let raw
+    try { raw = JSON.parse(text) } catch {
+      throw workflowStoreError('workflow_store_invalid_record')
+    }
+    if (raw?.formatVersion !== undefined || Object.hasOwn(raw ?? {}, 'revision') || Object.hasOwn(raw ?? {}, 'deleted')) {
+      if (raw?.formatVersion !== WORKFLOW_STORE_FORMAT) throw workflowStoreError('workflow_store_invalid_record')
+      const keys = ['formatVersion', 'revision', 'deleted', 'document', 'updatedAt', 'definitionRevision']
+      if (!exactObject(raw, keys) || !Number.isSafeInteger(raw.revision) || raw.revision < 1
+        || typeof raw.deleted !== 'boolean' || !canonicalTime(raw.updatedAt)) throw workflowStoreError('workflow_store_invalid_record')
+      if (raw.deleted) {
+        if (raw.document !== null || raw.definitionRevision !== null) throw workflowStoreError('workflow_store_invalid_record')
+        return { document: null, revision: raw.revision, updatedAt: raw.updatedAt, definitionRevision: null }
+      }
+      let document
+      try { document = validateWorkflow(raw.document) } catch { throw workflowStoreError('workflow_store_invalid_record') }
+      const definitionRevision = workflowDefinitionRevision(document)
+      if (raw.definitionRevision !== definitionRevision || document.id !== id) throw workflowStoreError('workflow_store_invalid_record')
+      return { document, revision: raw.revision, updatedAt: raw.updatedAt, definitionRevision }
+    }
+
+    const { updatedAt = null, ...workflowInput } = raw ?? {}
+    let document
+    try { document = validateWorkflow(workflowInput) } catch { throw workflowStoreError('workflow_store_invalid_record') }
+    if (document.id !== id || (updatedAt !== null && !canonicalTime(updatedAt))) throw workflowStoreError('workflow_store_invalid_record')
+    return { document, revision: 0, updatedAt, definitionRevision: workflowDefinitionRevision(document) }
+  }
+
+  async function writeRecord(id, record) {
+    const target = file(id)
+    const temporary = `${target}.${randomUUID()}.tmp`
+    let handle
+    let writeFailed = false
+    try {
+      await mkdir(dirname(target), { recursive: true })
+      handle = await open(temporary, 'wx', 0o600)
+      await handle.writeFile(`${JSON.stringify(record, null, 2)}\n`, 'utf8')
+      await handle.sync()
+    } catch {
+      writeFailed = true
+    } finally {
+      try { await handle?.close() } catch { writeFailed = true }
+    }
+    if (writeFailed) {
+      await unlink(temporary).catch(() => {})
+      throw workflowStoreError('workflow_store_write_failed')
+    }
+    try {
+      const renameFile = typeof testHooks.rename === 'function' ? testHooks.rename : rename
+      await renameFile(temporary, target)
+    } catch {
+      await rm(temporary, { force: true }).catch(() => {})
+      throw workflowStoreError('workflow_store_write_failed')
+    }
+  }
+
+  function makeRecord({ document, revision, updatedAt, deleted = false }) {
+    return {
+      formatVersion: WORKFLOW_STORE_FORMAT,
+      revision,
+      deleted,
+      document: deleted ? null : document,
+      updatedAt,
+      definitionRevision: deleted ? null : workflowDefinitionRevision(document),
+    }
+  }
+
+  function legacyDocument(record) {
+    if (record.document === null) return null
+    return record.updatedAt === null ? { ...record.document } : { ...record.document, updatedAt: record.updatedAt }
+  }
+
   return {
     async list() {
       await mkdir(dir, { recursive: true })
       const names = (await readdir(dir)).filter(name => name.endsWith('.json'))
       const items = []
       for (const name of names) {
+        const id = name.slice(0, -5)
         try {
-          const doc = JSON.parse(await readFile(join(dir, name), 'utf8'))
-          items.push({ id: doc.id, title: doc.title, source: doc.source, confirmed: doc.confirmed, nodes: doc.nodes.length, updatedAt: doc.updatedAt })
+          const record = await readStored(id)
+          if (record.document) {
+            const doc = record.document
+            items.push({ id: doc.id, title: doc.title, source: doc.source, confirmed: doc.confirmed, nodes: doc.nodes.length, updatedAt: record.updatedAt })
+          }
         } catch { /* 损坏文件跳过，不影响其他 wf */ }
       }
       return items.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))
     },
     async get(id) {
-      try { return JSON.parse(await readFile(file(id), 'utf8')) } catch (error) {
-        if (error.code === 'ENOENT') return null
-        throw error
-      }
+      return legacyDocument(await readStored(id))
     },
     async save(input) {
-      const doc = { ...validateWorkflow(input), updatedAt: new Date().toISOString() }
-      await mkdir(dir, { recursive: true })
-      const temporary = `${file(doc.id)}.${randomUUID()}.tmp`
-      await writeFile(temporary, `${JSON.stringify(doc, null, 2)}\n`, 'utf8')
-      await rename(temporary, file(doc.id))
-      return doc
+      const document = structuredClone(validateWorkflow(input))
+      const target = file(document.id)
+      return await withWorkflowFileLock(target, async () => {
+        const current = await readStored(document.id)
+        if (current.revision >= Number.MAX_SAFE_INTEGER) throw workflowStoreError('workflow_revision_exhausted')
+        const updatedAt = new Date().toISOString()
+        const record = makeRecord({ document, revision: current.revision + 1, updatedAt })
+        await writeRecord(document.id, record)
+        return legacyDocument({ ...record, document })
+      })
     },
-    async remove(id) { await rm(file(id), { force: true }) },
+    async getVersioned(id) {
+      return await readStored(id)
+    },
+    async saveVersioned(input, expectedRevision) {
+      const document = structuredClone(validateWorkflow(input))
+      if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) throw workflowStoreError('invalid_revision')
+      const target = file(document.id)
+      return await withWorkflowFileLock(target, async () => {
+        const current = await readStored(document.id)
+        if (current.revision !== expectedRevision) throw workflowStoreError('workflow_revision_conflict')
+        if (current.revision >= Number.MAX_SAFE_INTEGER) throw workflowStoreError('workflow_revision_exhausted')
+        const updatedAt = new Date().toISOString()
+        const record = makeRecord({ document, revision: current.revision + 1, updatedAt })
+        await writeRecord(document.id, record)
+        return { document, revision: record.revision, updatedAt, definitionRevision: record.definitionRevision }
+      })
+    },
+    async remove(id) {
+      const target = file(id)
+      return await withWorkflowFileLock(target, async () => {
+        const current = await readStored(id)
+        if (current.document === null) return
+        if (current.revision >= Number.MAX_SAFE_INTEGER) throw workflowStoreError('workflow_revision_exhausted')
+        const updatedAt = new Date().toISOString()
+        await writeRecord(id, makeRecord({ document: null, revision: current.revision + 1, updatedAt, deleted: true }))
+      })
+    },
   }
 }
 

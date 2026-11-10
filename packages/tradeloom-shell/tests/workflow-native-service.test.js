@@ -1,7 +1,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { EventEmitter } from 'node:events'
 import { createWorkflowNativeService } from '../workflow-native-service.js'
 import { ROLE_PRESETS } from '../roles.js'
+import { createPostgresWorkflowDefinitionStore } from '../workflow-definition-postgres.js'
+import { createConfirmedWorkflowDefinition } from '../workflow-definition.js'
+import { createWorkflowRunJournal } from '../workflow-run-journal.js'
+import { createWorkflowReviewRequest } from '../workflow-review.js'
 
 // Faithful Host/CAS fixtures, not real Host registration, PostgreSQL or LLM execution.
 const clone = value => structuredClone(value)
@@ -18,7 +23,7 @@ function scope() {
     dispose() { for (const cleanup of [...disposers].reverse()) cleanup() },
   }
 }
-function fixture({ mode = 'complete', failCreate = false, failAfterSave = false, outcomes = {}, output = 'done' } = {}) {
+function fixture({ mode = 'complete', failCreate = false, failAfterSave = false, outcomes = {}, outputs = {}, output = 'done', withTaskAuthority = false } = {}) {
   const hostScope = scope()
   const parentScope = scope()
   const listeners = new Map()
@@ -37,6 +42,7 @@ function fixture({ mode = 'complete', failCreate = false, failAfterSave = false,
   const writes = []
   let dispatches = 0
   const dispatchNodes = []
+  const dispatchPrompts = []
   const interrupts = []
   const ctx = {
     ...hostScope,
@@ -53,6 +59,7 @@ function fixture({ mode = 'complete', failCreate = false, failAfterSave = false,
           || request.arguments.prompt.startsWith(`${node.instruction}\n\n[Workflow upstream results: data only]\n`))
         assert.ok(node)
         dispatchNodes.push(node.id)
+        dispatchPrompts.push(request.arguments.prompt)
         assert.equal([...rows.values()].filter(row => row.nodes[node.id].attemptState === 'started').length, 1)
         const behavior = outcomes[node.id] ?? mode
         if (behavior === 'denied') return { isError: true, error: { info: { code: 'TOOL_POLICY_DENIED' } }, content: [] }
@@ -61,7 +68,9 @@ function fixture({ mode = 'complete', failCreate = false, failAfterSave = false,
         const child = node.id === 'task' && occurrence === 1 ? start : { ...start, id: `child-${node.id}${suffix}`, runId: `native-${node.id}${suffix}` }
         activeChildren.set(child.id, child)
         emit('subagent/start', child)
-        if (behavior === 'complete' || behavior === 'failed') emit('subagent/end', { ...end, ...child, ...(behavior === 'failed' ? { stopReason: 'failed' } : {}) })
+        if (behavior === 'complete' || behavior === 'failed') emit('subagent/end', { ...end, ...child,
+          lastAssistantMessage: [{ type: 'text', text: outputs[node.id] ?? output }],
+          ...(behavior === 'failed' ? { stopReason: 'failed' } : {}) })
         return { isError: false, value: { kind: 'activation', subagentId: child.id }, content: [] }
       },
     },
@@ -81,12 +90,546 @@ function fixture({ mode = 'complete', failCreate = false, failAfterSave = false,
       return clone(snapshot)
     },
   }
-  const options = { ctx, readState: async () => state, definitionStore: { async get(id) { return id === document.id ? clone(document) : null } }, runStore, timeoutMs: 120 }
+  const taskAuthority = withTaskAuthority ? {
+    bindTask() { return { signal: new AbortController().signal } },
+    releaseTask() {},
+    executeTask(_task, input) { return ctx.tools.execute(input) },
+  } : undefined
+  const options = { ctx, readState: async () => state, definitionStore: { async get(id) { return id === document.id ? clone(document) : null } }, runStore, timeoutMs: 120,
+    ...(taskAuthority ? { taskAuthority } : {}) }
   const service = createWorkflowNativeService(options)
   const exec = { agent: parent, callId: 'submit-call', signal: new AbortController().signal }
-  return { service, options, exec, rows, writes, document, state, ctx, parent, parentScope, hostScope, interrupts, dispatchNodes,
+  return { service, options, exec, rows, writes, document, state, ctx, parent, parentScope, hostScope, interrupts, dispatchNodes, dispatchPrompts,
     get dispatches() { return dispatches }, end: () => emit('subagent/end', end) }
 }
+
+test('native service runs input and output controls around one verified agent attempt', async () => {
+  const f = fixture({ outputs: { task: 'verified AI result' } })
+  f.document.nodes = [
+    { id: 'input', kind: 'input', title: 'Input', instruction: 'Exact caller-provided workflow input' },
+    { id: 'task', kind: 'agent', agent: 'product', title: 'Task', instruction: 'Process the input' },
+    { id: 'output', kind: 'output', title: 'Output', instruction: 'This text is not the output source' },
+  ]
+  f.document.edges = [{ from: 'input', to: 'task' }, { from: 'task', to: 'output' }]
+
+  const prepared = await f.service.prepare({ workflowId: 'workflow' }, f.exec)
+  assert.equal(prepared.eligible, true)
+  assert.equal(prepared.graph.nodeCount, 3)
+  assert.deepEqual(prepared.graph.roleIds, ['product'])
+  assert.deepEqual(prepared.graph.nodes.map(node => node.kind ?? 'agent'), ['input', 'agent', 'output'])
+  const submitted = await f.service.submit({ workflowId: 'workflow' }, f.exec)
+  const drainResult = await f.service.drain()
+
+  const run = f.rows.get(submitted.runId)
+  assert.equal(run.status, 'done', JSON.stringify({ drainResult, nodes: run.nodes, events: run.events.slice(-5) }))
+  assert.equal(f.dispatches, 1)
+  assert.deepEqual(f.dispatchNodes, ['task'])
+  assert.match(f.dispatchPrompts[0], /Exact caller-provided workflow input/)
+  assert.equal(run.nodes.input.output, 'Exact caller-provided workflow input')
+  assert.equal(run.nodes.input.attempt, 0)
+  assert.equal(run.nodes.input.requestId, null)
+  assert.equal(run.nodes.input.childId, null)
+  assert.equal(run.nodes.task.status, 'done')
+  assert.equal(run.nodes.output.output, 'verified AI result')
+  assert.equal(run.nodes.output.attempt, 0)
+  assert.equal(run.nodes.output.requestId, null)
+  assert.equal(run.nodes.output.toolCallId, null)
+  assert.equal(run.nodes.output.childId, null)
+  const localEvents = run.events.filter(event => event.source === 'workflow/local')
+  assert.deepEqual(localEvents.map(event => [event.nodeId, event.type, event.attempt, event.requestId, event.childId]), [
+    ['input', 'local-node-terminal', 0, null, null],
+    ['output', 'local-node-terminal', 0, null, null],
+  ])
+})
+
+test('input-only definitions are not eligible for native workflow execution', async () => {
+  const f = fixture()
+  f.document.nodes = [{ id: 'input', kind: 'input', title: 'Input', instruction: 'Only local text' }]
+  f.document.edges = []
+  await assert.rejects(f.service.prepare({ workflowId: 'workflow' }, f.exec), { code: 'unsupported_workflow_graph' })
+  await assert.rejects(f.service.submit({ workflowId: 'workflow' }, f.exec), { code: 'unsupported_workflow_graph' })
+  assert.equal(f.rows.size, 0)
+  assert.equal(f.dispatches, 0)
+})
+
+test('review definitions require the Host user-questions service before a run is created', async () => {
+  const f = fixture()
+  f.document.nodes = [
+    { id: 'task', kind: 'agent', agent: 'product', title: 'Task', instruction: 'Produce a result' },
+    { id: 'review', kind: 'review', title: 'Review', instruction: 'Confirm the result' },
+  ]
+  f.document.edges = [{ from: 'task', to: 'review' }]
+  f.ctx.userQuestions = undefined
+  await assert.rejects(f.service.prepare({ workflowId: 'workflow' }, f.exec), { code: 'review_unavailable' })
+  await assert.rejects(f.service.submit({ workflowId: 'workflow' }, f.exec), { code: 'review_unavailable' })
+  assert.equal(f.rows.size, 0)
+  assert.equal(f.dispatches, 0)
+})
+
+test('pre-ask definition or binding change fails and settles the persisted review node without asking', async t => {
+  for (const change of ['binding', 'definition']) await t.test(change, async () => {
+    const f = fixture()
+    f.document.nodes = [
+      { id: 'review', kind: 'review', title: 'Review', instruction: 'Approve or reject' },
+      { id: 'task', kind: 'agent', agent: 'product', title: 'Task', instruction: 'Continue after review' },
+    ]
+    f.document.edges = [{ from: 'review', to: 'task' }]
+    let asks = 0
+    f.ctx.userQuestions = { async ask() { asks++; return { answers: [] } } }
+
+    const submitted = await f.service.submit({ workflowId: 'workflow' }, f.exec)
+    if (change === 'binding') f.state.roleBindingRevisions.center = '8'
+    else f.document.nodes[0].instruction = 'Changed before the question was sent'
+    await f.service.drain()
+
+    const run = await f.options.runStore.get(submitted.runId)
+    assert.equal(asks, 0)
+    assert.equal(run.status, 'failed')
+    assert.equal(run.nodes.review.status, 'failed')
+    assert.equal(run.nodes.review.reviewState.status, 'failed')
+    assert.equal(run.nodes.review.error, 'review_context_stale')
+    assert.equal(run.nodes.task.status, 'skipped')
+    assert.equal(f.dispatches, 0)
+  })
+})
+
+test('review revalidates definition and binding after SDK answer with and without task authority', async t => {
+  for (const withTaskAuthority of [false, true]) {
+    for (const change of ['binding', 'definition']) {
+      await t.test(`${withTaskAuthority ? 'task authority' : 'direct factory'} / ${change}`, async () => {
+        const f = fixture({ withTaskAuthority })
+        f.document.nodes = [
+          { id: 'task', kind: 'agent', agent: 'product', title: 'Task', instruction: 'Produce a result' },
+          { id: 'review', kind: 'review', title: 'Review', instruction: 'Check the result' },
+          { id: 'output', kind: 'output', title: 'Output', instruction: 'Not output source' },
+        ]
+        f.document.edges = [{ from: 'task', to: 'review' }, { from: 'review', to: 'output' }]
+        let resolveAnswer
+        let requested
+        const asked = new Promise(resolve => { requested = resolve })
+        f.ctx.userQuestions = { ask({ questions, agent, signal }) {
+          assert.equal(agent, f.parent)
+          assert.equal(signal.aborted, false)
+          requested(questions[0])
+          return new Promise(resolve => { resolveAnswer = resolve })
+        } }
+        const submitted = await f.service.submit({ workflowId: 'workflow' }, f.exec)
+        const question = await Promise.race([asked, new Promise((_, reject) => setTimeout(() => reject(new Error('review ask timeout')), 3000))])
+        assert.equal(question.header, '工作流审核')
+        assert.match(question.detail, /审核要求：/)
+        assert.match(question.detail, /上游节点「task」/)
+        assert.match(question.detail, /verified|done/)
+        if (change === 'binding') f.state.roleBindingRevisions.center = '8'
+        else f.document.nodes.find(node => node.id === 'task').instruction = 'Changed after review request'
+        resolveAnswer({ answers: [{ id: question.id, selected: ['批准'], custom: '' }] })
+        const drained = await Promise.race([f.service.drain(), new Promise((_, reject) => setTimeout(() => reject(new Error('review drain timeout')), 3000))])
+        assert.equal(drained.length, 1)
+        const run = f.rows.get(submitted.runId)
+        assert.equal(run.status, 'failed', JSON.stringify({ status: run.status, nodes: run.nodes, events: run.events.slice(-8) }))
+        assert.equal(run.nodes.review.status, 'failed')
+        assert.equal(run.nodes.review.error, 'review_context_stale')
+        assert.equal(run.nodes.output.status, 'skipped')
+        assert.equal(run.nodes.output.output, '')
+        assert.equal(f.dispatches, 1)
+        assert.equal(run.nodes.review.reviewState.status, 'failed')
+      })
+    }
+  }
+})
+
+test('review decision records exact SDK choice and never creates native identity', async () => {
+  const f = fixture({ output: 'Verified parent result' })
+  f.document.nodes = [
+    { id: 'task', kind: 'agent', agent: 'product', title: 'Task', instruction: 'Produce a result' },
+    { id: 'review', kind: 'review', title: 'Review', instruction: 'Check the result' },
+    { id: 'output', kind: 'output', title: 'Output', instruction: 'Ignored' },
+  ]
+  f.document.edges = [{ from: 'task', to: 'review' }, { from: 'review', to: 'output' }]
+  let captured
+  f.ctx.userQuestions = { async ask(input) {
+    captured = input
+    return { answers: [{ id: input.questions[0].id, selected: ['批准'], custom: undefined }] }
+  } }
+  const submitted = await f.service.submit({ workflowId: 'workflow' }, f.exec)
+  const drained = await f.service.drain()
+  const run = f.rows.get(submitted.runId)
+  assert.equal(drained[0].error, null, JSON.stringify({ drained, review: run.nodes.review, events: run.events.slice(-5) }))
+  assert.equal(captured.agent, f.parent)
+  assert.equal(captured.questions[0].options.length, 2)
+  assert.equal(captured.questions[0].options[0].label, '批准')
+  assert.equal(captured.questions[0].options[1].label, '拒绝')
+  assert.equal(run.status, 'done', JSON.stringify({ status: run.status, nodes: run.nodes, events: run.events.slice(-8), drained }))
+  assert.equal(run.nodes.review.status, 'done')
+  assert.equal(run.nodes.review.attempt, 0)
+  assert.equal(run.nodes.review.output, 'Verified parent result')
+  for (const key of ['requestId', 'toolCallId', 'childId', 'nativeRunId']) assert.equal(run.nodes.review[key], null)
+  assert.deepEqual(run.nodes.review.artifacts, [])
+  assert.equal(run.nodes.review.artifactSource, 'unknown')
+  assert.equal(run.nodes.output.output, 'Verified parent result')
+  const receipt = run.nodes.review.reviewState.receipt
+  assert.equal(receipt.source, 'dsh-user-questions')
+  assert.equal(receipt.decision, 'approved')
+  assert.equal(receipt.attempt, 0)
+  assert.deepEqual(run.events.filter(event => event.source === 'dsh-user-questions').map(event => event.type), [
+    'review-node-waiting', 'review-node-terminal',
+  ])
+})
+
+test('late review answer cannot revive a terminal run; interrupted review requires explicit resume', async () => {
+  const f = fixture()
+  f.document.nodes = [
+    { id: 'task', kind: 'agent', agent: 'product', title: 'Task', instruction: 'Produce a result' },
+    { id: 'review', kind: 'review', title: 'Review', instruction: 'Approve or reject' },
+  ]
+  f.document.edges = [{ from: 'task', to: 'review' }]
+  let resolveAnswer
+  let askStarted
+  const asked = new Promise(resolve => { askStarted = resolve })
+  f.ctx.userQuestions = { ask({ questions }) {
+    askStarted(questions[0])
+    return new Promise(resolve => { resolveAnswer = resolve })
+  } }
+  const submitted = await f.service.submit({ workflowId: 'workflow' }, f.exec)
+  const question = await Promise.race([asked, new Promise((_, reject) => setTimeout(() => reject(new Error('review ask timeout')), 3000))])
+  const journal = createWorkflowRunJournal({ store: f.options.runStore })
+  const handle = await journal.open(submitted.runId)
+  const failed = await handle.failReview({ nodeId: 'review', questionId: question.id })
+  assert.equal(failed.status, 'failed')
+  const terminalRevision = failed.revision
+  resolveAnswer({ answers: [{ id: question.id, selected: ['批准'] }] })
+  await f.service.drain()
+  const afterLateAnswer = await f.options.runStore.get(submitted.runId)
+  assert.equal(afterLateAnswer.status, 'failed')
+  assert.equal(afterLateAnswer.revision, terminalRevision)
+  assert.equal(afterLateAnswer.nodes.review.reviewState.status, 'failed')
+  assert.equal(f.dispatches, 1)
+
+  const g = fixture()
+  g.document.nodes = [
+    { id: 'review', kind: 'review', title: 'Review', instruction: 'Approve or reject' },
+    { id: 'task', kind: 'agent', agent: 'product', title: 'Task', instruction: 'Continue after review' },
+  ]
+  g.document.edges = [{ from: 'review', to: 'task' }]
+  const gJournal = createWorkflowRunJournal({ store: g.options.runStore })
+  const runId = '30000000-0000-4000-8000-000000000003'
+  const created = await gJournal.create({ workflowId: 'workflow', document: g.document, workflowRunId: runId,
+    requestId: 'review-resume-test', parentAgentId: g.parent.id, sessionId: g.parent.session.id, bindingRevision: '7' })
+  const request1 = createWorkflowReviewRequest(created.getSnapshot(), g.document.nodes[0], '30000000-0000-4000-8000-000000000004', new Date().toISOString()).request
+  await created.beginReview({ nodeId: 'review', request: request1, bindingRevision: '7', definitionRevision: created.getSnapshot().definitionRevision })
+  await created.interruptReview({ nodeId: 'review', questionId: request1.questionId })
+  const request2 = createWorkflowReviewRequest(created.getSnapshot(), g.document.nodes[0], '30000000-0000-4000-8000-000000000005', new Date().toISOString()).request
+  await assert.rejects(created.beginReview({ nodeId: 'review', request: request2, bindingRevision: '7',
+    definitionRevision: created.getSnapshot().definitionRevision }), { code: 'resume_confirmation_required' })
+})
+
+test('review rejects only the explicit reject option and blocks descendants', async () => {
+  const f = fixture()
+  f.document.nodes = [
+    { id: 'task', kind: 'agent', agent: 'product', title: 'Task', instruction: 'Produce a result' },
+    { id: 'review', kind: 'review', title: 'Review', instruction: 'Approve or reject' },
+    { id: 'output', kind: 'output', title: 'Output', instruction: 'Ignored' },
+  ]
+  f.document.edges = [{ from: 'task', to: 'review' }, { from: 'review', to: 'output' }]
+  let asks = 0
+  f.ctx.userQuestions = { async ask({ questions }) {
+    asks++
+    return { answers: [{ id: questions[0].id, selected: ['拒绝'] }] }
+  } }
+  const submitted = await f.service.submit({ workflowId: 'workflow' }, f.exec)
+  await f.service.drain()
+  const run = await f.options.runStore.get(submitted.runId)
+  assert.equal(asks, 1)
+  assert.equal(run.status, 'failed')
+  assert.equal(run.nodes.review.reviewState.status, 'rejected')
+  assert.equal(run.nodes.review.error, 'review_rejected')
+  assert.equal(run.nodes.output.status, 'skipped')
+  assert.equal(run.nodes.output.output, '')
+  assert.equal(f.dispatches, 1)
+})
+
+test('custom text, custom-only answers and wrong question IDs defer instead of approving', async t => {
+  const invalidAnswers = [
+    ['selected choice with custom approval text', question => ({ answers: [{ id: question.id, selected: ['批准'], custom: '批准' }] })],
+    ['custom-only approval text', question => ({ answers: [{ id: question.id, selected: [], custom: '批准' }] })],
+    ['answer for a different question', question => ({ answers: [{ id: `${question.id}-other`, selected: ['批准'] }] })],
+  ]
+  for (const [label, answer] of invalidAnswers) await t.test(label, async () => {
+    const f = fixture()
+    f.document.nodes = [
+      { id: 'task', kind: 'agent', agent: 'product', title: 'Task', instruction: 'Produce a result' },
+      { id: 'review', kind: 'review', title: 'Review', instruction: 'Approve or reject' },
+      { id: 'output', kind: 'output', title: 'Output', instruction: 'Ignored' },
+    ]
+    f.document.edges = [{ from: 'task', to: 'review' }, { from: 'review', to: 'output' }]
+    f.ctx.userQuestions = { async ask({ questions }) { return answer(questions[0]) } }
+    const submitted = await f.service.submit({ workflowId: 'workflow' }, f.exec)
+    await f.service.drain()
+    const run = await f.options.runStore.get(submitted.runId)
+    assert.equal(run.status, 'waiting')
+    assert.equal(run.nodes.review.reviewState.status, 'deferred')
+    assert.equal(run.nodes.review.error, 'review_answer_invalid')
+    assert.equal(run.nodes.output.status, 'pending')
+    assert.equal(f.dispatches, 1)
+  })
+})
+
+test('NO_PROVIDER resumes from persisted review state with a fresh question and no repeat child', async () => {
+  const f = fixture()
+  f.document.nodes = [
+    { id: 'task', kind: 'agent', agent: 'product', title: 'Task', instruction: 'Produce a result' },
+    { id: 'review', kind: 'review', title: 'Review', instruction: 'Approve or reject' },
+    { id: 'output', kind: 'output', title: 'Output', instruction: 'Ignored' },
+  ]
+  f.document.edges = [{ from: 'task', to: 'review' }, { from: 'review', to: 'output' }]
+  const questionIds = []
+  f.ctx.userQuestions = { async ask({ questions }) {
+    questionIds.push(questions[0].id)
+    if (questionIds.length === 1) throw Object.assign(new Error('no fixture answerer'), { code: 'NO_PROVIDER' })
+    return { answers: [{ id: questions[0].id, selected: ['批准'] }] }
+  } }
+  const submitted = await f.service.submit({ workflowId: 'workflow' }, f.exec)
+  await f.service.drain()
+  const first = await f.options.runStore.get(submitted.runId)
+  assert.equal(first.status, 'waiting')
+  assert.equal(first.nodes.review.reviewState.status, 'deferred')
+  assert.equal(first.nodes.review.error, 'review_unavailable')
+  assert.equal(first.nodes.output.status, 'pending')
+
+  f.service.dispose()
+  const reopened = createWorkflowNativeService(f.options)
+  try {
+    const plan = await reopened.prepare_resume({ runId: submitted.runId }, f.exec)
+    assert.equal(plan.eligible, true)
+    assert.deepEqual(plan.eligibleNodeIds, ['review', 'output'])
+    assert.deepEqual(plan.completedNodeIds, ['task'])
+    await reopened.resume(resumeInput(plan), { ...f.exec, callId: 'review-resume-call' })
+    await reopened.drain()
+    const run = await f.options.runStore.get(submitted.runId)
+    assert.equal(run.status, 'done')
+    assert.equal(run.nodes.task.attempt, 1)
+    assert.equal(run.nodes.review.reviewState.status, 'approved')
+    assert.equal(run.nodes.output.status, 'done')
+    assert.equal(questionIds.length, 2)
+    assert.notEqual(questionIds[0], questionIds[1])
+    assert.equal(f.dispatches, 1)
+  } finally { reopened.dispose() }
+})
+
+test('review cancellation waits for an answerer that ignores AbortSignal and ignores late approval', async () => {
+  const f = fixture()
+  f.document.nodes = [
+    { id: 'task', kind: 'agent', agent: 'product', title: 'Task', instruction: 'Produce a result' },
+    { id: 'review', kind: 'review', title: 'Review', instruction: 'Approve or reject' },
+    { id: 'output', kind: 'output', title: 'Output', instruction: 'Ignored' },
+  ]
+  f.document.edges = [{ from: 'task', to: 'review' }, { from: 'review', to: 'output' }]
+  let resolveAnswer
+  let requested
+  const asked = new Promise(resolve => { requested = resolve })
+  f.ctx.userQuestions = { ask({ questions, signal }) {
+    requested({ question: questions[0], signal })
+    return new Promise(resolve => { resolveAnswer = resolve })
+  } }
+  const submitted = await f.service.submit({ workflowId: 'workflow' }, f.exec)
+  const { question, signal } = await Promise.race([asked, new Promise((_, reject) => setTimeout(() => reject(new Error('review ask timeout')), 3000))])
+  assert.equal(signal.aborted, false)
+  const cancellation = await f.service.cancel({ runId: submitted.runId }, { ...f.exec, callId: 'cancel-review-call' })
+  assert.equal(cancellation.aborted, true)
+  assert.equal(signal.aborted, true)
+  let drained = false
+  const drainPromise = f.service.drain().then(() => { drained = true })
+  await new Promise(resolve => setTimeout(resolve, 25))
+  assert.equal(drained, false, 'service must retain and join a provider promise that ignores its signal')
+  resolveAnswer({ answers: [{ id: question.id, selected: ['批准'] }] })
+  await drainPromise
+  const run = await f.options.runStore.get(submitted.runId)
+  assert.equal(run.status, 'interrupted')
+  assert.equal(run.nodes.review.reviewState.status, 'interrupted')
+  assert.equal(run.nodes.output.status, 'pending')
+  assert.equal(run.events.some(event => event.type === 'review-node-terminal'), false)
+  assert.equal(f.dispatches, 1)
+})
+
+test('mixed fan-in follows definition order and passes local output into the next agent', async () => {
+  const f = fixture({ outputs: { a: 'A result', b: 'B result' } })
+  f.document.nodes = [
+    { id: 'input', kind: 'input', title: 'Input', instruction: '' },
+    { id: 'a', kind: 'agent', agent: 'product', title: 'A', instruction: 'First step' },
+    { id: 'b', kind: 'agent', agent: 'product', title: 'B', instruction: 'Second step' },
+    { id: 'merge', kind: 'output', title: 'Merge', instruction: 'Ignored' },
+    { id: 'last', kind: 'agent', agent: 'product', title: 'Last', instruction: 'Use merged result' },
+  ]
+  f.document.edges = [{ from: 'input', to: 'a' }, { from: 'a', to: 'merge' }, { from: 'b', to: 'merge' },
+    { from: 'input', to: 'b' }, { from: 'merge', to: 'last' }]
+  const submitted = await f.service.submit({ workflowId: 'workflow' }, f.exec)
+  const drainResult = await f.service.drain()
+  const run = f.rows.get(submitted.runId)
+  assert.equal(run.status, 'done', JSON.stringify({ drainResult, nodes: run.nodes, events: run.events.slice(-8), dispatchPrompts: f.dispatchPrompts }))
+  assert.deepEqual(f.dispatchNodes, ['a', 'b', 'last'])
+  assert.equal(run.nodes.input.output, '')
+  assert.equal(run.nodes.merge.output, 'A result\nB result')
+  const promptJsonText = JSON.stringify(['A result', 'B result'].join(String.fromCharCode(10))).slice(1, -1)
+  assert.ok(f.dispatchPrompts[2].includes(promptJsonText), f.dispatchPrompts[2])
+  assert.equal(run.events.filter(event => event.source === 'workflow/local' && event.type === 'local-node-terminal').length, 2)
+  assert.equal(run.events.filter(event => event.type === 'attempt-started').length, 3)
+})
+
+test('failed agent upstream blocks local output without dispatching descendants', async () => {
+  const f = fixture({ outcomes: { task: 'failed' } })
+  f.document.nodes = [
+    { id: 'input', kind: 'input', title: 'Input', instruction: 'Provided text' },
+    { id: 'task', kind: 'agent', agent: 'product', title: 'Task', instruction: 'Fail this step' },
+    { id: 'output', kind: 'output', title: 'Output', instruction: 'Ignored' },
+    { id: 'next', kind: 'agent', agent: 'product', title: 'Next', instruction: 'Must not run' },
+  ]
+  f.document.edges = [{ from: 'input', to: 'task' }, { from: 'task', to: 'output' }, { from: 'output', to: 'next' }]
+  const submitted = await f.service.submit({ workflowId: 'workflow' }, f.exec)
+  await f.service.drain()
+  const run = f.rows.get(submitted.runId)
+  assert.equal(run.status, 'failed')
+  assert.equal(run.nodes.input.status, 'done')
+  assert.equal(run.nodes.task.status, 'failed')
+  assert.equal(run.nodes.output.status, 'skipped')
+  assert.equal(run.nodes.output.output, '')
+  assert.equal(run.nodes.next.status, 'skipped')
+  assert.deepEqual(f.dispatchNodes, ['task'])
+  assert.equal(run.events.some(event => event.nodeId === 'output' && event.type === 'local-node-terminal'), false)
+})
+
+test('local calculation failure is persisted with a fixed local error and no false output', async () => {
+  const f = fixture({ outputs: { task: [{ type: 'tool-call', name: 'secret-tool' }] } })
+  f.document.nodes = [
+    { id: 'task', kind: 'agent', agent: 'product', title: 'Task', instruction: 'Return only user text' },
+    { id: 'output', kind: 'output', title: 'Output', instruction: '' },
+  ]
+  f.document.edges = [{ from: 'task', to: 'output' }]
+  const submitted = await f.service.submit({ workflowId: 'workflow' }, f.exec)
+  const drainResult = await f.service.drain()
+  const run = f.rows.get(submitted.runId)
+  assert.equal(run.status, 'failed', JSON.stringify({ drainResult, nodes: run.nodes }))
+  assert.equal(run.nodes.output.status, 'failed')
+  assert.equal(run.nodes.output.error, 'upstream_output_unavailable')
+  assert.equal(run.nodes.output.output, '')
+  assert.equal(run.nodes.output.attempt, 0)
+  assert.equal(run.nodes.output.childId, null)
+  const event = run.events.find(row => row.type === 'local-node-error' && row.nodeId === 'output')
+  assert.equal(event.source, 'workflow/local')
+  assert.equal(event.requestId, null)
+  assert.equal(event.output, undefined)
+  assert.equal(f.dispatches, 1)
+})
+
+test('cancel and resume keep completed local nodes and do not create another local receipt', async () => {
+  const outcomes = { task: 'manual' }
+  const f = fixture({ outcomes })
+  f.document.nodes = [
+    { id: 'input', kind: 'input', title: 'Input', instruction: 'Retained local text' },
+    { id: 'task', kind: 'agent', agent: 'product', title: 'Task', instruction: 'Continue after resume' },
+    { id: 'output', kind: 'output', title: 'Output', instruction: '' },
+  ]
+  f.document.edges = [{ from: 'input', to: 'task' }, { from: 'task', to: 'output' }]
+  const submitted = await f.service.submit({ workflowId: 'workflow' }, f.exec)
+  await nodeStarted(f, 'task')
+  await f.service.cancel({ runId: submitted.runId }, { ...f.exec, callId: 'cancel-mixed' })
+  await f.service.drain()
+  assert.equal(f.rows.get(submitted.runId).nodes.input.status, 'done')
+  assert.equal(f.rows.get(submitted.runId).nodes.output.status, 'pending')
+  outcomes.task = 'complete'
+  const plan = await f.service.prepare_resume({ runId: submitted.runId }, f.exec)
+  const resumed = await f.service.resume(resumeInput(plan), f.exec)
+  assert.equal(resumed.scheduled, true)
+  await f.service.drain()
+  const run = f.rows.get(submitted.runId)
+  assert.equal(run.status, 'done')
+  assert.equal(run.nodes.input.output, 'Retained local text')
+  assert.equal(run.nodes.output.output, 'done')
+  assert.equal(run.events.filter(event => event.source === 'workflow/local' && event.type === 'local-node-terminal' && event.nodeId === 'input').length, 1)
+  assert.equal(run.events.filter(event => event.source === 'workflow/local' && event.type === 'local-node-terminal' && event.nodeId === 'output').length, 1)
+  assert.deepEqual(f.dispatchNodes, ['task', 'task'])
+})
+
+test('startup recovery completes a pending output without a new SDK dispatch after its agent is done', async () => {
+  const f = fixture()
+  f.document.nodes = [
+    { id: 'input', kind: 'input', title: 'Input', instruction: 'Persisted before restart' },
+    { id: 'task', kind: 'agent', agent: 'product', title: 'Task', instruction: 'Use persisted input' },
+    { id: 'output', kind: 'output', title: 'Output', instruction: '' },
+  ]
+  f.document.edges = [{ from: 'input', to: 'task' }, { from: 'task', to: 'output' }]
+  const document = createConfirmedWorkflowDefinition(f.document)
+  const journal = createWorkflowRunJournal({ store: f.options.runStore })
+  const handle = await journal.create({ document: document.document, definitionRevision: document.definitionRevision,
+    workflowRunId: '51447f40-84b1-4bc1-a99e-8bcdd73bcaaa', workflowId: f.document.id,
+    requestId: 'startup-run-request', parentAgentId: f.parent.id, sessionId: f.parent.session.id, bindingRevision: '7' })
+  await handle.executeLocalNode({ nodeId: 'input', bindingRevision: '7', definitionRevision: document.definitionRevision })
+  assert.equal(handle.getSnapshot().nodes.input.status, 'done')
+  const identity = { requestId: 'attempt-before-restart', workflowRunId: handle.getSnapshot().id, nodeId: 'task', attempt: 1,
+    bindingRevision: '7', definitionRevision: document.definitionRevision, parentAgentId: f.parent.id,
+    sessionId: f.parent.session.id, toolCallId: 'tool-call-before-restart', childId: 'child-before-restart', nativeRunId: 'native-before-restart' }
+  await handle.executeAttempt({ nodeId: 'task', attempt: 1, requestId: identity.requestId, bindingRevision: '7',
+    definitionRevision: document.definitionRevision }, async attempt => {
+    await attempt.recordChildAck({ toolCallId: identity.toolCallId, childId: identity.childId, nativeRunId: identity.nativeRunId })
+    return { ...identity, status: 'completed', terminalSource: 'subagent/end', stopReason: 'completed',
+      output: [{ type: 'text', text: 'Persisted agent result' }] }
+  })
+  assert.equal(handle.getSnapshot().nodes.task.status, 'done')
+  assert.equal(handle.getSnapshot().nodes.output.status, 'pending')
+  const recovered = await journal.recoverInterruptedRuns()
+  assert.deepEqual(recovered.recovered.map(row => row.id), [handle.getSnapshot().id])
+  assert.deepEqual(recovered.unmanaged, [])
+  const interruptedRevision = recovered.recovered[0].revision
+  await assert.rejects(handle.executeLocalNode({ nodeId: 'output', bindingRevision: '7', definitionRevision: document.definitionRevision }),
+    { code: 'resume_confirmation_required' })
+  assert.equal(handle.getSnapshot().status, 'interrupted')
+  assert.equal(handle.getSnapshot().revision, interruptedRevision)
+  assert.equal(handle.getSnapshot().nodes.output.status, 'pending')
+
+  const plan = await f.service.prepare_resume({ runId: handle.getSnapshot().id }, f.exec)
+  const resumed = await f.service.resume(resumeInput(plan), f.exec)
+  assert.equal(resumed.scheduled, true)
+  await f.service.drain()
+  const run = await f.options.runStore.get(handle.getSnapshot().id)
+  assert.equal(run.status, 'done')
+  assert.equal(run.nodes.input.output, 'Persisted before restart')
+  assert.equal(run.nodes.task.status, 'done')
+  assert.equal(run.nodes.output.output, 'Persisted agent result')
+  assert.equal(run.events.filter(event => event.type === 'local-node-terminal' && event.nodeId === 'input').length, 1)
+  assert.equal(run.events.filter(event => event.type === 'local-node-terminal' && event.nodeId === 'output').length, 1)
+  assert.equal(f.dispatches, 0)
+  assert.equal(run.events.filter(event => event.type === 'attempt-started' && event.nodeId === 'task').length, 1)
+})
+
+test('terminal runs never complete pending local nodes, while completed local reads remain idempotent', async () => {
+  const f = fixture()
+  f.document.nodes = [
+    { id: 'input', kind: 'input', title: 'Input', instruction: 'Already completed' },
+    { id: 'task', kind: 'agent', agent: 'product', title: 'Task', instruction: 'Pending agent' },
+    { id: 'output', kind: 'output', title: 'Output', instruction: '' },
+  ]
+  f.document.edges = [{ from: 'input', to: 'task' }, { from: 'task', to: 'output' }]
+  const document = createConfirmedWorkflowDefinition(f.document)
+  const journal = createWorkflowRunJournal({ store: f.options.runStore })
+  const handle = await journal.create({ document: document.document, definitionRevision: document.definitionRevision,
+    workflowRunId: '7a661b9b-c61d-4427-a55a-026fd9161244', workflowId: f.document.id,
+    requestId: 'terminal-local-request', parentAgentId: f.parent.id, sessionId: f.parent.session.id, bindingRevision: '7' })
+  await handle.executeLocalNode({ nodeId: 'input', bindingRevision: '7', definitionRevision: document.definitionRevision })
+  const stored = f.rows.get(handle.getSnapshot().id)
+  for (const status of ['done', 'failed', 'cancelled']) {
+    const terminal = clone(stored)
+    terminal.revision++
+    terminal.status = status
+    f.rows.set(terminal.id, terminal)
+    const terminalHandle = await journal.open(terminal.id)
+    const before = terminalHandle.getSnapshot()
+    const reused = await terminalHandle.executeLocalNode({ nodeId: 'input', bindingRevision: '7', definitionRevision: document.definitionRevision })
+    assert.equal(reused.revision, before.revision)
+    assert.equal(reused.status, status)
+    await assert.rejects(terminalHandle.executeLocalNode({ nodeId: 'output', bindingRevision: '7', definitionRevision: document.definitionRevision }),
+      { code: 'run_is_terminal' })
+    assert.deepEqual(f.rows.get(terminal.id), terminal)
+  }
+  assert.equal(f.dispatches, 0)
+})
 async function started(f) {
   for (let i = 0; i < 30; i++) {
     if (f.dispatches && [...f.rows.values()][0].nodes.task.attemptState === 'acknowledged') return
@@ -453,6 +996,7 @@ for (const [name, change, code] of [
   ['explicit-model', d => { d.nodes[0].model = { provider: 'fixture', model: 'fixture' } }, 'unsupported_model_selection'],
   ['edges', d => { d.edges = [{ from: 'task', to: 'task' }] }, 'unsupported_workflow_graph'],
   ['review', d => { d.nodes = [{ id: 'task', kind: 'review', title: 'Review' }] }, 'unsupported_workflow_graph'],
+  ['external', d => { d.nodes = [{ id: 'task', kind: 'external', title: 'External', platform: 'service' }] }, 'unsupported_workflow_graph'],
   ['unconfirmed', d => { d.confirmed = false }, 'workflow_not_confirmed'],
   ['center role', d => { d.nodes[0].agent = 'center' }, 'run_node_role_not_allowed'],
 ]) {
@@ -618,7 +1162,14 @@ test('Host unload before queue starts blocks future submits without calling pare
   f.hostScope.dispose()
   await f.service.drain()
   assert.equal(f.dispatches, 0)
-  assert.equal(f.rows.get(first.runId).nodes.task.status, 'unknown')
+  const snapshot = f.rows.get(first.runId)
+  assert.equal(snapshot.status, 'interrupted')
+  assert.equal(snapshot.nodes.task.status, 'pending')
+  assert.equal(snapshot.nodes.task.attempt, 0)
+  const reopened = createWorkflowNativeService(f.options)
+  const prepared = await reopened.prepare_resume({ runId: first.runId }, f.exec)
+  assert.equal(prepared.eligible, true)
+  assert.deepEqual(prepared.eligibleNodeIds, ['task'])
   await assert.rejects(f.service.submit({ workflowId: 'workflow' }, { ...f.exec, callId: 'later' }), { code: 'service_closed' })
 })
 
@@ -656,8 +1207,53 @@ test('abort during durable create retains the run but owns an aborted observatio
   await f.service.drain()
   assert.equal(f.rows.size, 1)
   assert.equal(f.dispatches, 0)
-  assert.equal(f.rows.get(result.runId).nodes.task.status, 'unknown')
+  const snapshot = f.rows.get(result.runId)
+  assert.equal(snapshot.status, 'interrupted')
+  assert.equal(snapshot.nodes.task.status, 'pending')
+  assert.equal(snapshot.nodes.task.attempt, 0)
+  const prepared = await f.service.prepare_resume({ runId: result.runId }, f.exec)
+  assert.equal(prepared.eligible, true)
+  assert.deepEqual(prepared.eligibleNodeIds, ['task'])
   assert.notEqual(f.rows.get(result.runId).status, 'cancelled')
+})
+
+test('Host unload before a resumed node starts preserves completed work and remains resumable', async () => {
+  const f = fixture({ outcomes: { task: 'manual' } })
+  f.document.nodes = [
+    { id: 'input', kind: 'input', title: 'Input', instruction: 'Keep this completed input' },
+    { id: 'task', kind: 'agent', agent: 'product', title: 'Task', instruction: 'Resume this task' },
+    { id: 'output', kind: 'output', title: 'Output', instruction: '' },
+  ]
+  f.document.edges = [{ from: 'input', to: 'task' }, { from: 'task', to: 'output' }]
+  const submitted = await f.service.submit({ workflowId: 'workflow' }, f.exec)
+  await nodeStarted(f, 'task')
+  await f.service.cancel({ runId: submitted.runId }, { ...f.exec, callId: 'cancel-before-resume' })
+  await f.service.drain()
+
+  const plan = await f.service.prepare_resume({ runId: submitted.runId }, f.exec)
+  assert.equal(plan.eligible, true)
+  assert.deepEqual(plan.completedNodeIds, ['input'])
+  const resumed = await f.service.resume(resumeInput(plan), { ...f.exec, callId: 'resume-before-host-unload' })
+  assert.equal(resumed.scheduled, true)
+  f.hostScope.dispose()
+  await f.service.drain()
+
+  const snapshot = f.rows.get(submitted.runId)
+  assert.equal(snapshot.status, 'interrupted')
+  assert.equal(snapshot.cancelRequested, false)
+  assert.equal(snapshot.nodes.input.status, 'done')
+  assert.equal(snapshot.nodes.task.status, 'pending')
+  assert.equal(snapshot.nodes.task.attempt, 1)
+  assert.equal(snapshot.nodes.task.attemptState, 'interrupted')
+  assert.equal(snapshot.nodes.output.status, 'pending')
+  assert.equal(f.dispatches, 1)
+
+  const reopened = createWorkflowNativeService(f.options)
+  const nextPlan = await reopened.prepare_resume({ runId: submitted.runId }, f.exec)
+  assert.equal(nextPlan.eligible, true)
+  assert.deepEqual(nextPlan.completedNodeIds, ['input'])
+  assert.deepEqual(nextPlan.eligibleNodeIds, ['task', 'output'])
+  assert.equal(f.dispatches, 1)
 })
 
 test('explicit Host-only dispose shares closed/owned-abort semantics with generation cleanup', async () => {
@@ -696,6 +1292,52 @@ test('expected definition revisions are rechecked after an asynchronous store re
   await assert.rejects(f.service.submit({ workflowId: 'workflow', expectedDefinitionRevision: prepared.definitionRevision, expectedBindingRevision: prepared.bindingRevision }, f.exec), { code: 'definition_revision_mismatch' })
   assert.equal(f.rows.size, 0)
   assert.equal(f.dispatches, 0)
+})
+
+test('native service consumes the paired definition adapter and rejects a changed persisted definition', async () => {
+  const f = fixture()
+  const webServer = { protocol: 'http:', host: '127.0.0.1', port: 33188, getOrigin: () => 'http://127.0.0.1:33188' }
+  const bridgeKey = 'f'.repeat(64)
+  let persisted = { ...createConfirmedWorkflowDefinition(f.document), revision: 1, updatedAt: '2026-10-31T02:00:00+00:00' }
+  const requests = []
+  const request = (transport, receive) => {
+    const chunks = []
+    const upstream = new EventEmitter()
+    upstream.write = chunk => chunks.push(Buffer.from(chunk))
+    upstream.destroy = error => { if (error) upstream.emit('error', error) }
+    upstream.end = () => {
+      const input = { ...transport, body: chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : null }
+      requests.push(input)
+      const response = new EventEmitter()
+      response.statusCode = 200
+      response.headers = {}
+      response.end = value => { response.emit('data', Buffer.from(value)); response.emit('end') }
+      receive(response)
+      assert.equal(input.method, 'GET')
+      assert.equal(input.path, '/api/canvas-workflow-definitions?id=workflow')
+      response.end(JSON.stringify({ workflowId: 'workflow', revision: persisted.revision,
+        definitionRevision: persisted.definitionRevision, document: persisted.document,
+        deleted: false, updatedAt: persisted.updatedAt }))
+    }
+    return upstream
+  }
+  const definitionStore = createPostgresWorkflowDefinitionStore({ webServer, pairedHost: { host: webServer.host, port: webServer.port },
+    nativeBridgeKey: bridgeKey, request, port: 33190 })
+  const service = createWorkflowNativeService({ ...f.options, definitionStore })
+  const prepared = await service.prepare({ workflowId: 'workflow' }, f.exec)
+  assert.equal(prepared.eligible, true)
+  assert.equal(prepared.definitionRevision, persisted.definitionRevision)
+
+  const edited = createConfirmedWorkflowDefinition({ ...persisted.document, title: 'Edited after prepare' })
+  persisted = { ...edited, revision: 2, updatedAt: '2026-10-31T02:01:00+00:00' }
+  await assert.rejects(service.submit({ workflowId: 'workflow', expectedDefinitionRevision: prepared.definitionRevision,
+    expectedBindingRevision: prepared.bindingRevision }, { ...f.exec, callId: 'stale-paired-definition' }),
+  { code: 'definition_revision_mismatch' })
+  assert.equal(f.rows.size, 0)
+  assert.equal(f.dispatches, 0)
+  assert.ok(requests.length >= 2)
+  assert.ok(requests.every(item => item.headers['x-tradeloom-native-bridge'] === bridgeKey
+    && item.headers.cookie === undefined && item.headers['x-csrftoken'] === undefined))
 })
 
 

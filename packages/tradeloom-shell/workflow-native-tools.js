@@ -4,6 +4,7 @@ import { resolveOwnedHome, createStateStore } from './state.js'
 import { createWorkflowStore } from './workflow-engine.js'
 import { createPostgresWorkflowRunStore } from './workflow-postgres.js'
 import { createWorkflowNativeService } from './workflow-native-service.js'
+import { nativeWorkflowDjangoPort, runWhenNativeWorkflowReady } from './workflow-native-readiness.js'
 
 export const name = '@tradeloom/dsh-business-shell/workflow-native-tools'
 export const inject = ['tools', 'agents', 'workspaceRegistry', 'sessionQuery', 'subagents', 'webServer', 'nativeTaskAuthority']
@@ -20,6 +21,7 @@ const PUBLIC_ERRORS = new Set([
   'binding_revision_mismatch', 'workflow_not_eligible', 'invalid_expected_revision',
   'unsupported_model_selection', 'upstream_terminal_unverified', 'upstream_output_unavailable', 'native_prompt_too_large',
   'native_run_unavailable', 'native_task_origin_required', 'ui_origin_required', 'resume_blocked', 'resume_plan_conflict', 'resume_revision_conflict', 'operation_conflict', 'operation_aborted',
+  'review_unavailable', 'review_answer_invalid', 'review_context_stale', 'review_rejected', 'review_request_stale', 'resume_confirmation_required',
 ])
 const OUTPUT = {
   schema: {
@@ -80,7 +82,11 @@ export function registerWorkflowNativeTools(ctx, service, config = {}) {
         output: OUTPUT,
         async execute(args, exec) {
           if (!validArguments(args, allowed, required)) return fail('invalid_native_workflow_arguments')
-          try { return { ok: true, data: JSON.stringify(await service[method](args, exec)), error_code: '' } }
+          try {
+            return await runWhenNativeWorkflowReady(ctx, exec?.signal, async () => ({
+              ok: true, data: JSON.stringify(await service[method](args, exec)), error_code: '',
+            }))
+          }
           catch (error) { return fail(PUBLIC_ERRORS.has(error?.code) ? error.code : 'native_workflow_unavailable') }
         },
       }))
@@ -97,16 +103,6 @@ export function registerWorkflowNativeTools(ctx, service, config = {}) {
   }
 }
 
-function djangoPort(config, env) {
-  const value = config.djangoPort ?? env.TRADELOOM_DJANGO_PORT ?? 3090
-  if ((typeof value !== 'number' && typeof value !== 'string')
-    || (typeof value === 'string' && !/^[1-9][0-9]{0,4}$/.test(value))
-    || !Number.isInteger(Number(value)) || Number(value) < 1 || Number(value) > 65535) {
-    throw new TypeError('Invalid trusted Django port')
-  }
-  return Number(value)
-}
-
 /** One preset-generation composition; identities remain per-call service checks.
  * Factories are injectable for isolated composition tests, never tool arguments.
  * Initialization deliberately performs no recovery or filesystem reads.
@@ -114,7 +110,7 @@ function djangoPort(config, env) {
 export function createWorkflowNativeToolComposition(ctx, config = {}, dependencies = {}) {
   if (config.preset !== ROLE_PRESETS.center) return () => {}
   const env = dependencies.env ?? process.env
-  const port = djangoPort(config, env)
+  const port = nativeWorkflowDjangoPort(config, env)
   const ownedHome = dependencies.resolveOwnedHome ?? resolveOwnedHome
   const stateFactory = dependencies.createStateStore ?? createStateStore
   const definitionsFactory = dependencies.createWorkflowStore ?? createWorkflowStore

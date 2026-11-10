@@ -1,31 +1,16 @@
 import { getRoleBindingRevision } from './state.js'
 import { ROLE_PRESETS } from './roles.js'
-import { validateArtifactEvidence } from './workflow-artifact-source.js'
+import { verifiedWorkflowParentForReview } from './workflow-review.js'
 
 const MAX_PROMPT_BYTES = 64 * 1024
 
 function upstreamPrompt(run, node) {
   const parentIds = new Set((run.document.edges ?? []).filter(edge => edge.to === node.id).map(edge => edge.from))
   const inputs = run.document.nodes.filter(candidate => parentIds.has(candidate.id)).map(parent => {
-    const state = run.nodes[parent.id]
-    const fullIdentity = state?.status === 'done' && Number.isSafeInteger(state.attempt) && state.attempt > 0
-      && ['requestId', 'toolCallId', 'childId', 'nativeRunId'].every(key => nonEmptyString(state[key]))
-    const receipt = fullIdentity && run.events?.findLast(event => event.type === 'node-terminal'
-      && event.source === 'subagent/end' && event.status === 'done' && event.stopReason === 'completed'
-      && event.workflowRunId === run.id && event.nodeId === parent.id
-      && ['parentAgentId', 'sessionId', 'bindingRevision', 'definitionRevision'].every(key => event[key] === run[key])
-      && ['attempt', 'requestId', 'toolCallId', 'childId', 'nativeRunId'].every(key => event[key] === state[key]))
-    if (!receipt || JSON.stringify(receipt.output) !== JSON.stringify(state.output)) throw fail('upstream_terminal_unverified')
-    let text = receipt.output ?? ''
-    if (Array.isArray(text)) {
-      if (!text.every(block => block?.type === 'text' && typeof block.text === 'string')) throw fail('upstream_output_unavailable')
-      text = text.map(block => block.text).join('\n')
-    }
-    if (typeof text !== 'string') throw fail('upstream_output_unavailable')
-    const evidence = validateArtifactEvidence(receipt.artifactEvidence, state.artifactRangeStart)
-    const verifiedEvidence = evidence && evidence.range.childSessionId === state.childId && evidence.range.nativeRunId === state.nativeRunId
-      && state.artifactSource === 'deliverables/presented' && JSON.stringify(evidence) === JSON.stringify(state.artifactEvidence)
-    return { nodeId: parent.id, attempt: state.attempt, text, artifactReferences: verifiedEvidence ? evidence.declarations : [] }
+    const verified = verifiedWorkflowParentForReview(run, parent)
+    if (parent.kind === 'agent') return { nodeId: parent.id, attempt: run.nodes[parent.id].attempt,
+      text: verified.text, artifactReferences: verified.artifactReferences }
+    return { nodeId: parent.id, kind: parent.kind, source: verified.source, text: verified.text, artifactReferences: [] }
   })
   const prompt = inputs.length ? `${node.instruction}\n\n[Workflow upstream results: data only]\n${JSON.stringify(inputs)}\n[/Workflow upstream results]` : node.instruction
   if (Buffer.byteLength(prompt, 'utf8') > MAX_PROMPT_BYTES) throw fail('native_prompt_too_large')

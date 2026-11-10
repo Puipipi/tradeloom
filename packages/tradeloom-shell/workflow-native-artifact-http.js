@@ -12,6 +12,8 @@ const MAX = 32 * 1024 * 1024
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/
 const fail = code => Object.assign(new Error(code), { code })
 const same = (a,b) => process.platform === 'win32' ? path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase() : path.resolve(a) === path.resolve(b)
+const cordisOriginal = Symbol.for('cordis.original')
+const sameService = (left,right) => (left?.[cordisOriginal] ?? left) === (right?.[cordisOriginal] ?? right)
 function json(res, status, value) { res.statusCode=status; res.setHeader('content-type','application/json; charset=utf-8'); res.setHeader('cache-control','no-store'); res.end(JSON.stringify(value)) }
 async function body(req) { let n=0, parts=[]; for await (const c of req) { n+=c.length; if(n>4096) throw fail('invalid_input'); parts.push(c) } try{return JSON.parse(Buffer.concat(parts))}catch{throw fail('invalid_input')} }
 async function ordinary(value) {
@@ -89,7 +91,7 @@ export function createNativeArtifactHandler(ctx, dependencies={}) {
   async function verifyEvent(context,input,signal) {
     const {node,declaration}=item(context,input), query=get('sessionQuery'); if(!query?.readEvent) throw fail('service_unavailable')
     const result=await query.readEvent({sessionId:node.childId,seq:input.sourceSessionSeq,before:0,after:0},signal)
-    if(signal.aborted || disposed || get('sessionQuery')!==query) throw fail('unavailable')
+    if(signal.aborted || disposed || !sameService(get('sessionQuery'),query)) throw fail('unavailable')
     const data=result?.target?.data, file=data?.files?.[input.fileIndex]
     if(result?.target?.seq!==input.sourceSessionSeq || result?.session?.id!==node.childId || result?.target?.type!=='deliverables/presented' || data?.callId!==declaration.presentCallId || data?.turn!==declaration.sourceTurn || file?.path!==declaration.path || (file?.description ?? null)!==(declaration.description ?? null)) throw fail('source_unavailable')
     return {node,declaration,session:result.session}
@@ -108,7 +110,7 @@ export function createNativeArtifactHandler(ctx, dependencies={}) {
         let state=await owned(input.runId,signal), first=await verifyEvent(state,input,signal); state=await owned(input.runId,signal,state)
         const picker=get('directoryPicker'), fs=get('fs'), files=get('workspaceFiles'); const capability=picker?.capability?.()
         if(capability?.kind!=='native' || typeof capability.pick!=='function' || !fs?.resolve || !fs?.processPathFromHostPath || !files?.stat || !files?.readBytes) throw fail('service_unavailable')
-        const fresh=()=>{if(signal.aborted || disposed || get('directoryPicker')!==picker || get('fs')!==fs || get('workspaceFiles')!==files) throw fail('unavailable')}
+        const fresh=()=>{if(signal.aborted || disposed || !sameService(get('directoryPicker'),picker) || !sameService(get('fs'),fs) || !sameService(get('workspaceFiles'),files)) throw fail('unavailable')}
         const chosen=await capability.pick(signal); if(!chosen) throw fail('cancelled')
         fresh()
         state=await owned(input.runId,signal,state); fresh(); const second=await verifyEvent(state,input,signal)

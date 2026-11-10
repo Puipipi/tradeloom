@@ -11,13 +11,16 @@ import * as authorityPlugin from '../workflow-native-task-authority.js'
 import { createWorkflowNativeUiHandler, projectNativeWorkflowRun } from '../workflow-native-ui.js'
 import { createWorkflowNativeService } from '../workflow-native-service.js'
 import { registerWorkflowNativeTools } from '../workflow-native-tools.js'
+import { createNativeWorkflowReadiness, NATIVE_WORKFLOW_READINESS } from '../workflow-native-readiness.js'
 import { ROLE_PRESETS } from '../roles.js'
 import { replaceRoleBinding } from '../state.js'
+import { verifiedWorkflowParent } from '../workflow-local-nodes.js'
 
 // Actual desktop21 Commands/ToolRuntime and production Agent mint every execution context.
 // Workspace/query/CAS and child start/end remain labelled offline facades.
 // No listener, PostgreSQL, Host boot, model or GUI is started by this suite.
-const runtime = 'C:/Users/23825/Desktop/ICT/workspace/runtime/tradeloom-harness/releases/0.2.1-rc.3-tradeloom-desktop-21'
+const runtime = process.env.TRADELOOM_NATIVE_RUNTIME
+  ?? 'C:/Users/23825/Desktop/ICT/workspace/runtime/tradeloom-harness/releases/0.2.1-rc.3-tradeloom-desktop-21'
 const load = path => import(pathToFileURL(`${runtime}/${path}`).href)
 const [{ Context }, kit, { default: Commands }] = await Promise.all([
   load('vendor/cordis/lib/index.js'), load('packages/test-support/agent-loop-testkit/lib/index.js'), load('packages/interaction/commands/lib/index.js'),
@@ -31,6 +34,11 @@ let fixtureSeq = 0
 async function fixture(t, { mode = 'complete', rejection, stopReason = 'completed', modelSelection = false } = {}) {
   const ctx = new Context()
   t.after(() => ctx.fiber.dispose())
+  // This existing SDK fixture represents a Host that completed its one startup recovery.
+  const readiness = createNativeWorkflowReadiness()
+  await readiness.startRecovery(async () => {})
+  ctx.provide(NATIVE_WORKFLOW_READINESS, readiness)
+  t.after(() => readiness.close())
   await kit.mountAgentLoopTestDependencies(ctx)
   await ctx.plugin(Commands)
   await kit.mountAgentLoopTestHarness(ctx)
@@ -84,7 +92,7 @@ async function fixture(t, { mode = 'complete', rejection, stopReason = 'complete
   // Wrapper only adds the public connection service; tools is the genuine SDK.
   let resolves = 0
   const sessionController = { async resolveAgent(id) { resolves++; return { error: { code: 'session/not-found' } } } }
-  const handler = createWorkflowNativeUiHandler({ connection: { requestRejection: () => rejection }, agents: visibleAgents, tools, sessionController, nativeTaskAuthority: authority },
+  const handler = createWorkflowNativeUiHandler({ connection: { requestRejection: () => rejection }, get: key => ctx.get(key), agents: visibleAgents, tools, sessionController, nativeTaskAuthority: authority },
     { readState: async () => state, resolveProfileNamespace: async () => 'C:/owned-fixture-home' })
   async function request(body, options = {}) {
     const req = Readable.from([Buffer.from(options.raw ?? JSON.stringify(body))]); req.method = options.method ?? 'POST'
@@ -127,6 +135,125 @@ test('real SDK UI prepare/get support a persisted DAG and per-node receipts neve
   assert.ok(f.spawnArguments[1].prompt.includes('fixture completed output'))
   assert.equal(read.value.run.nodes[1].roleId, 'product')
   assert.equal(read.value.run.nodes[1].agentPreset, ROLE_PRESETS.product)
+})
+
+test('UI prepare and projection expose mixed local controls without native or artifact receipts', async t => {
+  const f = await fixture(t)
+  f.document.nodes = [
+    { id: 'input', kind: 'input', title: 'Input', instruction: 'Exact local input' },
+    { id: 'task', kind: 'agent', agent: 'product', title: 'Task', instruction: 'Process input' },
+    { id: 'output', kind: 'output', title: 'Output', instruction: 'Not used as output content' },
+  ]
+  f.document.edges = [{ from: 'input', to: 'task' }, { from: 'task', to: 'output' }]
+  const prepared = await f.prepared()
+  assert.deepEqual(prepared.graph.nodes.map(node => node.kind ?? 'agent'), ['input', 'agent', 'output'])
+  assert.deepEqual(prepared.graph.roleIds, ['product'])
+  assert.equal(prepared.graph.nodeCount, 3)
+
+  const submitted = await f.submit(prepared)
+  assert.equal(submitted.status, 202)
+  await f.service.drain()
+  const response = await f.request({ action: 'get', runId: submitted.value.submission.runId })
+  assert.equal(response.status, 200)
+  const [input, agent, output] = response.value.run.nodes
+  assert.equal(input.kind, 'input')
+  assert.equal(input.executionSource, 'workflow/local')
+  assert.equal(input.output, 'Exact local input')
+  assert.equal(input.terminalReceipt.source, 'workflow/local')
+  assert.equal(agent.roleId, 'product')
+  assert.equal(agent.terminalReceipt.source, 'subagent/end')
+  assert.equal(output.kind, 'output')
+  assert.equal(output.executionSource, 'workflow/local')
+  assert.equal(output.output, 'fixture completed output')
+  assert.equal(output.artifactState, 'unknown')
+  assert.equal(output.terminalReceipt.source, 'workflow/local')
+  assert.equal(response.value.run.succeeded, true)
+  assert.equal(f.spawns, 1)
+
+  const raw = structuredClone(f.rows.get(submitted.value.submission.runId))
+  const corruptions = [
+    value => { value.nodes.input.output = 'spoofed local output'; value.nodes.input.localReceipt.output = 'spoofed local output' },
+    value => { value.nodes.input.localReceipt.childId = 'fake-child' },
+    value => { value.nodes.input.artifactSource = 'deliverables/presented'; value.nodes.input.artifacts = [{ id: 'fake' }] },
+    value => { value.nodes.task.localReceipt = structuredClone(value.nodes.input.localReceipt) },
+  ]
+  for (const corrupt of corruptions) {
+    const tampered = structuredClone(raw)
+    corrupt(tampered)
+    assert.throws(() => projectNativeWorkflowRun(tampered), { code: 'submission_unverified' })
+  }
+  const whitespaceIdentity = structuredClone(raw)
+  whitespaceIdentity.nodes.task.requestId = '   '
+  const agentTerminal = whitespaceIdentity.events.findLast(event => event.type === 'node-terminal' && event.nodeId === 'task')
+  agentTerminal.requestId = '   '
+  assert.throws(() => verifiedWorkflowParent(whitespaceIdentity, whitespaceIdentity.document.nodes.find(node => node.id === 'task')),
+    { code: 'upstream_terminal_unverified' })
+})
+
+test('review prepare keeps review_unavailable as a 503 and creates no run when question provider is absent', async t => {
+  const f = await fixture(t)
+  f.document.nodes = [
+    { id: 'review', kind: 'review', title: 'Review', instruction: 'Approve or reject' },
+    { id: 'task', kind: 'agent', agent: 'product', title: 'Task', instruction: 'Continue after review' },
+  ]
+  f.document.edges = [{ from: 'review', to: 'task' }]
+  const response = await f.request({ action: 'prepare', workflowId: 'workflow' })
+  assert.equal(response.status, 503)
+  assert.equal(response.value.error_code, 'review_unavailable')
+  assert.equal(f.rows.size, 0)
+  assert.equal(f.spawns, 0)
+})
+test('review UI projects deferred and rejected states separately from native and artifact evidence', async t => {
+  const f = await fixture(t)
+  f.document.nodes = [
+    { id: 'task', kind: 'agent', agent: 'product', title: 'Task', instruction: 'Produce a result' },
+    { id: 'review', kind: 'review', title: 'Review', instruction: 'Approve or reject' },
+    { id: 'output', kind: 'output', title: 'Output', instruction: 'Ignored' },
+  ]
+  f.document.edges = [{ from: 'task', to: 'review' }, { from: 'review', to: 'output' }]
+  let askCount = 0
+  f.ctx.userQuestions = { async ask({ questions }) {
+    askCount++
+    return askCount === 1
+      ? { answers: [{ id: questions[0].id, selected: [], custom: '批准' }] }
+      : { answers: [{ id: questions[0].id, selected: ['拒绝'], custom: undefined }] }
+  } }
+
+  const prepared = await f.request({ action: 'prepare', workflowId: 'workflow' })
+  const submitted = await f.submit(prepared.value.prepared)
+  assert.equal(submitted.status, 202)
+  await f.service.drain()
+  const deferred = await f.request({ action: 'get', runId: submitted.value.submission.runId })
+  const deferredReview = deferred.value.run.nodes.find(node => node.id === 'review')
+  assert.equal(deferredReview.executionSource, 'dsh-user-questions')
+  assert.equal(deferredReview.status, 'waiting')
+  assert.equal(deferredReview.reviewStatus, 'deferred')
+  assert.equal(deferredReview.error, 'review_answer_invalid')
+  assert.equal(deferredReview.settled, false)
+  assert.equal(deferredReview.attempt, 0)
+  assert.equal(deferredReview.artifactEvidence, null)
+
+  const planResponse = await f.request({ action: 'prepare_resume', runId: submitted.value.submission.runId })
+  assert.equal(planResponse.status, 200)
+  const plan = planResponse.value.preparedResume
+  const resumed = await f.request({ action: 'resume', runId: plan.runId, operationId: 'review-retry',
+    expectedRunRevision: plan.expectedRunRevision, expectedDefinitionRevision: plan.definitionRevision,
+    expectedBindingRevision: plan.bindingRevision, resumePlanHash: plan.resumePlanHash, confirm: true })
+  assert.equal(resumed.status, 202)
+  await f.service.drain()
+  const rejected = await f.request({ action: 'get', runId: submitted.value.submission.runId })
+  const rejectedReview = rejected.value.run.nodes.find(node => node.id === 'review')
+  const output = rejected.value.run.nodes.find(node => node.id === 'output')
+  assert.equal(rejectedReview.executionSource, 'dsh-user-questions')
+  assert.equal(rejectedReview.status, 'failed')
+  assert.equal(rejectedReview.reviewStatus, 'rejected')
+  assert.equal(rejectedReview.error, 'review_rejected')
+  assert.equal(rejectedReview.terminalReceipt.source, 'dsh-user-questions')
+  assert.equal(rejectedReview.attempt, 0)
+  assert.equal(rejectedReview.artifactEvidence, null)
+  assert.equal(output.status, 'skipped')
+  assert.equal(askCount, 2)
+  assert.equal(f.spawns, 1, 'resume must not repeat the completed native child')
 })
 test('blocked descendants expose a verified journal skip receipt, never a fake child completion', async t => {
   const f = await fixture(t, { stopReason: 'failed' })
@@ -274,7 +401,7 @@ test(`${action} abort while cold resolution awaits reaches SDK with original sig
   const response = f.request(body, { onCreate(request) { req = request } })
   await started; req.emit('aborted'); finish()
   const result = await response
-  assert.equal(result.status, 503); assert.equal(result.value.error_code, action === 'submit' ? 'ui_origin_required' : 'native_workflow_unavailable')
+  assert.equal(result.status, 503); assert.equal(result.value.error_code, 'operation_aborted')
   assert.equal(f.executions.length, 0); assert.equal(f.rows.size, 0); assert.equal(f.spawns, 0)
 })
 }

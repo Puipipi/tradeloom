@@ -11,10 +11,10 @@ class NativeArtifactContentTests(SimpleTestCase):
 from django.test import TransactionTestCase, RequestFactory, override_settings
 from django.core.files.uploadedfile import SimpleUploadedFile
 from unittest.mock import patch
-import tempfile, json, uuid, hashlib, subprocess
+import os, tempfile, json, uuid, hashlib, subprocess
 from pathlib import Path
-NODE = r"C:/Users/23825/Desktop/ICT/workspace/runtime/tradeloom-harness/releases/0.2.1-rc.3-tradeloom-desktop-23/apps/desktop/.desktop-build/targets/win-x64/runtime/primary-runtime/dependencies/node/bin/node.exe"
-NODE_SHA = "ba4e6d110e8c1592a1ecd390f6b05f3da124b13871a5be62b341a07a853c6c32"
+NODE = os.environ.get('TRADELOOM_TEST_NODE_PATH', '')
+NODE_SHA = os.environ.get('TRADELOOM_TEST_NODE_SHA256', '')
 from workbench.models import CanvasWorkflowRun, NativeArtifactVersion
 from workbench.native_artifact_api import register, read
 
@@ -23,6 +23,8 @@ class NativeArtifactPgTests(TransactionTestCase):
         self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
         settings = override_settings(TRADELOOM_ARTIFACT_ROOT=self.tmp.name, TRADELOOM_ARTIFACT_NODE=NODE, TRADELOOM_ARTIFACT_NODE_SHA256=NODE_SHA); settings.enable(); self.addCleanup(settings.disable)
         env = patch.dict('os.environ', {'TRADELOOM_NATIVE_BRIDGE_KEY':'a'*64}); env.start(); self.addCleanup(env.stop)
+        self.assertTrue(NODE, 'TRADELOOM_TEST_NODE_PATH must select the test Node executable')
+        self.assertRegex(NODE_SHA, r'^[a-f0-9]{64}$')
         self.factory = RequestFactory(); self.runid = str(uuid.uuid4())
         declaration = {'sourceSessionSeq':4,'fileIndex':0,'presentCallId':'call','sourceTurn':1,'path':'a.txt'}
         start = {'childSessionId':'child','nativeRunId':'native','startInclusive':4}
@@ -169,17 +171,19 @@ class NativeArtifactPgTests(TransactionTestCase):
         import os, sys, re
         from django.db import connection
         result=self.post(); version=json.loads(result.content)['id']; digest=json.loads(result.content)['sha256']
-        cfg=connection.settings_dict; dbname=cfg['NAME']
-        self.assertEqual(cfg['HOST'],'127.0.0.1'); self.assertEqual(str(cfg['PORT']),'55436'); self.assertEqual(cfg['USER'],'artifact_test')
-        self.assertRegex(dbname,r'^tradeloom_test_native_artifact_20261027_a\d{2}$')
-        env={k:os.environ[k] for k in ('SYSTEMROOT','WINDIR','TEMP','TMP','PGPASSFILE') if k in os.environ}
-        env.update({'DJANGO_SETTINGS_MODULE':'config.settings','PYTHONDONTWRITEBYTECODE':'1','TRADELOOM_DB_NAME':dbname,'TRADELOOM_DB_USER':'artifact_test','TRADELOOM_DB_HOST':'127.0.0.1','TRADELOOM_DB_PORT':'55436','TRADELOOM_ARTIFACT_ROOT':self.tmp.name,'TRADELOOM_NATIVE_BRIDGE_KEY':'a'*64})
+        cfg=connection.settings_dict; dbname=str(cfg['NAME']); host=str(cfg['HOST']); port=str(cfg['PORT']); username=str(cfg['USER'])
+        self.assertEqual(host,'127.0.0.1'); self.assertNotIn(port,('3088','3090','55432','55436'))
+        self.assertRegex(dbname,r'^tradeloom_test_[a-z0-9_]+$'); self.assertRegex(username,r'^tradeloom_test_[a-z0-9_]+$')
+        packages_root=str(Path(__import__('django').__file__).resolve().parent.parent)
+        backend_root=Path(__file__).resolve().parents[2]
+        env={k:os.environ[k] for k in ('SYSTEMROOT','WINDIR','TEMP','TMP','PATH','COMSPEC','PATHEXT') if k in os.environ}
+        env.update({'DJANGO_SETTINGS_MODULE':'config.settings','PYTHONNOUSERSITE':'1','PYTHONDONTWRITEBYTECODE':'1','PYTHONPATH':os.pathsep.join((packages_root,str(backend_root))),'TRADELOOM_DB_NAME':dbname,'TRADELOOM_DB_TEST_NAME':dbname,'TRADELOOM_DB_USER':username,'TRADELOOM_DB_PASSWORD':str(cfg['PASSWORD'] or ''),'TRADELOOM_DB_HOST':host,'TRADELOOM_DB_PORT':port,'TRADELOOM_ARTIFACT_ROOT':self.tmp.name,'TRADELOOM_NATIVE_BRIDGE_KEY':'a'*64})
         script="""import django,sys,json;django.setup();from django.db import connection,transaction;from django.test import RequestFactory;from workbench.native_artifact_api import register
 with transaction.atomic():
  with connection.cursor() as c:
-  c.execute('SET TRANSACTION READ ONLY');c.execute('SELECT current_database(),current_user,inet_server_port()'); assert c.fetchone()==(sys.argv[1],'artifact_test',55436)
- r=register(RequestFactory().get('/api/native-artifacts',{'runId':sys.argv[2],'parentAgentId':'parent','parentSessionId':'session'},HTTP_X_TRADELOOM_NATIVE_BRIDGE='a'*64))
- assert r.status_code==200; items=json.loads(r.content)['items']; assert len(items)==1 and items[0]['id']==sys.argv[3] and items[0]['sha256']==sys.argv[4] and items[0]['source']['sessionId']=='child'
+  c.execute('SET TRANSACTION READ ONLY');c.execute('SELECT current_database(),current_user,inet_server_port()'); assert c.fetchone()==(sys.argv[1],sys.argv[2],int(sys.argv[3]))
+ r=register(RequestFactory().get('/api/native-artifacts',{'runId':sys.argv[4],'parentAgentId':'parent','parentSessionId':'session'},HTTP_X_TRADELOOM_NATIVE_BRIDGE='a'*64))
+ assert r.status_code==200; items=json.loads(r.content)['items']; assert len(items)==1 and items[0]['id']==sys.argv[5] and items[0]['sha256']==sys.argv[6] and items[0]['source']['sessionId']=='child'
 print('independent-read-ok')"""
-        child=subprocess.run([sys.executable,'-X','utf8','-B','-c',script,dbname,self.runid,version,digest],env=env,cwd=Path(__file__).resolve().parents[2],capture_output=True,text=True,timeout=20,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
+        child=subprocess.run([sys.executable,'-X','utf8','-B','-c',script,dbname,username,port,self.runid,version,digest],env=env,cwd=backend_root,capture_output=True,text=True,timeout=20,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
         self.assertEqual(child.returncode,0,child.stderr); self.assertEqual(child.stdout.strip(),'independent-read-ok')

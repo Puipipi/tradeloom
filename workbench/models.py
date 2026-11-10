@@ -34,6 +34,24 @@ class CanvasWorkflowRun(models.Model):
         ]
 
 
+class CanvasWorkflowDefinition(models.Model):
+    """Latest durable Canvas definition, independent of historical run snapshots."""
+
+    workflow_id = models.CharField(max_length=48, primary_key=True)
+    revision = models.PositiveBigIntegerField(default=1)
+    definition_revision = models.CharField(max_length=71, null=True, blank=True)
+    # Text JSON preserves legal JSON strings containing U+0000, which PostgreSQL jsonb rejects.
+    document = models.TextField(null=True, blank=True)
+    deleted = models.BooleanField(default=False)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["workflow_id"]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(revision__gt=0), name="canvas_workflow_definition_revision_positive"),
+        ]
+
+
 class Task(models.Model):
     id = models.CharField(
         primary_key=True,
@@ -240,6 +258,56 @@ class IntakeOperationReceipt(models.Model):
 
     class Meta:
         ordering = ["created_at"]
+
+
+class BusinessDispatch(models.Model):
+    """Auditable notification/action sent from one native agent session to another."""
+
+    class Kind(models.TextChoices):
+        NOTIFICATION = "notification", "Notification"
+        ACTION = "action", "Action"
+
+    class Status(models.TextChoices):
+        QUEUED = "queued", "Queued"
+        CLAIMED = "claimed", "Claimed"
+        ACKNOWLEDGED = "acknowledged", "Acknowledged"
+        COMPLETED = "completed", "Completed"
+        FAILED = "failed", "Failed"
+
+    id = models.CharField(primary_key=True, max_length=32, default=hex_uuid, editable=False)
+    kind = models.CharField(max_length=16, choices=Kind.choices)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.QUEUED)
+    sender_session_id = models.CharField(max_length=256, db_index=True)
+    sender_agent_id = models.CharField(max_length=256)
+    sender_preset = models.CharField(max_length=80)
+    recipient_session_id = models.CharField(max_length=256, db_index=True)
+    recipient_agent_id = models.CharField(max_length=256)
+    recipient_preset = models.CharField(max_length=80)
+    source = models.CharField(max_length=200)
+    requirement = models.TextField(max_length=4000)
+    idempotency_key = models.CharField(max_length=200)
+    request_fingerprint = models.CharField(max_length=64)
+    delivery_result = models.JSONField(default=dict)
+    receipt = models.JSONField(null=True, blank=True)
+    receipt_fingerprint = models.CharField(max_length=64, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    claimed_at = models.DateTimeField(null=True, blank=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["sender_session_id", "idempotency_key"],
+                name="uniq_dispatch_sender_idem",
+            ),
+            models.UniqueConstraint(
+                fields=["recipient_session_id"],
+                condition=models.Q(kind="action", status="claimed"),
+                name="uniq_dispatch_action_claim_recipient",
+            ),
+        ]
 
 
 class IntakeMappingRevision(AppendOnlyModel):

@@ -1,6 +1,8 @@
 import http from 'node:http'
 import { isIPv4 } from 'node:net'
 import { ROLE_PRESETS } from './roles.js'
+import { SCENE_MEMORY_ERROR_CODES } from './scene-memory.js'
+import { SCENE_GRAPH_NODE_KINDS } from './scene-memory-graph.js'
 
 export const name = '@tradeloom/dsh-business-shell/business-tools'
 export const inject = ['tools', 'webServer', 'agents']
@@ -17,11 +19,16 @@ const MAX_RESPONSE_BYTES = 1024 * 1024
 const REQUEST_TIMEOUT_MS = 30_000
 const NATIVE_BRIDGE_HEADER = 'x-tradeloom-native-bridge'
 const NATIVE_BRIDGE_TOOLS = new Set([
+  'tradeloom_dispatch_create',
+  'tradeloom_dispatch_list',
+  'tradeloom_dispatch_claim',
+  'tradeloom_dispatch_receipt',
   'tradeloom_begin_native_workflow_assignment',
   'tradeloom_bind_native_workflow_expert',
   'tradeloom_submit_native_workflow_advice',
 ])
 const KNOWN_PRESETS = new Set(Object.values(ROLE_PRESETS))
+const DISPATCH_PRESETS = new Set([ROLE_PRESETS.center, ROLE_PRESETS.product, ROLE_PRESETS.delivery])
 const ERP_DOCTYPES = Object.freeze(['Item', 'Customer', 'Supplier', 'Warehouse', 'Bin', 'Sales Order', 'Purchase Order'])
 const INTAKE_CANDIDATE_TYPES = Object.freeze(['product_identity', 'commercial_source', 'production_instruction', 'labor_analysis'])
 const INTAKE_FIELDS = Object.freeze({
@@ -80,6 +87,17 @@ const TOOL_ACCESS = Object.freeze({
   tradeloom_intake_candidates: new Set([ROLE_PRESETS.center, ROLE_PRESETS.product, ROLE_PRESETS.delivery]),
   tradeloom_intake_candidate: new Set([ROLE_PRESETS.center, ROLE_PRESETS.product, ROLE_PRESETS.delivery]),
   tradeloom_read_execution_plan: new Set([ROLE_PRESETS.center, ROLE_PRESETS.delivery]),
+  tradeloom_dispatch_create: new Set([ROLE_PRESETS.center, ROLE_PRESETS.product, ROLE_PRESETS.delivery]),
+  tradeloom_dispatch_list: new Set([ROLE_PRESETS.center, ROLE_PRESETS.product, ROLE_PRESETS.delivery]),
+  tradeloom_dispatch_claim: new Set([ROLE_PRESETS.center, ROLE_PRESETS.product, ROLE_PRESETS.delivery]),
+  tradeloom_dispatch_receipt: new Set([ROLE_PRESETS.center, ROLE_PRESETS.product, ROLE_PRESETS.delivery]),
+  tradeloom_scene_context: new Set([ROLE_PRESETS.center, ROLE_PRESETS.product, ROLE_PRESETS.delivery]),
+  tradeloom_scene_graph: new Set([ROLE_PRESETS.center, ROLE_PRESETS.product, ROLE_PRESETS.delivery]),
+  tradeloom_scene_target_resolve: new Set([ROLE_PRESETS.center, ROLE_PRESETS.product, ROLE_PRESETS.delivery]),
+  tradeloom_scene_skill: new Set([ROLE_PRESETS.center, ROLE_PRESETS.product, ROLE_PRESETS.delivery]),
+  tradeloom_scene_handoff_update: new Set([ROLE_PRESETS.center, ROLE_PRESETS.product, ROLE_PRESETS.delivery]),
+  tradeloom_scene_progress_append: new Set([ROLE_PRESETS.center, ROLE_PRESETS.product, ROLE_PRESETS.delivery]),
+  tradeloom_scene_decision_append: new Set([ROLE_PRESETS.center, ROLE_PRESETS.product, ROLE_PRESETS.delivery]),
 })
 
 const TOOL_OUTPUT = {
@@ -283,6 +301,259 @@ function observedAgentIdentity(exec) {
     agent_preset: header.agentPreset,
     parent_session: parentSession,
     delegation_depth: depth,
+  }
+}
+
+function observedDispatchActor(exec) {
+  const identity = observedAgentIdentity(exec)
+  const sessionId = exec?.agent?.session?.id
+  if (!identity || !DISPATCH_PRESETS.has(identity.agent_preset)
+    || typeof sessionId !== 'string' || !sessionId.trim() || sessionId.length > 256) return null
+  return {
+    agent_id: identity.agent_id,
+    session_id: sessionId,
+    agent_preset: identity.agent_preset,
+  }
+}
+
+function observedLiveSceneActor(ctx, toolName, exec) {
+  const identity = observedDispatchActor(exec)
+  const agent = exec?.agent
+  const session = agent?.session
+  if (!identity || !TOOL_ACCESS[toolName]?.has(identity.agent_preset) || !agent || !session
+    || ctx?.agents?.get?.(agent.id) !== agent || agent.session !== session
+    || session.id !== identity.session_id || session.header?.agentPreset !== identity.agent_preset) return null
+  return { ...identity, agent, session }
+}
+
+function sceneMemoryFailure(error) {
+  return failure(SCENE_MEMORY_ERROR_CODES.includes(error?.code) ? error.code : 'scene_memory_unavailable')
+}
+
+function sceneMemoryTools(ctx, sceneMemory) {
+  const actorFor = (toolName, exec) => observedLiveSceneActor(ctx, toolName, exec)
+  const readOnlyGraphCall = async (toolName, exec, operation) => {
+    const actor = actorFor(toolName, exec)
+    if (!actor) return failure('host_identity_unavailable')
+    try {
+      const data = await operation(actor)
+      const current = actorFor(toolName, exec)
+      if (!current || current.agent !== actor.agent || current.session !== actor.session
+        || current.session_id !== actor.session_id || current.agent_preset !== actor.agent_preset) {
+        return failure(exec.signal?.aborted ? 'tool_cancelled' : 'host_identity_unavailable')
+      }
+      if (exec.signal?.aborted) return failure('tool_cancelled')
+      return success(data)
+    } catch (error) {
+      const current = actorFor(toolName, exec)
+      if (!current || current.agent !== actor.agent || current.session !== actor.session
+        || current.session_id !== actor.session_id || current.agent_preset !== actor.agent_preset) {
+        return failure(exec.signal?.aborted ? 'tool_cancelled' : 'host_identity_unavailable')
+      }
+      return exec.signal?.aborted ? failure('tool_cancelled') : sceneMemoryFailure(error)
+    }
+  }
+  return [
+    {
+      name: 'tradeloom_scene_context',
+      description: 'Read responsibility, configured asset references, primary skill reference, current handoff, progress and long-term decisions for the scene bound to the executing live session.',
+      parameters: schema({
+        progress_offset: { type: 'integer', minimum: 0, description: 'Offset into this scene’s progress records; default 0.' },
+        decision_offset: { type: 'integer', minimum: 0, description: 'Offset into this scene’s long-term decisions; default 0.' },
+        page_size: { type: 'integer', minimum: 1, maximum: 100, description: 'Maximum rows returned for each list; default 25.' },
+      }, []),
+      async execute(args, exec) {
+        if (!args || typeof args !== 'object' || Array.isArray(args)
+          || Object.keys(args).some(key => !['progress_offset', 'decision_offset', 'page_size'].includes(key))
+          || ['progress_offset', 'decision_offset'].some(key => args[key] !== undefined
+            && (!Number.isSafeInteger(args[key]) || args[key] < 0))
+          || (args.page_size !== undefined && (!Number.isSafeInteger(args.page_size) || args.page_size < 1 || args.page_size > 100))) return failure('invalid_arguments')
+        const actor = actorFor('tradeloom_scene_context', exec)
+        if (!actor) return failure('host_identity_unavailable')
+        const pagination = {}
+        if (args.progress_offset !== undefined) pagination.progressOffset = args.progress_offset
+        if (args.decision_offset !== undefined) pagination.decisionOffset = args.decision_offset
+        if (args.page_size !== undefined) pagination.pageSize = args.page_size
+        try { return success(await sceneMemory.readForSession(actor.session_id, pagination)) }
+        catch (error) { return sceneMemoryFailure(error) }
+      },
+    },
+    {
+      name: 'tradeloom_scene_graph',
+      description: 'Read a literal-search, kind-filtered graph made only from records in the executing live session’s bound scene. It never reads other sessions, asset files or skill bodies, and it does not infer semantic links.',
+      parameters: schema({
+        text: { type: 'string', maxLength: 1000, description: 'Optional literal substring filter; no regular expressions or semantic search.' },
+        kinds: { type: 'array', minItems: 1, maxItems: SCENE_GRAPH_NODE_KINDS.length,
+          items: { type: 'string', enum: SCENE_GRAPH_NODE_KINDS }, description: 'Optional node-kind filter.' },
+        page_size: { type: 'integer', minimum: 1, maximum: 100, description: 'Maximum matching nodes; default 25.' },
+        cursor: { type: 'string', maxLength: 8192, description: 'Opaque continuation snapshot. It is not an authorization credential.' },
+      }, []),
+      async execute(args, exec) {
+        if (!args || typeof args !== 'object' || Array.isArray(args)
+          || Object.keys(args).some(key => !['text', 'kinds', 'page_size', 'cursor'].includes(key))
+          || (args.text !== undefined && (typeof args.text !== 'string' || args.text.length > 1000))
+          || (args.kinds !== undefined && (!Array.isArray(args.kinds) || args.kinds.length < 1
+            || args.kinds.length > SCENE_GRAPH_NODE_KINDS.length
+            || args.kinds.some(kind => !SCENE_GRAPH_NODE_KINDS.includes(kind))
+            || new Set(args.kinds).size !== args.kinds.length))
+          || (args.page_size !== undefined && (!Number.isSafeInteger(args.page_size) || args.page_size < 1 || args.page_size > 100))
+          || (args.cursor !== undefined && (typeof args.cursor !== 'string' || args.cursor.length > 8192))) return failure('invalid_arguments')
+        return await readOnlyGraphCall('tradeloom_scene_graph', exec, actor => {
+          const query = {}
+          if (args.text !== undefined) query.text = args.text
+          if (args.kinds !== undefined) query.kinds = args.kinds
+          if (args.page_size !== undefined) query.pageSize = args.page_size
+          if (args.cursor !== undefined) query.cursor = args.cursor
+          return sceneMemory.readGraphForSession(actor.session_id, query)
+        })
+      },
+    },
+    {
+      name: 'tradeloom_scene_target_resolve',
+      description: 'Resolve one existing graph node against the current target for this live session. The expected target is only a stale-selection precondition; this read-only tool never switches, creates or sends to a session.',
+      parameters: schema({
+        node_id: string('Stable node ID from the current scene graph.', 2048),
+        expected_target: {
+          type: 'object', additionalProperties: false,
+          required: ['session_id', 'scene_id', 'binding_revision'],
+          properties: {
+            session_id: string('Target session from the graph response.', 128),
+            scene_id: string('Scene from the graph response.', 64),
+            binding_revision: { type: 'integer', minimum: 0 },
+          },
+        },
+      }, ['node_id', 'expected_target']),
+      async execute(args, exec) {
+        const expected = args?.expected_target
+        if (!exactArgs(args, ['node_id', 'expected_target'], ['node_id'])
+          || typeof args.node_id !== 'string' || args.node_id.length > 2048
+          || !exactArgs(expected, ['session_id', 'scene_id', 'binding_revision'], ['session_id', 'scene_id'])
+          || typeof expected.session_id !== 'string' || expected.session_id.length > 128
+          || typeof expected.scene_id !== 'string' || expected.scene_id.length > 64
+          || !Number.isSafeInteger(expected.binding_revision) || expected.binding_revision < 0) return failure('invalid_arguments')
+        return await readOnlyGraphCall('tradeloom_scene_target_resolve', exec, actor => sceneMemory.resolveGraphTarget(actor.session_id, {
+          nodeId: args.node_id,
+          expectedTarget: {
+            sessionId: expected.session_id,
+            sceneId: expected.scene_id,
+            bindingRevision: expected.binding_revision,
+          },
+        }))
+      },
+    },
+    {
+      name: 'tradeloom_scene_skill',
+      description: 'Read the configured primary skill body on demand through the current agent-scoped DSH skill registry; never accepts an arbitrary skill name or path.',
+      parameters: schema({}),
+      async execute(args, exec) {
+        if (!exactArgs(args, [], [])) return failure('invalid_arguments')
+        const actor = actorFor('tradeloom_scene_skill', exec)
+        if (!actor) return failure('host_identity_unavailable')
+        try {
+          const cwd = actor.session.header?.cwd
+          const skills = actor.agent.ctx?.get?.('skills')
+          const value = await sceneMemory.readConfiguredSkill(actor.session_id, skills, exec)
+          const currentActor = actorFor('tradeloom_scene_skill', exec)
+          if (!currentActor || currentActor.agent !== actor.agent || currentActor.session !== actor.session
+            || currentActor.session_id !== actor.session_id || currentActor.agent_preset !== actor.agent_preset
+            || ctx.agents?.get?.(actor.agent.id) !== actor.agent || actor.agent.session !== actor.session
+            || actor.agent.ctx?.get?.('skills') !== skills
+            || exec.signal?.aborted || typeof cwd !== 'string' || actor.session.header?.cwd !== cwd) return failure('host_identity_unavailable')
+          return success(value)
+        } catch (error) { return sceneMemoryFailure(error) }
+      },
+    },
+    {
+      name: 'tradeloom_scene_handoff_update',
+      description: 'Write the actual handoff text for the executing session’s bound scene. Uses revision compare-and-swap and an operation ID for safe retry.',
+      parameters: schema({
+        operation_id: string('Stable operation ID for this handoff update.', 128),
+        expected_revision: { type: 'integer', minimum: 0 },
+        text: { type: 'string', description: 'User or agent supplied handoff content; at most 8000 characters.', minLength: 1, maxLength: 8000 },
+      }),
+      async execute(args, exec) {
+        if (!exactArgs(args, ['operation_id', 'expected_revision', 'text'], [])
+          || typeof args.operation_id !== 'string' || !args.operation_id
+          || !Number.isSafeInteger(args.expected_revision) || args.expected_revision < 0
+          || typeof args.text !== 'string' || !args.text.trim() || args.text.length > 8000) return failure('invalid_arguments')
+        const actor = actorFor('tradeloom_scene_handoff_update', exec)
+        if (!actor) return failure('host_identity_unavailable')
+        try {
+          const result = await sceneMemory.updateHandoff({ sessionId: actor.session_id, operationId: args.operation_id,
+            expectedRevision: args.expected_revision, text: args.text })
+          return success(result)
+        } catch (error) { return sceneMemoryFailure(error) }
+      },
+    },
+    ...['progress', 'decision'].map(kind => ({
+      name: `tradeloom_scene_${kind}_append`,
+      description: `Append one ${kind === 'progress' ? 'progress update' : 'long-term decision'} to the executing session’s bound scene, separately from the other collection.`,
+      parameters: schema({
+        entry_id: string('Stable ID for idempotent retry.', 128),
+        text: { type: 'string', description: 'Actual supplied content; at most 4000 characters.', minLength: 1, maxLength: 4000 },
+      }),
+      async execute(args, exec) {
+        if (!exactArgs(args, ['entry_id', 'text'], []) || typeof args.entry_id !== 'string' || !args.entry_id
+          || typeof args.text !== 'string' || !args.text.trim() || args.text.length > 4000) return failure('invalid_arguments')
+        const actor = actorFor(`tradeloom_scene_${kind}_append`, exec)
+        if (!actor) return failure('host_identity_unavailable')
+        try {
+          const result = kind === 'progress'
+            ? await sceneMemory.appendProgress({ sessionId: actor.session_id, entryId: args.entry_id, text: args.text })
+            : await sceneMemory.appendDecision({ sessionId: actor.session_id, entryId: args.entry_id, text: args.text })
+          return success(result)
+        } catch (error) { return sceneMemoryFailure(error) }
+      },
+    })),
+  ]
+}
+
+function liveDispatchRecipient(ctx, agentId) {
+  const agent = ctx?.agents?.get?.(agentId)
+  if (!agent || agent.id !== agentId) return null
+  const sessionId = agent?.session?.id
+  const preset = agent?.session?.header?.agentPreset
+  if (typeof sessionId !== 'string' || !sessionId.trim() || sessionId.length > 256
+    || !DISPATCH_PRESETS.has(preset)) return null
+  return { agent_id: agent.id, session_id: sessionId, agent_preset: preset }
+}
+
+function dispatchResultError(result, fallback) {
+  return failure(typeof result?.code === 'string' && /^[a-z][a-z0-9_]{0,63}$/.test(result.code)
+    ? result.code
+    : fallback)
+}
+
+function validDispatchDto(value) {
+  const actor = item => item && typeof item === 'object' && !Array.isArray(item)
+    && typeof item.agent_id === 'string' && typeof item.session_id === 'string'
+    && DISPATCH_PRESETS.has(item.agent_preset)
+  return value && typeof value === 'object' && !Array.isArray(value)
+    && typeof value.id === 'string' && /^[a-f0-9]{32}$/.test(value.id)
+    && ['notification', 'action'].includes(value.kind)
+    && ['queued', 'claimed', 'acknowledged', 'completed', 'failed'].includes(value.status)
+    && actor(value.sender) && actor(value.recipient)
+    && typeof value.source === 'string' && typeof value.requirement === 'string'
+    && value.delivery_result && typeof value.delivery_result === 'object' && !Array.isArray(value.delivery_result)
+    && (value.receipt === null || (value.receipt && typeof value.receipt === 'object' && !Array.isArray(value.receipt)))
+}
+
+function projectDispatchDto(value) {
+  if (!validDispatchDto(value)) return null
+  return {
+    id: value.id,
+    kind: value.kind,
+    status: value.status,
+    sender: { agent_id: value.sender.agent_id, session_id: value.sender.session_id, agent_preset: value.sender.agent_preset },
+    recipient: { agent_id: value.recipient.agent_id, session_id: value.recipient.session_id, agent_preset: value.recipient.agent_preset },
+    source: boundedString(value.source, 200),
+    requirement: boundedString(value.requirement, 4000),
+    delivery_result: value.delivery_result,
+    receipt: value.receipt,
+    created_at: boundedString(value.created_at, 64),
+    updated_at: boundedString(value.updated_at, 64),
+    claimed_at: value.claimed_at === null ? null : boundedString(value.claimed_at, 64),
+    closed_at: value.closed_at === null ? null : boundedString(value.closed_at, 64),
   }
 }
 
@@ -1164,6 +1435,108 @@ export function registerBusinessTools(ctx, config = {}, dependencies = {}) {
   if (!allowedTools) return () => {}
   const tools = [
     {
+      name: 'tradeloom_dispatch_create',
+      description: 'Create a durable notification or action for a currently registered TradeLoom agent. New dispatches remain queued; creation never runs the recipient task.',
+      parameters: schema({
+        idempotency_key: wireString('Stable caller key for this dispatch.'),
+        kind: { ...wireString('Notification or action.'), enum: ['notification', 'action'] },
+        recipient_agent_id: wireString('ID of a currently registered agent; its session and preset are resolved by the Host.'),
+        source: wireString('Short source reference, such as a workflow or task ID.'),
+        requirement: { type: 'string', description: 'The notification or requested action, at most 4000 characters.', maxLength: 4000 },
+      }),
+      async execute(args, exec) {
+        if (!args || typeof args !== 'object' || Array.isArray(args)
+          || Object.keys(args).some(key => !['idempotency_key', 'kind', 'recipient_agent_id', 'source', 'requirement'].includes(key))
+          || !exactArgs(args, ['idempotency_key', 'kind', 'recipient_agent_id', 'source', 'requirement'], ['idempotency_key', 'kind', 'recipient_agent_id', 'source', 'requirement'])
+          || args.idempotency_key.length > 200 || !['notification', 'action'].includes(args.kind)
+          || args.recipient_agent_id.length > 256 || args.source.length > 200 || args.requirement.length > 4000) return failure('invalid_arguments')
+        const actor = observedDispatchActor(exec)
+        if (!actor) return failure('host_identity_unavailable')
+        const recipient = liveDispatchRecipient(ctx, args.recipient_agent_id)
+        if (!recipient) return failure('dispatch_recipient_unavailable')
+        const result = await djangoRequest(ctx, 'tradeloom_dispatch_create', exec, '/api/dispatches', 'POST', {
+          actor,
+          idempotency_key: args.idempotency_key,
+          kind: args.kind,
+          recipient,
+          source: args.source,
+          requirement: args.requirement,
+        }, dependencies, [403, 409, 422])
+        if (result?.ok === false) return failure(result.error_code)
+        if (result?.code) return dispatchResultError(result, 'dispatch_request_failed')
+        const dispatch = projectDispatchDto(result?.dispatch)
+        if (!dispatch || typeof result.replayed !== 'boolean') return failure('invalid_dispatch_dto')
+        return success({ dispatch, replayed: result.replayed })
+      },
+    },
+    {
+      name: 'tradeloom_dispatch_list',
+      description: 'Read the current agent session inbox or outbox. The session identity comes from the executing native agent, not tool arguments.',
+      parameters: schema({
+        view: { ...wireString('Inbox or outbox.'), enum: ['inbox', 'outbox'] },
+        offset: { type: 'integer', description: 'Optional next page offset from the previous response.' },
+      }, ['view']),
+      async execute(args, exec) {
+        if (!args || typeof args !== 'object' || Array.isArray(args)
+          || Object.keys(args).some(key => !['view', 'offset'].includes(key))
+          || typeof args.view !== 'string' || !['inbox', 'outbox'].includes(args.view)
+          || (args.offset !== undefined && (!Number.isInteger(args.offset) || args.offset < 0 || args.offset > 1_000_000))) return failure('invalid_arguments')
+        const actor = observedDispatchActor(exec)
+        if (!actor) return failure('host_identity_unavailable')
+        const body = { actor, view: args.view }
+        if (args.offset !== undefined) body.offset = args.offset
+        const result = await djangoRequest(ctx, 'tradeloom_dispatch_list', exec, '/api/dispatches/inbox', 'POST', body, dependencies, [403, 422])
+        if (result?.ok === false) return failure(result.error_code)
+        if (result?.code) return dispatchResultError(result, 'dispatch_request_failed')
+        if (result?.view !== args.view || !Array.isArray(result.items) || typeof result.has_more !== 'boolean'
+          || (result.next_offset !== null && (!Number.isInteger(result.next_offset) || result.next_offset < 0))) return failure('invalid_dispatch_dto')
+        const items = result.items.map(projectDispatchDto)
+        if (items.some(item => !item)) return failure('invalid_dispatch_dto')
+        return success({ view: args.view, items, has_more: result.has_more, next_offset: result.next_offset })
+      },
+    },
+    {
+      name: 'tradeloom_dispatch_claim',
+      description: 'Acknowledge one notification or claim one queued action addressed to the executing native agent. Busy action requests remain queued.',
+      parameters: schema({ dispatch_id: wireString('A server-issued 32-character dispatch ID.') }),
+      async execute(args, exec) {
+        if (!exactArgs(args, ['dispatch_id'], ['dispatch_id']) || !/^[a-f0-9]{32}$/.test(args.dispatch_id)) return failure('invalid_arguments')
+        const actor = observedDispatchActor(exec)
+        if (!actor) return failure('host_identity_unavailable')
+        const result = await djangoRequest(ctx, 'tradeloom_dispatch_claim', exec, `/api/dispatches/${args.dispatch_id}/claim`, 'POST', { actor }, dependencies, [403, 404, 409, 422])
+        if (result?.ok === false) return failure(result.error_code)
+        if (result?.code) return dispatchResultError(result, 'dispatch_request_failed')
+        const dispatch = projectDispatchDto(result?.dispatch)
+        if (!dispatch || !['claimed', 'already_claimed', 'busy', 'acknowledged', 'already_acknowledged'].includes(result.result)
+          || typeof result.replayed !== 'boolean') return failure('invalid_dispatch_dto')
+        return success({ result: result.result, dispatch, replayed: result.replayed })
+      },
+    },
+    {
+      name: 'tradeloom_dispatch_receipt',
+      description: 'Submit the final result for one action previously claimed by the executing native agent. The receipt only closes that dispatch ID.',
+      parameters: schema({
+        dispatch_id: wireString('A server-issued 32-character dispatch ID.'),
+        status: { ...wireString('Final action result.'), enum: ['completed', 'failed'] },
+        result: { type: 'string', description: 'Bounded receipt summary, at most 2000 characters.', maxLength: 2000 },
+      }),
+      async execute(args, exec) {
+        if (!exactArgs(args, ['dispatch_id', 'status', 'result'], ['dispatch_id', 'status', 'result'])
+          || !/^[a-f0-9]{32}$/.test(args.dispatch_id) || !['completed', 'failed'].includes(args.status)
+          || args.result.length > 2000) return failure('invalid_arguments')
+        const actor = observedDispatchActor(exec)
+        if (!actor) return failure('host_identity_unavailable')
+        const result = await djangoRequest(ctx, 'tradeloom_dispatch_receipt', exec, `/api/dispatches/${args.dispatch_id}/receipt`, 'POST', {
+          actor, status: args.status, result: args.result,
+        }, dependencies, [403, 404, 409, 422])
+        if (result?.ok === false) return failure(result.error_code)
+        if (result?.code) return dispatchResultError(result, 'dispatch_request_failed')
+        const dispatch = projectDispatchDto(result?.dispatch)
+        if (!dispatch || typeof result.replayed !== 'boolean') return failure('invalid_dispatch_dto')
+        return success({ dispatch, replayed: result.replayed })
+      },
+    },
+    {
       name: 'tradeloom_read_products',
       description: 'Read product facts and latest revision/source status from the existing TradeLoom product library.',
       parameters: schema({ q: string('Optional search by SKU or product name.'), status: string('Optional revision status filter.', 80), batch_id: string('Optional source batch ID.', 80) }, []),
@@ -1798,6 +2171,8 @@ export function registerBusinessTools(ctx, config = {}, dependencies = {}) {
       },
     },
   ]
+
+  if (dependencies.sceneMemory) tools.push(...sceneMemoryTools(ctx, dependencies.sceneMemory))
 
   const disposers = tools
     .filter(tool => allowedTools[tool.name].has(preset))

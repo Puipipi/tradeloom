@@ -7,13 +7,19 @@ from .erpnext import api as erpnext_api
 from .intake import api as intake_api
 from .requirements import api as requirement_api
 from .execution_plans import api as execution_plan_api
-from . import canvas_workflow_api, native_artifact_api
+from . import canvas_workflow_api, canvas_workflow_definition_api, native_artifact_api, product_fact_restore_api
+from . import dispatch_api
 
 
 urlpatterns = [
+    path("api/canvas-workflow-definitions", canvas_workflow_definition_api.definitions),
     path("api/native-artifacts", native_artifact_api.register),
     path("api/native-artifacts/<uuid:run_id>/<uuid:version_id>/<str:action>", native_artifact_api.read),
     path("api/canvas-workflow-runs", canvas_workflow_api.runs),
+    path("api/dispatches", dispatch_api.create_dispatch),
+    path("api/dispatches/inbox", dispatch_api.list_dispatches),
+    path("api/dispatches/<str:dispatch_id>/claim", dispatch_api.claim_dispatch),
+    path("api/dispatches/<str:dispatch_id>/receipt", dispatch_api.receipt_dispatch),
     path("", views.task_list, name="task-list"),
     path("home", views.home, name="home"),
     path("products", views.products, name="products"),
@@ -108,6 +114,8 @@ urlpatterns = [
     path("api/tasks/demo", api.create_demo_task),
     path("api/tasks/<str:task_id>", api.get_task),
     path("api/product-library", api.product_library),
+    path("api/products/<str:product_id>/fact-restoration/preview", product_fact_restore_api.preview),
+    path("api/products/<str:product_id>/fact-restoration/apply", product_fact_restore_api.apply),
     path(
         "api/products/<str:product_id>/revisions",
         api.product_revisions,
