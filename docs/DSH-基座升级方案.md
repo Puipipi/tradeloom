@@ -107,3 +107,25 @@ node scripts/upgrade-dsh-base.mjs --source <新版 app.asar> --version 0.2.2-rc.
 **结论**：这是架构级重构，不是补丁级差异。新基座里 `operationOrigin`、`sceneMemoryOriginAuthority` 计数均为 0，说明上游完全没采用我们的改动；要在 0.2.2 上保留阶段5的 origin 权威保证，必须按新架构重新实现这 4 处。
 
 因此本轮**不产出部分升级的基座**——部分合并恰恰会丢掉阶段5验过的 origin 权威语义，属于“看起来升级了但坏了”的最坏情况。
+
+
+## 8. 全量升级已推进到“只差 IPC 契约”
+
+本轮把 0.2.2 基座真正装进隔离候选并启动，逐个击穿阻塞：
+
+| 阻塞 | 处置 | 结果 |
+|---|---|---|
+| asar 头部 2 字节对齐填充 | 修正 extract/pack 的 base 偏移 | 内容逐字节一致（20,580 条） |
+| unpacked 载荷不匹配 | asar 与 `app.asar.unpacked` 同步安装 | 后端能起、Django/PG 端口就绪 |
+| `registerSceneMemoryOriginGrant` 落错位置 | 移到 `control.quitInspection` 之后 | `dsh-desktop-host` 语法通过 |
+| agent-loop 架构重构 | 在干净基座上重做 ledger / send / 调用点 | 71,319 字节、63 处 `operationOrigin` |
+
+**当前唯一阻塞**：`lib/main.js` 不认 0.2.2 host 新增的 3 个 IPC 事件——
+
+- `starting` `{runId}`：host 启动即发
+- `plugin-operation` `{record}`：插件操作诊断流
+- `file-drag-resource` `{requestId, resource|error}`：拖拽资源响应
+
+（同时 0.2.2 去掉了 `native-import-confirmation` 两个事件。）
+
+这意味着“基座”不只是 `dsh/**`，还包括 `lib/main.js` 与 `renderer/**` 这层 Electron 外壳——TradeLoom 在这层的补丁也得跟着 0.2.2 一起移植。下一步就是在 `apps/tradeloom-launcher/accepted-runtime/lib/main.js` 里接住这三个事件，再重打装机验收。
