@@ -1,6 +1,8 @@
 # DSH 基座升级方案（0.2.1-rc.3 → 0.2.2-rc.1）
 
-> 结论先行：**这次不能直接换基座**。实测证明 5 个受控补丁在新基座上全部对不上锚点，硬换会同时打破：场景记忆授权、会话列表失败相位、面板客户端补丁、以及前端打包产物。
+> 结论先行：**一键工具已就位，但升级被 9 个 hunk 卡住**（详见第 6 节）。
+> 实测：0.2.2-rc.1 上 27 个 hunk 中 18 个可自动套用，9 个需重做（8 个在 `dsh-agent-loop`，1 个是前端哈希产物）。
+> 旧结论（不可机械替换）：实测证明 5 个受控补丁在新基座上全部对不上锚点，硬换会同时打破：场景记忆授权、会话列表失败相位、面板客户端补丁、以及前端打包产物。
 > 证据：`D:/TL-S5-A20261110/evidence/dsh-base-compat-probe.json`
 
 ## 1. 现状（已核实）
@@ -53,3 +55,32 @@
 - 启动观察日志：本实例 215 条记录，仅 1 条历史性 `OWNER_REJECTED`（早期与另一实例竞争侧栏状态），其余为正常的 origin-grant 相位序列。
 - 面板关闭/恢复、右键恢复、助手能力、业务工具调用均在真机验证通过（见 `panel-x-context-menu-live.json`）。
 - 基座边界守卫：3 处版本钉一致、5 个补丁全部登记、3 个 profile bundle 顺序正确、插件 13 个 exports 键齐全。
+
+## 6. 一键工具实测结果（本轮）
+
+```
+node scripts/upgrade-dsh-base.mjs --source <新版 app.asar> --version 0.2.2-rc.1 --dry-run
+```
+
+输出（对 0.2.2-rc.1 实测）：
+
+| 项 | 结果 |
+|---|---|
+| 状态 | `blocked-unresolved-hunks`（非零退出，拒绝产出半成品） |
+| `session-list-failure-phase.patch` | **0 失败**，3 个 hunk 全部可套 |
+| `production-execution-origin.patch` | 9 个 hunk 失败 |
+| 三个 `dsh-client-ui-*.js` | 新基座 `intact`（无截断瑕疵）→ 升级后这 3 个覆盖**应删除** |
+| 缺失目标 | 旧前端哈希产物 `index-D4iGkJJO.js`、补丁新建的 `native-operation-origin-adapter.mjs` |
+
+9 个待重做 hunk 的归属：
+
+- `dsh-agent-loop/lib/index.js`：8 个（上游 0.2.2 没有 `operationOrigin` 传播，需在新版重新植入；已确认新基座里 `sceneMemory/executionOrigin/originGrant` 计数均为 0）。
+- `dsh-web-frontend/dist/assets/<hash>.js`：1 个（文件名变化，需重定向）。
+
+### 一键升级还差什么（明确、可交接）
+
+1. 把这 8 个 hunk 移植到 0.2.2-rc.1 的 `dsh-agent-loop/lib/index.js`（唯一需要读代码的活）。
+2. 前端哈希产物重定向：把补丁目标改成新哈希名，并判断 `native-operation-origin-adapter.mjs` 是否仍需要。
+3. 之后 `--stage` 一键流程即可跑完：提取 → 打补丁 → 修截断 → 改三处版本钉 → 守卫 → 回归 → 打包 → 真机。
+
+工具的安全边界：任何 hunk 失败即非零退出，绝不生成“少了功能但看起来正常”的基座。

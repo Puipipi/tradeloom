@@ -33,7 +33,38 @@
     },
     "sanctionedDocs": [
       "apps/tradeloom-launcher/accepted-sdk-overrides/READ-ME-基座补丁.md"
-    ]
+    ],
+    "upgrade": {
+      "tool": "scripts/upgrade-dsh-base.mjs",
+      "command": "node scripts/upgrade-dsh-base.mjs --source <新版 app.asar> --version 0.2.2-rc.1 --dry-run",
+      "measuredAgainst": "0.2.2-rc.1（本机 DSH 桌面应用 app.asar）",
+      "autoApplied": {
+        "hunks": 18,
+        "files": 5,
+        "note": "session-list-failure-phase.patch 全部 3 hunk + production 补丁中 desktop-host/client-connection/dsh-agent/dsh-tools 全部命中"
+      },
+      "needsReauthoring": [
+        {
+          "file": "dsh/node_modules/@deepseek-ai/dsh-agent-loop/lib/index.js",
+          "hunks": 8,
+          "reason": "上游未采用 operationOrigin 传播，需在新版本上重新植入"
+        },
+        {
+          "file": "dsh/node_modules/@deepseek-ai/dsh-web-frontend/dist/assets/<hash>.js",
+          "hunks": 1,
+          "reason": "前端产物文件名带内容哈希（0.2.1 为 index-D4iGkJJO.js，0.2.2 为 index-BgUyXZcc.js），需重定向后再打"
+        },
+        {
+          "file": "dsh/node_modules/@deepseek-ai/dsh-web-frontend/dist/assets/native-operation-origin-adapter.mjs",
+          "hunks": 0,
+          "reason": "该文件由补丁新建，新基座不存在，随前端 hunk 一起处理"
+        }
+      ],
+      "clientPluginOverrides": {
+        "verdict": "0.2.2-rc.1 的三个 client.js 本身完好（无 > 前缀、sourceMappingURL 完整），升级后这 3 个覆盖文件应删除，不得再把旧文件盖回去",
+        "detectedBy": "truncation 探针（intact 即无需覆盖）"
+      }
+    }
   },
   "pluginImportContract": {
     "profileBundles": [
