@@ -84,3 +84,26 @@ node scripts/upgrade-dsh-base.mjs --source <新版 app.asar> --version 0.2.2-rc.
 3. 之后 `--stage` 一键流程即可跑完：提取 → 打补丁 → 修截断 → 改三处版本钉 → 守卫 → 回归 → 打包 → 真机。
 
 工具的安全边界：任何 hunk 失败即非零退出，绝不生成“少了功能但看起来正常”的基座。
+
+
+## 7. 三方合并实测（判断“能不能机械升级”）
+
+用 `git merge-file` 对最难的文件做三方合并：
+
+| 角色 | 内容 | 大小 |
+|---|---|---|
+| ours | 旧基座里已打我们补丁的 `dsh-agent-loop/lib/index.js` | 84,141 |
+| ancestor | 反打补丁恢复的 0.2.1 原始文件 | 74,599 |
+| theirs | 0.2.2-rc.1 的同名文件 | 66,629 |
+| 合并结果 | 4 处冲突 | 86,066 |
+
+冲突位置与性质：
+
+1. 工具调用区（240 行）：0.2.1 在 agent-loop 内联 `executeToolCalls`；**0.2.2 改成 `loopCtx.tools.execute(...)`**，内联函数计数为 0。
+2. pre-step 的 origin ledger（100 行）：我们的 `operationOrigin` 记账逻辑需要按新结构重写。
+3. 工具调用点（23 行）：同上，调用形态不同。
+4. 启动路径（22 行）：`setupAndPublish`（0.2.1，3 处）→ `initializeAgent`（0.2.2，4 处）。
+
+**结论**：这是架构级重构，不是补丁级差异。新基座里 `operationOrigin`、`sceneMemoryOriginAuthority` 计数均为 0，说明上游完全没采用我们的改动；要在 0.2.2 上保留阶段5的 origin 权威保证，必须按新架构重新实现这 4 处。
+
+因此本轮**不产出部分升级的基座**——部分合并恰恰会丢掉阶段5验过的 origin 权威语义，属于“看起来升级了但坏了”的最坏情况。

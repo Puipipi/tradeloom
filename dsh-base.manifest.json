@@ -63,6 +63,15 @@
       "clientPluginOverrides": {
         "verdict": "0.2.2-rc.1 的三个 client.js 本身完好（无 > 前缀、sourceMappingURL 完整），升级后这 3 个覆盖文件应删除，不得再把旧文件盖回去",
         "detectedBy": "truncation 探针（intact 即无需覆盖）"
+      },
+      "threeWayMerge": {
+        "measured": "见 D:/TL-S5-A20261110/evidence/dsh-base-upgrade-merge.json",
+        "conflictBlocks": 4,
+        "architectureDrift": [
+          "工具执行 0.2.1 内联 executeToolCalls → 0.2.2 loopCtx.tools.execute",
+          "启动路径 setupAndPublish(3) → initializeAgent(4)"
+        ],
+        "decision": "在 0.2.2 新架构上重做 operationOrigin 传播后才可升级；禁止部分合并（会丢失阶段5 origin 权威保证）"
       }
     }
   },
