@@ -113,14 +113,12 @@ test('the panel header context menu keeps the rotation, popout and native entrie
       'the native DSH application/edit entries stay out of ordinary panel menus')
     assert.ok(labels.some(label => label.startsWith('恢复面板：')), 'panel context menu also offers restore entries')
 
-    const assistantPanel = filesPanel
-    assistantPanel.classList.add('panel-native-chat')
+    filesPanel.classList.add('panel-native-chat')
     header.dispatchEvent(new window.MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 60, clientY: 60 }))
     const assistantMenu = document.querySelector('.pi-menu')
     const assistantLabels = [...assistantMenu.querySelectorAll('button')].map(item => item.textContent)
-    for (const label of ['应用', '编辑']) {
-      assert.ok(assistantLabels.includes(label), `assistant context menu still exposes ${label}`)
-    }
+    assert.ok(!assistantLabels.includes('应用') && !assistantLabels.includes('编辑'),
+      'the useless native application/edit entries are gone from assistant menus too')
   } finally {
     window.close()
   }

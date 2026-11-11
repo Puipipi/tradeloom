@@ -5,8 +5,6 @@
     ['独立窗口', '独立窗口操作暂不可用。'],
     ['打开原生会话', '该面板不支持原生会话。'],
     ['轮换此角色会话', '此面板当前没有可轮换的角色会话。'],
-    ['应用', '原生应用菜单暂不可用。'],
-    ['编辑', '原生编辑菜单暂不可用。'],
     ['关闭面板', '当前场景至少需要保留一个可见面板。'],
   ]
   const states = new Map()
@@ -381,19 +379,6 @@
       openSceneRotationDialog(flow)
       return
     }
-    if (label === '应用' || label === '编辑') {
-      const openNativeMenu = window.businessBridge?.openNativeMenu
-      const explanationText = label === '应用' ? ACTIONS[3][1] : ACTIONS[4][1]
-      if (typeof openNativeMenu !== 'function') {
-        announce(explanationText)
-        return
-      }
-      const action = label === '应用' ? 'application' : 'edit'
-      Promise.resolve(openNativeMenu(action, itemRect)).then(result => {
-        if (!result?.ok) announce(explanationText)
-      }).catch(() => announce(explanationText))
-      return
-    }
     announce(`${label}：${explanation}`)
   }
 
@@ -406,10 +391,8 @@
     element.setAttribute('aria-label', panel ? '面板操作' : '恢复已关闭面板')
     const point = options.point
     const capabilities = panel ? window.businessBridge?.panelMenuCapabilities?.(panel) : undefined
-    const assistantPanel = Boolean(panel && (panel.classList?.contains('panel-native-chat') || panel.__meta?.type === 'native-chat'))
     const entries = panel
-      ? ACTIONS.filter(([label]) => label === '应用' || label === '编辑' ? assistantPanel
-        : label === '独立窗口' ? capabilities?.independent === true
+      ? ACTIONS.filter(([label]) => label === '独立窗口' ? capabilities?.independent === true
         : label === '打开原生会话' || label === '轮换此角色会话' ? capabilities?.nativeConversation === true : true)
         .map(([label, explanation]) => ({ label, explanation }))
       : []
