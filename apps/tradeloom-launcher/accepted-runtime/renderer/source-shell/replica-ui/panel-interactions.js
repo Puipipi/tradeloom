@@ -231,7 +231,7 @@
   function sceneKeyFor(panel) {
     const grid = panel?.closest?.('#grid')
     const info = grid ? sceneGridInfo(grid) : null
-    return info?.sceneId || panel?.__meta?.sceneId || panel?.dataset?.sceneId || ''
+    return info?.sceneId || panel?.__meta?.sceneId || panel?.dataset?.sceneId || grid?.dataset?.sceneId || ''
   }
 
   function closedPanelIdsFor(sceneKey) {
@@ -312,27 +312,38 @@
     }
   }
 
-  function openMenu(button, panel) {
-    closeMenu()
-    const element = document.createElement('div')
-    element.className = 'pi-menu'
-    element.setAttribute('role', 'menu')
-    element.setAttribute('aria-label', '面板更多操作')
-    const capabilities = window.businessBridge?.panelMenuCapabilities?.(panel)
-    const entries = ACTIONS.filter(([label]) => label === '独立窗口' ? capabilities?.independent === true
-      : label === '打开原生会话' || label === '轮换此角色会话' ? capabilities?.nativeConversation === true : true)
-      .map(([label, explanation]) => ({ label, explanation }))
-    const panelGrid = panel?.closest?.('#grid')
-    const sceneKey = sceneKeyFor(panel)
+  function restoreEntries(sceneKey, panelGrid, excludePanelId) {
+    const entries = []
     for (const closedId of closedPanelIdsFor(sceneKey)) {
-      if (closedId === panel.dataset.panelId) continue
+      if (closedId === excludePanelId) continue
       const closedPanel = panelGrid?.querySelector(`:scope > .panel[data-panel-id="${closedId}"]`)
       if (!closedPanel) continue
       const title = closedPanel.querySelector('.panel-title')?.textContent?.trim() || closedId
       entries.push({ label: `恢复面板：${title}`, explanation: '该面板已关闭。', restorePanelId: closedId })
     }
-    const refreshButton = panel.querySelector('.panel-controls .icon-control[aria-label="刷新面板"]')
-    const fullscreenButton = panel.querySelector('.panel-controls .pi-fullscreen')
+    return entries
+  }
+
+  function openMenu(anchor, panel, options = {}) {
+    closeMenu()
+    const element = document.createElement('div')
+    element.className = 'pi-menu'
+    element.setAttribute('role', 'menu')
+    element.setAttribute('aria-label', panel ? '面板操作' : '恢复已关闭面板')
+    const point = options.point
+    const capabilities = panel ? window.businessBridge?.panelMenuCapabilities?.(panel) : undefined
+    const assistantPanel = Boolean(panel && (panel.classList?.contains('panel-native-chat') || panel.__meta?.type === 'native-chat'))
+    const entries = panel
+      ? ACTIONS.filter(([label]) => label === '应用' || label === '编辑' ? assistantPanel
+        : label === '独立窗口' ? capabilities?.independent === true
+        : label === '打开原生会话' || label === '轮换此角色会话' ? capabilities?.nativeConversation === true : true)
+        .map(([label, explanation]) => ({ label, explanation }))
+      : []
+    const panelGrid = panel?.closest?.('#grid') ?? (point ? document.getElementById('grid') : null)
+    const sceneKey = panel ? sceneKeyFor(panel) : (panelGrid ? sceneGridInfo(panelGrid)?.sceneId : '')
+    entries.push(...restoreEntries(sceneKey, panelGrid, panel?.dataset?.panelId))
+    const refreshButton = panel?.querySelector?.('.panel-controls .icon-control[aria-label="刷新面板"]')
+    const fullscreenButton = panel?.querySelector?.('.panel-controls .pi-fullscreen')
     if (refreshButton && getComputedStyle(refreshButton).display === 'none') {
       entries.unshift({ label: '刷新面板', explanation: '重新渲染当前面板。', forwardButton: refreshButton })
     }
@@ -353,7 +364,7 @@
           return
         }
         if (restorePanelId) {
-          restorePanel(restorePanelId, panel?.closest?.('#grid'))
+          restorePanel(restorePanelId, panel?.closest?.('#grid') ?? document.getElementById('grid'))
           return
         }
         if (label === '关闭面板') {
@@ -397,14 +408,15 @@
         }
         if (label === '应用' || label === '编辑') {
           const openNativeMenu = window.businessBridge?.openNativeMenu
+          const explanationText = label === '应用' ? ACTIONS[3][1] : ACTIONS[4][1]
           if (typeof openNativeMenu !== 'function') {
-            announce(label === '应用' ? ACTIONS[2][1] : ACTIONS[3][1])
+            announce(explanationText)
             return
           }
           const action = label === '应用' ? 'application' : 'edit'
           Promise.resolve(openNativeMenu(action, itemRect)).then(result => {
-            if (!result?.ok) announce(label === '应用' ? ACTIONS[2][1] : ACTIONS[3][1])
-          }).catch(() => announce(label === '应用' ? ACTIONS[2][1] : ACTIONS[3][1]))
+            if (!result?.ok) announce(explanationText)
+          }).catch(() => announce(explanationText))
           return
         }
         announce(`${label}：${explanation}`)
@@ -412,11 +424,13 @@
       element.append(item)
     }
     document.body.append(element)
-    const rect = button.getBoundingClientRect()
-    element.style.top = `${Math.min(rect.bottom + 5, window.innerHeight - element.offsetHeight - 8)}px`
+    const rect = point
+      ? { bottom: point.y, right: point.x, left: point.x }
+      : (anchor?.getBoundingClientRect?.() ?? { bottom: 0, right: 0, left: 0 })
+    element.style.top = `${Math.max(8, Math.min(rect.bottom + 5, window.innerHeight - element.offsetHeight - 8))}px`
     element.style.left = `${Math.max(8, Math.min(rect.right - element.offsetWidth, window.innerWidth - element.offsetWidth - 8))}px`
-    button.setAttribute('aria-expanded', 'true')
-    menu = { element, button, panel }
+    anchor?.setAttribute?.('aria-expanded', 'true')
+    menu = { element, button: anchor, panel, anchor }
     document.addEventListener('pointerdown', onOutsideMenu, true)
     document.addEventListener('keydown', onMenuKey, true)
     element.querySelector('button')?.focus()
@@ -1603,21 +1617,19 @@
     setFullscreenButton(fullButton, false)
     fullButton.addEventListener('click', () => maximize(panel, fullButton))
 
-    const moreButton = document.createElement('button')
-    moreButton.type = 'button'
-    moreButton.className = 'icon-control pi-action pi-more'
-    moreButton.textContent = '⋯'
-    moreButton.title = '更多面板操作'
-    moreButton.setAttribute('aria-label', moreButton.title)
-    moreButton.setAttribute('aria-haspopup', 'menu')
-    moreButton.setAttribute('aria-expanded', 'false')
-    moreButton.addEventListener('click', event => {
+    const closeButton = document.createElement('button')
+    closeButton.type = 'button'
+    closeButton.className = 'icon-control pi-action pi-close'
+    closeButton.textContent = '×'
+    closeButton.title = '关闭面板'
+    closeButton.setAttribute('aria-label', '关闭面板')
+    closeButton.addEventListener('click', event => {
       event.stopPropagation()
-      if (menu?.button === moreButton) closeMenu()
-      else openMenu(moreButton, panel)
+      event.preventDefault()
+      closePanel(panel)
     })
 
-    controls.append(fullButton, moreButton)
+    controls.append(fullButton, closeButton)
   }
 
   function scan(root) {
@@ -1631,7 +1643,7 @@
     for (const panel of [...states.keys()]) {
       if (!panel.isConnected) cleanupDetached(panel)
     }
-    if (menu && !menu.panel.isConnected) closeMenu()
+    if (menu && menu.panel && !menu.panel.isConnected) closeMenu()
     updateResizeHandles()
   }
 
@@ -1651,6 +1663,34 @@
     event.stopPropagation()
     const button = panel.querySelector('.pi-fullscreen')
     if (button) { maximize(panel, button); requestAnimationFrame(updateResizeHandles) }
+  }
+
+  function onContextMenu(event) {
+    const point = { x: event.clientX, y: event.clientY }
+    const header = event.target?.closest?.('.panel-header')
+    if (header) {
+      const panel = header.closest('.panel')
+      if (!panel) return
+      event.preventDefault()
+      event.stopPropagation()
+      openMenu(header, panel, { point })
+      return
+    }
+    const inPanel = event.target?.closest?.('.panel')
+    const onScenebar = Boolean(event.target?.closest?.('#scenebar'))
+    const onGridBlank = Boolean(event.target?.closest?.('#grid')) && !inPanel
+    if (!onScenebar && !onGridBlank) return
+    const grid = document.getElementById('grid')
+    const sceneKey = grid ? sceneGridInfo(grid)?.sceneId : ''
+    if (!closedPanelIdsFor(sceneKey).length) {
+      event.preventDefault()
+      event.stopPropagation()
+      announce('当前场景没有已关闭的面板。')
+      return
+    }
+    event.preventDefault()
+    event.stopPropagation()
+    openMenu(onScenebar ? event.target.closest('#scenebar') : null, null, { point })
   }
 
   function onExistingExpandClick(event) {
@@ -1691,6 +1731,7 @@
     document.addEventListener('pointerdown', onResizePointerInput, true)
     document.addEventListener('keydown', onResizeKeyboardInput, true)
     document.addEventListener('dblclick', onDoubleClick, true)
+    document.addEventListener('contextmenu', onContextMenu, true)
     document.addEventListener('click', onExistingExpandClick, true)
     window.addEventListener('resize', onResize)
     window.addEventListener('resize', updateResizeHandles)

@@ -302,6 +302,8 @@ html[data-theme="light"] .tab.active{color:var(--accent)}
   justify-content:center;color:var(--text-dim);font-size:11px;
 }
 .icon-control:hover{background:var(--control-hover);color:var(--text)}
+.panel-controls>.pi-close{font-size:calc(15px * var(--ui-scale, 1));line-height:1}
+.panel-controls>.pi-close:hover{background:var(--danger-soft, #fdecec);color:var(--danger, #c0392b)}
 .panel-content{flex:1;overflow:auto;min-height:0;display:flex;flex-direction:column}
 /* 面板序号徽标（源码：两位补零） */
 .panel-badge{
