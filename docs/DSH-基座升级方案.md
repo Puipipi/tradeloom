@@ -150,3 +150,18 @@ Error: source shell: Host request failed (404)
 | Electron 外壳 | 3 个新 IPC 事件 | 已接住 |
 | 部署清单 | `appMainSha256` 必须小写并同步 | 已解决 |
 | **host 插件 API** | 路由注册方式变化 | **待移植** |
+
+
+## 10. 第四层的定位进展（未解决）
+
+逐项排除了三个可能的成因：
+
+| 假设 | 验证 | 结论 |
+|---|---|---|
+| webServer API 变了 | 0.2.2 仍 `super(ctx,"webServer")` + `register({kind:"exact",path,handler})` | 否，与旧一致 |
+| 我们 inject 的服务没了 | 七个服务在 0.2.2 全在（`sessionController` 在 `dsh-api-session-controller`） | 否 |
+| 插件清单缺 `main` | 补 `main: host.js` 并在 profile 直接替换后仍 404 | 否，已回退 |
+
+另外一个重要事实：`@tradeloom/dsh-business-shell` 装在 **profile** 里（`data-ui-r2/harness-home/profiles/desktop/node_modules/@tradeloom/`），不在 asar，因此插件改动不需要重打包——这给后续调试提供了快速回路。
+
+下一步必须带 trace 运行：在插件 `apply` 入口和每个 `webServer.register` 之后打 env 开关控制的 stderr 日志，判断是“插件没被加载”还是“加载了但注册失败”。
