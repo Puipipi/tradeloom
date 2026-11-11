@@ -41,7 +41,7 @@ export async function checkBoundary(repoRoot) {
   checks.push(`sanctioned patches ${manifest.base.sanctionedPatches.length}`)
 
   const sdkOverrideRoot = join(repoRoot, 'apps/tradeloom-launcher/accepted-sdk-overrides')
-  const allowed = new Set(manifest.base.sanctionedPatches)
+  const allowed = new Set([...manifest.base.sanctionedPatches, ...(manifest.base.sanctionedDocs ?? [])])
   const found = []
   async function walk(dir, prefix = 'apps/tradeloom-launcher/accepted-sdk-overrides') {
     for (const entry of await readdir(dir, { withFileTypes: true })) {

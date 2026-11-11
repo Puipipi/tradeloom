@@ -30,7 +30,10 @@
       "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/renderers.js": "ADAPTED_ENGINE",
       "apps/tradeloom-launcher/accepted-runtime/lib/main.js": "desktopClientVersion",
       "packages/tradeloom-shell/package.json": "peerDependencies.@deepseek-ai/dsh-scope"
-    }
+    },
+    "sanctionedDocs": [
+      "apps/tradeloom-launcher/accepted-sdk-overrides/READ-ME-基座补丁.md"
+    ]
   },
   "pluginImportContract": {
     "profileBundles": [
