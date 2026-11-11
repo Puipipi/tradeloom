@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "purpose": "声明 TradeLoom 仓库内哪些内容属于 DSH 基座（禁止业务阶段改动）、哪些属于 TradeLoom 自有代码、哪些是生成物，以及 DSH 插件的可导入契约。任何阶段开始前必须先读 docs/DSH-基座边界.md。",
+  "base": {
+    "product": "@deepseek-ai/dsh-desktop-runtime",
+    "version": "0.2.1-rc.3",
+    "upstream": {
+      "repository": "https://github.com/deepseek-ai/deepseek-harness",
+      "commit": "1f81c047fc48fa190a683e469daa699857e9afe8"
+    },
+    "installedAt": "app/resources/app.asar:dsh/",
+    "fileCount": 17171,
+    "approxBytes": 430591666,
+    "ownedPaths": [
+      "app/resources/app.asar:dsh/**"
+    ],
+    "forbiddenChanges": [
+      "改动 app.asar 内 dsh/** 的任何文件（基座运行时、@deepseek-ai/dsh-* 插件本体、内置 cordis、内置 MCP/OpenAI/OTel 依赖）",
+      "在仓库源码里直接 import 基座内部深层路径（例如 dsh/node_modules/@deepseek-ai/*/lib/...）；只能用已声明的插槽、服务与 peer 依赖",
+      "新增未登记的基座补丁"
+    ],
+    "sanctionedPatches": [
+      "apps/tradeloom-launcher/accepted-sdk-overrides/@deepseek-ai/dsh-client-ui-attachment/lib/client.js",
+      "apps/tradeloom-launcher/accepted-sdk-overrides/@deepseek-ai/dsh-client-ui-conversation/lib/client.js",
+      "apps/tradeloom-launcher/accepted-sdk-overrides/@deepseek-ai/dsh-client-ui-layout/lib/client.js",
+      "apps/tradeloom-launcher/accepted-sdk-overrides/production-execution-origin.patch",
+      "apps/tradeloom-launcher/accepted-sdk-overrides/session-list-failure-phase.patch"
+    ],
+    "enginePins": {
+      "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/renderers.js": "ADAPTED_ENGINE",
+      "apps/tradeloom-launcher/accepted-runtime/lib/main.js": "desktopClientVersion",
+      "packages/tradeloom-shell/package.json": "peerDependencies.@deepseek-ai/dsh-scope"
+    }
+  },
+  "pluginImportContract": {
+    "profileBundles": [
+      "@deepseek-ai/dsh-base",
+      "@deepseek-ai/dsh-web-app",
+      "@tradeloom/dsh-business-shell"
+    ],
+    "declaredIn": "apps/tradeloom-launcher/installed-bootstrap.mjs:INSTALLED_PROFILE_BUNDLES",
+    "tradeLoomPlugin": {
+      "name": "@tradeloom/dsh-business-shell",
+      "manifest": "packages/tradeloom-shell/package.json",
+      "hostEntry": "packages/tradeloom-shell/host.js",
+      "clientEntry": "packages/tradeloom-shell/client.js",
+      "exportKeys": [
+        ".",
+        "./client",
+        "./listener-identity",
+        "./policy",
+        "./profile",
+        "./business-tools",
+        "./tool-schemas",
+        "./skills-open",
+        "./step-policy",
+        "./state",
+        "./execution-origin-authority",
+        "./scene-memory-store",
+        "./diagnostics-store"
+      ],
+      "rule": "插件必须保持可被 profile 直接导入：exports 键、host/client 入口与 INSTALLED_PROFILE_BUNDLES 顺序三者同时成立，缺一即视为破坏导入"
+    }
+  },
+  "tradeLoomOwned": {
+    "paths": [
+      "packages/tradeloom-shell/**",
+      "apps/tradeloom-launcher/accepted-runtime/**",
+      "apps/tradeloom-launcher/installed-bootstrap.mjs",
+      "apps/tradeloom-launcher/app-bootstrap.mjs",
+      "workbench/**",
+      "config/**",
+      "docs/**",
+      "scripts/**"
+    ],
+    "note": "这些是可以自由修改的业务代码；其中 accepted-runtime 会以 asar 条目形式打进包内，但不属于 DSH 基座。"
+  },
+  "generated": {
+    "paths": [
+      "app/resources/tradeloom/business-shell/**",
+      "app/resources/tradeloom/deployment.json",
+      "dist/**",
+      "build/**"
+    ],
+    "note": "生成物由打包配方产出，禁止手工编辑；改动请改源文件后重新打包。"
+  },
+  "guards": {
+    "script": "scripts/check-dsh-base-boundary.mjs",
+    "test": "packages/tradeloom-shell/tests/dsh-base-boundary.test.js"
+  }
+}
