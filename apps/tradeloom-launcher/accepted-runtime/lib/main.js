@@ -4387,6 +4387,10 @@ function isDesktopHostEvent(message) {
 		case "update-tasks": return Number.isSafeInteger(candidate.requestId) && typeof candidate.active === "boolean" && (candidate.error === void 0 || typeof candidate.error === "string");
 		case "quit-inspection": return Number.isSafeInteger(candidate.requestId) && typeof candidate.activeTasks === "boolean" && typeof candidate.scheduledTasks === "boolean" && (candidate.error === void 0 || typeof candidate.error === "string");
 		case "scene-memory-origin-grant": return Number.isSafeInteger(candidate.requestId) && (candidate.error === void 0 && typeof candidate.grant?.token === "string" && Number.isFinite(candidate.grant.expiresAt) && typeof candidate.grant.hostEpoch === "string" || typeof candidate.error === "string" && (candidate.errorCode === void 0 || typeof candidate.errorCode === "string"));
+		/* 0.2.2 Host 新增事件：DSH 升级后必须能识别，否则整条 IPC 会被判为非法。 */
+		case "starting": return typeof candidate.runId === "string" && candidate.runId.length > 0;
+		case "plugin-operation": return typeof candidate.record === "object" && candidate.record !== null;
+		case "file-drag-resource": return Number.isSafeInteger(candidate.requestId) && candidate.requestId > 0 && (candidate.error === void 0 || typeof candidate.error === "string");
 		default: return false;
 	}
 }
@@ -4557,6 +4561,9 @@ var DesktopHostProcess = class {
 			else if (message.type === "native-import-confirmation") this.nativeImportConfirmations?.handle(message.requestId, message.context);
 			else if (message.type === "native-import-confirmation-cancel") this.nativeImportConfirmations?.cancel(message.requestId);
 			else if (message.type === "shutdown-complete") if (this.stopping) this.shutdownCompleted = true;
+			else if (message.type === "starting") this.hostRunId = message.runId;
+			else if (message.type === "plugin-operation") this.onPluginOperation?.(message.record);
+			else if (message.type === "file-drag-resource") this.onFileDragResource?.(message);
 			else this.fail(/* @__PURE__ */ new Error("dsh desktop host acknowledged an unrequested shutdown"));
 			else if (message.type === "fatal") this.fail(new DesktopHostFatalError(message.message, message.diagnostic));
 			else {
@@ -7433,7 +7440,7 @@ function platformWireLocale(locale) {
 * @throws Error when the build carries no client version, instead of reporting a guessed one.
 */
 function desktopClientVersion() {
-	return "0.2.1-rc.3";
+	return "0.2.2-rc.1";
 }
 /**
 * Sample the Desktop client identity for one Platform request.

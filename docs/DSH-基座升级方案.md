@@ -129,3 +129,24 @@ node scripts/upgrade-dsh-base.mjs --source <新版 app.asar> --version 0.2.2-rc.
 （同时 0.2.2 去掉了 `native-import-confirmation` 两个事件。）
 
 这意味着“基座”不只是 `dsh/**`，还包括 `lib/main.js` 与 `renderer/**` 这层 Electron 外壳——TradeLoom 在这层的补丁也得跟着 0.2.2 一起移植。下一步就是在 `apps/tradeloom-launcher/accepted-runtime/lib/main.js` 里接住这三个事件，再重打装机验收。
+
+
+## 9. 第四个缺口：host 插件 API（`/tradeloom/scenes` 404）
+
+装上 0.2.2 后已经能通过自校验并启动到“进入工作区”，随后：
+
+```
+Error: source shell: Host request failed (404)
+  at source-shell-controller.mjs:660 → GET /tradeloom/scenes
+```
+
+这条路由由我们自己的插件 `@tradeloom/dsh-business-shell` 注册。0.2.2 的 host 路由注册 API 变了，插件没注册上 → 404。
+
+**升级清单因此是四层，不是一层**：
+
+| 层 | 缺口 | 状态 |
+|---|---|---|
+| `dsh/**` 核心 | agent-loop 工具执行/启动架构重构 | 已移植（71,319 字节） |
+| Electron 外壳 | 3 个新 IPC 事件 | 已接住 |
+| 部署清单 | `appMainSha256` 必须小写并同步 | 已解决 |
+| **host 插件 API** | 路由注册方式变化 | **待移植** |
