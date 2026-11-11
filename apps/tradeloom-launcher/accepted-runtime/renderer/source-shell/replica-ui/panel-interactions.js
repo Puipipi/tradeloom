@@ -291,12 +291,17 @@
   }
 
   function closeMenu() {
-    if (!menu) return
-    menu.button.setAttribute('aria-expanded', 'false')
-    menu.element.remove()
+    menu?.anchor?.setAttribute?.('aria-expanded', 'false')
+    for (const node of document.querySelectorAll?.('.pi-menu') ?? []) {
+      try { node.hidePopover?.() } catch {}
+      node.remove()
+    }
     menu = null
     document.removeEventListener('pointerdown', onOutsideMenu, true)
+    document.removeEventListener('mousedown', onOutsideMenu, true)
     document.removeEventListener('keydown', onMenuKey, true)
+    window.removeEventListener?.('blur', closeMenu)
+    window.removeEventListener?.('resize', closeMenu)
   }
 
   function onOutsideMenu(event) {
@@ -324,11 +329,80 @@
     return entries
   }
 
+  function activateMenuEntry(entry, item) {
+    const { label, explanation, forwardButton, restorePanelId } = entry
+    const ownerPanel = menu?.panel
+    const itemRect = item.getBoundingClientRect()
+    closeMenu()
+    if (forwardButton) {
+      forwardButton.click()
+      return
+    }
+    if (restorePanelId) {
+      restorePanel(restorePanelId, ownerPanel?.closest?.('#grid') ?? document.getElementById('grid'))
+      return
+    }
+    if (label === '关闭面板') {
+      closePanel(ownerPanel)
+      return
+    }
+    if (label === '独立窗口') {
+      const requestPlacement = window.businessBridge?.requestPanelPlacement
+      if (typeof requestPlacement !== 'function') {
+        announce('此面板不支持独立窗口。')
+        return
+      }
+      Promise.resolve(requestPlacement(ownerPanel)).then(result => {
+        if (result?.ok) return
+        announce(result?.reason === 'unsupported' ? '此面板不支持独立窗口。'
+          : result?.reason === 'pending' ? '独立窗口操作正在进行。'
+            : '独立窗口操作暂不可用。')
+      }).catch(() => announce('独立窗口操作暂不可用。'))
+      return
+    }
+    if (label === '打开原生会话') {
+      const requestPlacement = window.businessBridge?.requestRolePlacement
+      if (typeof requestPlacement !== 'function') {
+        announce(explanation)
+        return
+      }
+      Promise.resolve(requestPlacement(ownerPanel, 'open')).then(result => {
+        if (result?.ok) return
+        announce(result?.reason === 'unsupported' ? explanation
+          : result?.reason === 'pending' ? '原生会话窗口操作正在进行。'
+            : '原生会话暂不可用。')
+      }).catch(() => announce('原生会话暂不可用。'))
+      return
+    }
+    if (label === '轮换此角色会话') {
+      const openRotation = window.businessBridge?.openSceneRotation
+      const flow = typeof openRotation === 'function' ? openRotation(ownerPanel) : undefined
+      if (!flow) { announce(explanation); return }
+      openSceneRotationDialog(flow)
+      return
+    }
+    if (label === '应用' || label === '编辑') {
+      const openNativeMenu = window.businessBridge?.openNativeMenu
+      const explanationText = label === '应用' ? ACTIONS[3][1] : ACTIONS[4][1]
+      if (typeof openNativeMenu !== 'function') {
+        announce(explanationText)
+        return
+      }
+      const action = label === '应用' ? 'application' : 'edit'
+      Promise.resolve(openNativeMenu(action, itemRect)).then(result => {
+        if (!result?.ok) announce(explanationText)
+      }).catch(() => announce(explanationText))
+      return
+    }
+    announce(`${label}：${explanation}`)
+  }
+
   function openMenu(anchor, panel, options = {}) {
     closeMenu()
     const element = document.createElement('div')
     element.className = 'pi-menu'
     element.setAttribute('role', 'menu')
+    element.setAttribute('popover', 'manual')
     element.setAttribute('aria-label', panel ? '面板操作' : '恢复已关闭面板')
     const point = options.point
     const capabilities = panel ? window.businessBridge?.panelMenuCapabilities?.(panel) : undefined
@@ -350,80 +424,18 @@
     if (fullscreenButton && getComputedStyle(fullscreenButton).display === 'none') {
       entries.unshift({ label: '放大到主体区域', explanation: '将当前面板放大到主体区域。', forwardButton: fullscreenButton })
     }
-    for (const { label, explanation, forwardButton, restorePanelId } of entries) {
+    for (const entry of entries) {
+      const { label } = entry
       const item = document.createElement('button')
       item.type = 'button'
       item.className = 'pi-menu-item'
       item.setAttribute('role', 'menuitem')
       item.textContent = label === '独立窗口' && capabilities?.placement === 'popped-out' ? '收回工作台' : label
-      item.addEventListener('click', () => {
-        const itemRect = item.getBoundingClientRect()
-        closeMenu()
-        if (forwardButton) {
-          forwardButton.click()
-          return
-        }
-        if (restorePanelId) {
-          restorePanel(restorePanelId, panel?.closest?.('#grid') ?? document.getElementById('grid'))
-          return
-        }
-        if (label === '关闭面板') {
-          closePanel(panel)
-          return
-        }
-        if (label === '独立窗口') {
-          const requestPlacement = window.businessBridge?.requestPanelPlacement
-          if (typeof requestPlacement !== 'function') {
-            announce('此面板不支持独立窗口。')
-            return
-          }
-          Promise.resolve(requestPlacement(panel)).then(result => {
-            if (result?.ok) return
-            announce(result?.reason === 'unsupported' ? '此面板不支持独立窗口。'
-              : result?.reason === 'pending' ? '独立窗口操作正在进行。'
-                : '独立窗口操作暂不可用。')
-          }).catch(() => announce('独立窗口操作暂不可用。'))
-          return
-        }
-        if (label === '打开原生会话') {
-          const requestPlacement = window.businessBridge?.requestRolePlacement
-          if (typeof requestPlacement !== 'function') {
-            announce(explanation)
-            return
-          }
-          Promise.resolve(requestPlacement(panel, 'open')).then(result => {
-            if (result?.ok) return
-            announce(result?.reason === 'unsupported' ? explanation
-              : result?.reason === 'pending' ? '原生会话窗口操作正在进行。'
-                : '原生会话暂不可用。')
-          }).catch(() => announce('原生会话暂不可用。'))
-          return
-        }
-        if (label === '轮换此角色会话') {
-          const openRotation = window.businessBridge?.openSceneRotation
-          const flow = typeof openRotation === 'function' ? openRotation(panel) : undefined
-          if (!flow) { announce(explanation); return }
-          openSceneRotationDialog(flow)
-          return
-        }
-        if (label === '应用' || label === '编辑') {
-          const openNativeMenu = window.businessBridge?.openNativeMenu
-          const explanationText = label === '应用' ? ACTIONS[3][1] : ACTIONS[4][1]
-          if (typeof openNativeMenu !== 'function') {
-            announce(explanationText)
-            return
-          }
-          const action = label === '应用' ? 'application' : 'edit'
-          Promise.resolve(openNativeMenu(action, itemRect)).then(result => {
-            if (!result?.ok) announce(explanationText)
-          }).catch(() => announce(explanationText))
-          return
-        }
-        announce(`${label}：${explanation}`)
-      })
+      item.addEventListener('click', () => activateMenuEntry(entry, item))
       element.append(item)
     }
     document.body.append(element)
+    try { element.showPopover?.() } catch {}
     const rect = point
       ? { bottom: point.y, right: point.x, left: point.x }
       : (anchor?.getBoundingClientRect?.() ?? { bottom: 0, right: 0, left: 0 })
@@ -432,7 +444,10 @@
     anchor?.setAttribute?.('aria-expanded', 'true')
     menu = { element, button: anchor, panel, anchor }
     document.addEventListener('pointerdown', onOutsideMenu, true)
+    document.addEventListener('mousedown', onOutsideMenu, true)
     document.addEventListener('keydown', onMenuKey, true)
+    window.addEventListener?.('blur', closeMenu)
+    window.addEventListener?.('resize', closeMenu)
     element.querySelector('button')?.focus()
   }
 
