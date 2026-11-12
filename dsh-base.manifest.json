@@ -24,7 +24,15 @@
       "apps/tradeloom-launcher/accepted-sdk-overrides/@deepseek-ai/dsh-client-ui-conversation/lib/client.js",
       "apps/tradeloom-launcher/accepted-sdk-overrides/@deepseek-ai/dsh-client-ui-layout/lib/client.js",
       "apps/tradeloom-launcher/accepted-sdk-overrides/production-execution-origin.patch",
-      "apps/tradeloom-launcher/accepted-sdk-overrides/session-list-failure-phase.patch"
+      "apps/tradeloom-launcher/accepted-sdk-overrides/session-list-failure-phase.patch",
+      "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.1/production-execution-origin.patch",
+      "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.1/session-list-failure-phase.patch",
+      "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.2/production-execution-origin.patch",
+      "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.2/session-list-failure-phase.patch",
+      "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.2/settings-layout-compat.patch",
+      "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.2/desktop-own.patch",
+      "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.2/business-shell.patch",
+      "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.2/launcher-external-data.patch"
     ],
     "enginePins": {
       "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/renderers.js": "ADAPTED_ENGINE",
@@ -35,6 +43,10 @@
       "apps/tradeloom-launcher/accepted-sdk-overrides/READ-ME-基座补丁.md"
     ],
     "upgrade": {
+      "recipes": {
+        "0.2.2-rc.1": "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.1/recipe.json",
+        "0.2.2-rc.2": "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.2/recipe.json"
+      },
       "tool": "scripts/upgrade-dsh-base.mjs",
       "command": "node scripts/upgrade-dsh-base.mjs --source <新版 app.asar> --version 0.2.2-rc.1 --dry-run",
       "measuredAgainst": "0.2.2-rc.1（本机 DSH 桌面应用 app.asar）",

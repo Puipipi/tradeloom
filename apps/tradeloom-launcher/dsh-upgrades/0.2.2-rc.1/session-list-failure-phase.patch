@@ -1,0 +1,69 @@
+diff --git a/dsh/node_modules/@deepseek-ai/dsh-api-gateway/lib/client.browser.js b/dsh/node_modules/@deepseek-ai/dsh-api-gateway/lib/client.browser.js
+index 1dd3b6c..1ea3e26 100644
+--- a/dsh/node_modules/@deepseek-ai/dsh-api-gateway/lib/client.browser.js
++++ b/dsh/node_modules/@deepseek-ai/dsh-api-gateway/lib/client.browser.js
+@@ -42,6 +42,11 @@ window.__ModuleLoader__.load({
+ 		function remoteErrorOf(value) {
+ 			if (typeof value === "object" && value !== null && value.isDSHRemoteError === true && typeof value.code === "string") return value;
+ 		}
++		const invocationFailurePhases = new WeakMap();
++		function invocationFailurePhaseOf(value) {
++			if (value === null || typeof value !== "object" && typeof value !== "function") return "unclassified";
++			return invocationFailurePhases.get(value) ?? "unclassified";
++		}
+ 		/** Generic invocation-owned values returned by synchronous Client Context resolvers. */
+ 		/** Shared identity across independently bundled Context providers and Gateway. */
+ 		const TYPERT_OWNED_VALUE = Symbol.for("dsh.typert.owned-value");
+@@ -1822,21 +1827,38 @@ window.__ModuleLoader__.load({
+ 				const prepared = this.prepareInvocation(descriptor, projection, token, callerCtx, values, boundIdentity);
+ 				const connection = this.ownerCtx.get("connection");
+ 				if (connection === void 0) throw new Error(`client api: ${endpoint} has no active Connection`);
++				let failurePhase = "unclassified";
+ 				try {
+-					const result = await connection.rpc.call("/api", endpoint, { args: prepared.args }, prepared.signal);
++					const rpc = connection.rpc;
++					const rpcCall = rpc.call;
++					const rpcArgs = { args: prepared.args };
++					const rpcSignal = prepared.signal;
++					failurePhase = "rpc-call";
++					const result = await Reflect.apply(rpcCall, rpc, ["/api", endpoint, rpcArgs, rpcSignal]);
++					failurePhase = "unclassified";
+ 					if (!mountActive(token)) return withdrawn(endpoint);
+ 					prepared.signal.throwIfAborted();
+ 					if (!result.ok) return {
+ 						ok: false,
+ 						error: rebuiltFailure(result.error)
+ 					};
+-					return {
+-						ok: true,
+-						value: descriptor.result.mode === "strict" && descriptor.result.decode !== void 0 ? descriptor.result.decode(result.value) : result.value
+-					};
++					if (descriptor.result.mode === "strict") {
++						if (descriptor.result.decode !== void 0) {
++							const decodeThis = descriptor.result;
++							const decode = decodeThis.decode;
++							const decodeInput = result.value;
++							failurePhase = "result-decode";
++							const value = Reflect.apply(decode, decodeThis, [decodeInput]);
++							failurePhase = "unclassified";
++							return { ok: true, value };
++						}
++					}
++					return { ok: true, value: result.value };
+ 				} catch (error) {
+ 					if (prepared.signal.aborted) return cancelledFailure(endpoint, error);
+-					return carrierFailure(endpoint, error);
++					const failure = carrierFailure(endpoint, error);
++					if ((failurePhase === "rpc-call" || failurePhase === "result-decode") && failure?.error !== null && (typeof failure.error === "object" || typeof failure.error === "function")) invocationFailurePhases.set(failure.error, failurePhase);
++					return failure;
+ 				}
+ 			}
+ 			/** Open the logical stream now and hand back its handle; `send()` before the first read queues behind the `open` frame. */
+@@ -2180,6 +2202,7 @@ window.__ModuleLoader__.load({
+ 		exports.carrierFailure = carrierFailure;
+ 		exports.inject = inject;
+ 		exports.isRemoteFailure = isRemoteFailure;
++		exports.getInvocationFailurePhase = invocationFailurePhaseOf;
+ 		return module.exports;
+ 	}
+ });

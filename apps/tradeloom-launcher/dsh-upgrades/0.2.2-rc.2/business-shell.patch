@@ -1,0 +1,183 @@
+diff --git a/client.js b/client.js
+--- a/client.js
++++ b/client.js
+@@ -2924,6 +2924,33 @@
+       }
+     }
+ 
++    function registerSourceAccountRootMounted(ctx, descriptor, bridge) {
++      if (descriptor?.kind !== 'account') return
++      const expected = { ...descriptor }, keys = Object.keys(expected)
++      return ctx.slots.inject('shell.overlay', () => {
++        let registered = true
++        function SourceAccountRootMounted() {
++          const [failure, setFailure] = React.useState()
++          React.useEffect(() => {
++            let live = true
++            void Promise.resolve().then(async () => {
++              if (!registered || !live) return
++              const current = await bridge.nativeSurfaceDescriptor()
++              if (!registered || !live || !current || current.kind !== 'account'
++                || Object.keys(current).length !== keys.length
++                || keys.some(key => current[key] !== expected[key])) return
++              await bridge.nativeSurfaceMounted(current)
++            }).catch(error => { if (registered && live) setFailure(() => error) })
++            return () => { live = false }
++          }, [])
++          if (failure) throw failure
++          return null
++        }
++        const dispose = ctx.slots.register({ name: 'shell.overlay', id: 'tradeloom-account-root-mounted' }, SourceAccountRootMounted)
++        return () => { registered = false; dispose() }
++      })
++    }
++
+     async function installSourceAccountThemeBridge(ctx, bridge) {
+       const sourceTheme = bridge?.sourceTheme
+       if (typeof sourceTheme?.publishSnapshot !== 'function' || typeof sourceTheme?.onPreferenceSet !== 'function') return
+@@ -3073,6 +3100,7 @@
+               installBusinessThemeBridge(ctx)
+               await installSourceAccountThemeBridge(ctx, bridge)
+               registerTradeLoomBrand(ctx)
++              registerSourceAccountRootMounted(ctx, descriptor, bridge)
+               if (descriptor.businessNavigation === 'shell') await ensureConfiguredRoleSessions(ctx)
+               if (descriptor.businessNavigation !== 'shell') {
+                 ctx.slots.inject('shell.top', () => ctx.slots.register({ name: 'shell.top' }, SourceBusinessMenu))
+diff --git a/client.source-native.js b/client.source-native.js
+--- a/client.source-native.js
++++ b/client.source-native.js
+@@ -117,6 +117,7 @@
+     }
+     function register(ctx, initial, bridge) {
+       if (!valid(initial) || typeof bridge?.nativeSurfaceMounted !== 'function' || typeof bridge?.onNativeSurfaceChanged !== 'function') throw Error('invalid native surface contract')
++      const factoryHost = ctx.slots.hostFace()
+       function SourceNative({ SessionProvider, renderFactorySlot }) {
+         const [descriptor,setDescriptor] = React.useState(initial), [state,setState] = React.useState({phase:'loading'}), [notice,setNotice] = React.useState('')
+         const latest = React.useRef(descriptor), request = React.useRef(0)
+@@ -250,10 +251,10 @@
+         }, [descriptor.sessionId])
+         let slot=null
+         const factoryName=descriptor.surface==='chat'?'conversation.content':'sidebar.surface'
+-        const subscribeFactory=React.useCallback(listener=>ctx.slots.subscribeFactory(factoryName,listener),[factoryName])
+-        const getFactoryVersion=React.useCallback(()=>ctx.slots.getFactoryVersion(factoryName),[factoryName])
++        const subscribeFactory=React.useCallback(listener=>factoryHost.subscribeFactory(factoryName,listener),[factoryName])
++        const getFactoryVersion=React.useCallback(()=>factoryHost.getFactoryVersion(factoryName),[factoryName])
+         React.useSyncExternalStore(subscribeFactory,getFactoryVersion,getFactoryVersion)
+-        const available=ctx.slots.snapshot?.().some(entry=>entry.type==='factory' && entry.name===factoryName) === true
++        const available=factoryHost.factoryOf(factoryName)!==undefined
+         React.useEffect(()=>{reportRoleGuestPhase(descriptor,available?'slot-available':'slot-unavailable')},[available,descriptor.surface])
+         if (state.phase==='ready' && state.sessionId===descriptor.sessionId && available && typeof SessionProvider==='function' && typeof renderFactorySlot==='function') {
+           slot=descriptor.surface==='chat' ? renderFactorySlot('conversation.content',{variant:'embedded',phase:'active',hero:false}) : renderFactorySlot('sidebar.surface',{ownerId:`${descriptor.sceneId}:${descriptor.panelId}`,active:true,initialKind:'files'})
+diff --git a/workflow-native-command-attribution.js b/workflow-native-command-attribution.js
+--- a/workflow-native-command-attribution.js
++++ b/workflow-native-command-attribution.js
+@@ -1,3 +1,5 @@
++import { getTraceable } from '@deepseek-ai/cordis'
++import { scopeOf } from '@deepseek-ai/dsh-scope'
+ import { ROLE_PRESETS } from './roles.js'
+ import { AsyncLocalStorage } from 'node:async_hooks'
+ const rejected = () => { throw Object.assign(new Error('native_task_origin_required'), { code: 'native_task_origin_required' }) }
+@@ -21,6 +23,7 @@
+   const singleExecution = typeof tools.prepareExecution === 'function' && typeof tools.completeScheduledExecution === 'function'
+   if (batchExecution === singleExecution) throw new Error('native task tool executor contract is unsupported or ambiguous')
+   const frames = new AsyncLocalStorage(), intents = new WeakMap(), leases = new WeakMap(), owned = new Set(), observed = new WeakSet(), children = new WeakMap()
++  const createdChildren = new WeakMap(), liveChildren = new Set()
+   let disposed = false
+   const exact = agent => agent?.session && agents.get(agent.id) === agent && agent.session.id === agent.id
+   const current = item => !disposed && !item.closed && exact(item.agent) && item.agent.session === item.session && item.isCurrent() === true
+@@ -39,6 +42,24 @@
+   }
+   const matching = (f, exec) => exact(exec?.agent) && exec.agent === f.agent && exec.agent.session === f.session
+     && exec.name === f.name && exec.callId === f.callId && exec.signal === f.signal && fingerprint(exec.arguments) === f.args
++  // Private prototype: receipt writers own the genuine factory call, never a supplied handle/callback.
++  const factoryFrame = ownerCtx => {
++    const f = frames.getStore()
++    return f?.kind === 'task' && f.bodyLive && f.exec && observed.has(f.exec)
++      && matching(f, f.exec) && current(f.info) && !f.signal.aborted
++      && ownerCtx.fiber === f.agent.ctx.fiber && scopeOf(ownerCtx) === f.agent ? f : undefined
++  }
++  const retireChild = receipt => {
++    if (receipt.closed) return
++    receipt.closed = true
++    receipt.lifetime.removeEventListener('abort', receipt.retire)
++    createdChildren.delete(receipt.child)
++    children.delete(receipt.child)
++    liveChildren.delete(receipt)
++  }
++  const retireTaskChildren = info => {
++    for (const receipt of [...liveChildren]) if (receipt.info === info) retireChild(receipt)
++  }
+   const stopEvent = ctx.on('session/event', (session, event) => {
+     const f = frames.getStore()
+     if (!f || f.kind !== 'command' || f.entered || f.event || session !== f.session || event.type !== 'command/run') return
+@@ -83,6 +104,41 @@
+     return [...row.scopes]
+   }
+   const api = {
++    canCaptureChildFactory(ownerCtx) { return factoryFrame(ownerCtx) !== undefined },
++    async createChildThroughFactory(ownerCtx, options) {
++      const f = factoryFrame(ownerCtx)
++      if (!f) rejected()
++      const capture = { parent: f.agent, session: f.session, info: f.info, exec: f.exec, ownerCtx }
++      // Exact existing Registry producer sequence. No caller-selected factory or fabricated callback.
++      const { target } = agents.requireFactory()
++      const receiver = getTraceable(ownerCtx, target)
++      if (options?.operationOrigin !== void 0) throw new Error("operation origin is Host-owned")
++      const originAuthority = ownerCtx.get?.("sceneMemoryOriginAuthority")
++      const parentExecution = originAuthority?.currentToolExecution?.()
++      let hostCapturedOrigin
++      if (options?.parentAgent !== void 0 && parentExecution?.agent === options.parentAgent && parentExecution.operationOrigin !== void 0) {
++        hostCapturedOrigin = originAuthority.inheritFromParentExecution(parentExecution)
++      } else if (options?.parentAgent === void 0) {
++        hostCapturedOrigin = originAuthority?.captureAtEnqueue?.()
++      }
++      const handle = await Reflect.apply(target.createAgent, receiver, [ownerCtx, options, hostCapturedOrigin])
++      const child = handle.agent
++      if (factoryFrame(ownerCtx) !== f || !exact(child) || child.session.header.parentSession !== f.agent.id) {
++        await handle.dispose()
++        rejected()
++      }
++      const lifetime = child.lifetimeSignal
++      if (!(lifetime instanceof AbortSignal) || lifetime.aborted) {
++        await handle.dispose()
++        rejected()
++      }
++      const receipt = { ...capture, child, childSession: child.session, lifetime, closed: false }
++      receipt.retire = () => retireChild(receipt)
++      createdChildren.set(child, receipt)
++      liveChildren.add(receipt)
++      lifetime.addEventListener('abort', receipt.retire, { once: true })
++      return handle
++    },
+     prepareTask(input) {
+       if (disposed || !exact(input?.agent) || input.agent.session.header.agentPreset !== ROLE_PRESETS.center
+         || input.agent.session.header.parentSession !== undefined || (input.agent.session.header.delegationDepth ?? 0) > 1 || typeof input.runId !== 'string' || !input.runId
+@@ -167,8 +223,13 @@
+     scopesForChild(parent, childId) {
+       const f = frames.getStore(), child = agents.get(childId)
+       if (!f || f.kind !== 'task') return undefined
++      const receipt = createdChildren.get(child)
+       if (!f.bodyLive || f.agent !== parent || !current(f.info)
+-        || !exact(child) || child.session.header.parentSession !== parent.id || !agents.isOwnedBy(child.id, parent)) return []
++        || !exact(child) || child.session.header.parentSession !== parent.id
++        || !f.exec || !observed.has(f.exec) || !matching(f, f.exec)
++        || !receipt || receipt.closed || receipt.lifetime.aborted
++        || receipt.parent !== parent || receipt.session !== parent.session || receipt.childSession !== child.session
++        || receipt.info !== f.info || !observed.has(receipt.exec) || receipt.ownerCtx.fiber !== parent.ctx.fiber || scopeOf(receipt.ownerCtx) !== parent) return []
+       children.set(child, { info: f.info, scopes: [...f.scopes] })
+       return [...f.scopes]
+     },
+@@ -176,11 +237,12 @@
+       const info = leases.get(lease)
+       if (!info || info.closed) return false
+       info.closed = true
++      retireTaskChildren(info)
+       if (lease) owned.delete(lease)
+       info.abortTask()
+       return true
+     },
+-    release(lease) { const info = leases.get(lease); if (!info) return false; info.closed = true; owned.delete(lease); return true },
++    release(lease) { const info = leases.get(lease); if (!info) return false; info.closed = true; retireTaskChildren(info); owned.delete(lease); return true },
+     dispose() { if (disposed) return; disposed = true; for (const lease of [...owned]) api.revoke(lease); unregister(); stopEvent(); stopPre(); stopAround() },
+   }
+   return Object.freeze(api)

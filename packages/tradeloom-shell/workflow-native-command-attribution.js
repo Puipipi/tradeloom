@@ -17,10 +17,26 @@ export function createWorkflowNativeCommandAttribution(ctx, { uiGate, createStat
   const modes = new Map(Object.entries(toolModes))
   if (!modes.size || [...modes.values()].some(x => !['submit', 'resume', 'review'].includes(x))) rejected()
   const commands = ctx.commands, agents = ctx.agents, tools = ctx.tools
+  const batchExecution = typeof tools.selectExecutor === 'function'
+  const singleExecution = typeof tools.prepareExecution === 'function' && typeof tools.completeScheduledExecution === 'function'
+  if (batchExecution === singleExecution) throw new Error('native task tool executor contract is unsupported or ambiguous')
   const frames = new AsyncLocalStorage(), intents = new WeakMap(), leases = new WeakMap(), owned = new Set(), observed = new WeakSet(), children = new WeakMap()
   let disposed = false
   const exact = agent => agent?.session && agents.get(agent.id) === agent && agent.session.id === agent.id
   const current = item => !disposed && !item.closed && exact(item.agent) && item.agent.session === item.session && item.isCurrent() === true
+  async function executeOne(input) {
+    const argumentsJson = JSON.stringify(canonical(input.arguments))
+    if (singleExecution) return tools.execute(input)
+    const batch = await tools.execute({
+      agent: input.agent, signal: input.signal,
+      ...(input.toolSet === undefined ? {} : { toolSet: input.toolSet }),
+      calls: [{ type: 'tool-call', id: input.callId, name: input.name, arguments: argumentsJson }],
+    })
+    if (!Array.isArray(batch?.results) || batch.results.length !== 1) throw new Error('native task tool result did not match its call')
+    const [entry] = batch.results
+    if (entry?.callId !== input.callId || typeof entry.result?.isError !== 'boolean' || !Array.isArray(entry.result?.content)) throw new Error('native task tool result did not match its call')
+    return entry.result
+  }
   const matching = (f, exec) => exact(exec?.agent) && exec.agent === f.agent && exec.agent.session === f.session
     && exec.name === f.name && exec.callId === f.callId && exec.signal === f.signal && fingerprint(exec.arguments) === f.args
   const stopEvent = ctx.on('session/event', (session, event) => {
@@ -54,7 +70,7 @@ export function createWorkflowNativeCommandAttribution(ctx, { uiGate, createStat
       f.entered = true
       f.invocation = invocation
       try {
-        f.result = await tools.execute({ agent: f.agent, name: f.name, callId: f.callId, arguments: f.arguments, signal: f.signal })
+        f.result = await executeOne({ agent: f.agent, name: f.name, callId: f.callId, arguments: f.arguments, signal: f.signal })
         return { kind: f.result.isError ? 'error' : 'success', text: f.result.isError ? 'Native task admission was refused.' : 'Native task admission completed.' }
       } finally { f.invocation = null }
     },
@@ -136,7 +152,7 @@ export function createWorkflowNativeCommandAttribution(ctx, { uiGate, createStat
       const scopes = await scopesFor(info)
       if (!current(info) || input.signal.aborted) rejected()
       const f = { ...input, kind: 'task', session: info.session, args: fingerprint(input.arguments), scopes, info, exec: null, bodyLive: false }
-      return frames.run(f, () => tools.execute(input))
+      return frames.run(f, () => executeOne(input))
     },
     attributionFor(exec) {
       if (!observed.has(exec)) return null
