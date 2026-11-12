@@ -2,8 +2,6 @@ import { readFile, readdir, stat } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
-const manifestPath = join(resolve(dirname(fileURLToPath(import.meta.url)), '..'), 'dsh-base.manifest.json')
-
 async function exists(path) {
   try { return (await stat(path)).isFile() } catch { return false }
 }
@@ -24,7 +22,7 @@ async function readEnginePins(repoRoot, manifest) {
 }
 
 export async function checkBoundary(repoRoot) {
-  const manifest = await readJson(manifestPath)
+  const manifest = await readJson(join(repoRoot, 'dsh-base.manifest.json'))
   const problems = []
   const checks = []
 
@@ -51,10 +49,58 @@ export async function checkBoundary(repoRoot) {
     }
   }
   await walk(sdkOverrideRoot)
+  const recipes = manifest.base.upgrade.recipes ?? {}
+  for (const [version, recipePath] of Object.entries(recipes)) {
+    allowed.add(recipePath)
+    if (!await exists(join(repoRoot, recipePath))) {
+      problems.push(`已登记的升级配方不存在：${recipePath}`)
+      continue
+    }
+    const recipe = await readJson(join(repoRoot, recipePath))
+    if (recipe.schemaVersion !== 1 || recipe.version !== version) problems.push(`recipe version 不匹配：${recipePath}`)
+    for (const patch of recipe.patches ?? []) {
+      const path = join(dirname(recipePath), patch).replaceAll('\\', '/')
+      if (!manifest.base.sanctionedPatches.includes(path)) problems.push(`配方引用未登记的基座补丁：${path}`)
+    }
+    if (recipe.desktopRecipe) {
+      const path = join(dirname(recipePath), recipe.desktopRecipe).replaceAll('\\', '/')
+      allowed.add(path)
+      if (!await exists(join(repoRoot, path))) problems.push(`已声明的 desktop 配方不存在：${path}`)
+      else {
+        const desktop = await readJson(join(repoRoot, path))
+        if (desktop.schemaVersion !== 1 || desktop.version !== version) problems.push(`desktop recipe version 不匹配：${path}`)
+        const patch = join(dirname(path), desktop.patch).replaceAll('\\', '/')
+        if (!manifest.base.sanctionedPatches.includes(patch)) problems.push(`desktop 配方引用未登记的基座补丁：${patch}`)
+      }
+    }
+    if (recipe.programRecipe) {
+      const path = join(dirname(recipePath), recipe.programRecipe).replaceAll('\\', '/')
+      allowed.add(path)
+      if (!await exists(join(repoRoot, path))) problems.push(`已声明的 program 配方不存在：${path}`)
+      else {
+        const program = await readJson(join(repoRoot, path))
+        if (program.schemaVersion !== 1 || program.version !== version) problems.push(`program recipe version 不匹配：${path}`)
+        const patch = join(dirname(path), program.launcher.patch).replaceAll('\\', '/')
+        if (!manifest.base.sanctionedPatches.includes(patch)) problems.push(`program 配方引用未登记的 launcher 补丁：${patch}`)
+      }
+    }
+    if (recipe.businessShell) {
+      const packagePath = join(dirname(recipePath), recipe.businessShell.packageSource).replaceAll('\\', '/')
+      allowed.add(packagePath)
+      if (!await exists(join(repoRoot, packagePath))) problems.push(`已声明的候选 package 不存在：${packagePath}`)
+      const patch = join(dirname(recipePath), recipe.businessShell.patch).replaceAll('\\', '/')
+      if (!manifest.base.sanctionedPatches.includes(patch)) problems.push(`business 配方引用未登记的基座补丁：${patch}`)
+    }
+  }
+  const upgradeRoot = join(repoRoot, 'apps/tradeloom-launcher/dsh-upgrades')
+  if (await stat(upgradeRoot).then(value => value.isDirectory(), error => { if (error.code === 'ENOENT') return false; throw error })) {
+    await walk(upgradeRoot, 'apps/tradeloom-launcher/dsh-upgrades')
+  }
   for (const file of found) {
     if (!allowed.has(file)) problems.push(`未登记的基座补丁：${file}（必须先在 dsh-base.manifest.json 登记）`)
   }
   checks.push(`override files ${found.length}`)
+  checks.push(`versioned upgrade recipes ${Object.keys(recipes).length}`)
 
   const bootstrap = await readFile(join(repoRoot, 'apps/tradeloom-launcher/installed-bootstrap.mjs'), 'utf8')
   const bundleMatch = /INSTALLED_PROFILE_BUNDLES = \[([^\]]*)\]/.exec(bootstrap)

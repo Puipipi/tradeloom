@@ -10,6 +10,74 @@ window.__ModuleLoader__.load({
       if (!valid(descriptor)) return
       try { console.info(`TL-ROLE-GUEST-PHASE|${phase}|${descriptor.surface}`) } catch {}
     }
+    // The rc2 conversation factory no longer consumes conversation-density.
+    // Keep the accepted composer rules on this owned root, using its public DOM
+    // attributes and composer-local class names, never CSS-module hashes or
+    // the old webview script. Local-name selectors stay inside the owned card.
+    const nativeChatStyles = `
+      [data-source-native-root] {
+        --dsw-font-family:var(--tl-font-family,"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif);
+        font-family:var(--dsw-font-family);container-type:size;
+      }
+      [data-source-native-root] [data-conversation-content] {
+        --dsh-chat-content-width:calc(100% - 16px);
+        --dsh-composer-card-max-width:calc(100% - 16px);
+        --dsh-composer-side-clearance:8px;
+        min-width:0;
+      }
+      [data-source-native-root] [data-conversation-scroll] { min-width:0; }
+      [data-source-native-root] [data-composer-seat] {
+        --dsh-composer-input-min-height:36px;
+        --dsh-composer-row-gap:12px;
+        --dsh-native-composer-padding-top:8px;
+        --dsh-native-composer-padding-bottom:10px;
+        --dsh-composer-input-max-height:clamp(var(--dsh-composer-input-min-height),calc(100vh - 188px - var(--dsh-native-composer-padding-top) - var(--dsh-native-composer-padding-bottom) + 4px),336px);
+        --dsh-composer-text-max-height:var(--dsh-composer-input-max-height);
+        position:sticky;bottom:0;z-index:1;margin-top:auto;flex:0 0 auto;
+        padding:var(--dsh-native-composer-padding-top) 10px var(--dsh-native-composer-padding-bottom);
+        background:var(--dsw-alias-bg-layer-1);
+      }
+      [data-source-native-root] [data-composer-card] {
+        max-width:calc(100% - 16px);box-sizing:border-box;
+        border:1px solid var(--dsw-alias-border-l2);border-radius:9px;
+        padding:8px 10px;gap:0;box-shadow:none;
+        font-size:var(--tl-font-compact,12px);line-height:1.65;
+      }
+      [data-source-native-root] [data-composer-input] {
+        min-height:26px;padding:0;font:inherit;
+      }
+      [data-source-native-root] [data-composer-placeholder] { font-size:11.5px;line-height:1.65;inset:0; }
+      [data-source-native-root] [data-composer-dock] { gap:7px; }
+      [data-source-native-root] [data-composer-card] > :is([class$="_row"],[class*="_row "]) {
+        margin-top:8px;padding:0;gap:var(--dsh-composer-row-gap);
+      }
+      [data-source-native-root] [data-composer-card] :is([class$="_tools"],[class*="_tools "],[class$="_modes"],[class*="_modes "],[class$="_trailing"],[class*="_trailing "]) { gap:7px; }
+      [data-source-native-root] [data-composer-card] :is(button[class$="_add"],button[class*="_add "],button[class$="_primary"],button[class*="_primary "]) { width:26px;height:26px; }
+      [data-source-native-root] [data-composer-card] :is([class$="_select"],[class*="_select "],[class$="_tools"] button,[class*="_tools "] button,[class$="_modes"] button,[class*="_modes "] button,[class$="_trailing"] button,[class*="_trailing "] button,[class$="_trailing"] select,[class*="_trailing "] select) { height:26px; }
+      [data-source-native-root] [data-composer-card] :is([class$="_standardControls"],[class*="_standardControls "]) :is(button,select) { height:26px;font-size:11px; }
+      @container (height<=380px) {
+        [data-source-native-root] [data-composer-seat] {
+          --dsh-composer-input-min-height:max(28px,calc(28px + var(--dsh-content-font-delta,0px)));
+          --dsh-composer-row-gap:8px;
+        }
+      }
+      [data-source-native-root][data-conversation-density="compact"] [data-composer-seat] {
+        --dsh-composer-input-min-height:26px;
+      }
+      @media(max-height:260px) {
+        [data-source-native-root] [data-composer-seat] {
+          --dsh-native-composer-padding-top:0px;
+          --dsh-native-composer-padding-bottom:8px;
+        }
+      }
+    `
+    function installNativeChatStyles() {
+      const style=document.createElement('style')
+      style.dataset.tradeloomNativeChat='1'
+      style.textContent=nativeChatStyles
+      document.head.append(style)
+      return ()=>style.remove()
+    }
     const whaleAutoBases = new Map()
     function installWhaleAutoBasis(bridge, sceneId, panelId) {
       if (typeof bridge?.nativeSurfaceLayout !== 'function' || typeof bridge?.onNativeSurfaceChanged !== 'function') return undefined
@@ -53,6 +121,7 @@ window.__ModuleLoader__.load({
         const [descriptor,setDescriptor] = React.useState(initial), [state,setState] = React.useState({phase:'loading'}), [notice,setNotice] = React.useState('')
         const latest = React.useRef(descriptor), request = React.useRef(0)
         latest.current = descriptor
+        React.useEffect(() => descriptor.surface==='chat' ? installNativeChatStyles() : undefined, [descriptor.surface])
         React.useEffect(() => descriptor.surface==='chat' ? installWhaleAutoBasis(bridge,descriptor.sceneId,descriptor.panelId) : undefined, [descriptor.sceneId,descriptor.panelId,descriptor.surface])
         React.useEffect(() => {
           let live=true
