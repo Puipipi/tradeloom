@@ -10,6 +10,7 @@ from workbench.intake.api import _complete, _error, _json_object, _key, _reserve
 from workbench.intake.mapping import MappingError, fingerprint
 from workbench.intake.narrative_storage import MAX_EVIDENCE_LINE_SPAN, MAX_EVIDENCE_SUMMARY_CHARS
 from workbench.intake.schemas import FIELD_SCHEMAS
+from workbench.materials.rules import material_check
 from workbench.models import (
     EvidenceRecord,
     IntakeCandidate,
@@ -92,7 +93,8 @@ def _revision_page(request: HttpRequest, requirement_id: str) -> JsonResponse:
         "current_revision": draft.current_revision,
         "revisions": [{**revision_payload(row),
                        "source_arithmetic_check": source_arithmetic_check(row.fields),
-                       "packaging_check": packaging_check(row)} for row in rows[:limit]],
+                       "packaging_check": packaging_check(row),
+                       "material_check": material_check(row.fields)} for row in rows[:limit]],
         "next_offset": offset + limit if len(rows) > limit else None,
     })
 

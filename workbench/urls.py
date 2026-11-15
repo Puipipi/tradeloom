@@ -9,6 +9,7 @@ from .erpnext import api as erpnext_api
 from .intake import api as intake_api
 from .requirements import api as requirement_api
 from .execution_plans import api as execution_plan_api
+from .materials import api as material_api
 from . import canvas_workflow_api, native_artifact_api, dispatch_api, canvas_workflow_definition_api
 
 
@@ -39,6 +40,9 @@ urlpatterns = [
     path("api/erpnext/record", erpnext_api.record),
     path("api/erpnext/quotation-drafts", erpnext_api.quotation_drafts),
     path("api/erpnext/quotation-drafts/<str:operation_id>", erpnext_api.quotation_draft_operation),
+    path("api/materials/status", material_api.status),
+    path("api/materials/items", material_api.items),
+    path("api/materials/check", material_api.check),
     path("api/intake/sources", intake_api.source_collection),
     path("api/intake/narratives", intake_api.narrative_collection),
     path("api/intake/narratives/<str:narrative_id>/lines", intake_api.narrative_lines),

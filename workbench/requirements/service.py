@@ -5,6 +5,7 @@ from datetime import date, datetime
 from django.db.models import Q
 
 from workbench.intake.schemas import FIELD_SCHEMAS, MappingError
+from workbench.materials.rules import material_check
 from workbench.models import (
     EvidenceRecord,
     IntakeCandidate,
@@ -172,6 +173,7 @@ def requirement_result(draft: ProductionRequirementDraft, revision: ProductionRe
         "revision": revision_payload(revision),
         "source_arithmetic_check": source_arithmetic_check(revision.fields),
         "packaging_check": packaging_check(revision),
+        "material_check": material_check(revision.fields),
     }
 
 
