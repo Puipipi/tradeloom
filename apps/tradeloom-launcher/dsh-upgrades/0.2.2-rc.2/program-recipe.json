@@ -1,0 +1,423 @@
+{
+  "schemaVersion": 1,
+  "version": "0.2.2-rc.2",
+  "status": "complete offline candidate assembly; not installation or arbitrary-version updater",
+  "upstream": {
+    "kind": "official-published-binary-input",
+    "version": "0.2.2-rc.2",
+    "commit": "a6b1b85f44891ee1484bed6a9fc08acaae777d90",
+    "installer": {
+      "url": "https://download.deepseek.com/dsh-desk/bin/win-x64/deepseek-harness-0.2.2-rc.2-win-x64.exe",
+      "bytes": 299659528,
+      "sha512": "5rRAkVruKkm4KELAbTqV8ZFrMwSo3oESnzXb9ebkJWPCMe6WuHORQZR63uY+BqAc6sBdyBtwSelsCGh0k1NcJA==",
+      "scope": "previously verified official input; this entry does not download or run the installer"
+    }
+  },
+  "acquisition": {
+    "entry": "scripts/update-dsh-candidate.py",
+    "signatureScript": "scripts/verify-dsh-authenticode.ps1",
+    "feedURL": "https://download.deepseek.com/dsh-desk/feeds/win-x64/nightly.yml",
+    "publisherSubject": "CN=\"Hangzhou DeepSeek Artificial Intelligence Co., Ltd.\", O=\"Hangzhou DeepSeek Artificial Intelligence Co., Ltd.\", L=Hangzhou, S=Zhejiang, C=CN, OID.1.3.6.1.4.1.311.60.2.1.1=Hangzhou, OID.1.3.6.1.4.1.311.60.2.1.2=Zhejiang, OID.1.3.6.1.4.1.311.60.2.1.3=CN, SERIALNUMBER=91330105MACPN4X08Y, OID.2.5.4.15=Private Organization",
+    "extractor": {
+      "bytes": 557056,
+      "sha256": "1d309318d68d9e4b2585e69f5028a4706793c100faadbd083c745169bceae914"
+    },
+    "outerEntries": 15,
+    "innerEntries": 8802,
+    "payload": {
+      "path": "$PLUGINSDIR\\app-64.7z",
+      "bytes": 298474207
+    },
+    "applyScript": "scripts/apply-dsh-candidate.py"
+  },
+  "vendor": {
+    "ordering": "Unicode codepoint path, case-sensitive",
+    "fileCount": 7892,
+    "bytes": 1128962579,
+    "sha256": "5ca44903bb627cd76ae515e361a0574b7d61108b6eeae54459845043ebae09fe",
+    "executable": "DeepSeek Harness.exe",
+    "executablePin": {
+      "bytes": 246341104,
+      "sha256": "0c8b37c3554bb16518c876fe53f72935a541ef1de8382463330b467667549305"
+    }
+  },
+  "backendSources": [
+    "config/__init__.py",
+    "config/asgi.py",
+    "config/business_embed.py",
+    "config/settings.py",
+    "config/urls.py",
+    "config/wsgi.py",
+    "data/samples/images/DEMO-001.svg",
+    "data/samples/images/DEMO-002.svg",
+    "data/samples/products.csv",
+    "manage.py",
+    "packages/tradeloom-shell/roles.js",
+    "packages/tradeloom-shell/workflow-definition.js",
+    "packages/tradeloom-shell/workflow-schema.js",
+    "requirements-workbench.txt",
+    "workbench/__init__.py",
+    "workbench/agents/__init__.py",
+    "workbench/agents/adapters.py",
+    "workbench/agents/agentarts.py",
+    "workbench/agents/center.py",
+    "workbench/agents/collaboration.py",
+    "workbench/agents/context.py",
+    "workbench/agents/contracts.py",
+    "workbench/agents/customer_agent.py",
+    "workbench/agents/delivery_agent.py",
+    "workbench/agents/local.py",
+    "workbench/agents/mock_runtime.py",
+    "workbench/agents/placeholders.py",
+    "workbench/agents/product_agent.py",
+    "workbench/agents/registry.py",
+    "workbench/agents/result_contracts.py",
+    "workbench/agents/runtime.py",
+    "workbench/agents/schema_validation.py",
+    "workbench/agents/tool_contracts.py",
+    "workbench/agents/workflow_contracts.py",
+    "workbench/api.py",
+    "workbench/apps.py",
+    "workbench/business_urls.py",
+    "workbench/canvas_workflow_api.py",
+    "workbench/canvas_workflow_definition_api.py",
+    "workbench/canvas_workflow_ownership.py",
+    "workbench/customers/__init__.py",
+    "workbench/customers/api.py",
+    "workbench/customers/service.py",
+    "workbench/customers/views.py",
+    "workbench/delivery/__init__.py",
+    "workbench/delivery/catalog.py",
+    "workbench/delivery/checklist.py",
+    "workbench/delivery/quality.py",
+    "workbench/delivery/service.py",
+    "workbench/delivery/storage.py",
+    "workbench/diagnostics.py",
+    "workbench/dispatch_api.py",
+    "workbench/erpnext/__init__.py",
+    "workbench/erpnext/api.py",
+    "workbench/erpnext/client.py",
+    "workbench/erpnext/drafts.py",
+    "workbench/erpnext/dto.py",
+    "workbench/erpnext/service.py",
+    "workbench/execution_plans/api.py",
+    "workbench/execution_plans/schemas.py",
+    "workbench/execution_plans/service.py",
+    "workbench/intake/__init__.py",
+    "workbench/intake/api.py",
+    "workbench/intake/limits.py",
+    "workbench/intake/mapping.py",
+    "workbench/intake/narrative_annotations.py",
+    "workbench/intake/narrative_storage.py",
+    "workbench/intake/ooxml_richdata.py",
+    "workbench/intake/parser.py",
+    "workbench/intake/product_application.py",
+    "workbench/intake/schemas.py",
+    "workbench/intake/snapshots.py",
+    "workbench/intake/storage.py",
+    "workbench/intent/__init__.py",
+    "workbench/intent/parser.py",
+    "workbench/intent/prompt.md",
+    "workbench/intent/rules.json",
+    "workbench/management/__init__.py",
+    "workbench/management/commands/__init__.py",
+    "workbench/management/commands/backfill_product_revisions.py",
+    "workbench/management/commands/migrate_legacy_sqlite.py",
+    "workbench/migrations/0001_initial.py",
+    "workbench/migrations/0002_workflow_domain.py",
+    "workbench/migrations/0003_workflow_create_idempotency.py",
+    "workbench/migrations/0004_erpnext_draft_operation.py",
+    "workbench/migrations/0005_intake_sources.py",
+    "workbench/migrations/0006_intake_staging.py",
+    "workbench/migrations/0007_narrative_evidence_sources.py",
+    "workbench/migrations/0008_production_requirement_drafts.py",
+    "workbench/migrations/0009_execution_plan_revision.py",
+    "workbench/migrations/0010_intake_candidate_link_history.py",
+    "workbench/migrations/0011_narrative_annotation_revision.py",
+    "workbench/migrations/0012_canvas_workflow_run.py",
+    "workbench/migrations/0012_customer_customeralias_customerevent_and_more.py",
+    "workbench/migrations/0013_customeraliasdecision_customermerge_and_more.py",
+    "workbench/migrations/0013_native_artifact_version.py",
+    "workbench/migrations/0014_business_dispatch.py",
+    "workbench/migrations/0014_merge_canvas_native_artifact_and_customer.py",
+    "workbench/migrations/0015_canvas_workflow_definition.py",
+    "workbench/migrations/0015_merge_business_dispatch_and_customer.py",
+    "workbench/migrations/0016_merge_canvas_workflow_definition.py",
+    "workbench/migrations/0017_canvas_workflow_run_ownership.py",
+    "workbench/migrations/__init__.py",
+    "workbench/models.py",
+    "workbench/native_artifact_api.py",
+    "workbench/native_artifact_service.py",
+    "workbench/native_artifact_validator.mjs",
+    "workbench/native_artifact_validator.py",
+    "workbench/product_fact_restore_api.py",
+    "workbench/products/__init__.py",
+    "workbench/products/query.py",
+    "workbench/products/restoration.py",
+    "workbench/products/versions.py",
+    "workbench/requirements/__init__.py",
+    "workbench/requirements/api.py",
+    "workbench/requirements/calculations.py",
+    "workbench/requirements/schemas.py",
+    "workbench/requirements/service.py",
+    "workbench/services.py",
+    "workbench/static/workbench/agent-run-receipts.js",
+    "workbench/static/workbench/app.js",
+    "workbench/static/workbench/artifact-browser.js",
+    "workbench/static/workbench/business-url.js",
+    "workbench/static/workbench/customers.js",
+    "workbench/static/workbench/execution-plans.js",
+    "workbench/static/workbench/intake-links.js",
+    "workbench/static/workbench/intake-product-application.js",
+    "workbench/static/workbench/intake.js",
+    "workbench/static/workbench/run-filters.js",
+    "workbench/static/workbench/runs-health.css",
+    "workbench/static/workbench/styles.css",
+    "workbench/static/workbench/workflow-graph.css",
+    "workbench/static/workbench/workflow-graph.js",
+    "workbench/templates/workbench/agent_center.html",
+    "workbench/templates/workbench/agents.html",
+    "workbench/templates/workbench/artifacts.html",
+    "workbench/templates/workbench/base.html",
+    "workbench/templates/workbench/customer_detail.html",
+    "workbench/templates/workbench/customers.html",
+    "workbench/templates/workbench/home.html",
+    "workbench/templates/workbench/new_task.html",
+    "workbench/templates/workbench/products.html",
+    "workbench/templates/workbench/runs.html",
+    "workbench/templates/workbench/sample_checklist_preview.html",
+    "workbench/templates/workbench/task_detail.html",
+    "workbench/templates/workbench/task_list.html",
+    "workbench/templates/workbench/workflow_detail.html",
+    "workbench/templates/workbench/workflow_reference_rows.html",
+    "workbench/templates/workbench/workflow_review_image_uploads.html",
+    "workbench/templatetags/__init__.py",
+    "workbench/templatetags/business_urls.py",
+    "workbench/testing.py",
+    "workbench/urls.py",
+    "workbench/views.py",
+    "workbench/workflow_definition_validator.mjs",
+    "workbench/workflow_definition_validator.py",
+    "workbench/workflow_views.py",
+    "workbench/workflows/__init__.py",
+    "workbench/workflows/dispatch_target.py",
+    "workbench/workflows/events.py",
+    "workbench/workflows/execution.py",
+    "workbench/workflows/fact_application.py",
+    "workbench/workflows/orchestrator.py",
+    "workbench/workflows/prepare.py",
+    "workbench/workflows/review_images.py",
+    "workbench/workflows/reviews.py",
+    "workbench/workflows/states.py",
+    "workbench/workflows/validation.py"
+  ],
+  "backendAdditionalSourceConsumers": {
+    "packages/tradeloom-shell/workflow-definition.js": "workbench/workflow_definition_validator.mjs:2 direct import",
+    "packages/tradeloom-shell/workflow-schema.js": "workbench/workflow_definition_validator.mjs:1 direct import",
+    "packages/tradeloom-shell/roles.js": "packages/tradeloom-shell/workflow-schema.js:1 direct import",
+    "data/samples/products.csv": "workbench/services.py:89/104 declared demo resource",
+    "data/samples/images/DEMO-001.svg": "workbench/services.py:112 declared demo image resource",
+    "data/samples/images/DEMO-002.svg": "workbench/services.py:112 declared demo image resource"
+  },
+  "backendExcludedUnprovenLegacySamples": [
+    "data/samples/phase1/images/P1-DEMO-001.svg",
+    "data/samples/phase1/images/P1-DEMO-002.svg",
+    "data/samples/phase1/images/P1-DEMO-004.svg",
+    "data/samples/phase1/images/P1-DEMO-005.svg",
+    "data/samples/phase1/images/P1-DEMO-006.svg",
+    "data/samples/phase1/images/P1-DEMO-007.svg",
+    "data/samples/phase1/images/P1-DEMO-010.svg",
+    "data/samples/phase1/images/P1-IMG-007.svg",
+    "data/samples/phase1/images/P1-IMG-009.svg",
+    "data/samples/phase1/images/manifest.json",
+    "data/samples/phase1/products.csv"
+  ],
+  "programResources": {
+    "pythonDependencies": {
+      "root": "resources/tradeloom/python-packages",
+      "version": "3.12.14",
+      "fileCount": 4942,
+      "bytes": 57850015,
+      "sha256": "6f9534e391def4a3787bfe7429707b4fa5371e209b21e81e0be0c0ca81ef623d",
+      "distributions": [
+        {
+          "name": "asgiref",
+          "version": "3.12.1"
+        },
+        {
+          "name": "attrs",
+          "version": "26.1.0"
+        },
+        {
+          "name": "Django",
+          "version": "5.2.18"
+        },
+        {
+          "name": "et_xmlfile",
+          "version": "2.0.0"
+        },
+        {
+          "name": "jsonschema",
+          "version": "4.26.0"
+        },
+        {
+          "name": "jsonschema-specifications",
+          "version": "2025.9.1"
+        },
+        {
+          "name": "openpyxl",
+          "version": "3.1.5"
+        },
+        {
+          "name": "pillow",
+          "version": "13.0.0"
+        },
+        {
+          "name": "psycopg",
+          "version": "3.3.6"
+        },
+        {
+          "name": "psycopg-binary",
+          "version": "3.3.6"
+        },
+        {
+          "name": "referencing",
+          "version": "0.37.0"
+        },
+        {
+          "name": "rpds-py",
+          "version": "2026.9.1"
+        },
+        {
+          "name": "sqlparse",
+          "version": "0.6.0"
+        },
+        {
+          "name": "typing_extensions",
+          "version": "4.16.0"
+        },
+        {
+          "name": "tzdata",
+          "version": "2026.5"
+        }
+      ],
+      "licenses": [
+        "asgiref-3.12.1.dist-info/licenses/LICENSE",
+        "attrs-26.1.0.dist-info/licenses/LICENSE",
+        "django-5.2.18.dist-info/licenses/LICENSE",
+        "django-5.2.18.dist-info/licenses/LICENSE.python",
+        "django/contrib/admin/static/admin/img/LICENSE",
+        "django/contrib/admin/static/admin/js/vendor/jquery/LICENSE.txt",
+        "django/contrib/admin/static/admin/js/vendor/select2/LICENSE.md",
+        "django/contrib/admin/static/admin/js/vendor/xregexp/LICENSE.txt",
+        "django/contrib/gis/gdal/LICENSE",
+        "django/contrib/gis/geos/LICENSE",
+        "django/dispatch/license.txt",
+        "jsonschema_specifications-2025.9.1.dist-info/licenses/COPYING",
+        "jsonschema-4.26.0.dist-info/licenses/COPYING",
+        "pillow-13.0.0.dist-info/licenses/LICENSE",
+        "psycopg_binary-3.3.6.dist-info/licenses/LICENSE.txt",
+        "psycopg-3.3.6.dist-info/licenses/LICENSE.txt",
+        "referencing-0.37.0.dist-info/licenses/COPYING",
+        "rpds_py-2026.9.1.dist-info/licenses/LICENSE",
+        "sqlparse-0.6.0.dist-info/licenses/LICENSE",
+        "typing_extensions-4.16.0.dist-info/licenses/LICENSE",
+        "tzdata-2026.5.dist-info/licenses/LICENSE"
+      ]
+    },
+    "postgresql": {
+      "root": "resources/tradeloom/postgresql/pgsql",
+      "version": "17.11",
+      "fileCount": 1565,
+      "bytes": 141099594,
+      "sha256": "5bf8dbf54782468197eb367178ec1f2b58c3a9f8626992d159355442a9f1e92e",
+      "licenses": [
+        "pgsql/commandlinetools_3rd_party_licenses.txt",
+        "pgsql/server_license.txt"
+      ],
+      "entrypoints": [
+        {
+          "name": "postgres",
+          "path": "pgsql/bin/postgres.exe",
+          "sha256": "f1b4e561ff3c6be6fc7db26b916ba756508aa0e02c4b4047e5b2da9ca8c77396",
+          "version": "postgres (PostgreSQL) 17.11",
+          "versionExitCode": 0
+        },
+        {
+          "name": "pg_ctl",
+          "path": "pgsql/bin/pg_ctl.exe",
+          "sha256": "eed85e36aabc7cdf99a63bda0a2e33fa3bce8d3c59d6bc12e9e19469706cc012",
+          "version": "pg_ctl (PostgreSQL) 17.11",
+          "versionExitCode": 0
+        },
+        {
+          "name": "initdb",
+          "path": "pgsql/bin/initdb.exe",
+          "sha256": "17a208d1f8c5671e8eaf74fc80e3300326cbe15862dbefbc7490c882ba395fe0",
+          "version": "initdb (PostgreSQL) 17.11",
+          "versionExitCode": 0
+        },
+        {
+          "name": "psql",
+          "path": "pgsql/bin/psql.exe",
+          "sha256": "e2b971ffe755010da9f9a3699f62a5f3a5d6000b054b5d80d0e973245f44dede",
+          "version": "psql (PostgreSQL) 17.11",
+          "versionExitCode": 0
+        },
+        {
+          "name": "createdb",
+          "path": "pgsql/bin/createdb.exe",
+          "sha256": "7b6b4193c53df76ca4cc3d0347a03e30490938d6abc4047b00b25c776cfecab4",
+          "version": "createdb (PostgreSQL) 17.11",
+          "versionExitCode": 0
+        }
+      ]
+    }
+  },
+  "runtime": {
+    "root": "resources/runtime/primary-runtime",
+    "python": "resources/runtime/primary-runtime/dependencies/python/python.exe",
+    "version": "3.12.14",
+    "providedBy": "official-electron-builder",
+    "node": "resources/runtime/primary-runtime/dependencies/node/bin/node.exe",
+    "nodeSha256": "ba4e6d110e8c1592a1ecd390f6b05f3da124b13871a5be62b341a07a853c6c32"
+  },
+  "nativeArtifactValidator": {
+    "receiptSha256": "62eb0eb8e4ae01d84ce326ff163c278c4cb043ef4d55bdb01a2059b4c5b3260a",
+    "nodeRelativePath": "apps/desktop/.desktop-build/targets/win-x64/runtime/primary-runtime/dependencies/node/bin/node.exe",
+    "nodeSha256": "ba4e6d110e8c1592a1ecd390f6b05f3da124b13871a5be62b341a07a853c6c32",
+    "scope": "reused identity of byte-identical Node binary only; not a new upstream/source build receipt"
+  },
+  "launcher": {
+    "source": "apps/tradeloom-launcher/portable/Program.cs",
+    "preimage": {
+      "bytes": 8090,
+      "sha256": "ce169b4aa5b441335a9bf5ef7912ea3643145a34c12306dc02241c07c057b937"
+    },
+    "patch": "launcher-external-data.patch",
+    "postimage": {
+      "bytes": 9925,
+      "sha256": "e56b1baa2f32f42e3056a320cb5c4250dda10e4b3c94cb2fc270942f4e9b8717"
+    },
+    "configSource": "apps/tradeloom-launcher/portable/launcher.json",
+    "externalDataSchema": 2,
+    "logPolicy": "schema2 uses selected dataRoot/logs; schema1 retains original program-root log; logging never pre-creates an unowned data root"
+  },
+  "pluginSeed": {
+    "manifestBytes": 6108491,
+    "manifestSha256": "cd845169201fe28d194929a0d865aa8b0e1c4f34438c86439c8705c05aa4e89e",
+    "files": 25169,
+    "appendBundles": 19,
+    "dependencies": 20,
+    "linksDeclaredOnly": 639
+  },
+  "output": {
+    "zipRoot": "TradeLoom-0.2.2-rc.2",
+    "programOnlyTopLevel": [
+      "app",
+      "launcher.json",
+      "启动工作台.exe"
+    ],
+    "dataPolicy": "explicit external local data root; never read, create, copy or migrate it during assembly"
+  }
+}

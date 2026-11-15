@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 1,
+  "version": "0.2.2-rc.1",
+  "status": "candidate-not-runtime-accepted",
+  "patches": [
+    "production-execution-origin.patch",
+    "session-list-failure-phase.patch"
+  ],
+  "preimages": {
+    "dsh/node_modules/@deepseek-ai/dsh-agent-loop/lib/index.js": {
+      "bytes": 66629,
+      "sha256": "a6fa8e0c7c90191caf5f4a3bb5c624a86e9845cf3c79d020b71420d0e20ae4c1"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-agent/lib/index.js": {
+      "bytes": 32197,
+      "sha256": "8673b5cfadfbb6e6ce0bcb341d0ea2877adc2986eab1c2b6c8baf32726534c92"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-api-gateway/lib/client.browser.js": {
+      "bytes": 84134,
+      "sha256": "97aab2a5482b8f8b3c30092e54750427adb07828ee2c985a038a4534da29c779"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-client-connection/lib/index.js": {
+      "bytes": 44434,
+      "sha256": "0ebcca7583e082716f79b0b55bc1749d48269cc8db2989b043b321b57abd3684"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/index.js": {
+      "bytes": 24579,
+      "sha256": "414522a9f1ba17d326df0561f88c32f0ef919e13ae021fb6ca4a422e232561d4"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-tools/lib/index.js": {
+      "bytes": 27415,
+      "sha256": "1889cbf718d64518dd83245d4dba1e1f080b2c5326259c3ed5b1be7a7666a2bd"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-tools/lib/pipeline.js": {
+      "bytes": 34464,
+      "sha256": "f6c850cefce30831c4c5f160e831856b105935331bacd1ae0823129001614bc6"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-tools/lib/types/batch.js": {
+      "bytes": 11188,
+      "sha256": "fc31ae28425535a39eb2fa0b17d14294b186cea0e3a7951333cccbc6e6f07c3b"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-tools/lib/types/pipeline.js": {
+      "bytes": 31754,
+      "sha256": "17952abbbb42b85deb49254a83f1d839c7e0a15836d2601614f733298f177d19"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-web-frontend/dist/assets/index-BgUyXZcc.js": {
+      "bytes": 970770,
+      "sha256": "c7e9821660f7e0f0524cc7cb1a375a5171eebbe68e167b80d290bd2ea391286d"
+    }
+  },
+  "postimages": {
+    "dsh/node_modules/@deepseek-ai/dsh-agent-loop/lib/index.js": {
+      "bytes": 76965,
+      "sha256": "a5a5a9aaf9f66a103666fa61a2ae3287f0404317825ef8c8d8c60b54af2cda9c"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-agent/lib/index.js": {
+      "bytes": 32820,
+      "sha256": "e584721889fec8fe459b41f4fd59495777d93708a892d80ebab9e00e00f1d410"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-api-gateway/lib/client.browser.js": {
+      "bytes": 85267,
+      "sha256": "147a3ad99bce2c30ee6d156ff2f58b0d960bc2a78b76ff1108643a42dfb2e03f"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-client-connection/lib/index.js": {
+      "bytes": 48241,
+      "sha256": "f04acccc1608e1395be044b8fc00a256735eabae8d33af9fb3c4214b6da46a85"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/index.js": {
+      "bytes": 26412,
+      "sha256": "66f7397f0b9331ca6ae09d0a436f0a09e5193b07c8724ef523677365781c4f5f"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-tools/lib/index.js": {
+      "bytes": 27415,
+      "sha256": "1889cbf718d64518dd83245d4dba1e1f080b2c5326259c3ed5b1be7a7666a2bd"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-tools/lib/pipeline.js": {
+      "bytes": 35746,
+      "sha256": "da2faba8b8338e17e3e776d56e88ed663a78117a8951e005f3fd1a1fdc4a6abd"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-tools/lib/types/batch.js": {
+      "bytes": 11688,
+      "sha256": "8654212d301a882a08f9462c58a8899fe698bcbe68086891d8cb9272bd1f620c"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-tools/lib/types/pipeline.js": {
+      "bytes": 32196,
+      "sha256": "b956c0e30feb3e9791b3d71d96cf5fc091d0854566a1b85b20ba0dd163fe018d"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-web-frontend/dist/assets/index-BgUyXZcc.js": {
+      "bytes": 970910,
+      "sha256": "c39edfb6e8ac855a8669044fc36b461c143c50aeea03f5a08d43b64e315e9a41"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-web-frontend/dist/assets/native-operation-origin-adapter.mjs": {
+      "bytes": 6270,
+      "sha256": "e8846e4a897a807d786b7705671b80d25c08d3e5eca6de5f7ff54642ba9f0623"
+    }
+  },
+  "browserBootstrap": {
+    "html": "dsh/node_modules/@deepseek-ai/dsh-web-frontend/dist/index.html",
+    "entry": "dsh/node_modules/@deepseek-ai/dsh-web-frontend/dist/assets/index-BgUyXZcc.js",
+    "needle": "const i=globalThis.__DSH_TRANSPORT__;this.modules=",
+    "replacement": "const i=globalThis.__DSH_TRANSPORT__;if(i?.ownsHost===!0){const{installBrowserTransportAdapter:install}=await import(\"/assets/native-operation-origin-adapter.mjs\");install(i,t)}this.modules="
+  },
+  "copies": [
+    {
+      "source": "apps/tradeloom-launcher/production-origin/browser-transport-adapter.mjs",
+      "destination": "dsh/node_modules/@deepseek-ai/dsh-web-frontend/dist/assets/native-operation-origin-adapter.mjs",
+      "sha256": "e8846e4a897a807d786b7705671b80d25c08d3e5eca6de5f7ff54642ba9f0623"
+    }
+  ],
+  "notes": [
+    "Official source plus the existing production-origin and session-list adaptations. No TradeLoom renderer/layout replacement.",
+    "The pre-existing backend port requires semantic and runtime regression before acceptance. Syntax and hashes are insufficient."
+  ]
+}

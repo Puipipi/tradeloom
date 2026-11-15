@@ -211,8 +211,9 @@ test('business iframe theme bridge sends only the current enum to owned same-ori
     assert.fail(`unexpected entry dependency: ${name}`)
   }
   clientRequire.async = async name => {
-    assert.equal(name, './client.scenes.js')
-    return { register() {}, SceneTabs() {}, ModelDirectoryRail() {} }
+    if (name === './client.scenes.js') return { register() {}, SceneTabs() {}, ModelDirectoryRail() {} }
+    if (name === './client.replica-palette.js') return { install: async () => () => {}, readWorkbenchPalette: () => null }
+    assert.fail(`unexpected async entry dependency: ${name}`)
   }
   const plugin = entryRegistration.factory(clientRequire)
   const slots = { inject(_name, register) { register() }, register() { return () => {} } }
@@ -233,10 +234,14 @@ test('business iframe theme bridge sends only the current enum to owned same-ori
   const darkMessage = sent[0]?.data
   assert.equal(darkMessage.type, 'tradeloom:theme')
   assert.equal(darkMessage.colorScheme, 'dark')
-  assert.deepEqual(Object.keys(darkMessage.palette).sort(), ['accent', 'border', 'canvas', 'header', 'muted', 'panel', 'teal', 'text'])
-  assert.equal(darkMessage.palette.canvas, '#0c1017')
-  assert.equal(darkMessage.palette.panel, '#131925')
-  assert.equal(darkMessage.palette.header, '#171f2c')
+  assert.deepEqual(JSON.parse(JSON.stringify(darkMessage.palette)), {
+    canvas: '#0c0e14', panel: '#12151e', header: '#1b2130', border: '#282e3c',
+    text: '#e6e8ef', muted: '#939baa', accent: '#6b9bf5', accentStrong: '#6b9bf5',
+    accentSoft: '#1d2538', teal: '#74cec6', buttonInk: '#10131b', danger: '#ed7373',
+    dangerBackground: '#392729', dangerBorder: '#623c42', warning: '#d6ad5b',
+    warningBackground: '#302a20', warningBorder: '#5a4b32', success: '#39d5a1',
+    successBackground: '#1e3735',
+  })
   assert.equal(sent[0].origin, 'http://localhost:3088')
   documentListeners.get('load')({ target: frame })
   assert.equal(sent.at(-1).data.colorScheme, 'dark')
@@ -249,8 +254,9 @@ test('business iframe theme bridge sends only the current enum to owned same-ori
   })
   assert.equal(sent.length, 2, 'foreign origins and unexpected request fields are ignored')
   themeListeners.get('theme/change')({ active: { colorScheme: 'light' } })
+  await Promise.resolve()
   assert.equal(sent.at(-1).data.colorScheme, 'light')
-  assert.equal(sent.at(-1).data.palette.canvas, '#f4f7fb')
+  assert.equal(sent.at(-1).data.palette.canvas, '#f4f6f8')
   assert.equal(sent.at(-1).origin, 'http://localhost:3088')
   assert.strictEqual(frames[0], frame)
   assert.strictEqual(frame.contentWindow, originalFrameWindow)
@@ -298,7 +304,9 @@ test('business-shell supplies TradeLoom identity to the existing sidebar and bla
   const assetPaths = [...assetSource.matchAll(/<path d="([^"]+)"/g)].map(match => match[1])
   const slotPaths = mark.children.filter(child => child.type === 'path').map(child => child.props.d)
   assert.deepEqual(slotPaths, assetPaths, 'sidebar and hero use the source asset geometry')
-  const wordmark = registrations.find(item => item.spec.name === 'sidebar.brand.name').component()
+  const wordmarkElement = registrations.find(item => item.spec.name === 'sidebar.brand.name').component()
+  assert.equal(typeof wordmarkElement.type, 'function')
+  const wordmark = wordmarkElement.type(wordmarkElement.props)
   assert.match(wordmark.children.map(item => item.children?.[0]).join(' '), /织贸助手/)
   assert.match(wordmark.children.map(item => item.children?.[0]).join(' '), /TradeLoom/)
 })
@@ -312,7 +320,7 @@ test('pinned Cordis Loader unwrap keeps all business plugin namespaces and injec
     ['../proxy.js', '@tradeloom/dsh-business-shell/proxy', ['connection', 'webServer']],
     ['../policy.js', '@tradeloom/dsh-business-shell/policy', ['tools', 'agents']],
     ['../profile-tool.js', '@tradeloom/dsh-business-shell/profile', ['tools']],
-    ['../business-tools.js', '@tradeloom/dsh-business-shell/business-tools', ['tools', 'webServer']],
+    ['../business-tools.js', '@tradeloom/dsh-business-shell/business-tools', ['tools', 'webServer', 'agents', 'sceneMemoryOriginAuthority']],
     ['../step-policy.js', '@tradeloom/dsh-business-shell/step-policy', []],
   ]
   for (const [specifier, expectedName, expectedInject] of plugins) {
@@ -332,10 +340,14 @@ test('budget policy is installed once from the top-level Host plugin', async () 
   assert.doesNotMatch(cordis, /name: '@tradeloom\/dsh-business-shell\/policy'/)
   const registrations = []
   const routes = []
+  const disposed = []
+  const services = new Map()
   const ctx = {
     tools: {}, agents: { get() { return undefined } },
     connection: { requestRejection() {} },
-    webServer: { register(route) { routes.push(route); return () => {} } },
+    provide(name, service) { services.set(name, service) },
+    get(name) { return services.get(name) },
+    webServer: { register(route) { routes.push(route); return () => { disposed.push(route.path) } } },
     workspaceRegistry: {}, sessionController: {},
     on(name, callback, options) { registrations.push({ name, callback, options }) },
     effect(register) { this.cleanup = register() },
@@ -343,23 +355,49 @@ test('budget policy is installed once from the top-level Host plugin', async () 
   applyHost(ctx)
   assert.ok(routes.some(route => route.path === '/tradeloom/agent-capabilities' && route.kind === 'exact'),
     'the read-only capability endpoint uses a fixed protected route')
+  const diagnosticsRoute = routes.find(route => route.path === '/tradeloom/diagnostics' && route.kind === 'exact')
+  assert.equal(typeof diagnosticsRoute?.handler, 'function', 'diagnostics is registered as an exact protected Host route')
   for (const name of ['agent/pre-step', 'agent/created', 'tools/pre-execute', 'agent/disposed']) {
     assert.equal(registrations.filter(item => item.name === name && item.options?.global === true).length, 1, `${name} must be installed once globally`)
   }
-  ctx.cleanup()
+  await ctx.cleanup()
+  assert.ok(disposed.includes('/tradeloom/diagnostics'), 'Host cleanup unregisters the diagnostics route')
+  const response = { statusCode: 0, destroyed: false, writableEnded: false, headers: {}, setHeader(name, value) { this.headers[name] = value }, end(body = '') { this.body = body; this.writableEnded = true } }
+  await diagnosticsRoute.handler({ url: '/tradeloom/diagnostics', method: 'GET' }, response)
+  assert.equal(response.statusCode, 503)
+  assert.deepEqual(JSON.parse(response.body), { ok: false, error: { code: 'host_unavailable' } })
 })
 
 test('authorized role route creates one mapped native session and reuses it after reload', async t => {
   const { env } = await fixtureHome(t)
   const workspaces = []
   const calls = []
+  const snapshots = new Map()
+  const agents = new Map()
+  const sessionPersistence = {
+    identity: Object.freeze({ fixture: 'role-session-persistence' }),
+    async flush() {},
+    async stat(sessionId) { return snapshots.get(sessionId) },
+  }
   const ctx = {
     connection: { requestRejection: () => undefined },
+    agents,
+    get(name) { return name === 'sessionPersistence' ? sessionPersistence : undefined },
     workspaceRegistry: {
       list: () => workspaces,
-      async create(path, title) { const workspace = { id: `workspace-${workspaces.length}`, path, title }; workspaces.push(workspace); return workspace },
+      get(id) { return workspaces.find(item => item.id === id) },
+      async create(path, title) { const workspace = { id: `workspace-${workspaces.length}`, path, title, sessionIds: [] }; workspaces.push(workspace); return workspace },
     },
-    sessionController: { async create(input) { calls.push(input); return { sessionId: input.sessionId } } },
+    sessionController: { async create(input) {
+      calls.push(input)
+      const workspace = workspaces.find(item => item.id === input.workspaceId)
+      if (workspace && Object.values(ROLE_PRESETS).includes(input.agentPreset)) {
+        workspace.sessionIds.push(input.sessionId)
+        snapshots.set(input.sessionId, { header: { id: input.sessionId, cwd: workspace.path, agentPreset: input.agentPreset } })
+        agents.set(input.sessionId, { id: input.sessionId, session: { id: input.sessionId }, ctx: { get: ctx.get.bind(ctx) } })
+      }
+      return { sessionId: input.sessionId }
+    } },
   }
   const deps = {
     createStateStore: () => createStateStore({ env }),
@@ -382,9 +420,12 @@ test('authorized role route creates one mapped native session and reuses it afte
 
 test('the protected host registers the explicit create-new-session route', async () => {
   const routes = []
+  const services = new Map()
   const ctx = {
     tools: {}, agents: { get() { return undefined } },
     connection: { requestRejection() {} },
+    provide(name, service) { services.set(name, service) },
+    get(name) { return services.get(name) },
     webServer: { register(route) { routes.push(route); return () => {} } },
     workspaceRegistry: {}, sessionController: {},
     on() {}, effect(register) { this.cleanup = register() },
@@ -404,8 +445,18 @@ async function newSessionFixture(t, options = {}) {
   const archivedSessionIds = []
   const observations = new Map()
   const calls = []
+  const agents = options.omitDurability ? undefined : new Map()
+  const sessionPersistence = {
+    identity: Object.freeze({ fixture: 'new-session-persistence' }),
+    async flush() {},
+    async stat(sessionId) {
+      const observation = observations.get(sessionId)
+      return observation ? { header: observation.header } : undefined
+    },
+  }
   const ctx = {
     connection: { requestRejection: () => undefined },
+    ...(agents ? { agents, get(name) { return name === 'sessionPersistence' ? sessionPersistence : undefined } } : {}),
     workspaceRegistry: {
       list: () => workspaces,
       get(id) { return workspaces.find(item => item.id === id) },
@@ -426,14 +477,33 @@ async function newSessionFixture(t, options = {}) {
     sessionController: {
       async create(input) {
         calls.push(input)
-        if (options.create) return await options.create(input, { workspaces, observations })
+        let created
+        if (options.create) created = await options.create(input, { workspaces, observations })
+        else {
+          const workspace = workspaces.find(item => item.id === input.workspaceId)
+          if (!workspace.sessionIds.includes(input.sessionId)) workspace.sessionIds.push(input.sessionId)
+          observations.set(input.sessionId, {
+            header: { id: input.sessionId, cwd: workspace.path, agentPreset: input.agentPreset },
+            cursor: -1,
+            projections: { values: { agentPreset: input.agentPreset } }, events: [],
+          })
+          created = { sessionId: input.sessionId, agentPreset: input.agentPreset }
+        }
         const workspace = workspaces.find(item => item.id === input.workspaceId)
-        if (!workspace.sessionIds.includes(input.sessionId)) workspace.sessionIds.push(input.sessionId)
-        observations.set(input.sessionId, {
-          header: { id: input.sessionId, cwd: workspace.path },
-          projections: { values: { agentPreset: input.agentPreset } }, events: [],
-        })
-        return { sessionId: input.sessionId, agentPreset: input.agentPreset }
+        const observation = observations.get(input.sessionId)
+        if (created?.sessionId === input.sessionId && created?.agentPreset === input.agentPreset
+          && workspace?.path === observation?.header?.cwd
+          && observation?.header?.id === input.sessionId
+          && observation?.header?.agentPreset === input.agentPreset
+          && agents && !agents.has(input.sessionId)) {
+          if (!workspace.sessionIds.includes(input.sessionId)) workspace.sessionIds.push(input.sessionId)
+          agents.set(input.sessionId, {
+            id: input.sessionId,
+            session: { id: input.sessionId, seq: 0 },
+            ctx: { get(name) { return name === 'sessionPersistence' ? sessionPersistence : undefined } },
+          })
+        }
+        return created
       },
     },
   }
@@ -444,6 +514,17 @@ async function newSessionFixture(t, options = {}) {
   })
   return { env, store, workspaces, archivedSessionIds, observations, calls, handler }
 }
+
+test('new-session route refuses a synthetic session without live durability evidence', async t => {
+  const fixture = await newSessionFixture(t, { omitDurability: true })
+  const operationId = '92ab2316-fc3d-4b7a-9b6c-4b0c73f7a1d8'
+  const res = response()
+  await fixture.handler(request('POST', { role: 'center', expectedSessionId: null, operationId }), res)
+  const body = JSON.parse(res.body)
+  assert.equal(res.statusCode, 503)
+  assert.deepEqual(body, { error: 'session-create-unavailable', operationId, error_code: 'role_session_not_durable' })
+  t.diagnostic(`synthetic missing-durability refusal: ${res.statusCode} ${JSON.stringify(body)}`)
+})
 
 test('new-session operation creates a separate native session and replays the durable result', async t => {
   const fixture = await newSessionFixture(t)
@@ -480,7 +561,8 @@ test('new-session operation rejects changed payloads, concurrent different opera
     const workspace = state.workspaces.find(item => item.id === input.workspaceId)
     workspace.sessionIds.push(input.sessionId)
     state.observations.set(input.sessionId, {
-      header: { id: input.sessionId, cwd: workspace.path },
+      header: { id: input.sessionId, cwd: workspace.path, agentPreset: input.agentPreset },
+      cursor: -1,
       projections: { values: { agentPreset: input.agentPreset } }, events: [],
     })
     return { sessionId: input.sessionId, agentPreset: input.agentPreset }
@@ -504,6 +586,7 @@ test('new-session operation rejects changed payloads, concurrent different opera
   assert.equal(duplicateResponse.statusCode, 201, 'a concurrent retry of the same operation receives the same created session')
   assert.equal(JSON.parse(duplicateResponse.body).sessionId, JSON.parse(firstResponse.body).sessionId)
   assert.equal(fixture.calls.length, 1, 'the persisted role reservation admits only one different create at a time')
+  t.diagnostic(`synthetic operation idempotency concurrency: creates=${fixture.calls.length}, responses=${firstResponse.statusCode}/${duplicateResponse.statusCode}`)
 
   const mismatchedFixture = await newSessionFixture(t, { create: async input => ({ sessionId: 'session-native-minted-instead', agentPreset: input.agentPreset }) })
   await mismatchedFixture.store.transact(state => { state.roles.center = { sessionId: 'prior-session' } })
@@ -547,7 +630,7 @@ test('an attempted create is recovered only when the native session matches its 
   const workspace = { id: 'workspace-existing', path: workspacePath, title: 'TradeLoom center', sessionIds: [sessionId] }
   fixture.workspaces.push(workspace)
   fixture.observations.set(sessionId, {
-    header: { id: sessionId, cwd: workspacePath },
+    header: { id: sessionId, cwd: workspacePath, agentPreset: 'tradeloom-center' },
     projections: { values: { agentPreset: 'tradeloom-center' } }, events: [],
   })
   await fixture.store.transact(state => {
@@ -616,7 +699,7 @@ test('an attempted create is recovered only when the native session matches its 
   const initializedWorkspacePath = await roleWorkspacePath('center', initialized.env)
   initialized.workspaces.push({ id: 'workspace-existing', path: initializedWorkspacePath, title: 'TradeLoom center', sessionIds: [sessionId] })
   initialized.observations.set(sessionId, {
-    header: { id: sessionId, cwd: initializedWorkspacePath },
+    header: { id: sessionId, cwd: initializedWorkspacePath, agentPreset: 'tradeloom-center' },
     projections: { values: { agentPreset: 'tradeloom-center', turnBoundary: { openTurnStartSeq: null, lastTurn: 0 } } },
     events: [{ type: 'session/created' }, { type: 'agent-preset/selected' }],
   })
@@ -640,7 +723,7 @@ test('an attempted create is recovered only when the native session matches its 
   const startedWorkspacePath = await roleWorkspacePath('center', started.env)
   started.workspaces.push({ id: 'workspace-existing', path: startedWorkspacePath, title: 'TradeLoom center', sessionIds: [sessionId] })
   started.observations.set(sessionId, {
-    header: { id: sessionId, cwd: startedWorkspacePath },
+    header: { id: sessionId, cwd: startedWorkspacePath, agentPreset: 'tradeloom-center' },
     projections: { values: { agentPreset: 'tradeloom-center', turnBoundary: { openTurnStartSeq: 18, lastTurn: 1 } } },
     events: [{ type: 'message/created' }],
   })
@@ -704,7 +787,8 @@ test('same operation UUID in separate owned homes does not share an in-flight re
     const workspace = workspaces.find(item => item.id === input.workspaceId)
     workspace.sessionIds.push(input.sessionId)
     observations.set(input.sessionId, {
-      header: { id: input.sessionId, cwd: workspace.path },
+      header: { id: input.sessionId, cwd: workspace.path, agentPreset: input.agentPreset },
+          cursor: -1,
       projections: { values: { agentPreset: input.agentPreset } }, events: [],
     })
     return { sessionId: input.sessionId, agentPreset: input.agentPreset }
@@ -798,14 +882,20 @@ test('protected dock layout API persists v2 separately and preserves the first v
   assert.equal(dock.version, 2)
   assert.equal(dock.scenes.center.migration.status, 'default_upgrade')
   assert.deepEqual(dock.scenes.center.legacyV1Snapshot, old)
-  assert.deepEqual(dock.scenes.center.dockview.grid.root.data[0].data.views, ['business-main', 'auxiliary', 'reference'])
+  const grid = dock.scenes.center.dockview.grid
+  assert.equal(grid.orientation, 'VERTICAL')
+  assert.deepEqual(grid.root.data.map(row => row.size), [60, 40])
+  assert.deepEqual(grid.root.data.map(row => row.data.map(leaf => leaf.data.views)), [
+    [['business-main'], ['files']], [['preview'], ['native-chat']],
+  ])
+  assert.deepEqual(Object.keys(dock.scenes.center.dockview.panels).sort(), ['business-main', 'files', 'native-chat', 'preview'])
 
   const savedDock = structuredClone(dock)
-  savedDock.scenes.center.dockview.activeGroup = '2'
+  savedDock.scenes.center.dockview.activeGroup = 'topb'
   const savedResponse = response()
   await dockHandler(request('PUT', savedDock), savedResponse)
   assert.equal(savedResponse.statusCode, 200)
-  assert.equal(JSON.parse(savedResponse.body).scenes.center.dockview.activeGroup, '2')
+  assert.equal(JSON.parse(savedResponse.body).scenes.center.dockview.activeGroup, 'topb')
 
   const v1Get = response()
   await v1Handler(request('GET'), v1Get)
@@ -817,7 +907,7 @@ test('protected dock layout API persists v2 separately and preserves the first v
   const reopened = await createStateStore({ env })
   const state = await reopened.read()
   assert.equal(state.sceneWorkbench.layouts.center.panels['business-main'].visible, false)
-  assert.equal(state.dockLayouts.scenes.center.dockview.activeGroup, '2')
+  assert.equal(state.dockLayouts.scenes.center.dockview.activeGroup, 'topb')
   assert.deepEqual(state.dockLayouts.scenes.center.legacyV1Snapshot, old)
 })
 
@@ -841,7 +931,7 @@ test('dock layout API authorizes before reading state and rejects unknown serial
   const rejected = response()
   await handler(request('PUT', invalid), rejected)
   assert.equal(rejected.statusCode, 400)
-  assert.deepEqual(Object.keys((await store.read()).dockLayouts.scenes.center.dockview.panels).sort(), ['auxiliary', 'business-main', 'native-chat', 'reference'])
+  assert.deepEqual(Object.keys((await store.read()).dockLayouts.scenes.center.dockview.panels).sort(), ['business-main', 'files', 'native-chat', 'preview'])
 
   const oversizedRequest = Readable.from([Buffer.from(JSON.stringify({ version: 2, scenes: {}, padding: 'x'.repeat(130 * 1024) }))])
   oversizedRequest.method = 'PUT'
@@ -849,7 +939,7 @@ test('dock layout API authorizes before reading state and rejects unknown serial
   const tooLarge = response()
   await handler(oversizedRequest, tooLarge)
   assert.equal(tooLarge.statusCode, 413)
-  assert.deepEqual(Object.keys((await store.read()).dockLayouts.scenes.center.dockview.panels).sort(), ['auxiliary', 'business-main', 'native-chat', 'reference'])
+  assert.deepEqual(Object.keys((await store.read()).dockLayouts.scenes.center.dockview.panels).sort(), ['business-main', 'files', 'native-chat', 'preview'])
 })
 
 test('scene layout API rejects unauthorized requests before reading app state', async () => {
@@ -866,23 +956,50 @@ test('concurrent role opens through separate store instances create one workspac
   const { env } = await fixtureHome(t)
   const workspaces = []
   const calls = []
+  const snapshots = new Map()
+  const agents = new Map()
+  const sessionPersistence = {
+    identity: Object.freeze({ fixture: 'concurrent-role-session-persistence' }),
+    async flush() {},
+    async stat(sessionId) { return snapshots.get(sessionId) },
+  }
   const ctx = {
     connection: { requestRejection: () => undefined },
+    agents,
+    get(name) { return name === 'sessionPersistence' ? sessionPersistence : undefined },
     workspaceRegistry: {
       list: () => workspaces,
-      async create(path, title) { const workspace = { id: `workspace-${workspaces.length}`, path, title }; workspaces.push(workspace); return workspace },
+      get(id) { return workspaces.find(item => item.id === id) },
+      async create(path, title) { const workspace = { id: `workspace-${workspaces.length}`, path, title, sessionIds: [] }; workspaces.push(workspace); return workspace },
     },
-    sessionController: { async create(input) { calls.push(input); return { sessionId: input.sessionId } } },
+    sessionController: { async create(input) {
+      calls.push(input)
+      const workspace = workspaces.find(item => item.id === input.workspaceId)
+      if (workspace && Object.values(ROLE_PRESETS).includes(input.agentPreset)) {
+        workspace.sessionIds.push(input.sessionId)
+        snapshots.set(input.sessionId, { header: { id: input.sessionId, cwd: workspace.path, agentPreset: input.agentPreset } })
+        agents.set(input.sessionId, { id: input.sessionId, session: { id: input.sessionId }, ctx: { get: ctx.get.bind(ctx) } })
+      }
+      return { sessionId: input.sessionId }
+    } },
   }
   const dependencies = { createStateStore: () => createStateStore({ env }), resolveOwnedHome: () => resolveOwnedHome(env), roleWorkspacePath: role => roleWorkspacePath(role, env) }
   const handlers = [createSessionHandler(ctx, dependencies), createSessionHandler(ctx, dependencies)]
-  const responses = await Promise.all(handlers.map(handler => { const res = response(); return handler(request('POST', { role: 'product' }), res).then(() => JSON.parse(res.body)) }))
+  const routeResponses = []
+  const responses = await Promise.all(handlers.map(handler => {
+    const res = response()
+    routeResponses.push(res)
+    return handler(request('POST', { role: 'product' }), res).then(() => JSON.parse(res.body))
+  }))
+  assert.deepEqual(routeResponses.map(res => res.statusCode), [200, 200], routeResponses.map(res => res.body).join('|'))
+  assert.ok(responses[0].sessionId && responses[1].sessionId)
   assert.equal(responses[0].sessionId, responses[1].sessionId)
   assert.equal(workspaces.length, 1)
   assert.equal(calls.length, 1)
+  t.diagnostic(`synthetic same-home role concurrency: creates=${calls.length}, responses=${routeResponses.map(res => `${res.statusCode}:${res.body}`).join('|')}`)
 })
 
-test('unauthenticated route rejects before body processing or app-home access', async () => {
+test('unauthenticated route rejects before body processing or app-home access', async t => {
   let storeCalls = 0
   const ctx = { connection: { requestRejection: () => 401 } }
   const handler = createSessionHandler(ctx, { createStateStore: async () => { storeCalls++; throw new Error('must not run') } })
@@ -891,6 +1008,7 @@ test('unauthenticated route rejects before body processing or app-home access', 
   assert.equal(res.statusCode, 401)
   assert.equal(res.body, '')
   assert.equal(storeCalls, 0)
+  t.diagnostic(`synthetic authorization refusal: ${res.statusCode} before state/home access`)
 })
 
 test('protected user-profile route changes only the editable demo profile', async t => {
@@ -1106,11 +1224,14 @@ test('official DSH patch composer applies the real web bundle then TradeLoom ove
   const centerPreset = businessPresets.find(entry => entry.config.id === ROLE_PRESETS.center)
   const delegation = centerPreset.config.plugins.find(plugin => plugin.id === 'delegation')
   assert.deepEqual(delegation.isolate, { subagents: true, workflowEngine: true }, 'the native delegation group must isolate every service required by its real providers')
-  for (const disabledId of ['preset-standard', 'preset-ptc', 'preset-minimal', 'preset-cordis']) {
-    assert.equal(entries.find(entry => entry.id === disabledId)?.disabled, true, `${disabledId} must be disabled by an update patch`)
+  for (const retainedId of ['preset-standard', 'preset-ptc', 'preset-minimal', 'preset-cordis']) {
+    assert.ok(entries.some(entry => entry.id === retainedId && entry.disabled !== true), `${retainedId} must remain available for non-default use`)
   }
-  for (const disabledId of ['deepseek-account', 'llm-deepseek-account', 'account-controller', 'ui-settings-account', 'product-analytics']) {
-    assert.equal(entries.find(entry => entry.id === disabledId)?.disabled, true, `${disabledId} account login must be disabled in the product profile`)
+  for (const retainedId of ['deepseek-account', 'llm-deepseek-account', 'account-controller', 'ui-settings-account']) {
+    assert.ok(entries.some(entry => entry.id === retainedId && entry.disabled !== true), `${retainedId} account support must remain available`)
+  }
+  for (const disabledId of ['product-analytics', 'ui-brand-official']) {
+    assert.equal(entries.find(entry => entry.id === disabledId)?.disabled, true, `${disabledId} must remain disabled by the product patch`)
   }
   for (const retainedId of ['authorization', 'credentials', 'llm-pi-ai', 'llm-deepseek']) {
     assert.ok(entries.some(entry => entry.id === retainedId && entry.disabled !== true), `${retainedId} must remain available for API-key/custom-provider configuration`)

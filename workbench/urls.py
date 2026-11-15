@@ -2,16 +2,25 @@ from __future__ import annotations
 
 from django.urls import path
 
-from . import api, views, workflow_views
+from . import api, views, workflow_views, product_fact_restore_api
 from .customers import api as customer_api
 from .customers import views as customer_views
 from .erpnext import api as erpnext_api
 from .intake import api as intake_api
 from .requirements import api as requirement_api
 from .execution_plans import api as execution_plan_api
+from . import canvas_workflow_api, native_artifact_api, dispatch_api, canvas_workflow_definition_api
 
 
 urlpatterns = [
+    path("api/native-artifacts", native_artifact_api.register),
+    path("api/native-artifacts/<uuid:run_id>/<uuid:version_id>/<str:action>", native_artifact_api.read),
+    path("api/canvas-workflow-runs", canvas_workflow_api.runs),
+    path("api/canvas-workflow-definitions", canvas_workflow_definition_api.definitions),
+    path("api/dispatches", dispatch_api.create_dispatch),
+    path("api/dispatches/inbox", dispatch_api.list_dispatches),
+    path("api/dispatches/<str:dispatch_id>/claim", dispatch_api.claim_dispatch),
+    path("api/dispatches/<str:dispatch_id>/receipt", dispatch_api.receipt_dispatch),
     path("", views.task_list, name="task-list"),
     path("home", views.home, name="home"),
     path("products", views.products, name="products"),
@@ -42,6 +51,7 @@ urlpatterns = [
     path("api/intake/mappings/<str:mapping_id>/candidates", intake_api.create_candidate),
     path("api/intake/candidates", intake_api.candidates),
     path("api/intake/candidates/<str:candidate_id>", intake_api.candidate),
+    path("api/intake/candidates/<str:candidate_id>/apply", intake_api.apply_product_candidate),
     path("api/intake/candidates/<str:candidate_id>/links", intake_api.create_candidate_link),
     path("api/intake/candidates/<str:candidate_id>/evidence", intake_api.evidence_collection),
     path("api/intake/candidates/<str:candidate_id>/requirement-drafts", requirement_api.create_requirement_draft),
@@ -84,6 +94,18 @@ urlpatterns = [
         api.dispatch_workflow_subtask,
     ),
     path(
+        "api/workflow-tasks/<str:workflow_id>/subtasks/<str:subtask_id>/native-assignment",
+        api.begin_native_workflow_assignment,
+    ),
+    path(
+        "api/workflow-tasks/<str:workflow_id>/native-assignments/<str:assignment_id>/submit",
+        api.submit_native_workflow_assignment,
+    ),
+    path(
+        "api/workflow-tasks/<str:workflow_id>/native-assignments/<str:assignment_id>/bind",
+        api.bind_native_workflow_assignment,
+    ),
+    path(
         "api/workflow-tasks/<str:workflow_id>/subtasks/<str:subtask_id>/retry",
         api.retry_workflow_subtask,
     ),
@@ -106,6 +128,8 @@ urlpatterns = [
     path("api/tasks/demo", api.create_demo_task),
     path("api/tasks/<str:task_id>", api.get_task),
     path("api/product-library", api.product_library),
+    path("api/products/<str:product_id>/fact-restoration/preview", product_fact_restore_api.preview),
+    path("api/products/<str:product_id>/fact-restoration/apply", product_fact_restore_api.apply),
     path(
         "api/products/<str:product_id>/revisions",
         api.product_revisions,

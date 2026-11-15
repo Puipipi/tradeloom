@@ -20,6 +20,10 @@ function cleanText(value, max = MAX_TEXT) {
   return value.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, max)
 }
 
+function optionalBoolean(value) {
+  return typeof value === 'boolean' ? value : null
+}
+
 function optionalService(ctx, name) {
   try { return typeof ctx.get === 'function' ? ctx.get(name) : undefined }
   catch { return undefined }
@@ -64,8 +68,8 @@ function projectSkills(snapshot) {
       description: cleanText(skill?.description),
       source: SKILL_SOURCES.has(skill?.source) ? skill.source : 'custom',
       invocation: {
-        modelInvocable: invocation?.modelInvocable === true,
-        userInvocable: invocation?.userInvocable === true,
+        modelInvocable: optionalBoolean(invocation?.modelInvocable),
+        userInvocable: optionalBoolean(invocation?.userInvocable),
       },
     }]
   })

@@ -41,7 +41,7 @@ test('official DSH loader composes base, Web, and TradeLoom bundles from a tempo
   assert.ok(entries.some(entry => entry.id === 'tradeloom-business-shell-host' && entry.name === '@tradeloom/dsh-business-shell'))
   assert.equal(entries.find(entry => entry.id === 'agent-preset-registry')?.config?.default, 'tradeloom-center')
   for (const preset of ['preset-standard', 'preset-ptc', 'preset-minimal', 'preset-cordis']) {
-    assert.equal(entries.find(entry => entry.id === preset)?.disabled, true)
+    assert.ok(entries.some(entry => entry.id === preset && entry.disabled !== true), `${preset} must remain available for non-default use`)
   }
   const manifest = JSON.parse(await readFile(path.join(ownBundleDir, 'package.json'), 'utf8'))
   assert.deepEqual(manifest.dsh.client.inject, [

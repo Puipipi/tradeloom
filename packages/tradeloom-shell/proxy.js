@@ -21,6 +21,11 @@ const MAX_JSON_BODY_BYTES = 2_621_440
 const MAX_INTAKE_MULTIPART_BODY_BYTES = 20 * 1024 * 1024 + 64 * 1024
 const MAX_NARRATIVE_MULTIPART_BODY_BYTES = 2 * 1024 * 1024 + 64 * 1024
 
+export function businessProxyEnabled(config = {}) {
+  if (config.businessProxyEnabled !== undefined && typeof config.businessProxyEnabled !== 'boolean') throw new TypeError('invalid_business_proxy_config')
+  return config.businessProxyEnabled ?? true
+}
+
 function isJsonContentType(value) {
   const mediaType = String(value ?? '').split(';', 1)[0].trim().toLowerCase()
   return mediaType === 'application/json' || /^application\/[a-z0-9!#$&^_.+-]+\+json$/u.test(mediaType)
@@ -85,6 +90,7 @@ function mappedPath(req, route) {
 export function createBusinessProxyHandler(ctx, alias, dependencies = {}) {
   const route = BUSINESS_PROXY_ROUTES.find(item => item.alias === alias)
   if (!route) throw new Error(`Unknown TradeLoom business proxy alias: ${alias}`)
+  const enabled = businessProxyEnabled(dependencies)
   const requestUpstream = dependencies.request ?? http.request
   const upstreamPort = dependencies.upstreamPort ?? Number(process.env.TRADELOOM_DJANGO_PORT ?? 3090)
 
@@ -93,6 +99,19 @@ export function createBusinessProxyHandler(ctx, alias, dependencies = {}) {
     if (rejection !== undefined) {
       res.statusCode = rejection
       res.end()
+      return
+    }
+
+    if (!enabled) {
+      res.statusCode = 503
+      res.setHeader('cache-control', 'no-store')
+      if (route.alias === 'business') {
+        res.setHeader('content-type', 'text/html; charset=utf-8')
+        res.end('<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>业务服务未连接</title><body><h1>业务服务未连接</h1><p>当前为隔离测试模式</p></body></html>')
+      } else {
+        res.setHeader('content-type', 'application/json; charset=utf-8')
+        res.end(JSON.stringify({ error: 'business_proxy_disabled' }))
+      }
       return
     }
 
@@ -114,6 +133,10 @@ export function createBusinessProxyHandler(ctx, alias, dependencies = {}) {
       && mediaType === 'multipart/form-data' && !hasContentLength) {
       bufferLimit = MAX_NARRATIVE_MULTIPART_BODY_BYTES
       oversizedMessage = 'TradeLoom narrative upload body is too large'
+    } else if (route.alias === 'business-api' && method === 'POST' && pathname === '/business-api/tasks'
+      && mediaType === 'multipart/form-data' && !hasContentLength) {
+      bufferLimit = MAX_INTAKE_MULTIPART_BODY_BYTES
+      oversizedMessage = 'TradeLoom task upload body is too large'
     }
     if (bufferLimit !== undefined) {
       const chunks = []

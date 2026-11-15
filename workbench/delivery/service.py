@@ -1132,6 +1132,7 @@ def list_workflow_deliverables(workflow_id: str) -> dict[str, Any]:
                     "version": version.version,
                     "status": version.status,
                     "sha256": version.sha256,
+                    "byte_size": get_artifact_byte_size(version),
                     "source_product_versions": version.source_product_versions,
                     "created_at": version.created_at.isoformat(),
                     "preview_url": (
@@ -1183,6 +1184,11 @@ def get_artifact_version(workflow_id: str, version_id: str) -> tuple[ArtifactVer
         )
     except ArtifactVersion.DoesNotExist as exc:
         raise DeliveryNotFound("交付版本不存在") from exc
+    path, _ = _verified_artifact_file(version)
+    return version, path
+
+
+def _verified_artifact_file(version: ArtifactVersion) -> tuple[Path, bytes]:
     try:
         path = resolve_artifact_file(version.file_path)
     except (FileNotFoundError, DeliveryStorageError) as exc:
@@ -1194,7 +1200,18 @@ def get_artifact_version(workflow_id: str, version_id: str) -> tuple[ArtifactVer
     digest = hashlib.sha256(content).hexdigest()
     if digest != version.sha256:
         raise DeliveryConflict("登记的交付文件哈希不匹配")
-    return version, path
+    return path, content
+
+
+def get_artifact_byte_size(version: ArtifactVersion) -> int | None:
+    """Size of this registered, readable download object; unavailable is unknown."""
+    if version.artifact.artifact_type not in DELIVERY_FILES:
+        return None
+    try:
+        _, content = _verified_artifact_file(version)
+    except (DeliveryNotFound, DeliveryConflict, DeliveryStorageError, OSError):
+        return None
+    return len(content)
 
 
 def get_artifact_preview(workflow_id: str, version_id: str) -> tuple[ArtifactVersion, bytes, str]:

@@ -1,13 +1,14 @@
 import { createHash, randomBytes } from 'node:crypto'
-import { spawn } from 'node:child_process'
-import { open, lstat, mkdir, readFile, readdir, realpath, writeFile, copyFile, appendFile, rename } from 'node:fs/promises'
+import { spawn, execFileSync } from 'node:child_process'
+import { open, lstat, mkdir, readFile, readdir, realpath, writeFile, copyFile, appendFile, rename, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { createRequire } from 'node:module'
 import {
-  buildChildEnvironment, chooseAddress, ensureOwnedDirectory, ensureOwnedHome, getDefaultPaths,
+  buildChildEnvironment, chooseAddress, createNativeBridgeKey, ensureOwnedDirectory, ensureOwnedHome, getDefaultPaths,
   launcherPipeName, networkCandidates, reserveNamedPipe, startOwnedChild,
 } from './core.mjs'
+import { initializeFreshPluginProfile, installFreshPluginSeed } from './plugin-seed.mjs'
 
 export const INSTALLED_PROFILE_BUNDLES = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@tradeloom/dsh-business-shell']
 export const DATA_ROOT_MARKER = '.tradeloom-data-root-owned'
@@ -17,8 +18,64 @@ export const POSTGRES_MARKER_CONTENT = 'tradeloom-postgres-data-v1\n'
 export const POSTGRES_PORT = 55432
 export const DJANGO_PORT = 3090
 export const DSH_PORT = 3088
+export function validatePackagedPorts(value = { host: DSH_PORT, django: DJANGO_PORT, postgres: POSTGRES_PORT }) {
+  if (!value || Object.keys(value).sort().join(',') !== 'django,host,postgres' || Object.values(value).some(n => !Number.isInteger(n) || n < 1 || n > 65535) || new Set(Object.values(value)).size !== 3) throw new TypeError('invalid packaged port tuple')
+  return Object.freeze({ ...value })
+}
+export function parsePackagedPortFlags(argv) {
+  const names = { '--tradeloom-host-port': 'host', '--tradeloom-django-port': 'django', '--tradeloom-postgres-port': 'postgres' }
+  const result = {}
+  for (let i = 0; i < argv.length; i++) {
+    if (!Object.hasOwn(names, argv[i])) { if (String(argv[i]).startsWith('--tradeloom-') && String(argv[i]).includes('-port')) throw new TypeError('invalid packaged port flag'); continue }
+    const key = names[argv[i]], raw = argv[++i]
+    if (key in result || !/^[1-9][0-9]*$/.test(raw ?? '')) throw new TypeError('invalid packaged port flag')
+    result[key] = Number(raw)
+  }
+  return Object.keys(result).length ? validatePackagedPorts(result) : validatePackagedPorts()
+}
+async function verifyOwnedPostgresListener(data, port, fs, deps) {
+  const pidFile = path.join(data, 'postmaster.pid')
+  const stat = await fs.lstat(pidFile)
+  if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('owned PostgreSQL identity file invalid')
+  const lines = (await fs.readFile(pidFile, 'utf8')).split(/\r?\n/)
+  const pid = Number(lines[0]); const recordedPort = Number(lines[3])
+  if (!Number.isInteger(pid) || pid <= 0 || recordedPort !== port || path.resolve(lines[1] ?? '').toLowerCase() !== path.resolve(data).toLowerCase()) throw new Error('owned PostgreSQL identity mismatch')
+  const check = deps.listenerOwner ?? ((requestedPort) => {
+    const systemRoot = process.env.SystemRoot || 'C:/Windows'
+    const out = execFileSync(path.join(systemRoot, 'System32', 'netstat.exe'), ['-ano', '-p', 'tcp'], { encoding: 'utf8', windowsHide: true })
+    return out.split(/\r?\n/).some(line => { const fields = line.trim().split(/\s+/); return fields[0] === 'TCP' && fields[1] === `127.0.0.1:${requestedPort}` && fields[3] === 'LISTENING' && Number(fields[4]) === pid })
+  })
+  if (!(await check(port, pid))) throw new Error('owned PostgreSQL listener identity mismatch')
+}
 export const BUSINESS_SHELL_INVENTORY_FILE = '.tradeloom-business-shell-inventory.json'
 export const LEGACY_BUSINESS_SHELL_SHA256 = 'b86ae8b432b6a9cfb28582673d1867b0bfa7f39b8d9cd65c29f3ed692fb3766f'
+export const WINDOWS_LEGACY_PATH_LIMIT = 259
+
+// Windows 未启用 LongPathsEnabled 时，超过 259 字符的文件既不能被 Python 的
+// FileFinder 找到（表现为 ImportError: ... (unknown location)），也不能被
+// fs.readFile 读到（表现为 ENOENT）。发行包里的 Python 依赖树最深相对路径约
+// 109 字符，因此安装根目录长度直接决定运行时是否可用，这里在启动阶段显式拦下。
+export async function assertInstallPathBudget({ root, fs = { readdir }, platform = process.platform, limit = WINDOWS_LEGACY_PATH_LIMIT }) {
+  if (platform !== 'win32') return 0
+  const absolute = path.resolve(root)
+  let visited = 0
+  const pending = [absolute]
+  while (pending.length) {
+    const directory = pending.pop()
+    const entries = await fs.readdir(directory, { withFileTypes: true })
+    for (const entry of entries) {
+      visited += 1
+      const child = path.join(directory, entry.name)
+      if (child.length > limit) {
+        throw new Error('安装路径过长：' + child + ' 共 ' + child.length + ' 字符，超过 Windows 未启用长路径支持时的 '
+          + limit + ' 字符上限。请把织贸助手解压/安装到更短的目录（例如 D:\\Tradeloom），'
+          + '安装根目录合计不超过 ' + (limit - (child.length - absolute.length)) + ' 字符。')
+      }
+      if (entry.isDirectory()) pending.push(child)
+    }
+  }
+  return visited
+}
 
 const requiredPostgresEntrypoints = ['postgres', 'pg_ctl', 'initdb', 'psql', 'createdb']
 
@@ -41,6 +98,7 @@ function isInside(root, target) {
 
 export function validateInstalledManifest(manifest) {
   if (manifest?.schemaVersion !== 2 || manifest.deploymentMode !== 'packaged') throw new Error('安装版仅支持 packaged schemaVersion 2 manifest。')
+  if (manifest.sourceBuild?.shellMode !== undefined && manifest.sourceBuild.shellMode !== 'source') throw new Error('packaged manifest shellMode 无效。')
   if (!manifest.sourceBuild?.lock?.upstream || !manifest.sourceBuild.lock.patches
     || !/^[a-f0-9]{64}$/.test(manifest.sourceBuild.appMainSha256 ?? '')) throw new Error('packaged manifest 缺少 source build identity/hash。')
   const fixedPaths = [
@@ -52,6 +110,20 @@ export function validateInstalledManifest(manifest) {
     [manifest.resources?.postgresql?.root, 'resources/tradeloom/postgresql/pgsql'],
   ]
   if (fixedPaths.some(([actual, expected]) => actual !== expected)) throw new Error('packaged manifest resource roots 不符合固定安装布局。')
+  const hasArtifactNode = manifest.runtime?.node !== undefined || manifest.runtime?.nodeSha256 !== undefined
+  if (hasArtifactNode && (manifest.runtime?.node !== 'resources/runtime/primary-runtime/dependencies/node/bin/node.exe'
+    || !/^[a-f0-9]{64}$/.test(manifest.runtime?.nodeSha256 ?? ''))) {
+    throw new Error('packaged manifest runtime Node 路径或 SHA256 无效。')
+  }
+  const validator = manifest.sourceBuild.lock.nativeArtifactValidator
+  const hasValidator = validator !== undefined
+  if (hasValidator !== hasArtifactNode || (hasValidator && (!validator || typeof validator !== 'object' || Array.isArray(validator)
+    || Object.keys(validator).sort().join(',') !== 'nodeRelativePath,nodeSha256,receiptSha256'
+    || validator.nodeRelativePath !== 'apps/desktop/.desktop-build/targets/win-x64/runtime/primary-runtime/dependencies/node/bin/node.exe'
+    || !/^[a-f0-9]{64}$/.test(validator.nodeSha256 ?? '') || !/^[a-f0-9]{64}$/.test(validator.receiptSha256 ?? '')
+    || validator.nodeSha256 !== manifest.runtime.nodeSha256))) {
+    throw new Error('packaged manifest runtime Node validator 配置不匹配。')
+  }
   if (manifest.runtime?.version !== '3.12.14' || manifest.runtime?.providedBy !== 'official-electron-builder') throw new Error('packaged manifest 缺少官方 Python primary runtime。')
   for (const item of [manifest.resources.business, manifest.resources.businessShell, manifest.resources.pythonDependencies, manifest.resources.postgresql]) {
     if (!Number.isSafeInteger(item.fileCount) || item.fileCount < 1 || !Number.isSafeInteger(item.bytes) || item.bytes < 1 || !/^[a-f0-9]{64}$/.test(item.sha256 ?? '')) {
@@ -105,6 +177,54 @@ async function assertOrdinaryPath(root, target, fs = { lstat, realpath }) {
   const info = await fs.lstat(resolvedTarget)
   if (!info.isFile() && !info.isDirectory()) throw new Error('安装资源必须是普通文件或目录：' + resolvedTarget)
   return info
+}
+
+export async function acquireElectronSingleInstanceLock({ app, root, userDataPath, fs = { lstat, mkdir } } = {}) {
+  if (typeof root !== 'string' || !path.isAbsolute(root) || typeof userDataPath !== 'string' || !path.isAbsolute(userDataPath)) throw new TypeError('invalid Electron userData path')
+  const rootPath = path.resolve(root)
+  const targetPath = path.resolve(userDataPath)
+  if (!isInside(rootPath, targetPath)) throw new Error('Electron userData path escaped the owned LOCALAPPDATA root.')
+  const rootInfo = await fs.lstat(rootPath)
+  if (!rootInfo.isDirectory() || rootInfo.isSymbolicLink()) throw new Error('owned LOCALAPPDATA root is not an ordinary directory.')
+  let current = rootPath
+  for (const part of path.relative(rootPath, targetPath).split(path.sep).filter(Boolean)) {
+    current = path.join(current, part)
+    let info
+    try { info = await fs.lstat(current) }
+    catch (error) {
+      if (error.code !== 'ENOENT') throw error
+      try { await fs.mkdir(current) }
+      catch (mkdirError) { if (mkdirError.code !== 'EEXIST') throw mkdirError }
+      info = await fs.lstat(current)
+    }
+    if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('Electron userData path contains a non-ordinary directory.')
+  }
+  app.setPath('userData', targetPath)
+  const locked = app.requestSingleInstanceLock()
+  if (typeof locked !== 'boolean') throw new TypeError('Electron single-instance lock did not return a boolean.')
+  return locked
+}
+
+async function resolveOwnedStartupObservationPath(requested, dataRoot, logsRoot, platform, fs) {
+  if (typeof requested !== 'string' || !requested) return undefined
+  const resolve = platform === 'win32' ? path.win32.resolve : path.resolve
+  const target = resolve(logsRoot, 'desktop-startup-observation.jsonl')
+  const requestedPath = resolve(requested)
+  const same = platform === 'win32'
+    ? requestedPath.toLowerCase() === target.toLowerCase()
+    : requestedPath === target
+  if (!same) return undefined
+  try {
+    await assertOrdinaryPath(dataRoot, logsRoot, fs)
+    const directoryInfo = await fs.lstat(logsRoot)
+    if (!directoryInfo.isDirectory() || directoryInfo.isSymbolicLink()) return undefined
+    let fileInfo
+    try { fileInfo = await fs.lstat(target) } catch (error) { if (error.code !== 'ENOENT') return undefined }
+    if (fileInfo && (!fileInfo.isFile() || fileInfo.isSymbolicLink())) return undefined
+    return target
+  } catch {
+    return undefined
+  }
 }
 
 async function verifyBusinessFiles(manifest, backendRoot, fs) {
@@ -399,19 +519,21 @@ function pythonRunArgs(pythonPath, backendRoot, packagesRoot, managePath, django
   return ['-I', '-B', '-c', runner, spec]
 }
 
-function makeDjangoEnv(isolated, host, password, paths) {
+function makeDjangoEnv(isolated, host, password, paths, nativeBridgeKey, ports, artifactNode) {
   return {
     ...isolated,
+    TRADELOOM_NATIVE_BRIDGE_KEY: nativeBridgeKey,
     TRADELOOM_DSH_EMBED: '1',
     TRADELOOM_DSH_ALLOWED_HOSTS: host,
-    TRADELOOM_DSH_CSRF_TRUSTED_ORIGINS: 'http://' + host + ':' + DSH_PORT,
+    TRADELOOM_DSH_CSRF_TRUSTED_ORIGINS: new URL('http://' + host + ':' + ports.host).origin,
     TRADELOOM_DB_NAME: 'tradeloom',
     TRADELOOM_DB_USER: 'tradeloom',
     TRADELOOM_DB_HOST: '127.0.0.1',
-    TRADELOOM_DB_PORT: String(POSTGRES_PORT),
+    TRADELOOM_DB_PORT: String(ports.postgres),
     TRADELOOM_DB_PASSWORD: password,
     TRADELOOM_MEDIA_ROOT: path.join(paths.dataRoot, 'media'),
     TRADELOOM_ARTIFACT_ROOT: path.join(paths.dataRoot, 'artifacts'),
+    ...(artifactNode ? { TRADELOOM_ARTIFACT_NODE: artifactNode.path, TRADELOOM_ARTIFACT_NODE_SHA256: artifactNode.sha256 } : {}),
   }
 }
 
@@ -426,8 +548,10 @@ async function waitForListener(host, port, record, timeoutMs, delay, connect) {
   throw new Error('Django 未在 ' + timeoutMs / 1000 + ' 秒内监听 127.0.0.1:' + port + '。')
 }
 
-export async function bootstrapInstalledDesktop({ env = process.env, processEnv = process.env, appPath, resourcesPath, platform = process.platform, deps = {} } = {}) {
-  const fs = deps.fs ?? { lstat, readFile, writeFile, readdir, mkdir, realpath, copyFile, rename }
+export async function bootstrapInstalledDesktop({ env = process.env, processEnv = process.env, appPath, resourcesPath, platform = process.platform, deps = {}, ports: requestedPorts } = {}) {
+  const requestedStartupObservationPath = processEnv.DSH_DESKTOP_STARTUP_LOG_PATH
+  const ports = validatePackagedPorts(requestedPorts)
+  const fs = deps.fs ?? { lstat, readFile, writeFile, readdir, mkdir, realpath, stat, copyFile, rename }
   const pathsFactory = deps.getDefaultPaths ?? getDefaultPaths
   const ownDirectory = deps.ensureOwnedDirectory ?? ensureOwnedDirectory
   const ownHome = deps.ensureOwnedHome ?? ensureOwnedHome
@@ -444,6 +568,7 @@ export async function bootstrapInstalledDesktop({ env = process.env, processEnv 
   const manifest = { ...rawManifest,
     runtimeRoot: resolvePackagedPath(resourcesPath, rawManifest.runtime.root, 'primary runtime'),
     python: resolvePackagedPath(resourcesPath, rawManifest.runtime.python, 'primary Python'),
+    artifactNode: rawManifest.runtime.node === undefined ? undefined : resolvePackagedPath(resourcesPath, rawManifest.runtime.node, 'primary runtime Node'),
     backend: resolvePackagedPath(resourcesPath, rawManifest.resources.business.root, 'business backend'),
     shell: resolvePackagedPath(resourcesPath, rawManifest.resources.businessShell.root, 'business-shell'),
     packages: resolvePackagedPath(resourcesPath, rawManifest.resources.pythonDependencies.root, 'Python packages'),
@@ -456,8 +581,19 @@ export async function bootstrapInstalledDesktop({ env = process.env, processEnv 
   const verifiedShell = await verifyBusinessShell(manifest, manifest.shell, fs)
   await assertOrdinaryPath(resourcesPath, manifest.python, fs)
   await assertOrdinaryPath(resourcesPath, manifest.runtimeRoot, fs)
+  if (manifest.artifactNode) {
+    await assertOrdinaryPath(resourcesPath, manifest.artifactNode, fs)
+    const nodeInfo = await fs.lstat(manifest.artifactNode)
+    if (!nodeInfo.isFile() || nodeInfo.isSymbolicLink()) throw new Error('安装版 runtime Node 必须是普通文件。')
+    const nodeSha256 = createHash('sha256').update(await fs.readFile(manifest.artifactNode)).digest('hex')
+    if (nodeSha256 !== rawManifest.runtime.nodeSha256) throw new Error('安装版 runtime Node SHA256 不匹配。')
+  }
   await assertOrdinaryPath(resourcesPath, manifest.packages, fs)
   await assertOrdinaryPath(resourcesPath, manifest.postgresRoot, fs)
+  if (platform === 'win32') {
+    await assertInstallPathBudget({ root: manifest.runtimeRoot, platform })
+    await assertInstallPathBudget({ root: manifest.packages, platform })
+  }
   await verifyResourceTree(manifest.packages, '', rawManifest.resources.pythonDependencies, fs, 'Python dependencies')
   await verifyResourceTree(manifest.postgresRoot, 'pgsql', rawManifest.resources.postgresql, fs, 'PostgreSQL')
   const pgPaths = Object.fromEntries(requiredPostgresEntrypoints.map(name => {
@@ -471,12 +607,22 @@ export async function bootstrapInstalledDesktop({ env = process.env, processEnv 
     if (createHash('sha256').update(await fs.readFile(file)).digest('hex') !== entry.sha256.toLowerCase()) throw new Error('PostgreSQL entrypoint hash mismatch：' + name)
   }
   if (platform !== 'win32') throw new Error('安装版 PostgreSQL desktop bootstrap 仅支持 Windows。')
-  const paths = pathsFactory(env)
-  if (paths.explicitDataRoot) await ownDirectory(paths.dataRoot, DATA_ROOT_MARKER, DATA_ROOT_MARKER_CONTENT)
-  await ownHome(paths.home)
+  const initialPaths = pathsFactory(env)
+  const canonicalRoot = initialPaths.explicitDataRoot
+    ? await ownDirectory(initialPaths.dataRoot, DATA_ROOT_MARKER, DATA_ROOT_MARKER_CONTENT)
+    : undefined
+  const canonicalHome = await ownHome(initialPaths.home)
+  const root = canonicalRoot ?? path.dirname(canonicalHome)
+  const [initialIdentity, canonicalIdentity] = await Promise.all([
+    fs.stat(initialPaths.dataRoot, { bigint: true }), fs.stat(root, { bigint: true }),
+  ])
+  if (!initialIdentity.isDirectory() || !canonicalIdentity.isDirectory() || initialIdentity.dev === 0n || initialIdentity.ino === 0n
+    || initialIdentity.dev !== canonicalIdentity.dev || initialIdentity.ino !== canonicalIdentity.ino) throw new Error('packaged data root identity mismatch')
+  const paths = { ...pathsFactory({ ...env, TRADELOOM_DATA_ROOT: root }), explicitDataRoot: initialPaths.explicitDataRoot, home: canonicalHome }
   const agentsHome = await ownDirectory(paths.agentsHome, '.tradeloom-agents-owned', 'tradeloom-agents-home-v1\n')
   const workspace = await ownDirectory(paths.workspace, '.tradeloom-workspace-owned', 'tradeloom-workspace-v1\n')
   const logs = await ownDirectory(paths.logs, '.tradeloom-logs-owned', 'tradeloom-logs-v1\n')
+  const startupObservationPath = await resolveOwnedStartupObservationPath(requestedStartupObservationPath, root, logs, platform, fs)
   const media = await ownDirectory(path.join(paths.dataRoot, 'media'), '.tradeloom-media-owned', 'tradeloom-media-v1\n')
   const artifacts = await ownDirectory(path.join(paths.dataRoot, 'artifacts'), '.tradeloom-artifacts-owned', 'tradeloom-artifacts-v1\n')
   for (const directory of [paths.appData, paths.localAppData, paths.xdgCache, paths.xdgConfig, paths.xdgData]) {
@@ -486,25 +632,35 @@ export async function bootstrapInstalledDesktop({ env = process.env, processEnv 
     DSH_WORKSPACE: workspace, TRADELOOM_DSH_WORKSPACE: workspace,
     TRADELOOM_DSH_APP_HOME: paths.home, TEMP: paths.localAppData, TMP: paths.localAppData,
   })
+  const nativeBridgeKey = (deps.createNativeBridgeKey ?? createNativeBridgeKey)()
+  if (!/^[a-f0-9]{64}$/.test(nativeBridgeKey)) throw new TypeError('Native bridge key generator returned an invalid key.')
   delete isolated.PGPASSWORD
   for (const [name, expected] of Object.entries({ DSH_HOME: paths.home, DSH_AGENTS_HOME: agentsHome, DSH_WORKSPACE: workspace,
     TRADELOOM_DSH_APP_HOME: paths.home, LOCALAPPDATA: paths.localAppData })) {
     if (path.resolve(isolated[name] ?? '').toLowerCase() !== path.resolve(expected).toLowerCase()) throw new Error('无法确认安装版独立运行目录：' + name)
   }
   for (const name of Object.keys(processEnv)) delete processEnv[name]
-  Object.assign(processEnv, isolated, { DSH_DESKTOP_OPEN_DEVTOOLS: '0' })
+  Object.assign(processEnv, isolated, { DSH_DESKTOP_OPEN_DEVTOOLS: '0', TRADELOOM_NATIVE_BRIDGE_KEY: nativeBridgeKey })
+  if (startupObservationPath) processEnv.DSH_DESKTOP_STARTUP_LOG_PATH = startupObservationPath
+  const userDataPath = path.join(paths.localAppData, 'TradeLoom', 'desktop', 'user-data')
+  if (deps.acquireSingleInstanceLock) {
+    const locked = await deps.acquireSingleInstanceLock(userDataPath, paths.localAppData)
+    if (locked === false) return { kind: 'existing-owner' }
+    if (locked !== true) throw new TypeError('Electron single-instance lock did not return a boolean.')
+  }
   const candidates = (deps.networkCandidates ?? networkCandidates)(await deps.readNetworkAdapters())
   const requested = await deps.chooseNetworkAddress(candidates)
   const host = (deps.chooseAddress ?? chooseAddress)(candidates, requested)
   try {
-    await (deps.assertPortsAvailable ?? (async () => {}))([[host, DSH_PORT], ['127.0.0.1', DJANGO_PORT]])
+    await (deps.assertPortsAvailable ?? (async () => {}))([[host, ports.host], ['127.0.0.1', ports.django]])
   } catch {
-    throw new Error('桌面服务端口 3088 或 3090 被其他进程占用；织贸助手不会终止该进程。')
+    throw new Error('桌面服务端口 ' + ports.host + ' 或 ' + ports.django + ' 被其他进程占用；织贸助手不会终止该进程。')
   }
   processEnv.TRADELOOM_DSH_BIND_HOST = host
-  processEnv.TRADELOOM_DSH_BIND_PORT = String(DSH_PORT)
+  processEnv.TRADELOOM_DSH_BIND_PORT = String(ports.host)
   processEnv.DSH_DESKTOP_BIND_HOST = host
-  processEnv.DSH_DESKTOP_BIND_PORT = String(DSH_PORT)
+  processEnv.DSH_DESKTOP_BIND_PORT = String(ports.host)
+  processEnv.TRADELOOM_DJANGO_PORT = String(ports.django)
   const shellDestination = path.join(paths.home, 'profiles', 'desktop', 'node_modules', '@tradeloom', 'dsh-business-shell')
   const profileDir = path.dirname(path.dirname(path.dirname(shellDestination)))
   const lockAddress = (deps.launcherPipeName ?? launcherPipeName)(paths.home, platform)
@@ -550,7 +706,15 @@ export async function bootstrapInstalledDesktop({ env = process.env, processEnv 
       const profilesDir = path.dirname(profileDir)
       await fs.mkdir(profilesDir, { recursive: true })
       await assertOrdinaryPath(paths.home, profilesDir, fs)
-      await (deps.initializeProfile ?? initializeOfficialProfile)(appPath, profileDir, INSTALLED_PROFILE_BUNDLES)
+      await initializeFreshPluginProfile({
+        appPath,
+        profileDir,
+        resourcesPath,
+        bundles: INSTALLED_PROFILE_BUNDLES,
+        fs,
+        initializeOfficialProfile: deps.initializeProfile ?? initializeOfficialProfile,
+        seedProfile: deps.seedFreshPluginProfile ?? installFreshPluginSeed,
+      })
     }
     else if (profileInfo.isSymbolicLink() || !profileInfo.isDirectory()) throw new Error('已有 desktop profile 不是普通目录；拒绝接管。')
     await assertOrdinaryPath(paths.home, profileDir, fs)
@@ -569,11 +733,12 @@ export async function bootstrapInstalledDesktop({ env = process.env, processEnv 
     const status = await controller(pgCtl, ['status', '-D', postgresData], { cwd: paths.workspace, env: isolated, logPath: path.join(logs, 'postgres-controller.log') })
     if (status.error) throw status.error
     if (status.code === 0) {
+      await verifyOwnedPostgresListener(postgresData, ports.postgres, fs, deps)
       postgresActive = true
-      if (!(await connect('127.0.0.1', POSTGRES_PORT))) throw new Error('owned PostgreSQL 正在运行但未监听 127.0.0.1:55432。')
+      if (!(await connect('127.0.0.1', ports.postgres))) throw new Error('owned PostgreSQL 未监听 127.0.0.1:' + ports.postgres + '。')
     } else {
-      try { await (deps.assertPortsAvailable ?? (async () => {}))([['127.0.0.1', POSTGRES_PORT]]) }
-      catch { throw new Error('数据库端口 55432 被其他进程占用；织贸助手不会终止该进程。') }
+      try { await (deps.assertPortsAvailable ?? (async () => {}))([['127.0.0.1', ports.postgres]]) }
+      catch { throw new Error('数据库端口 ' + ports.postgres + ' 被其他进程占用；织贸助手不会终止该进程。') }
       if (!initialized) {
         const entries = await fs.readdir(postgresData)
         if (entries.length) throw new Error('PostgreSQL data 目录不是空目录；拒绝初始化或清空。')
@@ -584,33 +749,35 @@ export async function bootstrapInstalledDesktop({ env = process.env, processEnv 
       }
       postgresActive = true
       postgresStartedHere = true
-      const start = await controller(pgCtl, ['start', '-D', postgresData, '-o', '-h 127.0.0.1 -p ' + POSTGRES_PORT, '-w', '-t', '45'],
+      const start = await controller(pgCtl, ['start', '-D', postgresData, '-o', '-h 127.0.0.1 -p ' + ports.postgres, '-w', '-t', '45'],
         { cwd: paths.workspace, env: isolated, logPath: path.join(logs, 'postgres-controller.log') })
       if (start.error || start.code !== 0) throw new Error('owned PostgreSQL 启动失败（exit=' + (start.code ?? 'null') + '）。')
     }
-    const dbCheck = await runFile(psql, ['-h', '127.0.0.1', '-p', String(POSTGRES_PORT), '-U', 'tradeloom', '-d', 'postgres', '-tAc', "SELECT 1 FROM pg_database WHERE datname = 'tradeloom'"],
+    const dbCheck = await runFile(psql, ['-h', '127.0.0.1', '-p', String(ports.postgres), '-U', 'tradeloom', '-d', 'postgres', '-tAc', "SELECT 1 FROM pg_database WHERE datname = 'tradeloom'"],
       { cwd: paths.workspace, env: dbEnv, logPath: path.join(logs, 'postgres-check.log') })
     if (dbCheck.error || dbCheck.code !== 0) throw new Error('owned PostgreSQL connection check failed (' + (dbCheck.code ?? 'null') + ').')
     if (String(dbCheck.stdout ?? '').trim() !== '1') {
-      const created = await runFile(createdb, ['-h', '127.0.0.1', '-p', String(POSTGRES_PORT), '-U', 'tradeloom', 'tradeloom'],
+      const created = await runFile(createdb, ['-h', '127.0.0.1', '-p', String(ports.postgres), '-U', 'tradeloom', 'tradeloom'],
         { cwd: paths.workspace, env: dbEnv, logPath: path.join(logs, 'postgres-createdb.log') })
       if (created.error || created.code !== 0) throw new Error('owned PostgreSQL tradeloom database creation failed (' + (created.code ?? 'null') + ').')
     }
 
-    const djangoEnv = makeDjangoEnv(isolated, host, secret.password, { ...paths, media, artifacts })
+    const djangoEnv = makeDjangoEnv(isolated, host, secret.password, { ...paths, media, artifacts }, nativeBridgeKey, ports,
+      manifest.artifactNode ? { path: manifest.artifactNode, sha256: rawManifest.runtime.nodeSha256 } : undefined)
     const runPython = async djangoArgs => {
       const result = await runFile(manifest.python, pythonRunArgs(manifest.python, manifest.backend, manifest.packages, path.join(manifest.backend, 'manage.py'), djangoArgs),
         { cwd: workspace, env: djangoEnv, logPath: path.join(logs, 'django-startup.log') })
       if (result.error || result.code !== 0) throw new Error('Django ' + djangoArgs[0] + ' 失败（exit=' + (result.code ?? 'null') + '）。')
     }
     await runPython(['migrate', '--noinput'])
-    const djangoArgs = pythonRunArgs(manifest.python, manifest.backend, manifest.packages, path.join(manifest.backend, 'manage.py'), ['runserver', '--noreload', '127.0.0.1:' + DJANGO_PORT])
+    const djangoArgs = pythonRunArgs(manifest.python, manifest.backend, manifest.packages, path.join(manifest.backend, 'manage.py'), ['runserver', '--noreload', '127.0.0.1:' + ports.django])
     django = (deps.startOwnedChild ?? startOwnedChild)(manifest.python, djangoArgs, { cwd: workspace, env: djangoEnv, logPath: path.join(logs, 'django-startup.log'), logLabel: 'Django' })
     await django.spawned
-    await waitForListener('127.0.0.1', DJANGO_PORT, django, deps.readyTimeoutMs ?? 60_000, delay, connect)
+    await waitForListener('127.0.0.1', ports.django, django, deps.readyTimeoutMs ?? 60_000, delay, connect)
     await deps.installQuitHandler(async () => cleanup())
+    if (manifest.sourceBuild.shellMode === 'source') processEnv.TRADELOOM_SOURCE_SHELL_CANDIDATE = '1'
     await deps.importMain()
-    const ready = Promise.resolve().then(() => deps.waitForDesktopReady(host, DSH_PORT, deps.readyTimeoutMs ?? 60_000)).catch(async error => {
+    const ready = Promise.resolve().then(() => deps.waitForDesktopReady(host, ports.host, deps.readyTimeoutMs ?? 60_000)).catch(async error => {
       await cleanup().catch(() => {})
       throw error
     })

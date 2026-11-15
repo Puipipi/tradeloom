@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { lstat, realpath, stat } from 'node:fs/promises'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { ROLE_IDS, ROLE_PRESETS } from './roles.js'
-import { HOME_MARKER_VALUE, resolveOwnedHome, roleWorkspacePath } from './state.js'
+import { createStateStore, HOME_MARKER_VALUE, resolveOwnedHome, roleWorkspacePath } from './state.js'
 
 export const AGENT_CONFIGURATION_ROUTE = '/tradeloom/agent-configuration'
 const PRESET_MODULE = '@deepseek-ai/dsh-agent-preset'
@@ -65,6 +65,18 @@ function revisionOf(config) {
   return createHash('sha256').update(canonical(managedRows(config))).digest('hex')
 }
 
+function trustedManagedConfigurationDigest(config) {
+  if (!isRecord(config) || !Array.isArray(config.plugins)) {
+    throw new ConfigurationError('managed-configuration-schema-invalid', 503)
+  }
+  for (const row of config.plugins) {
+    if (isManagedRow(row) && (!isRecord(row) || typeof row.name !== 'string' || !isRecord(row.config))) {
+      throw new ConfigurationError('managed-configuration-schema-invalid', 503)
+    }
+  }
+  return revisionOf(config)
+}
+
 function profileOwnedPath(profile, home, editor) {
   if (!isRecord(profile) || !PROFILE_NAMES.has(profile.name)
     || !samePath(profile.home, home)) return false
@@ -101,7 +113,11 @@ function contextService(ctx, name) {
   catch { return undefined }
 }
 
-async function accessForRole(ctx, role, dependencies) {
+function serviceIdentity(value) {
+  return value?.[Symbol.for('cordis.original')] ?? value
+}
+
+async function accessForRole(ctx, role, dependencies, { providerGuard } = {}) {
   const editor = contextService(ctx, 'configEditor')
   const profile = contextService(ctx, 'profileContext')
   if (!editor || typeof editor.entries !== 'function' || typeof editor.edit !== 'function') {
@@ -111,6 +127,7 @@ async function accessForRole(ctx, role, dependencies) {
   try { home = await (dependencies.resolveOwnedHome ?? resolveOwnedHome)() }
   catch { throw new ConfigurationError('profile-not-owned', 403) }
   await validateOwnedProfile(profile, home, editor)
+  if (providerGuard) await providerGuard({ editor, profile, home, role })
 
   const activeFiberState = dependencies.FiberState?.ACTIVE ?? ACTIVE_FIBER_STATE
   let entries
@@ -138,8 +155,10 @@ function activePresetEntry(access, role) {
   return matches[0]
 }
 
-async function withRoleWriteLock(home, role, callback) {
-  const key = `${resolve(home).toLocaleLowerCase('en-US')}\0${role}`
+async function withRoleWriteLock(home, _role, callback) {
+  // Managed configuration revisions are Host-wide, so supported writes for
+  // different roles must share one ordering boundary.
+  const key = resolve(home).toLocaleLowerCase('en-US')
   const prior = configurationWriteFlights.get(key) ?? Promise.resolve()
   const next = prior.catch(() => {}).then(callback)
   configurationWriteFlights.set(key, next)
@@ -344,19 +363,29 @@ async function resolvePresetState(ctx, preset) {
   } catch { return { available: false, healthy: false } }
 }
 
-async function rollbackManagedConfig(ctx, access, role, previousConfig, failedConfig) {
+async function rollbackManagedConfig(ctx, access, role, previousConfig, failedConfig, providerGuard, expectedManagedRows, expectedHealthy = false) {
   try {
     const entry = activePresetEntry(access, role)
     await access.editor.edit(entry, (currentConfig, inherited) => {
       if (revisionOf(currentConfig) !== revisionOf(failedConfig)) throw new ConfigurationError('revision-conflict', 409)
       return restoreManagedRows(currentConfig ?? inherited, previousConfig)
     })
+    if (providerGuard) {
+      try { await providerGuard('after-compensation-write') }
+      catch { return 'unknown' }
+    }
     const afterWrite = activePresetEntry(access, role)
     if (revisionOf(afterWrite.options.config) !== revisionOf(previousConfig)) return 'conflict'
     const resolved = await resolvePresetState(ctx, ROLE_PRESETS[role])
     if (!resolved.available) return 'failed'
+    if (providerGuard) {
+      try { await providerGuard('after-compensation-resolve') }
+      catch { return 'unknown' }
+    }
     const afterResolve = activePresetEntry(access, role)
     if (revisionOf(afterResolve.options.config) !== revisionOf(previousConfig)) return 'conflict'
+    if (expectedManagedRows && canonical(managedRows(afterResolve.options.config)) !== canonical(expectedManagedRows)) return 'failed'
+    if (expectedHealthy && !resolved.healthy) return 'failed'
     return { status: 'restored', healthy: resolved.healthy }
   } catch (error) { return error instanceof ConfigurationError && error.status === 409 ? 'conflict' : 'failed' }
 }
@@ -388,9 +417,16 @@ async function validateSkillPaths(value, role, home, dependencies) {
     || !Array.isArray(value.customSkillDirs) || value.customSkillDirs.length > 32) {
     throw new ConfigurationError('invalid-configuration')
   }
-  const root = await (dependencies.roleWorkspacePath ?? roleWorkspacePath)(role)
+  const root = dependencies.roleWorkspacePathReadOnly
+    ? await dependencies.roleWorkspacePathReadOnly(role)
+    : await (dependencies.roleWorkspacePath ?? roleWorkspacePath)(role)
   const rootReal = await realpath(root).catch(() => undefined)
-  if (!rootReal) throw new ConfigurationError('invalid-configuration')
+  if (!rootReal) {
+    if (dependencies.roleWorkspacePathReadOnly && value.customSkillDirs.length === 0) {
+      return { includeDefaultRoots: value.includeDefaultRoots, customSkillDirs: [] }
+    }
+    throw new ConfigurationError('invalid-configuration')
+  }
   const output = []
   const seen = new Set()
   for (const input of value.customSkillDirs) {
@@ -537,6 +573,514 @@ function sendFailure(res, failure) {
   json(res, status, { error: code })
 }
 
+function providerIdentity(access, role) {
+  return {
+    home: resolve(access.home).toLocaleLowerCase('en-US'), role, preset: ROLE_PRESETS[role],
+    profile: serviceIdentity(access.profile), editor: serviceIdentity(access.editor),
+  }
+}
+
+function sameProviderIdentity(left, right) {
+  return Boolean(left && right && left.home === right.home && left.role === right.role && left.preset === right.preset
+    && serviceIdentity(left.profile) === serviceIdentity(right.profile)
+    && serviceIdentity(left.editor) === serviceIdentity(right.editor))
+}
+
+function snapshotRestoreFailure(restore) {
+  if (restore === 'conflict') {
+    const error = new ConfigurationError('snapshot-restore-conflict', 409)
+    error.restoreStatus = 'conflict'
+    return error
+  }
+  if (restore?.status === 'restored') {
+    const error = new ConfigurationError('snapshot-restore-failed', 503)
+    error.restoreStatus = 'restored'
+    return error
+  }
+  const error = new ConfigurationError('snapshot-restore-outcome-unknown', 503)
+  error.restoreStatus = 'unknown'
+  return error
+}
+
+async function compensateSnapshotUpdate(ctx, access, role, previousConfig, updatedConfig, dependencies, providerGuard, expectedHealthy) {
+  try { await providerGuard('before-compensation') }
+  catch { return 'unknown' }
+  const expectedManagedRows = managedRows(previousConfig)
+  return rollbackManagedConfig(ctx, access, role, previousConfig, updatedConfig, providerGuard,
+    expectedManagedRows, expectedHealthy)
+}
+
+function validateMcpServerCollisions(currentConfig, servers) {
+  const rows = Array.isArray(currentConfig?.plugins) ? currentConfig.plugins : []
+  const serverNames = new Set()
+  for (const row of rows) {
+    if (!isManagedRow(row) && servers.some(server => server.id === row?.id)) {
+      throw new ConfigurationError('invalid-configuration')
+    }
+    if (isManagedRow(row) && row.id.startsWith(MCP_ID_PREFIX)) continue
+    if (row?.name !== MCP_MODULE) continue
+    const serverName = row?.config?.serverName
+    if (typeof serverName !== 'string' || !SERVER_NAME.test(serverName)) {
+      if (servers.length) throw new ConfigurationError('server-name-conflict', 409)
+      continue
+    }
+    serverNames.add(serverName)
+    if (servers.some(server => server.config.serverName === serverName || server.id === row.id)) {
+      throw new ConfigurationError('server-name-conflict', 409)
+    }
+  }
+  for (const server of servers) {
+    if (serverNames.has(server.config.serverName)) throw new ConfigurationError('server-name-conflict', 409)
+    serverNames.add(server.config.serverName)
+  }
+}
+
+async function applyManagedConfigurationCore(ctx, access, role, rawInput, dependencies, { providerGuard, onWriteStart } = {}) {
+  validateInputEnvelope(rawInput)
+  const entry = activePresetEntry(access, role)
+  const current = entry.options.config
+  const currentRevision = revisionOf(current)
+  if (rawInput?.expectedRevision !== currentRevision) throw new ConfigurationError('revision-conflict', 409)
+  const projection = projectManaged(current, role, access.home, dependencies.env ?? process.env)
+  if (!projection.editable) throw new ConfigurationError('unsupported-managed-config', 409)
+  const input = await validateInput(rawInput, role, access.home, ctx, dependencies, projection.deniedTools)
+  const preset = ROLE_PRESETS[role]
+  const beforeState = await resolvePresetState(ctx, preset)
+  if (!beforeState.available) throw new ConfigurationError('configuration-unavailable', 503)
+  if (providerGuard) await providerGuard('before-write')
+  const expected = input.expectedRevision
+  const nextValue = { mcpServers: input.mcpServers, skill: input.skill, deniedTools: input.deniedTools }
+  const intendedConfig = pluginRows({ ...nextValue, mcpServers: input.mcpServers }, current, current, role)
+  await onWriteStart?.({ role, beforeDigest: currentRevision, intendedDigest: revisionOf(intendedConfig) })
+  const beforeEditConfig = providerGuard ? structuredClone(current ?? {}) : undefined
+  let previousConfig
+  let updatedConfig
+  try {
+    await access.editor.edit(entry, (currentConfig, inherited) => {
+      if (revisionOf(currentConfig) !== expected) throw new ConfigurationError('revision-conflict', 409)
+      if (!projectManaged(currentConfig, role, access.home, dependencies.env ?? process.env).editable) {
+        throw new ConfigurationError('unsupported-managed-config', 409)
+      }
+      validateMcpServerCollisions(currentConfig, input.mcpServers)
+      const config = isRecord(currentConfig) ? currentConfig : inherited
+      previousConfig = structuredClone(config)
+      updatedConfig = pluginRows({ ...nextValue, mcpServers: input.mcpServers }, config, inherited, role)
+      return updatedConfig
+    })
+  } catch (error) {
+    if (!providerGuard) throw error
+    if (error instanceof ConfigurationError && error.code === 'revision-conflict' && !previousConfig && !updatedConfig) {
+      const conflict = new ConfigurationError('snapshot-restore-conflict', 409)
+      conflict.restoreStatus = 'conflict'
+      throw conflict
+    }
+
+    let observedConfig
+    try {
+      await providerGuard('after-edit-reject')
+      observedConfig = activePresetEntry(access, role).options.config
+    } catch {
+      throw snapshotRestoreFailure('unknown')
+    }
+    const expectedBefore = previousConfig ?? beforeEditConfig
+    const matchesManaged = (left, right) => revisionOf(left) === revisionOf(right)
+      && canonical(managedRows(left)) === canonical(managedRows(right))
+    if (previousConfig && updatedConfig && matchesManaged(observedConfig, updatedConfig)) {
+      throw snapshotRestoreFailure(await compensateSnapshotUpdate(ctx, access, role, previousConfig,
+        updatedConfig, dependencies, providerGuard, beforeState.healthy))
+    }
+    if (matchesManaged(observedConfig, expectedBefore)) {
+      const confirmedState = await resolvePresetState(ctx, preset)
+      let verifiedConfig
+      try {
+        await providerGuard('after-edit-reject-resolve')
+        if (serviceIdentity(contextService(ctx, 'configEditor')) !== serviceIdentity(access.editor)
+          || serviceIdentity(contextService(ctx, 'profileContext')) !== serviceIdentity(access.profile)) {
+          throw new ConfigurationError('snapshot-restore-outcome-unknown', 503)
+        }
+        verifiedConfig = activePresetEntry(access, role).options.config
+      } catch {
+        throw snapshotRestoreFailure('unknown')
+      }
+      if (!matchesManaged(verifiedConfig, expectedBefore)
+        || !confirmedState.available || beforeState.healthy && !confirmedState.healthy) {
+        throw snapshotRestoreFailure('unknown')
+      }
+      throw snapshotRestoreFailure({ status: 'restored', healthy: confirmedState.healthy })
+    }
+    throw snapshotRestoreFailure('conflict')
+  }
+  if (!updatedConfig || !previousConfig) throw new ConfigurationError('configuration-apply-failed', 503)
+  let compensationAttempted = false
+  let writtenRevision
+  try {
+    if (providerGuard) await providerGuard('after-write')
+    const afterWrite = activePresetEntry(access, role)
+    writtenRevision = revisionOf(updatedConfig)
+    if (revisionOf(afterWrite.options.config) !== writtenRevision) throw new ConfigurationError('revision-conflict', 409)
+
+    const afterState = await resolvePresetState(ctx, preset)
+    if (providerGuard) await providerGuard('after-resolve')
+    const afterResolve = activePresetEntry(access, role)
+    if (revisionOf(afterResolve.options.config) !== writtenRevision) throw new ConfigurationError('revision-conflict', 409)
+    if (!afterState.available || !afterState.healthy) {
+      if (providerGuard) {
+        compensationAttempted = true
+        throw snapshotRestoreFailure(await compensateSnapshotUpdate(ctx, access, role, previousConfig, updatedConfig, dependencies, providerGuard, beforeState.healthy))
+      }
+      const restore = await rollbackManagedConfig(ctx, access, role, previousConfig, updatedConfig)
+      if (restore === 'conflict') throw new ConfigurationError('revision-conflict', 409)
+      if (restore === 'failed' || restore?.status === 'restored' && beforeState.healthy && !restore.healthy) {
+        throw new ConfigurationError('configuration-restore-failed', 503)
+      }
+      throw new ConfigurationError('configuration-apply-failed', 503)
+    }
+  } catch (error) {
+    if (!providerGuard || !previousConfig || !updatedConfig || compensationAttempted) throw error
+    if (error?.code === 'snapshot-restore-outcome-unknown') throw error
+    if (error?.code === 'snapshot-restore-conflict') throw error
+    if (error?.code === 'revision-conflict') {
+      error.code = 'snapshot-restore-conflict'
+      error.restoreStatus = 'conflict'
+      throw error
+    }
+    compensationAttempted = true
+    throw snapshotRestoreFailure(await compensateSnapshotUpdate(ctx, access, role, previousConfig, updatedConfig, dependencies, providerGuard, beforeState.healthy))
+  }
+  return {
+    publicResult: { role, preset, revision: writtenRevision, appliedForNewAgents: true, currentSessionUnchanged: true },
+    previousConfig, updatedConfig, beforeHealthy: beforeState.healthy,
+  }
+}
+
+export function createManagedConfigurationSequenceTracker(ctx, dependencies = {}) {
+  const storeFactory = dependencies.createStateStore ?? createStateStore
+  const readDigest = dependencies.readManagedConfigurationDigest ?? (async role => {
+    const access = await accessForRole(ctx, role, dependencies)
+    return trustedManagedConfigurationDigest(activePresetEntry(access, role).options.config)
+  })
+  const configurationHome = dependencies.resolveManagedConfigurationHome ?? (async role =>
+    (await accessForRole(ctx, role, dependencies)).home)
+  const withLock = async (role, callback) => {
+    const home = await configurationHome(role)
+    return withRoleWriteLock(home, role, callback)
+  }
+  const validSequence = state => {
+    const value = state.managedConfigurationMutationSequence ?? 0
+    if (!Number.isSafeInteger(value) || value < 0 || value >= Number.MAX_SAFE_INTEGER) {
+      throw new ConfigurationError('managed-configuration-sequence-invalid', 503)
+    }
+    return value
+  }
+  async function reconcilePending(store, state) {
+    const prior = state.managedConfigurationMutation
+    if (!prior || prior.status !== 'pending') return state
+    let observedDigest
+    try { observedDigest = await readDigest(prior.role) }
+    catch { throw new ConfigurationError('managed-configuration-reconcile-retry', 503) }
+    await store.transact(current => {
+      const row = current.managedConfigurationMutation
+      if (row?.sequence !== prior.sequence || row.status !== 'pending') return
+      row.observedDigest = observedDigest
+      if (observedDigest === row.intendedDigest) {
+        row.status = 'ready'
+        row.reconcileEvidence = 'authoritative-intended-readback'
+      } else if (observedDigest === row.beforeDigest) {
+        row.status = 'ready'
+        row.reconcileEvidence = 'authoritative-before-readback'
+      } else {
+        row.status = 'unknown'
+        row.reconcileEvidence = 'authoritative-third-digest'
+      }
+    })
+    return await store.read()
+  }
+  const readIdentityUnderLock = async role => {
+    const store = await storeFactory()
+    let state = await store.read()
+    state = await reconcilePending(store, state)
+    if (state.managedConfigurationMutation?.status === 'unknown') {
+      throw new ConfigurationError('managed-configuration-outcome-unknown', 503)
+    }
+    const roleManagedConfigDigest = await readDigest(role)
+    return {
+      managedConfigurationSequence: validSequence(state),
+      roleManagedConfigDigest,
+    }
+  }
+  return Object.freeze({
+    async begin({ role, beforeDigest, intendedDigest }) {
+      const store = await storeFactory()
+      let state = await store.read()
+      state = await reconcilePending(store, state)
+      let recoveredUnknown
+      if (state.managedConfigurationMutation?.status === 'unknown') {
+        const prior = state.managedConfigurationMutation
+        let observedDigest
+        try { observedDigest = await readDigest(prior.role) }
+        catch { throw new ConfigurationError('managed-configuration-reconcile-retry', 503) }
+        recoveredUnknown = { sequence: prior.sequence, observedDigest }
+      }
+      const actualBefore = await readDigest(role).catch(() => {
+        throw new ConfigurationError('managed-configuration-reconcile-retry', 503)
+      })
+      if (actualBefore !== beforeDigest) throw new ConfigurationError('revision-conflict', 409)
+      const token = await store.transact(current => {
+        const sequence = validSequence(current) + 1
+        const prior = current.managedConfigurationMutation
+        if (prior?.status === 'pending') throw new ConfigurationError('managed-configuration-reconcile-retry', 503)
+        current.managedConfigurationMutationSequence = sequence
+        current.managedConfigurationMutation = {
+          sequence, role, beforeDigest, intendedDigest, status: 'pending', writeStarted: true,
+          startedAt: Date.now(),
+          ...(recoveredUnknown ? {
+            recoveredUnknownSequence: recoveredUnknown.sequence,
+            recoveredUnknownObservedDigest: recoveredUnknown.observedDigest,
+          } : {}),
+        }
+        return { sequence, role, beforeDigest, intendedDigest }
+      })
+      return token
+    },
+    async finish(token, { error, outcome } = {}) {
+      const store = await storeFactory()
+      let observedDigest
+      if (outcome === 'before') observedDigest = token.beforeDigest
+      else if (outcome !== 'unknown') {
+        try { observedDigest = await readDigest(token.role) }
+        catch { throw new ConfigurationError('managed-configuration-reconcile-retry', 503) }
+      }
+      const result = await store.transact(state => {
+        const row = state.managedConfigurationMutation
+        if (row?.sequence !== token.sequence || row.role !== token.role) {
+          throw new ConfigurationError('managed-configuration-operation-changed', 503)
+        }
+        row.observedDigest = observedDigest
+        row.applyErrorCode = error?.code ?? null
+        if (observedDigest === token.intendedDigest) {
+          row.status = 'ready'
+          row.resultEvidence = error ? 'error-with-intended-readback' : 'apply-success-readback'
+        } else if (observedDigest === token.beforeDigest) {
+          row.status = 'ready'
+          row.resultEvidence = 'authoritative-before-readback'
+        } else {
+          row.status = 'unknown'
+          row.resultEvidence = 'authoritative-third-digest'
+        }
+        return row.status
+      })
+      if (result === 'unknown' && outcome === undefined) throw new ConfigurationError('managed-configuration-outcome-unknown', 503)
+    },
+    async readIdentity(role) {
+      return await withLock(role, () => readIdentityUnderLock(role))
+    },
+    readIdentityUnderLock,
+    withLock,
+  })
+}
+
+async function applyManagedConfiguration(ctx, access, role, rawInput, dependencies, options = {}) {
+  const tracker = dependencies.managedConfigurationSequenceTracker
+  let token
+  const callerStart = options.onWriteStart
+  const onWriteStart = async details => {
+    if (tracker) token = await tracker.begin(details)
+    await callerStart?.(details)
+  }
+  let result
+  try { result = await applyManagedConfigurationCore(ctx, access, role, rawInput, dependencies, { ...options, onWriteStart }) }
+  catch (error) {
+    if (token) {
+      const outcome = options.providerGuard && typeof error?.code === 'string' && error.code.startsWith('snapshot-restore-')
+        ? error.restoreStatus === 'restored' ? 'before' : 'unknown'
+        : undefined
+      await tracker.finish(token, { error, ...(outcome ? { outcome } : {}) })
+    }
+    throw error
+  }
+  if (token) {
+    try { await tracker.finish(token) }
+    catch (error) {
+      if (!options.providerGuard) throw error
+      throw snapshotRestoreFailure(await compensateSnapshotUpdate(ctx, access, role,
+        result.previousConfig, result.updatedConfig, dependencies, options.providerGuard, result.beforeHealthy))
+    }
+  }
+  return result
+}
+
+function createAgentConfigurationController(ctx, dependencies = {}) {
+  const assertSnapshotServices = (expectedIdentity, afterWrite = false) => {
+    if (!expectedIdentity) return
+    if (serviceIdentity(contextService(ctx, 'configEditor')) !== serviceIdentity(expectedIdentity.editor)
+      || serviceIdentity(contextService(ctx, 'profileContext')) !== serviceIdentity(expectedIdentity.profile)) {
+      throw new ConfigurationError(afterWrite ? 'snapshot-restore-outcome-unknown' : 'configuration-unavailable', 503)
+    }
+  }
+  const accessForSnapshotRole = async (role, expectedIdentity, afterWrite = false) => {
+    if (!ROLE_IDS.includes(role)) throw new ConfigurationError('unknown-role')
+    assertSnapshotServices(expectedIdentity, afterWrite)
+    const access = await accessForRole(ctx, role, dependencies, {
+      providerGuard: ({ editor, profile }) => {
+        const matchesContext = serviceIdentity(contextService(ctx, 'configEditor')) === serviceIdentity(editor)
+          && serviceIdentity(contextService(ctx, 'profileContext')) === serviceIdentity(profile)
+        const matchesExpected = !expectedIdentity || serviceIdentity(expectedIdentity.editor) === serviceIdentity(editor)
+          && serviceIdentity(expectedIdentity.profile) === serviceIdentity(profile)
+        if (!matchesContext || !matchesExpected) {
+          throw new ConfigurationError(afterWrite ? 'snapshot-restore-outcome-unknown' : 'configuration-unavailable', 503)
+        }
+      },
+    })
+    return { ...access, role, providerIdentity: providerIdentity(access, role) }
+  }
+  const sameIdentity = sameProviderIdentity
+  const read = (access, role) => {
+    const config = activePresetEntry(access, role).options.config
+    return { role, preset: ROLE_PRESETS[role], revision: revisionOf(config), ...projectManaged(config, role, access.home, dependencies.env ?? process.env) }
+  }
+  const currentAccess = async (role, active, afterWrite = false) => {
+    let latest
+    try { latest = await accessForSnapshotRole(role, active.providerIdentity, afterWrite) }
+    catch (error) {
+      if (afterWrite) {
+        const sameServiceOwner = serviceIdentity(contextService(ctx, 'configEditor')) === serviceIdentity(active.providerIdentity.editor)
+          && serviceIdentity(contextService(ctx, 'profileContext')) === serviceIdentity(active.providerIdentity.profile)
+        if (sameServiceOwner && error?.code !== 'snapshot-restore-outcome-unknown') {
+          throw new ConfigurationError('snapshot-restore-readback-failed', 503)
+        }
+        throw new ConfigurationError('snapshot-restore-outcome-unknown', 503)
+      }
+      throw error
+    }
+    if (!sameIdentity(active.providerIdentity, latest.providerIdentity)) {
+      throw new ConfigurationError(afterWrite ? 'snapshot-restore-outcome-unknown' : 'configuration-unavailable', 503)
+    }
+    return latest
+  }
+  return {
+    async prepare(role) { return accessForSnapshotRole(role) },
+    sameProviderIdentity: sameIdentity,
+    async withRole(role, callback, preparedAccess) {
+      const prepared = preparedAccess ?? await accessForSnapshotRole(role)
+      return withRoleWriteLock(prepared.home, role, async () => {
+        const access = await accessForSnapshotRole(role, prepared.providerIdentity)
+        if (!sameIdentity(prepared.providerIdentity, access.providerIdentity)) throw new ConfigurationError('configuration-unavailable', 503)
+        const state = { access, role, lastRead: null, mutationStarted: false }
+        const assertCurrent = async () => {
+          const latest = await currentAccess(role, state.access, state.mutationStarted)
+          const current = read(latest, role)
+          if (state.lastRead && (state.lastRead.revision !== current.revision
+            || canonical(state.lastRead.projection) !== canonical({ editable: current.editable, mcpServers: current.mcpServers, skill: current.skill, deniedTools: current.deniedTools }))) {
+            throw new ConfigurationError(state.mutationStarted ? 'snapshot-restore-outcome-unknown' : 'revision-conflict', state.mutationStarted ? 503 : 409)
+          }
+          return latest
+        }
+        const operations = {
+          providerIdentity: access.providerIdentity,
+          assertCurrent,
+          async read() {
+            const latest = await assertCurrent()
+            const value = read(latest, role)
+            state.lastRead = { revision: value.revision, projection: { editable: value.editable, mcpServers: value.mcpServers, skill: value.skill, deniedTools: value.deniedTools } }
+            return value
+          },
+          async preview(input) {
+            const latest = await assertCurrent()
+            validateInputEnvelope(input)
+            const config = activePresetEntry(latest, role).options.config
+            const currentRevision = revisionOf(config)
+            if (input.expectedRevision !== currentRevision) throw new ConfigurationError('revision-conflict', 409)
+            const currentProjection = projectManaged(config, role, latest.home, dependencies.env ?? process.env)
+            if (!currentProjection.editable) throw new ConfigurationError('unsupported-managed-config', 409)
+            const previewDependencies = {
+              ...dependencies,
+              roleWorkspacePathReadOnly: dependencies.roleWorkspacePathReadOnly
+                ?? (async currentRole => join(latest.home, 'tradeloom-workspaces', currentRole)),
+            }
+            const validated = await validateInput(input, role, latest.home, ctx, previewDependencies, currentProjection.deniedTools)
+            validateMcpServerCollisions(config, validated.mcpServers)
+            const presetState = await resolvePresetState(ctx, ROLE_PRESETS[role])
+            if (!presetState.available) throw new ConfigurationError('configuration-unavailable', 503)
+            const targetConfig = pluginRows(validated, config, config, role)
+            const targetProjection = projectManaged(targetConfig, role, latest.home, dependencies.env ?? process.env)
+            return {
+              current: { ...currentProjection, revision: currentRevision },
+              target: { ...targetProjection, revision: revisionOf(targetConfig) },
+            }
+          },
+          async update(input) {
+            const latest = await assertCurrent()
+            const providerGuard = async phase => {
+              const afterWrite = ['after-write', 'after-resolve', 'after-edit-reject', 'after-edit-reject-resolve',
+                'before-compensation', 'after-compensation-write', 'after-compensation-resolve'].includes(phase)
+              await currentAccess(role, state.access, afterWrite)
+            }
+            const mutation = await applyManagedConfiguration(ctx, latest, role, input, dependencies, {
+              providerGuard, onWriteStart: () => { state.mutationStarted = true },
+            })
+            try {
+              const verifiedAccess = await currentAccess(role, state.access, true)
+              const verifiedConfig = activePresetEntry(verifiedAccess, role).options.config
+              if (revisionOf(verifiedConfig) !== mutation.publicResult.revision) {
+                const conflict = new ConfigurationError('snapshot-restore-conflict', 409)
+                conflict.restoreStatus = 'conflict'
+                throw conflict
+              }
+              if (canonical(managedRows(verifiedConfig)) !== canonical(managedRows(mutation.updatedConfig))) {
+                throw new ConfigurationError('snapshot-restore-readback-failed', 503)
+              }
+            } catch (error) {
+              if (error?.code === 'snapshot-restore-outcome-unknown' || error?.code === 'snapshot-restore-conflict') throw error
+              if (error?.code === 'revision-conflict') {
+                error.code = 'snapshot-restore-conflict'
+                error.restoreStatus = 'conflict'
+                throw error
+              }
+              throw snapshotRestoreFailure(await compensateSnapshotUpdate(ctx, latest, role,
+                mutation.previousConfig, mutation.updatedConfig, dependencies, providerGuard, mutation.beforeHealthy))
+            }
+            const updatedProjection = projectManaged(mutation.updatedConfig, role, latest.home, dependencies.env ?? process.env)
+            state.lastRead = { revision: mutation.publicResult.revision, projection: {
+              editable: updatedProjection.editable, mcpServers: updatedProjection.mcpServers,
+              skill: updatedProjection.skill, deniedTools: updatedProjection.deniedTools,
+            } }
+            state.mutationRecord = { access: latest, mutation, providerGuard }
+            return { revision: mutation.publicResult.revision }
+          },
+        }
+        try { return await callback(operations) }
+        catch (error) {
+          if (state.mutationRecord && !state.compensationAttempted
+            && !['snapshot-restore-outcome-unknown', 'snapshot-restore-conflict', 'revision-conflict'].includes(error?.code)) {
+            state.compensationAttempted = true
+            const { access: mutationAccess, mutation, providerGuard: guard } = state.mutationRecord
+            const failure = snapshotRestoreFailure(await compensateSnapshotUpdate(ctx, mutationAccess, role,
+              mutation.previousConfig, mutation.updatedConfig, dependencies, guard, mutation.beforeHealthy))
+            if (typeof error?.backupSnapshotId === 'string') failure.backupSnapshotId = error.backupSnapshotId
+            throw failure
+          }
+          throw error
+        }
+      })
+    },
+  }
+}
+
+export function createAgentConfigurationResources(ctx, dependencies = {}) {
+  const sharedDependencies = {
+    ...dependencies,
+    managedConfigurationSequenceTracker: dependencies.managedConfigurationSequenceTracker
+      ?? createManagedConfigurationSequenceTracker(ctx, dependencies),
+  }
+  return {
+    configurationHandler: createAgentConfigurationHandler(ctx, sharedDependencies),
+    snapshotOperations: createAgentConfigurationController(ctx, sharedDependencies),
+    readManagedConfigurationIdentity: role => sharedDependencies.managedConfigurationSequenceTracker.readIdentity(role),
+    readManagedConfigurationIdentityUnderLock: role => sharedDependencies.managedConfigurationSequenceTracker.readIdentityUnderLock(role),
+    withManagedConfigurationLock: (role, callback) => sharedDependencies.managedConfigurationSequenceTracker.withLock(role, callback),
+  }
+}
+
 export function createAgentConfigurationHandler(ctx, dependencies = {}) {
   return async (req, res) => {
     const rejection = ctx.connection.requestRejection(req)
@@ -576,90 +1120,9 @@ export function createAgentConfigurationHandler(ctx, dependencies = {}) {
 
     try {
       const result = await withRoleWriteLock(access.home, role, async () => {
-        validateInputEnvelope(rawInput)
-        const entry = activePresetEntry(access, role)
-        const current = entry.options.config
-        const currentRevision = revisionOf(current)
-        if (rawInput?.expectedRevision !== currentRevision) throw new ConfigurationError('revision-conflict', 409)
-        const projection = projectManaged(current, role, access.home, dependencies.env ?? process.env)
-        if (!projection.editable) throw new ConfigurationError('unsupported-managed-config', 409)
-        const input = await validateInput(rawInput, role, access.home, ctx, dependencies, projection.deniedTools)
-        const preset = ROLE_PRESETS[role]
-        const beforeState = await resolvePresetState(ctx, preset)
-        if (!beforeState.available) throw new ConfigurationError('configuration-unavailable', 503)
-        const expected = input.expectedRevision
-        const nextValue = {
-          mcpServers: input.mcpServers,
-          skill: input.skill,
-          deniedTools: input.deniedTools,
-        }
-        let previousConfig
-        let updatedConfig
-        await access.editor.edit(entry, (currentConfig, inherited) => {
-          if (revisionOf(currentConfig) !== expected) throw new ConfigurationError('revision-conflict', 409)
-          if (!projectManaged(currentConfig, role, access.home, dependencies.env ?? process.env).editable) {
-            throw new ConfigurationError('unsupported-managed-config', 409)
-          }
-          const rows = Array.isArray(currentConfig?.plugins) ? currentConfig.plugins : []
-          const serverNames = new Set()
-          for (const row of rows) {
-            if (!isManagedRow(row) && input.mcpServers.some(server => server.id === row?.id)) {
-              throw new ConfigurationError('invalid-configuration')
-            }
-            if (isManagedRow(row) && row.id.startsWith(MCP_ID_PREFIX)) continue
-            if (row?.name !== MCP_MODULE) continue
-            const serverName = row?.config?.serverName
-            if (typeof serverName !== 'string' || !SERVER_NAME.test(serverName)) {
-              if (input.mcpServers.length) throw new ConfigurationError('server-name-conflict', 409)
-              continue
-            }
-            serverNames.add(serverName)
-            if (input.mcpServers.some(server => server.config.serverName === serverName || server.id === row.id)) {
-              throw new ConfigurationError('server-name-conflict', 409)
-            }
-          }
-          for (const server of input.mcpServers) {
-            if (serverNames.has(server.config.serverName)) throw new ConfigurationError('server-name-conflict', 409)
-            serverNames.add(server.config.serverName)
-          }
-          const config = isRecord(currentConfig) ? currentConfig : inherited
-          previousConfig = structuredClone(config)
-          updatedConfig = pluginRows({ ...nextValue, mcpServers: input.mcpServers }, config, inherited, role)
-          return updatedConfig
-        })
-        if (!updatedConfig || !previousConfig) throw new ConfigurationError('configuration-apply-failed', 503)
-        const afterWrite = activePresetEntry(access, role)
-        const writtenRevision = revisionOf(updatedConfig)
-        if (revisionOf(afterWrite.options.config) !== writtenRevision) throw new ConfigurationError('revision-conflict', 409)
-
-        const afterState = await resolvePresetState(ctx, preset)
-        const afterResolve = activePresetEntry(access, role)
-        if (revisionOf(afterResolve.options.config) !== writtenRevision) throw new ConfigurationError('revision-conflict', 409)
-        if (!afterState.available) {
-          const restore = await rollbackManagedConfig(ctx, access, role, previousConfig, updatedConfig)
-          if (restore === 'conflict') throw new ConfigurationError('revision-conflict', 409)
-          if (restore === 'failed' || restore?.status === 'restored' && beforeState.healthy && !restore.healthy) {
-            throw new ConfigurationError('configuration-restore-failed', 503)
-          }
-          throw new ConfigurationError('configuration-apply-failed', 503)
-        }
-        if (!afterState.healthy) {
-          const restore = await rollbackManagedConfig(ctx, access, role, previousConfig, updatedConfig)
-          if (restore === 'conflict') throw new ConfigurationError('revision-conflict', 409)
-          if (restore === 'failed' || restore?.status === 'restored' && beforeState.healthy && !restore.healthy) {
-            throw new ConfigurationError('configuration-restore-failed', 503)
-          }
-          throw new ConfigurationError('configuration-apply-failed', 503)
-        }
-        return {
-          role,
-          preset,
-          revision: writtenRevision,
-          appliedForNewAgents: true,
-          currentSessionUnchanged: true,
-        }
+        return applyManagedConfiguration(ctx, access, role, rawInput, dependencies)
       })
-      json(res, 200, result)
+      json(res, 200, result.publicResult)
     } catch (error) { sendFailure(res, error) }
   }
 }

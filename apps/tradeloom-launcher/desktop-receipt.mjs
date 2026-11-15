@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { lstat, readFile } from 'node:fs/promises'
 import path from 'node:path'
-import { runtimeMarkerContents, trustedReleaseRoot, validateOwnedRuntime } from './prepare-profile.mjs'
+import { runtimeMarkerContents, trustedReleaseRoot, validateOwnedRuntime, assertNoReparseAncestors } from './prepare-profile.mjs'
 
 export const desktopReceiptName = '.tradeloom-desktop-build-receipt.json'
 export const desktopReceiptFiles = ['apps/desktop/lib/main.js', 'apps/desktop-host/lib/index.js']
@@ -101,4 +101,48 @@ export async function verifyDesktopBuildReceipt(runtimePath, lock, releaseRoot =
   }
   await validateOwnedRuntime(runtime, releaseRoot)
   return receipt
+}
+
+export const nativeArtifactNodeRelative = 'apps/desktop/.desktop-build/targets/win-x64/runtime/primary-runtime/dependencies/node/bin/node.exe'
+
+/** Optional validator: preserve desktop startup when its independently pinned input is unavailable. */
+export async function resolveNativeArtifactValidator(runtimePath, lock, releaseRoot = trustedReleaseRoot) {
+  const config = lock?.nativeArtifactValidator
+  if (config === undefined) return { available: false, reason: 'not_configured' }
+  if (!config || typeof config !== 'object' || Array.isArray(config)
+    || Object.keys(config).sort().join(',') !== 'nodeRelativePath,nodeSha256,receiptSha256'
+    || config.nodeRelativePath !== nativeArtifactNodeRelative
+    || !/^[a-f0-9]{64}$/.test(config.nodeSha256 ?? '') || !/^[a-f0-9]{64}$/.test(config.receiptSha256 ?? '')) {
+    return { available: false, reason: 'invalid_configuration' }
+  }
+  try {
+    const runtime = await validateOwnedRuntime(runtimePath, releaseRoot)
+    await verifyDesktopBuildReceipt(runtime, lock, releaseRoot)
+    const receipt = path.join(runtime, desktopReceiptName)
+    await assertNoReparseAncestors(receipt, runtime)
+    if (createHash('sha256').update(await readFile(receipt)).digest('hex') !== config.receiptSha256) return {available:false,reason:'receipt_mismatch'}
+    const binary = path.join(runtime, ...nativeArtifactNodeRelative.split('/'))
+    await assertNoReparseAncestors(binary, runtime)
+    const info = await lstat(binary)
+    if (!info.isFile() || info.isSymbolicLink()) return {available:false,reason:'node_unavailable'}
+    if (createHash('sha256').update(await readFile(binary)).digest('hex') !== config.nodeSha256) return {available:false,reason:'node_mismatch'}
+    return {available:true,nodePath:binary,nodeSha256:config.nodeSha256}
+  } catch { return {available:false,reason:'verification_failed'} }
+}
+
+/** Load an explicitly selected local lock without following links. */
+export async function loadDesktopBuildLock(lockPath) {
+  if (typeof lockPath !== 'string' || !path.isAbsolute(lockPath)) throw new Error('桌面构建锁必须是绝对文件路径。')
+  const target = path.resolve(lockPath)
+  await assertNoReparseAncestors(target, path.parse(target).root)
+  const info = await lstat(target)
+  if (!info.isFile() || info.isSymbolicLink()) throw new Error('桌面构建锁必须是普通文件。')
+  let lock
+  try { lock = JSON.parse(await readFile(target, 'utf8')) } catch { throw new Error('桌面构建锁 JSON 无效。') }
+  if (!lock || typeof lock !== 'object' || Array.isArray(lock) || typeof lock.upstream?.commit !== 'string' || !lock.upstream.commit
+    || !lock.patches || typeof lock.patches !== 'object' || Array.isArray(lock.patches)
+    || Object.entries(lock.patches).some(([name, digest]) => !name || typeof digest !== 'string' || !/^[a-f0-9]{64}$/i.test(digest))) {
+    throw new Error('桌面构建锁格式无效。')
+  }
+  return lock
 }

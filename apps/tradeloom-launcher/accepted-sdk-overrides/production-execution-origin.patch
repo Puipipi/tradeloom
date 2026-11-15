@@ -1,0 +1,644 @@
+diff --git a/dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/index.js b/dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/index.js
+--- a/dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/index.js
++++ b/dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/index.js
+@@ -353,6 +353,19 @@
+ 			if ("requestId" in message && Number.isSafeInteger(message.requestId) && message.requestId > 0 && "allowed" in message && typeof message.allowed === "boolean") finishNativeImport(message.requestId, message.allowed);
+ 			return;
+ 		}
++		if (message.type === "scene-memory-origin-grant") {
++			if (!Number.isSafeInteger(message.requestId) || message.requestId < 1) return;
++			(async () => {
++				try {
++					if (stopping !== void 0 || control.registerSceneMemoryOriginGrant === void 0) throw new Error("scene-memory origin: Host is unavailable");
++					const grant = await control.registerSceneMemoryOriginGrant(message.request);
++					await send({ type: "scene-memory-origin-grant", requestId: message.requestId, grant });
++				} catch (error) {
++					await send({ type: "scene-memory-origin-grant", requestId: message.requestId, error: error instanceof Error ? error.message : String(error), errorCode: typeof error?.code === "string" ? error.code : void 0 });
++				}
++			})().catch((error) => console.error(error));
++			return;
++		}
+ 		if (message.type === "quit-inspection") {
+ 			if (!("requestId" in message) || !Number.isSafeInteger(message.requestId)) return;
+ 			const requestId = message.requestId;
+@@ -410,6 +423,15 @@
+ 	});
+ 	const { ctx } = await application;
+ 	ctx.provide("nativeImportAuthorization", Object.freeze({ authorizeImport: authorizeNativeImport }));
++	control.registerSceneMemoryOriginGrant = async (request) => {
++		const authority = ctx.get("sceneMemoryOriginAuthority");
++		if (typeof authority?.registerGrant !== "function") throw new Error("scene-memory origin authority is unavailable");
++		if (typeof request?.bodyBytesBase64 !== "string" || request.bodyBytesBase64.length === 0 || request.bodyBytesBase64.length > 2796204 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(request.bodyBytesBase64)) throw Object.assign(new Error("scene-memory origin body encoding is invalid"), { code: "invalid_request_body" });
++		const bodyBytes = Buffer.from(request.bodyBytesBase64, "base64");
++		if (bodyBytes.length === 0 || bodyBytes.length > 2 * 1024 * 1024 || bodyBytes.toString("base64") !== request.bodyBytesBase64) throw Object.assign(new Error("scene-memory origin body encoding is invalid"), { code: "invalid_request_body" });
++		const { bodyBytesBase64: _encoded, ...grantRequest } = request;
++		return await authority.registerGrant({ ...grantRequest, bodyBytes });
++	};
+ 	control.updateTasks = installDesktopUpdateTaskControl(ctx);
+ 	control.quitInspection = installDesktopQuitInspection(ctx);
+ 	await ctx.plugin(office_exports, {
+diff --git a/dsh/node_modules/@deepseek-ai/dsh-client-connection/lib/index.js b/dsh/node_modules/@deepseek-ai/dsh-client-connection/lib/index.js
+--- a/dsh/node_modules/@deepseek-ai/dsh-client-connection/lib/index.js
++++ b/dsh/node_modules/@deepseek-ai/dsh-client-connection/lib/index.js
+@@ -854,7 +854,7 @@
+ 	}
+ 	register(owner, channel, handler) {
+ 		assertChannel(channel);
+-		const fetchHandler = rpcFetchHandler(channel, handler);
++    const fetchHandler = rpcFetchHandler(channel, handler, owner);
+ 		const route = {
+ 			kind: "prefix",
+ 			path: channel,
+@@ -873,7 +873,7 @@
+ 	registerInterceptor(owner, channel, matches, handler) {
+ 		if (channel !== "/api") throw new Error(`connection: invalid shared RPC channel ${JSON.stringify(channel)}`);
+ 		const interceptor = {
+ 			matches,
+-			fetchHandler: rpcFetchHandler(channel, handler)
++			fetchHandler: rpcFetchHandler(channel, handler, owner)
+ 		};
+@@ -885,7 +885,7 @@
+ 		}, `client-connection: ${channel} rpc interceptor`);
+ 	}
+ };
+-function rpcFetchHandler(channel, handler) {
++function rpcFetchHandler(channel, handler, owner) {
+ 	return {
+ 		requestBodyMode: () => "buffered",
+ 		async fetch(request, peer) {
+@@ -893,11 +893,14 @@
+ 			if (request.method !== "POST" || endpoint === void 0) return new Response("not found", { status: 404 });
+ 			if (request.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase() !== "application/json") return new Response("content type must be application/json", { status: 415 });
+ 			let body;
++			let bodyBytes;
+ 			try {
+-				body = await request.json();
++				bodyBytes = Buffer.from(await request.arrayBuffer());
++				body = JSON.parse(new TextDecoder().decode(bodyBytes));
+ 			} catch {
+ 				return new Response("body is not JSON", { status: 400 });
+ 			}
++			const bodyDigest = createHash("sha256").update(bodyBytes).digest("hex");
+ 			const envelope = clientRequestSchema.safeParse(body);
+ 			if (!envelope.success) return invalidEnvelopeResponse(body, envelope.error.issues);
+ 			const message = envelope.data;
+@@ -906,11 +909,79 @@
+ 				message: `method ${JSON.stringify(message.method)} does not match endpoint ${JSON.stringify(endpoint)}`,
+ 				details: { issues: [] }
+ 			});
++			let operationOrigin;
++			let replayAuthority;
++			const token = request.headers.get("x-tradeloom-origin-grant");
++			if (token !== null) {
++				const authority = owner.get?.("sceneMemoryOriginAuthority");
++				if (typeof authority?.verifyRequest !== "function") return errorResponse(message.rpcId, {
++					code: "gateway/origin-authority-unavailable",
++					message: "scene-memory origin authority is unavailable",
++					details: { issues: [] }
++				});
++				try {
++					operationOrigin = await authority.verifyRequest({
++						token,
++						endpoint,
++						routePath: new URL(request.url).pathname.startsWith("/api/") ? new URL(request.url).pathname.slice("/api/".length) : void 0,
++						httpMethod: request.method,
++						method: message.method,
++						rpcId: message.rpcId,
++						bodyBytes,
++						bodyDigest,
++						peerId: peer.id,
++						peerPrincipal: peer.principal?.kind
++					});
++					replayAuthority = authority;
++				} catch (error) {
++					return errorResponse(message.rpcId, {
++						code: typeof error?.code === "string" ? `gateway/${error.code}` : "gateway/origin-proof-rejected",
++						message: "RPC origin proof was rejected",
++						details: { issues: [] }
++					});
++				}
++			}
++			if (operationOrigin !== void 0) {
++				try {
++					const replay = replayAuthority.claimRequestReplay(operationOrigin);
++					if (replay.kind === "replay") {
++						const cached = replay.response;
++						return new Response(cached.bodyBytes, { status: cached.status, statusText: cached.statusText, headers: cached.headers });
++					}
++					if (replay.kind === "wait") {
++						const completed = await replay.response;
++						if (completed.kind === "expired") return errorResponse(message.rpcId, { code: "gateway/origin-replay-expired", message: "RPC replay window expired", details: { issues: [] } });
++						if (completed.kind !== "cached") return errorResponse(message.rpcId, { code: "gateway/origin-replay-result-unavailable", message: "RPC replay result is unavailable", details: { issues: [] } });
++						const cached = completed.response;
++						return new Response(cached.bodyBytes, { status: cached.status, statusText: cached.statusText, headers: cached.headers });
++					}
++					if (replay.kind !== "execute") return errorResponse(message.rpcId, { code: "gateway/origin-replay-result-unavailable", message: "RPC replay result is unavailable", details: { issues: [] } });
++				} catch (error) {
++					return errorResponse(message.rpcId, { code: typeof error?.code === "string" ? `gateway/${error.code}` : "gateway/origin-replay-rejected", message: "RPC replay was rejected", details: { issues: [] } });
++				}
++			}
+ 			try {
+-				const result = await handler(endpoint, message.payload, request.signal, peer);
+-				return fullResponse(message.rpcId, result);
++				const invoke = () => handler(endpoint, message.payload, request.signal, peer);
++				const authority = owner.get?.("sceneMemoryOriginAuthority");
++				const result = operationOrigin === void 0
++					? typeof authority?.withProoflessRequestOrigin === "function" ? await authority.withProoflessRequestOrigin(invoke) : await invoke()
++					: await authority.withVerifiedRequestOrigin(operationOrigin, invoke);
++				const response = fullResponse(message.rpcId, result);
++				if (operationOrigin !== void 0) {
++					const bodyBytes = Buffer.from(await response.clone().arrayBuffer());
++					replayAuthority.completeRequestReplay(operationOrigin, {
++						status: response.status, statusText: response.statusText,
++						headers: Array.from(response.headers.entries()), bodyBytes
++					});
++				}
++				return response;
+ 			} catch (error) {
+-				return new Response(`handler failure: ${String(error)}`, { status: 500 });
++				const response = new Response(`handler failure: ${String(error)}`, { status: 500 });
++				if (operationOrigin !== void 0) {
++					const bodyBytes = Buffer.from(await response.clone().arrayBuffer());
++					try { replayAuthority.completeRequestReplay(operationOrigin, { status: response.status, statusText: response.statusText, headers: Array.from(response.headers.entries()), bodyBytes }); } catch {}
++				}
++				return response;
+ 			}
+ 		}
+ 	};
+diff --git a/dsh/node_modules/@deepseek-ai/dsh-agent/lib/index.js b/dsh/node_modules/@deepseek-ai/dsh-agent/lib/index.js
+index 7b59cf8..19a3992 100644
+--- a/dsh/node_modules/@deepseek-ai/dsh-agent/lib/index.js
++++ b/dsh/node_modules/@deepseek-ai/dsh-agent/lib/index.js
+@@ -454,7 +454,17 @@
+ 		const ownerCtx = this.ctx;
+ 		const { target } = this.requireFactory();
+ 		const receiver = getTraceable(ownerCtx, target);
+-		return Reflect.apply(target.createAgent, receiver, [ownerCtx, options]);
++		if (options?.operationOrigin !== void 0) throw new Error("operation origin is Host-owned");
++		const authority = ownerCtx.get?.("sceneMemoryOriginAuthority");
++		const parentExecution = authority?.currentToolExecution?.();
++		let forwarded = options;
++		let hostCapturedOrigin;
++		if (options?.parentAgent !== void 0 && parentExecution?.agent === options.parentAgent && parentExecution.operationOrigin !== void 0) {
++			hostCapturedOrigin = authority.inheritFromParentExecution(parentExecution);
++		} else if (options?.parentAgent === void 0) {
++			hostCapturedOrigin = authority?.captureAtEnqueue?.();
++		}
++		return Reflect.apply(target.createAgent, receiver, [ownerCtx, forwarded, hostCapturedOrigin]);
+ 	}
+ 	/**
+ 	* Load a persisted session and resume an agent on it through the registered
+diff --git a/dsh/node_modules/@deepseek-ai/dsh-agent-loop/lib/index.js b/dsh/node_modules/@deepseek-ai/dsh-agent-loop/lib/index.js
+index cf57e3e..7718bc2 100644
+--- a/dsh/node_modules/@deepseek-ai/dsh-agent-loop/lib/index.js
++++ b/dsh/node_modules/@deepseek-ai/dsh-agent-loop/lib/index.js
+@@ -503,7 +503,7 @@
+ * @param signal - abort signal shared by the step.
+ * @param acceptContext - accepts committed result context for the next step boundary.
+ */
+-async function executeToolCalls(ctx, turn, step, toolCalls, signal, acceptContext) {
++async function executeToolCalls(ctx, turn, step, toolCalls, signal, acceptContext, operationOrigin, operationOriginWorkId, operationOriginAmbiguous, operationOriginError) {
+ 	const agent = ctx.agents.requireInitiator();
+ 	const { session } = agent;
+ 	const planned = toolCalls.map((block) => ({
+@@ -513,7 +513,11 @@
+ 			name: block.name,
+ 			arguments: parseArguments(block.arguments),
+ 			agent,
+-			signal
++			signal,
++			...operationOrigin === void 0 ? {} : { operationOrigin },
++			...operationOrigin === void 0 || typeof operationOriginWorkId !== "string" ? {} : { operationOriginWorkId },
++			...(operationOriginAmbiguous ? { operationOriginAmbiguous: true } : {}),
++			...(operationOriginError === void 0 ? {} : { operationOriginError })
+ 		}
+ 	}));
+ 	let next = 0;
+@@ -752,6 +756,7 @@
+ 	inbox;
+ 	phase;
+ 	activityDone = Promise.resolve();
++	originLifecycle = Promise.resolve();
+ 	/** The agent-scoped registration boundary; the lifecycle owner unwinds it after the driver exits. */
+ 	scope;
+ 	ctx;
+@@ -800,7 +805,39 @@
+ 	send(message, target, wakeup) {
+ 		const wakingAfterAbort = wakeup && this.phase.kind !== "idle" && this.phase.abort.signal.aborted;
+ 		const resolvedTarget = wakingAfterAbort ? "next-turn" : target;
+-		this.inbox.splice(resolvedTarget, Infinity, 0, [message]);
++		let queuedMessage = message;
++		const originAuthority = this.ctx.get?.("sceneMemoryOriginAuthority");
++		let operationOrigin;
++		let operationOriginError;
++		let operationOriginWorkId;
++		try {
++			const requestOrigin = originAuthority?.currentRequestOrigin?.();
++			const parentExecution = requestOrigin === void 0 ? originAuthority?.currentToolExecution?.() : void 0;
++			const candidate = requestOrigin ?? parentExecution?.operationOrigin;
++			if (candidate !== void 0) {
++				operationOrigin = originAuthority.captureAtEnqueue(candidate);
++				if (operationOrigin !== void 0) {
++					if (typeof originAuthority.retainOriginWork !== "function") throw Object.assign(new Error("operation origin work authority is unavailable"), { code: "origin_authority_not_ready" });
++					operationOriginWorkId = originAuthority.retainOriginWork(operationOrigin, { kind: "queue", owner: this });
++				}
++			}
++		} catch (error) {
++			operationOrigin = void 0;
++			operationOriginWorkId = void 0;
++			operationOriginError = typeof error?.code === "string" ? error.code : "operation_not_active";
++		}
++		if (operationOrigin === void 0 && operationOriginError === void 0 && originAuthority?.isProoflessExternalRequest?.() === true) operationOriginError = "missing_operation_origin";
++		if (message !== null && typeof message === "object") {
++			const { operationOrigin: _untrustedOrigin, operationOriginError: _untrustedError, operationOriginWorkId: _untrustedWorkId, ...detached } = message;
++			if (operationOrigin !== void 0) queuedMessage = Object.freeze({ ...detached, operationOrigin, operationOriginWorkId });
++			else if (operationOriginError !== void 0) queuedMessage = Object.freeze({ ...detached, operationOriginError });
++			else if (_untrustedOrigin !== void 0 || _untrustedError !== void 0 || _untrustedWorkId !== void 0) queuedMessage = Object.freeze(detached);
++		}
++		try { this.inbox.splice(resolvedTarget, Infinity, 0, [queuedMessage]); }
++		catch (error) {
++			if (operationOriginWorkId !== void 0) void originAuthority.releaseOriginWork(operationOrigin, operationOriginWorkId, "enqueue-failed", this).catch(() => {});
++			throw error;
++		}
+ 		if (wakeup) this.wakeDriver(wakingAfterAbort);
+ 	}
+ 	followup(input) {
+@@ -813,10 +850,41 @@
+ 		this.send(input, "next-step", false);
+ 	}
+ 	cancel(cause, options = {}) {
++		const authority = this.ctx.get?.("sceneMemoryOriginAuthority");
++		const releases = [];
++		const cancelledOrigins = new Map();
++		const addCancelledWork = (origin, workId) => {
++			if (typeof workId !== "string") {
++				releases.push(Promise.reject(Object.assign(new Error("operation queue work identity is unavailable"), { code: "invalid_operation_work" })));
++				return;
++			}
++			let entry = cancelledOrigins.get(origin.operationId);
++			if (!entry) cancelledOrigins.set(origin.operationId, entry = { origin, workIds: new Set() });
++			entry.workIds.add(workId);
++		};
+ 		if (!options.keepInbox) {
++			for (const message of [...this.inbox.nextStep, ...this.inbox.nextTurn]) {
++				if (message?.operationOrigin !== void 0 && typeof message.operationOriginWorkId === "string") {
++					addCancelledWork(message.operationOrigin, message.operationOriginWorkId);
++				}
++			}
+ 			this.inbox.clear();
+ 			if (this.phase.kind !== "idle") this.phase.wakeRequested = false;
+ 		}
++		if (this.phase.kind !== "idle") {
++			const ledger = this.operationOriginLedger?.turn === this.phase.turn ? this.operationOriginLedger : void 0;
++			if (ledger && typeof authority?.releaseOriginWork === "function") {
++				for (const [workId, origin] of ledger.workById) addCancelledWork(origin, workId);
++				ledger.workById.clear();
++			}
++		}
++		if (cancelledOrigins.size > 0) {
++			if (typeof authority?.cancelOrigin !== "function") releases.push(Promise.reject(Object.assign(new Error("operation cancellation authority is unavailable"), { code: "origin_authority_not_ready" })));
++			else for (const { origin, workIds } of cancelledOrigins.values()) releases.push(authority.cancelOrigin(origin, [...workIds], this, "agent-cancelled"));
++		}
++		if (releases.length > 0) this.originLifecycle = this.originLifecycle.then(() => Promise.all(releases)).catch(error => {
++			this.dispatch.emit("agent/error", { turn: this.phase.kind === "running" ? this.phase.turn : this.phase.lastTurn, step: this.phase.kind === "running" ? this.phase.step : 0, error });
++		});
+ 		if (this.phase.kind !== "idle") this.phase.abort.abort(cause);
+ 	}
+ 	runMaintenance(job) {
+@@ -865,13 +933,20 @@
+ 			step: 0,
+ 			wakeRequested: false
+ 		});
+-		this.loopCtx.agents.withInitiator(this, () => this.kick()).then(driver.resolve, driver.reject);
++		const startDriver = () => this.loopCtx.agents.withInitiator(this, () => this.kick());
++		const originAuthority = this.ctx.get?.("sceneMemoryOriginAuthority");
++		const running = typeof originAuthority?.runDetachedDriver === "function" ? originAuthority.runDetachedDriver(startDriver) : startDriver();
++		running.then(driver.resolve, driver.reject);
+ 	}
+ 	async whenIdle() {
+ 		let activity;
+-		do
+-			await (activity = this.activityDone);
+-		while (activity !== this.activityDone);
++		let lifecycle;
++		do {
++			activity = this.activityDone;
++			lifecycle = this.originLifecycle;
++			await activity;
++			await lifecycle;
++		} while (activity !== this.activityDone || lifecycle !== this.originLifecycle);
+ 	}
+ 	/** Report one failure at its live boundary, then preserve it for driver containment. */
+ 	throwError(error) {
+@@ -904,10 +979,43 @@
+ 		if (this.phase.kind !== "running") throw new Error(`agent "${this.id}": pre-step outside running phase`);
+ 		const signal = this.phase.abort.signal;
+ 		const claimed = this.inbox.claim(target, position.turn);
++		if (this.operationOriginLedger?.turn !== position.turn) this.operationOriginLedger = { turn: position.turn, origins: new Map(), error: void 0, workById: new Map() };
++		const ledger = this.operationOriginLedger;
++		for (const message of claimed) {
++			if (message?.operationOrigin !== void 0) {
++				try {
++					if (typeof message.operationOriginWorkId !== "string") throw Object.assign(new Error("queued operation origin has no work identity"), { code: "invalid_operation_work" });
++					const authority = this.ctx.get?.("sceneMemoryOriginAuthority");
++					if (typeof authority?.captureQueuedOrigin !== "function") throw Object.assign(new Error("queued operation origin authority is unavailable"), { code: "origin_authority_not_ready" });
++					const canonicalOrigin = authority.captureQueuedOrigin(message.operationOrigin, message.operationOriginWorkId, this);
++					ledger.origins.set(canonicalOrigin.operationId, canonicalOrigin);
++					ledger.workById.set(message.operationOriginWorkId, canonicalOrigin);
++				} catch (error) { ledger.error ??= typeof error?.code === "string" ? error.code : "operation_not_active"; }
++			}
++			if (message?.operationOriginError !== void 0) ledger.error ??= message.operationOriginError;
++		}
++		const origins = ledger.origins;
++		let operationOriginError = ledger.error;
++		const operationOriginAmbiguous = origins.size > 1;
++		let operationOrigin;
++		let operationOriginWorkId;
++		if (origins.size === 1) {
++			try { operationOrigin = this.ctx.get?.("sceneMemoryOriginAuthority")?.captureAtEnqueue([...origins.values()][0]) }
++			catch (error) { operationOriginError = typeof error?.code === "string" ? error.code : "operation_not_active" }
++			if (operationOrigin !== void 0) {
++				operationOriginWorkId = [...ledger.workById].find(([, candidate]) => candidate.operationId === operationOrigin.operationId)?.[0];
++				if (typeof operationOriginWorkId !== "string") operationOriginError ??= "invalid_operation_work";
++			}
++		}
++		const visibleClaimed = claimed.map(message => {
++			if (message?.operationOrigin === void 0 && message?.operationOriginError === void 0) return message;
++			const { operationOrigin: _operationOrigin, operationOriginError: _operationOriginError, operationOriginWorkId: _operationOriginWorkId, ...visible } = message;
++			return visible;
++		});
+ 		const assembly = await this.loopCtx.systemPrompt.assemble(assembleContextFor(this, signal));
+ 		signal.throwIfAborted();
+ 		const decision = await this.dispatch.waterfall("agent/pre-step", {
+-			messages: claimed,
++			messages: visibleClaimed,
+ 			...position,
+ 			signal
+ 		}, () => {
+@@ -915,14 +1023,18 @@
+ 			const context = this.runtimeContext.project(joinContextSections(sections), sections);
+ 			return Promise.resolve({
+ 				kind: "enter",
+-				messages: context === void 0 ? claimed : [...claimed, context]
++				messages: context === void 0 ? visibleClaimed : [...visibleClaimed, context]
+ 			});
+ 		});
+ 		signal.throwIfAborted();
+ 		if (decision.kind === "reject") return decision;
+ 		return {
+ 			...decision,
+-			assembly
++			assembly,
++			...(operationOrigin === void 0 ? {} : { operationOrigin }),
++			...(operationOrigin === void 0 || typeof operationOriginWorkId !== "string" ? {} : { operationOriginWorkId }),
++			...(operationOriginAmbiguous ? { operationOriginAmbiguous: true } : {}),
++			...(operationOriginError === void 0 ? {} : { operationOriginError })
+ 		};
+ 	}
+ 	/** Whether the assembled tool schemas differ from the logged request header's. */
+@@ -1032,6 +1144,13 @@
+ 				});
+ 			} catch (error) {
+ 				this.throwError(error);
++			} finally {
++				const ledger = this.operationOriginLedger?.turn === turn ? this.operationOriginLedger : void 0;
++				const authority = this.ctx.get?.("sceneMemoryOriginAuthority");
++				if (ledger && typeof authority?.releaseOriginWork === "function") {
++					for (const [workId, origin] of ledger.workById) await authority.releaseOriginWork(origin, workId, `turn-${turnEnds?.kind ?? "ended"}`, this);
++					ledger.workById.clear();
++				}
+ 			}
+ 		}
+ 		if (!this.inbox.hasPending) return false;
+@@ -1163,7 +1282,7 @@
+ 				if (finish.kind === "max-tokens") return { kind: "max-tokens" };
+ 				const toolCalls = message.content.filter((block) => block.type === "tool-call");
+ 				if (toolCalls.length === 0) return { kind: "completed" };
+-				const { concluded } = await executeToolCalls(this.loopCtx, turn, step, toolCalls, signal, (context) => this.inbox.splice("next-step", this.inbox.nextStep.length, 0, [context]));
++				const { concluded } = await executeToolCalls(this.loopCtx, turn, step, toolCalls, signal, (context) => this.inbox.splice("next-step", this.inbox.nextStep.length, 0, [context]), decision.operationOrigin, decision.operationOriginWorkId, decision.operationOriginAmbiguous, decision.operationOriginError);
+ 				return concluded ? { kind: "completed" } : null;
+ 			} catch (error) {
+ 				if (!live.ended) live.abandon();
+@@ -1890,12 +2009,34 @@
+ 	* @param options - identities, optional live parent, session seed/metadata, loop options, setup, and cancellation.
+ 	* @returns the published handle.
+ 	*/
+-	async createAgent(ownerCtx, options) {
+-		const preparation = SessionPreparation.create(this.runtime.ctx.sessions.prepare(options.sessionId, {
+-			...options.seed === void 0 ? {} : { seed: options.seed },
+-			...options.meta === void 0 ? {} : { meta: options.meta },
+-			...options.inheritedEventCount === void 0 ? {} : { inheritedEventCount: options.inheritedEventCount }
+-		}));
++	async createAgent(ownerCtx, options, hostCapturedOrigin) {
++		const originAuthority = this.ctx.get?.("sceneMemoryOriginAuthority");
++		if (options.operationOrigin !== void 0) throw new Error("operation origin is Host-owned");
++		const inheritedOrigin = hostCapturedOrigin === void 0 ? void 0 : originAuthority?.captureAtEnqueue(hostCapturedOrigin);
++		const childWorkId = inheritedOrigin === void 0 ? void 0 : originAuthority?.retainOriginWork?.(inheritedOrigin, { kind: "child-setup" });
++		if (inheritedOrigin !== void 0 && typeof childWorkId !== "string") throw Object.assign(new Error("operation origin child work authority is unavailable"), { code: "origin_authority_not_ready" });
++		let childWorkReleased = false;
++		const releaseChildWork = async () => {
++			if (childWorkReleased || childWorkId === void 0) return;
++			childWorkReleased = true;
++			await originAuthority.releaseOriginWork(inheritedOrigin, childWorkId, "child-setup-ended");
++		};
++		const inheritedSetup = inheritedOrigin === void 0 ? options.setup : async (childCtx, childAgent) => {
++			if (typeof originAuthority?.withVerifiedRequestOrigin !== "function") throw Object.assign(new Error("scene-memory origin authority is unavailable for inherited child setup"), { code: "origin_authority_not_ready" });
++			try { return await originAuthority.withVerifiedRequestOrigin(inheritedOrigin, () => options.setup?.(childCtx, childAgent)); }
++			finally { await releaseChildWork(); }
++		};
++		let preparation;
++		try {
++			preparation = SessionPreparation.create(this.runtime.ctx.sessions.prepare(options.sessionId, {
++				...options.seed === void 0 ? {} : { seed: options.seed },
++				...options.meta === void 0 ? {} : { meta: options.meta },
++				...options.inheritedEventCount === void 0 ? {} : { inheritedEventCount: options.inheritedEventCount }
++			}));
++		} catch (error) {
++			await releaseChildWork().catch(() => {});
++			throw error;
++		}
+ 		const published = (async () => {
+ 			let stored;
+ 			try {
+@@ -1904,12 +2045,13 @@
+ 				});
+ 			} catch (error) {
+ 				preparation[Symbol.dispose]();
++				await releaseChildWork().catch(() => {});
+ 				throw error;
+ 			}
+-			return this.setupAndPublish(ownerCtx, options.sessionId, preparation, options.agentOptions ?? {}, options.setup, options.signal, "startup", stored, options.parentAgent);
++			return this.setupAndPublish(ownerCtx, options.sessionId, preparation, options.agentOptions ?? {}, inheritedSetup, options.signal, "startup", stored, options.parentAgent);
+ 		})();
+ 		this.ownership.trackWrapper(published);
+-		return published;
++		return published.finally(releaseChildWork);
+ 	}
+ 	/** Prepare one Agent around an acquired Session, run setup, and publish it. */
+ 	async setupAndPublish(ownerCtx, id, preparation, agentOptions, setup, signal, source, stored, parentAgent) {
+diff --git a/dsh/node_modules/@deepseek-ai/dsh-tools/lib/index.js b/dsh/node_modules/@deepseek-ai/dsh-tools/lib/index.js
+index 1e53932..6acd8bb 100644
+--- a/dsh/node_modules/@deepseek-ai/dsh-tools/lib/index.js
++++ b/dsh/node_modules/@deepseek-ai/dsh-tools/lib/index.js
+@@ -3244,6 +3244,10 @@
+ 			signal,
+ 			...agent !== void 0 ? { agent } : {},
+ 			...parent !== void 0 ? { parent } : {},
++			...exec.operationOrigin !== void 0 ? { operationOrigin: exec.operationOrigin } : {},
++			...(typeof exec.operationOriginWorkId === "string" ? { operationOriginWorkId: exec.operationOriginWorkId } : {}),
++			...(exec.operationOriginAmbiguous === true ? { operationOriginAmbiguous: true } : {}),
++			...(typeof exec.operationOriginError === "string" ? { operationOriginError: exec.operationOriginError } : {}),
+ 			...exec.schema !== void 0 ? { schema: exec.schema } : {},
+ 			deferContext(context) {
+ 				deferredContexts.push(context);
+@@ -3403,7 +3407,12 @@
+ 			const tool = this.resolveExecution(exec.name, exec.agent, exec.parent !== void 0);
+ 			if (!tool) throw new ToolNotFoundError(exec.name);
+ 			state.bodyInvoked = true;
+-			const returned = await tool.execute(exec.arguments, exec);
++			const originAuthority = exec.agent?.ctx?.get?.("sceneMemoryOriginAuthority");
++			if (exec.operationOrigin !== void 0 && typeof originAuthority?.runToolExecution !== "function") throw new Error("operation origin execution authority is unavailable");
++			const invoke = verifiedExec => tool.execute(exec.arguments, verifiedExec);
++			const returned = typeof originAuthority?.runToolExecution === "function"
++				? await originAuthority.runToolExecution(exec, invoke)
++				: await invoke();
+ 			const result = this.createSuccessResult(exec, tool, returned);
+ 			return isAborted(signal) ? toolAbortedResult(result) : result;
+ 		} catch (error) {
+diff --git a/dsh/node_modules/@deepseek-ai/dsh-web-frontend/dist/assets/index-D4iGkJJO.js b/dsh/node_modules/@deepseek-ai/dsh-web-frontend/dist/assets/index-D4iGkJJO.js
+--- a/dsh/node_modules/@deepseek-ai/dsh-web-frontend/dist/assets/index-D4iGkJJO.js
++++ b/dsh/node_modules/@deepseek-ai/dsh-web-frontend/dist/assets/index-D4iGkJJO.js
+@@ -41019,6 +41019,10 @@
+ 			const moduleLoader = win.__ModuleLoader__;
+ 			if (moduleLoader === void 0) throw new Error("web boot: window.__ModuleLoader__ bootstrap facade is missing");
+ 			const transport = globalThis.__DSH_TRANSPORT__;
++			if (transport?.ownsHost === true) {
++				const { installBrowserTransportAdapter } = await import("/assets/native-operation-origin-adapter.mjs");
++				installBrowserTransportAdapter(transport, win);
++			}
+ 			this.modules = moduleLoader.create({
+ 				boot: win.__DSH_BOOT__,
+ 				staticModules: getStaticModules(),
+diff --git a/dsh/node_modules/@deepseek-ai/dsh-web-frontend/dist/assets/native-operation-origin-adapter.mjs b/dsh/node_modules/@deepseek-ai/dsh-web-frontend/dist/assets/native-operation-origin-adapter.mjs
+new file mode 100644
+index 0000000..38c7d2f
+--- /dev/null
++++ b/dsh/node_modules/@deepseek-ai/dsh-web-frontend/dist/assets/native-operation-origin-adapter.mjs
+@@ -0,0 +1,117 @@
++const ORIGIN_GRANT_HEADER = 'x-tradeloom-origin-grant'
++const MAX_ORIGIN_BODY_BYTES = 2 * 1024 * 1024
++const ENDPOINT_SEGMENT_PATTERN = /^[A-Za-z0-9_$.-]+$/
++const GRANT_REPLAY_WINDOW_MS = 30_000
++const GRANT_REPLAY_TOMBSTONE_MS = 5 * 60_000
++const MAX_GRANT_REPLAY_ENTRIES = 256
++const MAX_GRANT_REPLAY_BYTES = 8 * 1024 * 1024
++
++function endpointFor(url, appOrigin) {
++  if (url.origin !== appOrigin || !url.pathname.startsWith('/api/')) return undefined
++  const endpoint = url.pathname.slice('/api/'.length)
++  if (!endpoint || endpoint.split('/').some(segment => !segment || segment === '.' || segment === '..' || !ENDPOINT_SEGMENT_PATTERN.test(segment))) return undefined
++  return endpoint
++}
++
++export function installBrowserTransportAdapter(transport, globals = globalThis) {
++  if (!transport || transport.ownsHost !== true || typeof transport.streamBaseUrl !== 'string') {
++    throw new TypeError('production-origin adapter requires the owned Host transport')
++  }
++  if (typeof globals.fetch !== 'function' || typeof globals.Request !== 'function' || typeof globals.Headers !== 'function') {
++    throw new TypeError('production-origin adapter requires the native Fetch APIs')
++  }
++  const appOrigin = new URL(globals.location?.href ?? 'dsh-app://app/').origin
++  const hadTransportFetch = typeof transport.fetch === 'function'
++  const originalFetch = hadTransportFetch ? transport.fetch : globals.fetch.bind(globals)
++  const invokeGrant = globals.dshDesktopBoot?.issueSceneMemoryOriginGrant
++  const currentTime = () => typeof globals.Date?.now === 'function' ? globals.Date.now() : Date.now()
++  const grantReplays = []
++  let grantReplayBytes = 0
++  const bodyMatches = (left, right) => left.byteLength === right.byteLength && left.every((value, index) => value === right[index])
++  const findGrantReplay = (endpoint, method, bodyBytes) => {
++    const now = currentTime()
++    for (let index = grantReplays.length - 1; index >= 0; index--) {
++      const entry = grantReplays[index]
++      if (entry.status !== 'pending' && entry.tombstoneUntil <= now) {
++        grantReplayBytes -= entry.bodyBytes.byteLength
++        grantReplays.splice(index, 1)
++        continue
++      }
++      if (entry.endpoint === endpoint && entry.method === method && bodyMatches(entry.bodyBytes, bodyBytes)) return entry
++    }
++    return undefined
++  }
++  const wrappedFetch = async (input, init) => {
++    const url = new URL(input instanceof globals.Request ? input.url : input, globals.location?.href ?? 'dsh-app://app/')
++    const endpoint = endpointFor(url, appOrigin)
++    if (!endpoint || (init?.method ?? input?.method)?.toUpperCase?.() !== 'POST') return await originalFetch(input, init)
++    const relativeInput = typeof input === 'string' && !/^[A-Za-z][A-Za-z0-9+.-]*:/.test(input) && !input.startsWith('//')
++    const request = input instanceof globals.Request
++      ? new globals.Request(input.clone(), init)
++      : new globals.Request(relativeInput ? url : input, init)
++    if (request.body === null) return await originalFetch(input, init)
++    const bodyBytes = new Uint8Array(await request.clone().arrayBuffer())
++    if (bodyBytes.byteLength === 0 || bodyBytes.byteLength > MAX_ORIGIN_BODY_BYTES || typeof invokeGrant !== 'function') return await originalFetch(input, init)
++    let replay = findGrantReplay(endpoint, request.method, bodyBytes)
++    if (!replay && request.headers.has(ORIGIN_GRANT_HEADER)) {
++      throw Object.assign(new Error('scene-memory origin replay record is no longer available'), { code: 'origin_replay_expired' })
++    }
++    if (replay && replay.replayUntil <= currentTime()) {
++      throw Object.assign(new Error('scene-memory origin replay window expired'), { code: 'origin_replay_expired' })
++    }
++    let grant
++    if (replay?.status === 'pending') {
++      grant = await replay.grantPromise
++    } else if (replay) {
++      grant = replay
++    } else {
++      while (grantReplays.length >= MAX_GRANT_REPLAY_ENTRIES || grantReplayBytes + bodyBytes.byteLength > MAX_GRANT_REPLAY_BYTES) {
++        const oldest = grantReplays[0]
++        if (!oldest || oldest.status === 'pending' || oldest.tombstoneUntil > currentTime()) {
++          throw Object.assign(new Error('scene-memory origin replay cache is full'), { code: 'origin_replay_capacity' })
++        }
++        grantReplayBytes -= oldest.bodyBytes.byteLength
++        grantReplays.shift()
++      }
++      const pending = {
++        status: 'pending', endpoint, method: request.method, bodyBytes: bodyBytes.slice(),
++        replayUntil: Number.POSITIVE_INFINITY, tombstoneUntil: Number.POSITIVE_INFINITY,
++      }
++      grantReplays.push(pending)
++      grantReplayBytes += pending.bodyBytes.byteLength
++      pending.grantPromise = Promise.resolve().then(() => invokeGrant({ endpoint, httpMethod: request.method, bodyBytes: bodyBytes.slice() }))
++      try {
++        grant = await pending.grantPromise
++        if (grant === null || grant === void 0) {
++          grantReplays.splice(grantReplays.indexOf(pending), 1)
++          grantReplayBytes -= pending.bodyBytes.byteLength
++          return await originalFetch(input, init)
++        }
++        pending.status = 'ready'
++        pending.token = grant.token
++        const now = currentTime()
++        pending.replayUntil = now + GRANT_REPLAY_WINDOW_MS
++        pending.tombstoneUntil = now + GRANT_REPLAY_TOMBSTONE_MS
++      } catch (error) {
++        grantReplays.splice(grantReplays.indexOf(pending), 1)
++        grantReplayBytes -= pending.bodyBytes.byteLength
++        throw error
++      }
++      replay = pending
++    }
++    if (grant === null || grant === void 0) return await originalFetch(input, init)
++    if (typeof grant.token !== 'string' || !grant.token) throw new Error('Host returned an invalid scene-memory origin grant')
++    const headers = new globals.Headers(request.headers)
++    headers.set(ORIGIN_GRANT_HEADER, replay?.token ?? grant.token)
++    return await originalFetch(new globals.Request(request.clone(), { headers }))
++  }
++  transport.fetch = wrappedFetch
++  return () => {
++    if (transport.fetch === wrappedFetch) {
++      if (hadTransportFetch) transport.fetch = originalFetch
++      else delete transport.fetch
++    }
++  }
++}
++
++export { ORIGIN_GRANT_HEADER }

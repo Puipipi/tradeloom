@@ -61,18 +61,21 @@ test('non-private or non-mobile bind configuration returns a fixed error without
   }
 })
 
-test('apply registers and disposes the exact protected mobile-link endpoint', () => {
+test('apply registers and disposes the exact protected mobile-link endpoint', async () => {
   const routes = []
+  const services = new Map()
   let dispose
   apply({
     tools: {}, agents: { get() { return undefined } },
     on() {},
     connection: { requestRejection() { return undefined } },
+    provide(name, service) { services.set(name, service) },
+    get(name) { return services.get(name) },
     webServer: { register(route) { routes.push(route); return () => { route.disposed = true } } },
     effect(install) { dispose = install() },
   })
   const route = routes.find(item => item.path === '/tradeloom/mobile-link')
   assert.deepEqual([route.kind, route.path], ['exact', '/tradeloom/mobile-link'])
-  dispose()
+  await dispose()
   assert.equal(route.disposed, true)
 })

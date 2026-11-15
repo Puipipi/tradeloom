@@ -181,3 +181,23 @@ def resolve_artifact_file(relative: str) -> Path:
     if not path.is_file():
         raise FileNotFoundError("Registered delivery file is missing")
     return path
+
+def write_native_artifact(content: bytes, version_id: str) -> tuple[str, Path]:
+    """Publish one uniquely named native artifact under the existing root."""
+    import uuid
+    if str(uuid.UUID(version_id)) != version_id:
+        raise DeliveryStorageError('Invalid native version ID')
+    root = artifact_root()
+    relative = f'native/{version_id}/content'
+    final = _contained_path(root, relative)
+    final.parent.mkdir(parents=True, exist_ok=False)
+    try:
+        with final.open('xb') as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+    except Exception:
+        import shutil
+        shutil.rmtree(final.parent)
+        raise
+    return relative, final

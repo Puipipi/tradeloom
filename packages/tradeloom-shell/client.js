@@ -4,46 +4,401 @@ window.__ModuleLoader__.load({
     const React = require('react')
     const ReactDOM = require('react-dom')
     const h = React.createElement
+    const reportRoleGuestPhase = (descriptor, phase) => {
+      if (descriptor?.kind !== 'role' || !['chat','files'].includes(descriptor.surface)) return
+      try { console.info(`TL-ROLE-GUEST-PHASE|${phase}|${descriptor.surface}`) } catch {}
+    }
+    const workspaceModalLocks = new WeakMap()
+    function workspaceModalState() {
+      const overlayHost = window.document.querySelector('[data-shell-overlay]')
+      const frame = overlayHost?.parentElement
+      return { frame, state: frame ? workspaceModalLocks.get(frame) : undefined }
+    }
+    function activeTopbarPopover() {
+      return window.document.querySelector('[data-tl-topbar-popover-open]')
+    }
+    function requestTopbarPopoverDismissal() {
+      window.document.dispatchEvent(new window.CustomEvent('tl-shell-dismiss-topbar-popover'))
+    }
+    function WorkspaceModalLayer({ children, onClose }) {
+      const [bounds, setBounds] = React.useState(null)
+      const layerRef = React.useRef(null)
+      const ownerRef = React.useRef({})
+      const ownerFrameRef = React.useRef(null)
+      const closeRef = React.useRef(onClose)
+      closeRef.current = onClose
+      React.useLayoutEffect(() => {
+        const overlayHost = window.document.querySelector('[data-shell-overlay]')
+        const frame = overlayHost?.parentElement
+        if (!frame) return undefined
+        ownerFrameRef.current = frame
+        let lock = workspaceModalLocks.get(frame)
+        if (!lock) {
+          const branches = [...frame.children].filter(node => node !== overlayHost && !node.matches('[data-shell-top],[data-shell-bottom],[data-shell-titlebar],[data-shell-leading]'))
+          lock = { owners: [], previous: branches.map(node => ({ node, had: node.hasAttribute('inert'), value: node.getAttribute('inert') })) }
+          workspaceModalLocks.set(frame, lock)
+          for (const item of lock.previous) item.node.setAttribute('inert', '')
+        }
+        lock.owners.push(ownerRef.current)
+        const measure = () => {
+          const top = [...frame.children].find(node => node.matches('[data-shell-top]'))?.getBoundingClientRect()
+          const bottom = [...frame.children].find(node => node.matches('[data-shell-bottom]'))?.getBoundingClientRect()
+          const rect = frame.getBoundingClientRect()
+          const y1 = top?.bottom ?? rect.top
+          const y2 = bottom?.top ?? rect.bottom
+          setBounds({ left: rect.left, top: y1, width: rect.width, height: Math.max(0, y2 - y1) })
+        }
+        measure()
+        window.addEventListener('resize', measure)
+        window.addEventListener('scroll', measure, true)
+        window.visualViewport?.addEventListener('resize', measure)
+        const observer = typeof window.ResizeObserver === 'function' ? new window.ResizeObserver(measure) : null
+        observer?.observe(frame)
+        const topNode = [...frame.children].find(node => node.matches('[data-shell-top]'))
+        const bottomNode = [...frame.children].find(node => node.matches('[data-shell-bottom]'))
+        if (topNode) observer?.observe(topNode)
+        if (bottomNode) observer?.observe(bottomNode)
+        return () => {
+          observer?.disconnect(); window.removeEventListener('resize', measure); window.removeEventListener('scroll', measure, true)
+          window.visualViewport?.removeEventListener('resize', measure)
+          const ownerIndex = lock.owners.lastIndexOf(ownerRef.current)
+          if (ownerIndex >= 0) lock.owners.splice(ownerIndex, 1)
+          if (!lock.owners.length) {
+            for (const item of lock.previous) { if (item.had) item.node.setAttribute('inert', item.value ?? ''); else item.node.removeAttribute('inert') }
+            workspaceModalLocks.delete(frame)
+          }
+        }
+      }, [])
+      React.useEffect(() => {
+        const layer = layerRef.current
+        const panel = layer?.querySelector('[role="dialog"]')
+        if (panel && !panel.hasAttribute('tabindex')) panel.tabIndex = -1
+        const focusable = () => [...(panel?.querySelectorAll('button:not([disabled]),a[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),summary,[tabindex]:not([tabindex="-1"])') ?? [])]
+          .filter(node => {
+            if (node.closest('[hidden],[inert]') || node.getAttribute('aria-hidden') === 'true' || node.matches(':disabled')) return false
+            const closedDetails = node.closest('details:not([open])')
+            if (closedDetails && !node.matches('summary') && !node.closest('summary')) return false
+            const style = window.getComputedStyle?.(node)
+            return Boolean(node.getClientRects?.().length) && style?.visibility !== 'hidden' && style?.display !== 'none'
+          })
+        focusable()[0]?.focus?.()
+        if (!focusable().length) panel?.focus?.()
+        const keydown = event => {
+          if (event.defaultPrevented) return
+          const { frame: currentFrame, state } = workspaceModalState()
+          if (currentFrame !== ownerFrameRef.current || state?.owners.at(-1) !== ownerRef.current) return
+          const popover = activeTopbarPopover()
+          if (popover && event.key === 'Escape') {
+            event.preventDefault()
+            event.stopImmediatePropagation?.()
+            requestTopbarPopoverDismissal()
+            return
+          }
+          if (popover && event.key === 'Tab') {
+            const items = [...popover.querySelectorAll('button:not([disabled]),a[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),summary,[tabindex]:not([tabindex="-1"])')]
+              .filter(node => {
+                if (node.closest('[hidden],[inert]') || node.getAttribute('aria-hidden') === 'true' || node.matches(':disabled')) return false
+                const closedDetails = node.closest('details:not([open])')
+                if (closedDetails && !node.matches('summary') && !node.closest('summary')) return false
+                const style = window.getComputedStyle?.(node)
+                return Boolean(node.getClientRects?.().length) && style?.visibility !== 'hidden' && style?.display !== 'none'
+              })
+            if (!items.length) {
+              event.preventDefault()
+              if (!popover.hasAttribute('tabindex')) popover.tabIndex = -1
+              popover.focus?.()
+              return
+            }
+            const first = items[0], last = items.at(-1)
+            if (!popover.contains(document.activeElement)) {
+              event.preventDefault()
+              ;(event.shiftKey ? last : first).focus()
+              return
+            }
+            if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus() }
+            else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
+            return
+          }
+          if (event.key === 'Escape') { event.preventDefault(); closeRef.current(); return }
+          if (event.key !== 'Tab') return
+          const items = focusable()
+          if (!items.length) { event.preventDefault(); panel?.focus?.(); return }
+          const first = items[0], last = items.at(-1)
+          if (event.shiftKey && (document.activeElement === first || !panel.contains(document.activeElement))) { event.preventDefault(); last.focus() }
+          else if (!event.shiftKey && (document.activeElement === last || !panel.contains(document.activeElement))) { event.preventDefault(); first.focus() }
+        }
+        document.addEventListener('keydown', keydown)
+        return () => document.removeEventListener('keydown', keydown)
+      }, [])
+      const rect = bounds ?? { left: 0, top: 0, width: window.innerWidth || 0, height: window.innerHeight || 0 }
+      return ReactDOM.createPortal(h('div', { ref: layerRef, className: 'tl-workspace-modal-backdrop', onMouseDown: event => {
+        if (event.target !== event.currentTarget) return
+        if (activeTopbarPopover()) {
+          event.preventDefault()
+          requestTopbarPopoverDismissal()
+          return
+        }
+        event.preventDefault()
+        closeRef.current()
+      }, style: { position: 'fixed', zIndex: 2000, left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px`, display: 'grid', placeItems: 'center', background: 'rgb(0 0 0 / 42%)', backdropFilter: 'blur(3px)' } }, children), window.document.body)
+    }
     const menus = [
       ['business-home', '总览', '/home'],
       ['business-products', '商品', '/products'],
-      ['business-agent-center', 'Agent 中心', '/agent-center'],
+      ['business-agent-center', '工作流', '/agent-center'],
       ['business-artifacts', '资料', '/artifacts'],
       ['business-runs', '运行记录', '/runs'],
     ]
     let layout
     let uiWorkspace
+    let shellSlots
+    let shellPluginInventory
+    let shellLocale
     let sceneLoadState = {
-      loading: false, error: '', SceneTabs: null, ModelDirectoryRail: null,
+      loading: false, error: '', SceneTabs: null, AIWebRail: null,
       roleMetadata: { status: 'idle', error: '', roles: null },
+      proposalError: '', proposalHref: '',
     }
     const sceneLoadListeners = new Set()
     let sceneLoadRequest
     let sceneContext
     let sceneApi
     let sceneWorkbenchSelected = false
+    let sourceAccountMode = false
     let trustedBusinessOrigin = ''
+    let sourceActiveRole = ''
     let activeColorScheme = 'light'
-    const workbenchPalette = Object.freeze({
-      canvas: { light: '#f4f7fb', dark: '#0c1017' }, panel: { light: '#ffffff', dark: '#131925' },
-      header: { light: '#e9eef6', dark: '#171f2c' }, border: { light: '#cbd5e2', dark: '#293345' },
-      text: { light: '#202b3a', dark: '#dfe7f3' }, muted: { light: '#68778c', dark: '#8b97ab' },
-      accent: { light: '#356fc4', dark: '#4d83dd' }, teal: { light: '#177d78', dark: '#37b5a9' },
+    const themeAliasNames = Object.freeze({
+      canvas: '--dsw-alias-bg-base', panel: '--dsw-alias-bg-layer-1', header: '--dsw-alias-bg-layer-2',
+      border: '--dsw-alias-border-l1', text: '--dsw-alias-label-primary', muted: '--dsw-alias-label-secondary',
+      accent: '--dsw-alias-brand-primary',
     })
+    const workbenchPalette = Object.freeze({
+      canvas: { light: '#f4f6f8', dark: '#0c0e14' }, panel: { light: '#ffffff', dark: '#12151e' },
+      header: { light: '#eef0f2', dark: '#1b2130' }, border: { light: '#d5d9de', dark: '#282e3c' },
+      text: { light: '#202326', dark: '#e6e8ef' }, muted: { light: '#687078', dark: '#939baa' },
+      accent: { light: '#3979a8', dark: '#6b9bf5' }, accentStrong: { light: '#2d638d', dark: '#88afff' },
+      accentSoft: { light: '#e8f1f6', dark: '#202b40' }, teal: { light: '#177d78', dark: '#74cec6' },
+      buttonInk: { light: '#ffffff', dark: '#10131b' },
+      danger: { light: '#ba2121', dark: '#ed7373' }, dangerBackground: { light: '#fdecea', dark: '#392729' },
+      dangerBorder: { light: '#f5c6c6', dark: '#623c42' }, warning: { light: '#76501b', dark: '#d6ad5b' },
+      warningBackground: { light: '#fffaf2', dark: '#302a20' }, warningBorder: { light: '#eed8b7', dark: '#5a4b32' },
+      success: { light: '#0f635a', dark: '#39d5a1' }, successBackground: { light: '#e1f2ef', dark: '#1e3735' },
+    })
+    const workbenchScrollbarStyles = `
+      html[data-tradeloom-ui] { --tl-scrollbar-size:5px; }
+      html[data-tradeloom-ui] body, html[data-tradeloom-ui] body * {
+        scrollbar-width:auto; scrollbar-color:auto;
+      }
+      html[data-tradeloom-ui] body::-webkit-scrollbar, html[data-tradeloom-ui] body *::-webkit-scrollbar { width:var(--tl-scrollbar-size); height:var(--tl-scrollbar-size); }
+      html[data-tradeloom-ui] body::-webkit-scrollbar-thumb, html[data-tradeloom-ui] body *::-webkit-scrollbar-thumb { border:0; border-radius:999px; background:color-mix(in srgb,var(--tl-theme-muted) 55%,transparent); }
+      html[data-tradeloom-ui] body::-webkit-scrollbar-thumb:hover, html[data-tradeloom-ui] body *::-webkit-scrollbar-thumb:hover { background:var(--tl-theme-muted); }
+      html[data-tradeloom-ui] body::-webkit-scrollbar-track, html[data-tradeloom-ui] body *::-webkit-scrollbar-track,
+      html[data-tradeloom-ui] body::-webkit-scrollbar-corner, html[data-tradeloom-ui] body *::-webkit-scrollbar-corner { background:transparent; }
+      html[data-tradeloom-ui] :is([data-conversation-scroll],[role="tree"],[role="listbox"],.tl-agent-capabilities-body,.tl-session-usage-list,.tl-model-options,.tl-layout-menu-popover) { min-width:0; scrollbar-gutter:stable; }
+    `
+    const DEFAULT_WORKBENCH_FONT_BODY = 14
+    const workbenchUiTokens = { fontFamily: '"Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif', fontBody: DEFAULT_WORKBENCH_FONT_BODY, fontCompact: DEFAULT_WORKBENCH_FONT_BODY - 2, lineHeight: 1.45,
+      topRowHeight: 48, navHeight: 38, modelControl: 31, sceneTabHeight: 28, dockTabHeight: 28, controlHeight: 28, toolbarHeight: 30, iconSize: 15, cornerRadius: 8,
+    }
+    let activeResolvedPalette = null
     let removeThemeBridge
+    let shellThemeService
     let agentCenterHref = '/business/agent-center'
     let removeProposalHandoff
     const agentCenterHrefListeners = new Set()
+    let mobileQrRequest
+    let replicaPaletteAdapter
+
+    function loadMobileQr() {
+      if (!mobileQrRequest) {
+        mobileQrRequest = Promise.resolve(require.async('./client.mobile-qr.js'))
+          .then(value => {
+            const module = value?.default ?? value
+            if (typeof module?.createQrMatrix !== 'function') throw new Error('mobile-qr-unavailable')
+            return module
+          })
+          .catch(error => { mobileQrRequest = undefined; throw error })
+      }
+      return mobileQrRequest
+    }
+
+    async function installReplicaPalette(ctx) {
+      try {
+        const value = await Promise.resolve(require.async('./client.replica-palette.js'))
+        const adapter = value?.default ?? value
+        if (typeof adapter?.install !== 'function' || typeof adapter?.readWorkbenchPalette !== 'function') return
+        const dispose = await adapter.install(ctx)
+        replicaPaletteAdapter = adapter
+        ctx.effect?.(() => () => {
+          try { dispose?.() } finally {
+            if (replicaPaletteAdapter === adapter) replicaPaletteAdapter = undefined
+          }
+        }, 'tradeloom replica palette adapter')
+      } catch {}
+    }
 
     function businessFrames() {
-      return [...(window.document?.querySelectorAll?.('iframe[data-tradeloom-business-frame]') ?? [])]
+      const local = [...(window.document?.querySelectorAll?.('iframe[data-tradeloom-business-frame]') ?? [])]
+      return [...local, ...(sceneApi?.getPopoutBusinessFrames?.() ?? [])]
+    }
+
+    function handleBusinessPopoutFramesChange() {
+      for (const frame of businessFrames()) sendBusinessTheme(frame)
+    }
+
+    function normalizeThemeColor(value, background = '') {
+      const color = String(value ?? '').trim()
+      let match = /^#([\da-f]{3}|[\da-f]{4}|[\da-f]{6}|[\da-f]{8})$/i.exec(color)
+      if (match) {
+        let hex = match[1]
+        if (hex.length === 3 || hex.length === 4) hex = [...hex].map(char => char + char).join('')
+        const alpha = hex.length === 8 ? parseInt(hex.slice(6), 16) / 255 : 1
+        if (alpha < 1) return compositeColor(`#${hex.slice(0, 6).toLowerCase()}`, alpha, background)
+        return `#${hex.slice(0, 6).toLowerCase()}`
+      }
+      match = /^rgba?\((.*)\)$/i.exec(color)
+      if (!match) return ''
+      const parts = match[1].replace(/,/g, ' ').replace('/', ' ').trim().split(/\s+/)
+      if (parts.length < 3 || parts.length > 4) return ''
+      const channels = parts.slice(0, 3).map(part => {
+        const value = Number.parseFloat(part)
+        if (!Number.isFinite(value)) return NaN
+        return part.endsWith('%') ? value * 255 / 100 : value
+      })
+      if (channels.some(part => !Number.isFinite(part) || part < 0 || part > 255)) return ''
+      const alphaPart = parts[3]
+      const alpha = alphaPart === undefined ? 1 : alphaPart.endsWith('%')
+        ? Number.parseFloat(alphaPart) / 100 : Number.parseFloat(alphaPart)
+      if (!Number.isFinite(alpha) || alpha < 0 || alpha > 1) return ''
+      if (alpha === 1) {
+        const rounded = channels.map(Math.round)
+        if (rounded.some(channel => !Number.isInteger(channel) || channel < 0 || channel > 255)) return ''
+        return `#${rounded.map(channel => channel.toString(16).padStart(2, '0')).join('')}`
+      }
+      return compositeColor(channels, alpha, background)
+    }
+
+    function compositeColor(foreground, alpha, background) {
+      const backgroundMatch = /^#([\da-f]{6})$/i.exec(background ?? '')
+      if (!backgroundMatch) return ''
+      const foregroundChannels = Array.isArray(foreground)
+        ? foreground : foreground.slice(1).match(/.{2}/g).map(part => parseInt(part, 16))
+      const backgroundChannels = backgroundMatch[1].match(/.{2}/g).map(part => parseInt(part, 16))
+      return `#${foregroundChannels.map((part, index) => Math.round(part * alpha + backgroundChannels[index] * (1 - alpha)).toString(16).padStart(2, '0')).join('')}`
+    }
+
+    function resolveWorkbenchPalette() {
+      const replicaPalette = replicaPaletteAdapter?.readWorkbenchPalette?.(activeColorScheme)
+      if (replicaPalette && Object.keys(workbenchPalette).every(key => /^#[\da-f]{6}$/i.test(replicaPalette[key] ?? ''))) return replicaPalette
+      const probe = window.document?.querySelector?.('.tl-shell-top') ?? window.document?.body ?? window.document?.documentElement
+      const computed = probe && window.getComputedStyle?.(probe)
+      const resolved = Object.fromEntries(Object.entries(workbenchPalette).map(([key, modes]) => [key, modes[activeColorScheme]]))
+      if (!computed) {
+        resolved.accentStrong = resolved.accent
+        resolved.accentSoft = compositeColor(resolved.accent, 0.12, resolved.panel) || workbenchPalette.accentSoft[activeColorScheme]
+        resolved.teal = workbenchPalette.teal[activeColorScheme]
+        return resolved
+      }
+      for (const [key, alias] of Object.entries(themeAliasNames)) {
+        const background = resolved.panel ?? resolved.canvas
+        const aliasValue = String(computed.getPropertyValue(alias) ?? '').trim()
+        let value = normalizeThemeColor(aliasValue, background)
+        if (aliasValue && !value && probe?.appendChild && window.document?.createElement) {
+          const swatch = window.document.createElement('span')
+          swatch.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none'
+          swatch.style.color = `var(${alias})`
+          probe.appendChild(swatch)
+          value = normalizeThemeColor(window.getComputedStyle(swatch).color, background)
+          swatch.remove?.()
+        }
+        if (!/^#[\da-f]{6}$/i.test(value)) value = ''
+        resolved[key] = value || workbenchPalette[key][activeColorScheme]
+      }
+      resolved.accentStrong = resolved.accent
+      resolved.accentSoft = compositeColor(resolved.accent, 0.12, resolved.panel) || workbenchPalette.accentSoft[activeColorScheme]
+      resolved.teal = workbenchPalette.teal[activeColorScheme]
+      for (const [key, modes] of Object.entries(workbenchPalette)) {
+        if (Object.hasOwn(themeAliasNames, key) || ['accentStrong', 'accentSoft', 'teal'].includes(key)) continue
+        resolved[key] = modes[activeColorScheme]
+      }
+      return resolved
+    }
+
+    function applyThemeTokensToDocument(palette = activeResolvedPalette) {
+      const rootStyle = window.document?.documentElement?.style
+      if (!palette || typeof rootStyle?.setProperty !== 'function') return
+      window.document.documentElement?.setAttribute?.('data-tradeloom-ui', 'true')
+      const paletteVariables = {
+        canvas: 'canvas', panel: 'panel', header: 'header', border: 'border', buttonInk: 'button-ink',
+        text: 'text', muted: 'muted', accent: 'accent', accentStrong: 'accent-strong', accentSoft: 'accent-soft',
+        danger: 'danger', dangerBackground: 'danger-bg', dangerBorder: 'danger-border', warning: 'warning',
+        warningBackground: 'warning-bg', warningBorder: 'warning-border', success: 'success',
+        successBackground: 'success-bg', teal: 'teal',
+      }
+      for (const [key, suffix] of Object.entries(paletteVariables)) rootStyle.setProperty(`--tl-theme-${suffix}`, palette[key])
+      rootStyle.setProperty('--tl-shell-surface', palette.panel)
+      rootStyle.setProperty('--tl-shell-soft', palette.header)
+      rootStyle.setProperty('--tl-shell-ink', palette.text)
+      rootStyle.setProperty('--tl-shell-muted', palette.muted)
+      rootStyle.setProperty('--tl-shell-line', palette.border)
+      rootStyle.setProperty('--tl-shell-accent', palette.accent)
+      rootStyle.setProperty('--tl-shell-accent-strong', palette.accentStrong)
+      rootStyle.setProperty('--tl-shell-accent-soft', palette.accentSoft)
+      rootStyle.setProperty('--tl-shell-danger', palette.danger)
+      const uiVariables = {
+        '--tl-font-family': workbenchUiTokens.fontFamily, '--tl-font-body': `${workbenchUiTokens.fontBody}px`,
+        '--tl-font-compact': `${workbenchUiTokens.fontCompact}px`, '--tl-line-height': String(workbenchUiTokens.lineHeight),
+        '--tl-ui-scale': String(workbenchUiTokens.fontBody / DEFAULT_WORKBENCH_FONT_BODY),
+        '--tl-space-1': `${Math.round(4 * workbenchUiTokens.fontBody / DEFAULT_WORKBENCH_FONT_BODY)}px`,
+        '--tl-space-2': `${Math.round(6 * workbenchUiTokens.fontBody / DEFAULT_WORKBENCH_FONT_BODY)}px`,
+        '--tl-space-3': `${Math.round(8 * workbenchUiTokens.fontBody / DEFAULT_WORKBENCH_FONT_BODY)}px`,
+        '--tl-space-4': `${Math.round(10 * workbenchUiTokens.fontBody / DEFAULT_WORKBENCH_FONT_BODY)}px`,
+        '--tl-space-5': `${Math.round(12 * workbenchUiTokens.fontBody / DEFAULT_WORKBENCH_FONT_BODY)}px`,
+        '--tl-row-height': `${workbenchUiTokens.topRowHeight}px`, '--tl-nav-height': `${workbenchUiTokens.navHeight}px`,
+        '--tl-control-height': `${workbenchUiTokens.controlHeight}px`, '--tl-model-size': `${workbenchUiTokens.modelControl}px`,
+        '--tl-scene-tab-height': `${workbenchUiTokens.sceneTabHeight}px`, '--tl-dock-tab-height': `${workbenchUiTokens.dockTabHeight}px`,
+        '--tl-toolbar-height': `${workbenchUiTokens.toolbarHeight}px`, '--tl-icon-size': `${workbenchUiTokens.iconSize}px`,
+        '--tl-corner-radius': `${workbenchUiTokens.cornerRadius}px`,
+      }
+      for (const [name, value] of Object.entries(uiVariables)) rootStyle.setProperty(name, value)
+    }
+
+    function refreshThemeSnapshot(colorScheme = activeColorScheme) {
+      activeColorScheme = colorScheme
+      syncWorkbenchFontSize(shellThemeService?.getTheme?.())
+      activeResolvedPalette = resolveWorkbenchPalette()
+      applyThemeTokensToDocument()
+      publishSceneLoadState({ colorScheme, fontBody: workbenchUiTokens.fontBody })
+      for (const frame of businessFrames()) sendBusinessTheme(frame)
+    }
+
+    function syncWorkbenchFontSize(themeSnapshot) {
+      const configured = themeSnapshot?.fontSizes?.text
+      const fontBody = Number.isInteger(configured) && configured >= 10 && configured <= 22
+        ? configured : DEFAULT_WORKBENCH_FONT_BODY
+      const scale = fontBody / DEFAULT_WORKBENCH_FONT_BODY
+      const scaled = (base, min, max) => Math.min(max, Math.max(min, Math.round(base * scale)))
+      workbenchUiTokens.fontBody = fontBody
+      workbenchUiTokens.fontCompact = Math.max(10, fontBody - 2)
+      workbenchUiTokens.topRowHeight = scaled(48, 16, 96)
+      workbenchUiTokens.navHeight = scaled(38, 16, 96)
+      workbenchUiTokens.modelControl = scaled(31, 16, 96)
+      workbenchUiTokens.sceneTabHeight = scaled(28, 16, 96)
+      workbenchUiTokens.dockTabHeight = scaled(28, 16, 96)
+      workbenchUiTokens.controlHeight = scaled(28, 16, 96)
+      workbenchUiTokens.toolbarHeight = scaled(30, 16, 96)
+      workbenchUiTokens.iconSize = scaled(15, 8, 32)
+      workbenchUiTokens.cornerRadius = scaled(8, 0, 16)
     }
 
     function sendBusinessTheme(frame) {
       if (!frame?.contentWindow || !['light', 'dark'].includes(activeColorScheme)) return
       try {
-        const palette = Object.fromEntries(Object.entries(workbenchPalette).map(([key, modes]) => [key, modes[activeColorScheme]]))
-        frame.contentWindow.postMessage({ type: 'tradeloom:theme', colorScheme: activeColorScheme, palette }, window.location.origin)
+        const palette = activeResolvedPalette = resolveWorkbenchPalette()
+        if (!palette) return
+        applyThemeTokensToDocument(palette)
+        frame.contentWindow.postMessage({ type: 'tradeloom:theme', colorScheme: activeColorScheme, palette, ui: workbenchUiTokens }, window.location.origin)
       } catch { /* A frame may be navigating; its next load sends the current theme. */ }
     }
 
@@ -60,25 +415,40 @@ window.__ModuleLoader__.load({
 
     function installBusinessThemeBridge(ctx) {
       removeThemeBridge?.()
+      shellThemeService = ctx.theme
       activeColorScheme = ctx.theme?.getTheme?.()?.active?.colorScheme === 'dark' ? 'dark' : 'light'
-      publishSceneLoadState({ colorScheme: activeColorScheme })
+      syncWorkbenchFontSize(ctx.theme?.getTheme?.())
+      activeResolvedPalette = resolveWorkbenchPalette()
+      applyThemeTokensToDocument()
+      publishSceneLoadState({ colorScheme: activeColorScheme, fontBody: workbenchUiTokens.fontBody })
       window.addEventListener?.('message', handleBusinessThemeRequest)
+      window.addEventListener?.('tradeloom:business-popout-frames-change', handleBusinessPopoutFramesChange)
       window.document?.addEventListener?.('load', handleBusinessFrameLoad, true)
       const onThemeChange = theme => {
-        const colorScheme = theme?.active?.colorScheme ?? ctx.theme?.getTheme?.()?.active?.colorScheme
+        const snapshot = theme ?? ctx.theme?.getTheme?.()
+        const colorScheme = snapshot?.active?.colorScheme ?? ctx.theme?.getTheme?.()?.active?.colorScheme
         if (colorScheme !== 'light' && colorScheme !== 'dark') return
+        // Popout listeners resolve this palette during the same event. Publish
+        // the resolved scheme before they read it, without moving DOM writes.
         activeColorScheme = colorScheme
-        publishSceneLoadState({ colorScheme })
-        for (const frame of businessFrames()) sendBusinessTheme(frame)
+        // The scene chunk subscribes to the same event and publishes a snapshot
+        // synchronously. Update the shared UI tokens first so its immediate
+        // render cannot capture the previous density. Palette work remains on
+        // the next frame to avoid changing the color-token update cadence.
+        syncWorkbenchFontSize(snapshot)
+        if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(() => refreshThemeSnapshot(colorScheme))
+        else Promise.resolve().then(() => refreshThemeSnapshot(colorScheme))
       }
       const removeThemeChangeListener = ctx.on?.('theme/change', onThemeChange)
       removeThemeBridge = () => {
         window.removeEventListener?.('message', handleBusinessThemeRequest)
+        window.removeEventListener?.('tradeloom:business-popout-frames-change', handleBusinessPopoutFramesChange)
         window.document?.removeEventListener?.('load', handleBusinessFrameLoad, true)
         removeThemeChangeListener?.()
       }
       ctx.effect?.(() => () => removeThemeBridge?.(), 'tradeloom business iframe theme bridge')
       for (const frame of businessFrames()) sendBusinessTheme(frame)
+      if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(() => refreshThemeSnapshot(activeColorScheme))
     }
 
     function setAgentCenterHref(href) {
@@ -98,8 +468,18 @@ window.__ModuleLoader__.load({
     function proposalRoute(href, origin) {
       try {
         const url = new URL(href)
-        if (url.origin !== origin || url.pathname !== '/business/agent-center' || url.search
-          || url.username || url.password) return ''
+        if (url.origin !== origin || url.search || url.username || url.password) return ''
+        const task = /^\/business\/workflow-tasks\/([^/]+)$/.exec(url.pathname)
+        if (task) {
+          // Django's <str:workflow_id> accepts one nonempty segment, not only UUIDs.
+          const taskId = decodeURIComponent(task[1])
+          if (!taskId || taskId.includes('/') || taskId.includes('\\')) return ''
+          if (url.hash && !['#workflow-plan', '#workflow-overview'].includes(url.hash)
+            && !/^#review-[A-Za-z0-9_-]+$/.test(url.hash)) return ''
+          return `${url.pathname}${url.hash}`
+        }
+        if (url.pathname !== '/business/agent-center') return ''
+        if (['#workflow-create-form', '#workflow-list-heading'].includes(url.hash)) return `${url.pathname}${url.hash}`
         if (!url.hash) return url.pathname
         if (!url.hash.startsWith('#proposal=')) return ''
         const pairs = [...new URLSearchParams(url.hash.slice(1))]
@@ -114,27 +494,68 @@ window.__ModuleLoader__.load({
       } catch { return '' }
     }
 
-    function setTrustedBusinessOrigin(value) {
-      const origin = normalizeBusinessOrigin(value)
-      if (origin === trustedBusinessOrigin) return
-      removeProposalHandoff?.()
-      removeProposalHandoff = undefined
-      trustedBusinessOrigin = origin
+    function isSourceProposalCandidate(href) {
+      try {
+        const url = new URL(href)
+        return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password && !url.search
+          && (url.pathname === '/business/agent-center' || /^\/business\/workflow-tasks\/[^/]+$/.test(url.pathname))
+      } catch { return false }
+    }
+
+    async function handoffSourceProposal(href) {
+      try {
+        const config = await ensureSourceSceneConfig()
+        const origin = normalizeBusinessOrigin(config.businessOrigin)
+        const route = proposalRoute(href, origin)
+        if (!route) throw new Error('proposal-route-unavailable')
+        trustedBusinessOrigin = origin
+        setAgentCenterHref(route)
+        if (!sceneApi?.navigateBusiness('/agent-center', route, { select: false })) throw new Error('proposal-route-unavailable')
+        layout?.selectPanel('business-agent-center')
+        publishSceneLoadState({ proposalError: '', proposalHref: '' })
+        return true
+      } catch {
+        publishSceneLoadState({ proposalError: '工作流提案暂时无法打开，请重试。', proposalHref: href })
+        return false
+      }
+    }
+
+    function installProposalHandoff() {
+      if (removeProposalHandoff) return
       const document = window.document
-      if (!origin || !document?.addEventListener) return
+      if (!document?.addEventListener) return
       const onClick = event => {
         if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
         const anchor = event.target?.closest?.('a[href]')
         if (!anchor) return
         const route = proposalRoute(anchor.href, trustedBusinessOrigin)
-        if (!route) return
-        event.preventDefault()
-        event.stopPropagation()
-        setAgentCenterHref(route)
-        sceneApi?.navigateBusiness('/agent-center', route)
+        if (sourceAccountMode && isSourceProposalCandidate(anchor.href)) {
+          event.preventDefault()
+          event.stopPropagation()
+          void handoffSourceProposal(anchor.href)
+          return
+        }
+        if (route) {
+          event.preventDefault()
+          event.stopPropagation()
+          setAgentCenterHref(route)
+          sceneApi?.navigateBusiness('/agent-center', route, sourceAccountMode ? { select: false } : undefined)
+          if (sourceAccountMode) layout?.selectPanel('business-agent-center')
+          return
+        }
       }
       document.addEventListener('click', onClick, true)
       removeProposalHandoff = () => document.removeEventListener('click', onClick, true)
+    }
+
+    function setTrustedBusinessOrigin(value) {
+      const origin = normalizeBusinessOrigin(value)
+      if (origin !== trustedBusinessOrigin) trustedBusinessOrigin = origin
+      if (origin || sourceAccountMode) installProposalHandoff()
+      else {
+        removeProposalHandoff?.()
+        removeProposalHandoff = undefined
+      }
     }
 
     function publishSceneLoadState(patch) {
@@ -142,28 +563,108 @@ window.__ModuleLoader__.load({
       for (const listener of sceneLoadListeners) listener()
     }
 
+    function NativeWindowsMenuSlot() {
+      const slotRef = React.useRef(null)
+      React.useEffect(() => {
+        const slot = slotRef.current
+        const body = window.document?.body
+        const Observer = window.MutationObserver
+        if (!slot || !body || typeof Observer !== 'function') return undefined
+        let host
+        let originalParent
+        let originalNextSibling
+        const styleProperties = ['position', 'top', 'left', 'right', 'height', 'width', 'flex', 'z-index']
+        let originalStyle
+        const placeMenu = () => {
+          const menuHost = window.document.querySelector('[data-windows-menu]')
+          if (!menuHost || menuHost.parentElement === slot) return
+          if (!host) {
+            host = menuHost
+            originalParent = host.parentNode
+            originalNextSibling = host.nextSibling
+            originalStyle = Object.fromEntries(styleProperties.map(name => [name, [host.style.getPropertyValue(name), host.style.getPropertyPriority(name)]]))
+          }
+          slot.append(host)
+          for (const [name, value] of Object.entries({
+            position: 'relative', top: 'auto', left: 'auto', right: 'auto', height: '100%', width: 'max-content', flex: '0 0 auto', 'z-index': '40',
+          })) host.style.setProperty(name, value, 'important')
+        }
+        placeMenu()
+        const observer = new Observer(placeMenu)
+        observer.observe(body, { childList: true, subtree: true })
+        return () => {
+          observer.disconnect()
+          if (host && originalParent?.isConnected) {
+            if (originalNextSibling?.parentNode === originalParent) originalParent.insertBefore(host, originalNextSibling)
+            else originalParent.append(host)
+          }
+          if (host && originalStyle) {
+            for (const [name, [value, priority]] of Object.entries(originalStyle)) {
+              if (value) host.style.setProperty(name, value, priority)
+              else host.style.removeProperty(name)
+            }
+          }
+        }
+      }, [])
+      return h('div', { ref: slotRef, className: 'tl-native-menu-slot' })
+    }
+
     function SceneTopNavigation(props) {
       const [state, setState] = React.useState(sceneLoadState)
       const activePanelId = props.usePanelInfo?.(info => info.activePanelId)
+      const resolvedPalette = activeResolvedPalette ?? resolveWorkbenchPalette()
+      if (resolvedPalette) activeResolvedPalette = resolvedPalette
       React.useEffect(() => {
         const listener = () => setState(sceneLoadState)
         sceneLoadListeners.add(listener)
-        return () => sceneLoadListeners.delete(listener)
-      }, [])
-      return h('div', { className: `tl-shell-top is-${state.colorScheme ?? activeColorScheme}` },
+        const unsubscribeSnapshot = state.SceneTabs && typeof sceneApi?.subscribe === 'function'
+          ? sceneApi.subscribe(() => setState(current => {
+            const previous = current ?? sceneLoadState
+            return { ...previous, snapshotRevision: (previous.snapshotRevision ?? 0) + 1 }
+          }))
+          : undefined
+        return () => { sceneLoadListeners.delete(listener); unsubscribeSnapshot?.() }
+      }, [state.SceneTabs])
+      return h('div', { className: `tl-shell-top is-${state.colorScheme ?? activeColorScheme}`, style: {
+        '--tl-font-family': workbenchUiTokens.fontFamily, '--tl-font-body': `${workbenchUiTokens.fontBody}px`,
+        '--tl-font-compact': `${workbenchUiTokens.fontCompact}px`, '--tl-line-height': String(workbenchUiTokens.lineHeight),
+        '--tl-ui-scale': String(workbenchUiTokens.fontBody / DEFAULT_WORKBENCH_FONT_BODY),
+        '--tl-space-1': `${Math.round(4 * workbenchUiTokens.fontBody / DEFAULT_WORKBENCH_FONT_BODY)}px`,
+        '--tl-space-2': `${Math.round(6 * workbenchUiTokens.fontBody / DEFAULT_WORKBENCH_FONT_BODY)}px`,
+        '--tl-space-3': `${Math.round(8 * workbenchUiTokens.fontBody / DEFAULT_WORKBENCH_FONT_BODY)}px`,
+        '--tl-space-4': `${Math.round(10 * workbenchUiTokens.fontBody / DEFAULT_WORKBENCH_FONT_BODY)}px`,
+        '--tl-space-5': `${Math.round(12 * workbenchUiTokens.fontBody / DEFAULT_WORKBENCH_FONT_BODY)}px`,
+        '--tl-row-height': `${workbenchUiTokens.topRowHeight}px`, '--tl-nav-height': `${workbenchUiTokens.navHeight}px`,
+        '--tl-control-height': `${workbenchUiTokens.controlHeight}px`, '--tl-model-size': `${workbenchUiTokens.modelControl}px`,
+        '--tl-scene-tab-height': `${workbenchUiTokens.sceneTabHeight}px`, '--tl-dock-tab-height': `${workbenchUiTokens.dockTabHeight}px`,
+        '--tl-toolbar-height': `${workbenchUiTokens.toolbarHeight}px`, '--tl-icon-size': `${workbenchUiTokens.iconSize}px`,
+        '--tl-corner-radius': `${workbenchUiTokens.cornerRadius}px`,
+        '--tl-theme-canvas': resolvedPalette?.canvas, '--tl-theme-panel': resolvedPalette?.panel,
+        '--tl-theme-header': resolvedPalette?.header, '--tl-theme-border': resolvedPalette?.border,
+        '--tl-theme-button-ink': resolvedPalette?.buttonInk,
+        '--tl-theme-text': resolvedPalette?.text, '--tl-theme-muted': resolvedPalette?.muted,
+        '--tl-theme-accent': resolvedPalette?.accent, '--tl-theme-accent-strong': resolvedPalette?.accentStrong,
+        '--tl-theme-accent-soft': resolvedPalette?.accentSoft, '--tl-theme-danger': resolvedPalette?.danger,
+        '--tl-theme-danger-bg': resolvedPalette?.dangerBackground, '--tl-theme-danger-border': resolvedPalette?.dangerBorder,
+        '--tl-theme-warning': resolvedPalette?.warning, '--tl-theme-warning-bg': resolvedPalette?.warningBackground,
+        '--tl-theme-warning-border': resolvedPalette?.warningBorder, '--tl-theme-success': resolvedPalette?.success,
+        '--tl-theme-success-bg': resolvedPalette?.successBackground,
+      } },
+        h('style', { 'data-tradeloom-scrollbars': 'true' }, workbenchScrollbarStyles),
         h('div', { className: 'tl-top-model-row' },
           h('div', { className: 'tl-shell-brand' }, h(TradeLoomMark, { className: 'tl-shell-brand-mark' }), h(TradeLoomWordmark)),
+          h(NativeWindowsMenuSlot),
           h(AgentDirectory, { compact: true }),
-          state.ModelDirectoryRail ? h(state.ModelDirectoryRail) : null,
+          state.AIWebRail ? h(state.AIWebRail) : null,
           h(ShellToolsMenu)),
         h(BusinessMenu, { ...props, SceneTabs: state.SceneTabs }),
         state.loading ? h('p', { role: 'status', style: { margin: '0 12px 6px' } }, '正在加载工作场景…') : null,
-        state.error ? h('div', { role: 'alert', style: { display: 'flex', alignItems: 'center', gap: 8, padding: '4px 12px' } },
+        state.error ? h('div', { role: 'alert', style: { display: 'flex', alignItems: 'center', gap: 'var(--tl-space-2)', padding: 'var(--tl-space-1) var(--tl-space-3)' } },
           h('span', null, state.error),
           h('button', { type: 'button', onClick: () => loadSceneWorkbench() }, '重试工作场景')) : null)
     }
 
-    function loadSceneWorkbench(ctx = sceneContext) {
+    function loadSceneWorkbench(ctx = sceneContext, { select = true, registerWorkbenchRoot = !sourceAccountMode } = {}) {
       if (sceneLoadState.SceneTabs) return Promise.resolve(true)
       if (sceneLoadRequest) return sceneLoadRequest
       sceneContext = ctx
@@ -171,13 +672,13 @@ window.__ModuleLoader__.load({
       sceneLoadRequest = Promise.resolve()
         .then(() => require.async('./client.scenes.js'))
         .then(sceneWorkbench => {
-          sceneWorkbench.register(ctx, setTrustedBusinessOrigin, roleMetadata => publishSceneLoadState({ roleMetadata }), workbenchPalette)
+          sceneWorkbench.register(ctx, setTrustedBusinessOrigin, roleMetadata => publishSceneLoadState({ roleMetadata }), resolveWorkbenchPalette, workbenchUiTokens, { registerWorkbenchRoot })
           sceneApi = sceneWorkbench
-          if (!sceneWorkbenchSelected) {
+          if (select && !sceneWorkbenchSelected) {
             ctx.layout?.selectPanel('scene-workbench')
             sceneWorkbenchSelected = true
           }
-          publishSceneLoadState({ SceneTabs: sceneWorkbench.SceneTabs, ModelDirectoryRail: sceneWorkbench.ModelDirectoryRail, loading: false, error: '' })
+          publishSceneLoadState({ SceneTabs: sceneWorkbench.SceneTabs, AIWebRail: sceneWorkbench.AIWebRail, loading: false, error: '' })
           return true
         })
         .catch(() => {
@@ -188,17 +689,795 @@ window.__ModuleLoader__.load({
       return sceneLoadRequest
     }
 
-    function ShellToolsMenu() {
+    async function ensureSourceSceneConfig() {
+      const loaded = await loadSceneWorkbench(sceneContext, { select: false })
+      if (!loaded || typeof sceneApi?.retryLoadConfig !== 'function') throw new Error('scene-config-unavailable')
+      const current = sceneApi.getSnapshot?.()
+      const config = current?.config && !current.configError ? current.config : await sceneApi.retryLoadConfig()
+      if (!config || sceneApi.getSnapshot?.().configError) throw new Error('scene-config-unavailable')
+      return config
+    }
+
+    async function ensureConfiguredRoleSessions(ctx = sceneContext) {
+      const loaded = await loadSceneWorkbench(ctx, { select: false, registerWorkbenchRoot: false })
+      if (!loaded || typeof sceneApi?.ensureRoleSession !== 'function') return
+      let config
+      try { config = await ensureSourceSceneConfig() } catch { return }
+      const roleIds = new Set()
+      for (const scene of config.scenes ?? []) {
+        for (const panel of scene.panels ?? []) {
+          if (panel.type !== 'native-chat') continue
+          const roleId = sceneApi.roleForPanel?.(config, scene.id, panel.id)
+          if (typeof roleId === 'string' && roleId) roleIds.add(roleId)
+        }
+      }
+      const snapshot = sceneApi.getSnapshot?.()
+      await Promise.all([...roleIds].map(roleId => {
+        if (snapshot?.sessionBindings?.[roleId]) return undefined
+        return sceneApi.ensureRoleSession(roleId)
+      }))
+    }
+
+    function loadSourceWorkflowCanvas(ctx = sceneContext) {
+      publishSceneLoadState({ loading: true, error: '' })
+      return loadSceneWorkbench(ctx, { select: false }).then(async loaded => {
+        if (!loaded) return false
+        try {
+          const config = await sceneApi?.retryLoadConfig?.()
+          if (!config || sceneApi?.getSnapshot?.().configError) throw new Error('scene-config-unavailable')
+          publishSceneLoadState({ loading: false, error: '' })
+          return true
+        } catch {
+          publishSceneLoadState({ loading: false, error: '工作流画布暂时无法加载。' })
+          return false
+        }
+      })
+    }
+
+    function SourceBusinessMenu() {
+      const pickerRef = React.useRef(null)
+      const selectedSourcePanelRef = React.useRef('business-home')
+      const openedSourceRoleRef = React.useRef('')
+      const [state, setState] = React.useState(sceneLoadState)
+      const [sourceNavigationError, setSourceNavigationError] = React.useState(null)
+      React.useEffect(() => {
+        const listener = () => setState(sceneLoadState)
+        sceneLoadListeners.add(listener)
+        const unsubscribeSnapshot = state.SceneTabs && typeof sceneApi?.subscribe === 'function'
+          ? sceneApi.subscribe(() => setState(current => ({ ...sceneLoadState, snapshotRevision: (current?.snapshotRevision ?? 0) + 1 })))
+          : undefined
+        return () => { sceneLoadListeners.delete(listener); unsubscribeSnapshot?.() }
+      }, [state.SceneTabs])
+      async function loadSourceRoles() {
+        const loaded = await loadSceneWorkbench(sceneContext, { select: false })
+        if (!loaded || typeof sceneApi?.retryLoadConfig !== 'function') throw new Error('role-list-unavailable')
+        const config = await sceneApi.retryLoadConfig()
+        if (!config || sceneApi.getSnapshot?.().configError || !Array.isArray(config.roles)) throw new Error('role-list-unavailable')
+        return true
+      }
+      async function openSourceAgentCenter() {
+        setSourceNavigationError(null)
+        try {
+          const config = await ensureSourceSceneConfig()
+          if (!config.businessRoutes?.['/agent-center']) throw new Error('route-unavailable')
+          setAgentCenterHref('/business/agent-center')
+          if (!sceneApi.navigateBusiness('/agent-center', undefined, { select: false })) throw new Error('route-unavailable')
+          layout?.selectPanel('business-agent-center')
+        } catch {
+          setSourceNavigationError({ message: '工作流页面暂时无法打开，请重试。', retry: () => { void openSourceAgentCenter() } })
+        }
+      }
+      async function openSourceBusinessRoute(path, panelKey) {
+        setSourceNavigationError(null)
+        try {
+          const config = await ensureSourceSceneConfig()
+          if (!config.businessRoutes?.[path] || !sceneApi.navigateBusiness(path, undefined, { select: false })) throw new Error('route-unavailable')
+          selectedSourcePanelRef.current = panelKey
+          layout?.selectPanel(panelKey)
+        } catch {
+          setSourceNavigationError({ message: '业务页面暂时无法打开，请重试。', retry: () => { void openSourceBusinessRoute(path, panelKey) } })
+        }
+      }
+      async function openSourceRoleFiles() {
+        setSourceNavigationError(null)
+        try {
+          await ensureSourceSceneConfig()
+          layout?.selectPanel('role-files-native')
+        } catch {
+          setSourceNavigationError({ message: '角色文件暂时无法打开，请重试。', retry: () => { void openSourceRoleFiles() } })
+        }
+      }
+      async function acceptSourceRoleSession(role, result, { select = true } = {}) {
+        const knownRole = sceneApi?.getSnapshot?.().config?.roles?.some(item => item.id === role)
+        if (!knownRole || typeof sceneApi?.bindRoleSession !== 'function' || typeof uiWorkspace?.openSession !== 'function') return false
+        const sessionId = result?.sessionId
+        const binding = result?.binding
+        if (result?.role !== role || typeof sessionId !== 'string' || !sessionId
+          || binding?.scope !== 'role' || binding.roleId !== role || binding.sessionId !== sessionId) return false
+        const bound = sceneApi.bindRoleSession(role, sessionId, binding)
+        if (!bound && sceneApi.getSnapshot?.().sessionBindings?.[role] !== sessionId) return false
+        const config = await sceneApi.retryLoadConfig()
+        if (!config || sceneApi.getSnapshot?.().configError) return false
+        if (select) {
+          openedSourceRoleRef.current = role
+          sourceActiveRole = role
+          publishSceneLoadState({ sourceActiveRole: role })
+          uiWorkspace.openSession(sessionId)
+          layout?.selectPanel(null)
+        }
+        return true
+      }
+      async function openSourceRole(role) {
+        const knownRole = sceneApi?.getSnapshot?.().config?.roles?.some(item => item.id === role)
+        if (!knownRole) return false
+        const response = await fetch('/tradeloom/session', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ role }),
+        })
+        let result
+        try { result = await response.json() } catch { return false }
+        if (!response.ok) return false
+        return acceptSourceRoleSession(role, result, { select: true })
+      }
+      function resolveSourceCapabilityRole() {
+        const snapshot = sceneApi?.getSnapshot?.()
+        const validRole = role => typeof role === 'string' && snapshot?.config?.roles?.some(item => item.id === role)
+        if (validRole(openedSourceRoleRef.current)) return openedSourceRoleRef.current
+        const panel = menus.find(([key]) => key === selectedSourcePanelRef.current)
+        const sceneId = panel && snapshot?.config?.businessRoutes?.[panel[2]]?.sceneId
+        const scene = snapshot?.config?.scenes?.find(item => item.id === sceneId)
+        const role = snapshot?.roleByScene?.[sceneId] ?? scene?.roleId
+        return validRole(role) ? role : undefined
+      }
+      const items = [
+        ...menus.map(([panelKey, label]) => ({ key: panelKey, label })),
+        { key: 'role-files-native', label: '角色文件' },
+        { key: 'workflow-canvas-native', label: '工作流画布' },
+        { key: 'erpnext-status-native', label: 'ERPNext状态' },
+      ]
+      return h('nav', {
+        'aria-label': '织贸业务组件',
+        'data-tradeloom-source-business-menu': 'true',
+        className: `is-${state.colorScheme ?? activeColorScheme}`,
+        style: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', minWidth: 0, gap: 'var(--tl-space-2, 6px)', padding: 'var(--tl-space-1, 4px) var(--tl-space-2, 6px)', color: 'var(--tl-theme-text, inherit)', fontFamily: 'var(--tl-font-family, inherit)', fontSize: 'var(--tl-font-compact, 12px)' },
+      },
+      h('style', { 'data-tradeloom-source-menu-style': 'true' }, `
+        .tl-source-component-picker { position:relative; }
+        .tl-source-component-picker>summary { list-style:none; cursor:pointer; }
+        .tl-source-component-picker>summary::-webkit-details-marker { display:none; }
+        .tl-source-component-picker>summary,.tl-source-component-picker button,.tl-source-conversation-return { box-sizing:border-box; min-height:var(--tl-control-height,28px); border:1px solid var(--tl-theme-border); border-radius:var(--tl-corner-radius, 8px); padding:var(--tl-space-1,4px) var(--tl-space-3,8px); color:var(--tl-theme-text, inherit); background:var(--tl-theme-panel, transparent); font:inherit; }
+        .tl-source-component-picker>summary:focus-visible,.tl-source-component-picker button:focus-visible,.tl-source-conversation-return:focus-visible { outline:2px solid var(--tl-theme-accent); outline-offset:1px; }
+        .tl-source-component-picker>[role="group"] { position:absolute; z-index:1102; top:calc(100% + 4px); left:0; display:grid; min-width:160px; max-height:min(320px, calc(100vh - 80px)); overflow-y:auto; overscroll-behavior:contain; gap:4px; padding:6px; border:1px solid var(--tl-theme-border); border-radius:var(--tl-corner-radius, 8px); background:var(--tl-theme-panel, white); box-shadow:0 8px 24px rgb(0 0 0 / 16%); }
+        .tl-source-component-picker button { text-align:left; cursor:pointer; }
+        [data-tradeloom-source-business-menu="true"] .tl-agent-menu { max-height:min(320px,calc(100vh - 80px)); overflow-y:auto; overscroll-behavior:contain; }
+        .tl-source-component-picker button:hover,.tl-source-conversation-return:hover { background:var(--tl-theme-header, transparent); }
+        .tl-source-ai-web { position:relative; }
+        .tl-source-ai-web>summary { list-style:none; cursor:pointer; box-sizing:border-box; min-height:var(--tl-control-height,28px); padding:var(--tl-space-1,4px) var(--tl-space-3,8px); border:1px solid var(--tl-theme-border); border-radius:var(--tl-corner-radius,8px); color:var(--tl-theme-text,inherit); background:var(--tl-theme-panel,transparent); font:inherit; }
+        .tl-source-ai-web>summary::-webkit-details-marker { display:none; }
+        .tl-source-ai-web>[role="group"] { position:absolute; z-index:1200; inset-block-start:calc(100% + var(--tl-space-1,4px)); inset-inline-end:0; display:grid; gap:var(--tl-space-2,6px); min-width:min(250px,calc(100vw - 24px)); max-width:calc(100vw - 24px); max-height:calc(100dvh - var(--tl-row-height,48px) - 16px); overflow:auto; padding:var(--tl-space-2,6px); border:1px solid var(--tl-theme-border); border-radius:var(--tl-corner-radius,8px); color:var(--tl-theme-text); background:var(--tl-theme-panel); box-shadow:0 8px 24px rgb(0 0 0 / 16%); }
+        .tl-source-ai-web section { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:var(--tl-space-1,4px); min-width:0; padding:var(--tl-space-2,6px); border-bottom:1px solid var(--tl-theme-border); }
+        .tl-source-ai-web section>strong,.tl-source-ai-web section>[role="status"],.tl-source-ai-web section>small { grid-column:1/-1; min-width:0; }
+        .tl-source-ai-web section>[role="status"],.tl-source-ai-web section>small { color:var(--tl-theme-muted); font-size:var(--tl-font-compact,12px); }
+        .tl-source-ai-web button { box-sizing:border-box; min-height:var(--tl-control-height,28px); padding:var(--tl-space-1,4px) var(--tl-space-2,6px); border:1px solid var(--tl-theme-border); border-radius:var(--tl-corner-radius,8px); color:var(--tl-theme-text); background:var(--tl-theme-panel); font:inherit; font-size:var(--tl-font-compact,12px); cursor:pointer; }
+        .tl-source-shell-tools { display:flex; align-items:center; min-width:0; position:relative; --tl-shell-line:var(--tl-theme-border,#d5d9de); --tl-shell-surface:var(--tl-theme-panel,#fff); --tl-shell-ink:var(--tl-theme-text,#202326); --tl-shell-muted:var(--tl-theme-muted,#687078); --tl-shell-soft:var(--tl-theme-header,#eef0f2); --tl-shell-accent:var(--tl-theme-accent,#3979a8); }
+        .tl-source-shell-tools .tl-shell-tools { display:flex; align-items:center; gap:4px; position:relative; }
+        .tl-source-shell-tools .tl-shell-quick-action,.tl-source-shell-tools .tl-shell-tools-trigger { box-sizing:border-box; display:inline-flex; align-items:center; justify-content:center; width:var(--tl-control-height,28px); height:var(--tl-control-height,28px); padding:var(--tl-space-1,4px); border:1px solid var(--tl-shell-line); border-radius:var(--tl-corner-radius,8px); color:var(--tl-shell-ink); background:var(--tl-shell-surface); font:var(--tl-font-body,14px)/1 var(--tl-font-family,sans-serif); cursor:pointer; }
+        .tl-source-shell-tools .tl-shell-quick-action svg { width:var(--tl-icon-size,15px); height:var(--tl-icon-size,15px); fill:none; stroke:currentColor; stroke-width:1.5; }
+        .tl-source-shell-tools .tl-shell-quick-action:hover:not(:disabled),.tl-source-shell-tools .tl-shell-tools-trigger:hover,.tl-source-shell-tools .tl-shell-tools-menu button:hover { background:var(--tl-shell-soft); }
+        .tl-source-shell-tools .tl-shell-tools-menu { box-sizing:border-box; position:absolute; z-index:1200; inset-block-start:calc(100% + var(--tl-space-1,4px)); inset-inline-end:0; display:grid; gap:var(--tl-space-1,4px); min-width:calc(190px * var(--tl-ui-scale,1)); max-width:calc(100vw - var(--tl-space-5,12px) * 2); max-height:min(420px,calc(100dvh - var(--tl-row-height,48px) - var(--tl-space-4,10px) * 2)); overflow:auto; overscroll-behavior:contain; padding:var(--tl-space-2,6px); border:1px solid var(--tl-shell-line); border-radius:var(--tl-corner-radius,8px); background:var(--tl-shell-surface); color:var(--tl-shell-ink); box-shadow:0 8px 24px rgb(0 0 0 / 16%); font:var(--tl-font-compact,12px)/var(--tl-line-height,1.45) var(--tl-font-family,sans-serif); }
+        .tl-source-shell-tools .tl-shell-tools-menu button { min-height:var(--tl-control-height,28px); padding:var(--tl-space-2,6px) var(--tl-space-3,8px); border:0; border-radius:var(--tl-corner-radius,8px); color:inherit; background:transparent; font:inherit; text-align:start; cursor:pointer; }
+        .tl-source-shell-tools .tl-shell-tools-menu button:focus-visible,.tl-source-shell-tools .tl-shell-tools-trigger:focus-visible { outline:2px solid var(--tl-shell-accent); outline-offset:1px; }
+        .tl-source-shell-tools .tl-session-usage-panel,.tl-source-shell-tools .tl-font-size-panel,.tl-source-shell-tools .tl-motion-preference-panel { box-sizing:border-box; max-width:calc(100vw - var(--tl-space-5,12px) * 2); max-height:calc(100dvh - var(--tl-row-height,48px) - var(--tl-space-4,10px) * 2); overflow:auto; border:1px solid var(--tl-shell-line); border-radius:var(--tl-corner-radius,8px); background:var(--tl-shell-surface); color:var(--tl-shell-ink); box-shadow:0 8px 24px rgb(0 0 0 / 16%); }
+        .tl-mobile-link-panel { box-sizing:border-box; position:fixed; z-index:1100; inset-block-start:var(--tl-row-height,48px); inset-inline-end:var(--tl-space-3,8px); display:grid; gap:var(--tl-space-3,8px); width:min(calc(420px * var(--tl-ui-scale,1)),calc(100vw - var(--tl-space-5,12px) * 2)); max-width:calc(100vw - var(--tl-space-5,12px) * 2); max-height:calc(100dvh - var(--tl-space-5,12px) * 8); overflow:auto; padding:var(--tl-space-3,8px); border:1px solid var(--tl-shell-line); border-radius:var(--tl-corner-radius,8px); background:var(--tl-shell-surface); color:var(--tl-shell-ink); box-shadow:0 10px 32px rgb(0 0 0 / 20%); font:var(--tl-font-compact,12px)/var(--tl-line-height,1.45) var(--tl-font-family,sans-serif); }
+      `),
+      h('details', { ref: pickerRef, className: 'tl-source-component-picker' },
+        h('summary', null, '业务组件'),
+        h('div', { role: 'group', 'aria-label': '可打开的业务组件' }, ...items.map(({ key, label }) => h('button', {
+          key, type: 'button', 'data-source-panel': key,
+          onClick: () => {
+            setSourceNavigationError(null)
+            selectedSourcePanelRef.current = key
+            if (pickerRef.current) pickerRef.current.open = false
+            if (key === 'business-agent-center') void openSourceAgentCenter()
+            else if (key === 'role-files-native') void openSourceRoleFiles()
+            else if (key.startsWith('business-')) {
+              const route = menus.find(([candidate]) => candidate === key)?.[2]
+              if (route) void openSourceBusinessRoute(route, key)
+            }
+            else layout?.selectPanel(key)
+          },
+        }, label)))),
+      h('button', { key: 'conversation', className: 'tl-source-conversation-return', type: 'button', 'data-source-panel': 'conversation', onClick: () => { setSourceNavigationError(null); layout?.selectPanel(null) } }, '原生对话'),
+      sourceNavigationError ? h('div', { role: 'alert', className: 'tl-source-navigation-error' },
+        h('span', null, sourceNavigationError.message),
+        h('button', { type: 'button', onClick: () => { sourceNavigationError.retry() } }, '重试')) : null,
+      h(AgentDirectory, {
+        onRetryRoles: loadSourceRoles, onRequestRoles: loadSourceRoles, onOpenRole: openSourceRole,
+        resolveCapabilityRole: resolveSourceCapabilityRole,
+        onConfiguredSession: (role, result, options) => acceptSourceRoleSession(role, result, options),
+      }),
+      h('div', { className: 'tl-source-shell-tools' }, h(ShellToolsMenu, {
+        onReturnWorkspace: () => layout?.selectPanel('workflow-canvas-native'),
+      })),
+      h(SourceAiWebMenu),
+      state.proposalError ? h('div', { role: 'alert', className: 'tl-source-proposal-error' },
+        h('span', null, state.proposalError),
+        h('button', { type: 'button', onClick: () => { void handoffSourceProposal(state.proposalHref) } }, '重试')) : null)
+    }
+
+    function SourceAiWebMenu() {
       const [open, setOpen] = React.useState(false)
+      const [states, setStates] = React.useState({ deepseek: null, doubao: null })
+      const [messages, setMessages] = React.useState({ deepseek: '', doubao: '' })
+      const [busy, setBusy] = React.useState('')
+      const bridge = window.dshDesktop?.aiWeb
+      const providers = [['deepseek', 'DeepSeek'], ['doubao', '豆包']]
+      const applyState = value => {
+        if (!value || !['deepseek', 'doubao'].includes(value.provider)) return
+        setStates(current => {
+          const previous = current[value.provider]
+          if (Number.isSafeInteger(previous?.revision) && Number.isSafeInteger(value.revision) && value.revision < previous.revision) return current
+          const phase = ['closed', 'loading', 'ready', 'error'].includes(value.phase) ? value.phase : 'error'
+          return { ...current, [value.provider]: {
+            provider: value.provider, revision: value.revision, open: value.open === true,
+            visible: value.visible === true, phase, persistentSession: value.persistentSession === true,
+          } }
+        })
+      }
+      const refresh = async provider => {
+        if (typeof bridge?.status !== 'function') return
+        try { applyState(await bridge.status({ provider })) }
+        catch { setMessages(current => ({ ...current, [provider]: '状态暂时不可用。' })) }
+      }
+      React.useEffect(() => {
+        if (!open || typeof bridge?.subscribe !== 'function') return undefined
+        let live = true
+        let unsubscribe
+        try {
+          const result = bridge.subscribe(value => { if (live) applyState(value) })
+          if (typeof result === 'function') unsubscribe = result
+        } catch { /* status refresh will show unavailable state */ }
+        return () => { live = false; unsubscribe?.() }
+      }, [open, bridge])
+      const runAction = async (provider, action) => {
+        if (busy || typeof bridge?.[action] !== 'function') return
+        setBusy(`${provider}:${action}`)
+        setMessages(current => ({ ...current, [provider]: '' }))
+        try {
+          const result = await bridge[action]({ provider })
+          if (action === 'toggle') applyState(result)
+          else if (action === 'upload') setMessages(current => ({ ...current, [provider]: result?.cancelled ? '已取消文件选择。' : result?.delivered ? '文件已交给网页；网站是否处理由网页确认。' : '文件未能交给网页。' }))
+          else setMessages(current => ({ ...current, [provider]: result?.saved ? '已保存网页当前可见文字。' : '网页可见文字暂未保存。' }))
+        } catch {
+          setMessages(current => ({ ...current, [provider]: action === 'toggle' ? '网页窗口操作失败。' : action === 'upload' ? '文件操作失败。' : '保存网页文字失败。' }))
+        } finally { setBusy('') }
+      }
+      return h('details', { className: 'tl-source-ai-web', onToggle: event => {
+        const next = event.currentTarget.open
+        setOpen(next)
+        if (next) for (const [provider] of providers) void refresh(provider)
+      } },
+        h('summary', { 'aria-label': 'AI 网页窗口' }, 'AI 网页'),
+        h('div', { role: 'group', 'aria-label': 'AI 网页控制' }, ...providers.map(([provider, label]) => {
+          const state = states[provider]
+          return h('section', { key: provider, 'data-ai-web-provider': provider },
+            h('strong', null, label),
+            h('span', { role: 'status' }, typeof bridge?.status !== 'function' ? '不可用' : !state ? '读取状态中…' : state.phase === 'error' ? '状态暂不可用' : state.phase === 'loading' ? '正在连接' : state.open ? (state.visible ? '窗口已打开' : '窗口已打开，当前隐藏') : '窗口已关闭'),
+            h('button', { type: 'button', disabled: busy !== '' || typeof bridge?.status !== 'function', onClick: () => { void refresh(provider) } }, '刷新状态'),
+            h('button', { type: 'button', disabled: busy !== '' || typeof bridge?.toggle !== 'function', onClick: () => { void runAction(provider, 'toggle') } }, state?.open ? '切换窗口' : '打开窗口'),
+            h('button', { type: 'button', disabled: busy !== '' || typeof bridge?.upload !== 'function', onClick: () => { void runAction(provider, 'upload') } }, '选择并上传文件'),
+            h('button', { type: 'button', disabled: busy !== '' || typeof bridge?.saveText !== 'function', onClick: () => { void runAction(provider, 'saveText') } }, '保存网页可见文字'),
+            messages[provider] ? h('small', { role: 'status' }, messages[provider]) : null)
+        })))
+    }
+
+    function SourceAgentCenterPanel() {
+      const [, setRevision] = React.useState(0)
+      const [attempt, setAttempt] = React.useState(0)
+      const [failed, setFailed] = React.useState(false)
+      React.useEffect(() => {
+        let live = true
+        let unsubscribeSnapshot
+        const update = () => { if (live) setRevision(value => value + 1) }
+        const attachSnapshot = () => {
+          if (!unsubscribeSnapshot && typeof sceneApi?.subscribe === 'function') unsubscribeSnapshot = sceneApi.subscribe(update)
+        }
+        sceneLoadListeners.add(update)
+        attachSnapshot()
+        void ensureSourceSceneConfig().then(() => {
+          attachSnapshot()
+          if (live) { setFailed(false); update() }
+        }).catch(() => { if (live) { setFailed(true); update() } })
+        return () => { live = false; sceneLoadListeners.delete(update); unsubscribeSnapshot?.() }
+      }, [attempt])
+      const snapshot = sceneApi?.getSnapshot?.()
+      const route = snapshot?.config?.businessRoutes?.['/agent-center']
+      const scene = snapshot?.config?.scenes?.find(item => item.id === route?.sceneId)
+      const panel = scene?.panels?.find(item => item.id === route?.panelId)
+      if (failed) return h('div', { role: 'alert', className: 'tl-source-business-state', 'data-source-cold-error': 'true' },
+        h('span', null, '工作流页面暂时无法读取。'), h('button', { type: 'button', onClick: () => setAttempt(value => value + 1) }, '重试'))
+      if (!sceneApi?.BusinessPaneTabs || !panel) return h('p', { role: 'status' }, '正在读取工作流页面配置…')
+      return h(SourceBusinessWorkspace, { scene, panel, routePath: '/agent-center', panelKey: 'business-agent-center' },
+        h('div', { 'data-source-agent-center': 'true', style: {
+        display: 'flex', flex: '1 1 0', flexDirection: 'column',
+        width: '100%', height: '100%', minWidth: 0, minHeight: 0, overflow: 'hidden',
+      } },
+        h('style', { 'data-source-agent-center-style': 'true' }, `
+          [data-source-agent-center] .tl-business-pane-tabs { display:flex; flex:1 1 0; flex-direction:column; min-width:0; min-height:0; height:100%; overflow:hidden; }
+          [data-source-agent-center] .tl-business-view-tabs { display:flex; flex:0 0 auto; gap:var(--tl-space-1); padding:var(--tl-space-1); background:var(--tl-theme-header); border-bottom:1px solid var(--tl-theme-border); }
+          [data-source-agent-center] .tl-business-view-tabs button { border:1px solid transparent; border-radius:var(--tl-corner-radius); padding:var(--tl-space-1) var(--tl-space-2); color:var(--tl-theme-muted); background:transparent; font:inherit; cursor:pointer; }
+          [data-source-agent-center] .tl-business-view-tabs button[aria-selected="true"] { color:var(--tl-theme-text); border-color:var(--tl-theme-border); background:var(--tl-theme-accent-soft); }
+          [data-source-agent-center] .tl-business-view-tabs button:focus-visible { outline:2px solid var(--tl-theme-accent); outline-offset:1px; }
+          [data-source-agent-center] .tl-business-view-panel { display:flex; flex:1 1 0; flex-direction:column; min-width:0; min-height:0; overflow:hidden; }
+          [data-source-agent-center] .tl-business-view-panel[hidden] { display:none; }
+          [data-source-agent-center] .tl-workflow-canvas-pane { display:flex; flex:1 1 0; flex-direction:column; min-width:0; min-height:0; overflow:hidden; }
+          [data-source-agent-center] .tl-workflow-canvas-pane>.tl-wf { flex:1 1 0; min-height:0; }
+        `),
+        h(sceneApi.BusinessPaneTabs, {
+          panel, sceneId: scene.id,
+          path: snapshot.businessPathsByScene?.[scene.id] ?? panel.path,
+          proposalHref: snapshot.proposalHrefsByScene?.[scene.id] ?? '',
+          viewIntent: snapshot.businessViewIntentsByScene?.[scene.id],
+          refreshKey: snapshot.layouts?.[scene.id]?.refreshCounts?.[panel.id] ?? 0,
+          fitContainer: true,
+        })))
+    }
+
+    function SourceBusinessWorkspace({ scene, panel, routePath, panelKey, children }) {
+      const [, setRevision] = React.useState(0)
+      const [attempt, setAttempt] = React.useState(0)
+      const [filesMounted, setFilesMounted] = React.useState(false)
+      const [filesOpen, setFilesOpen] = React.useState(false)
+      const [previewOpen, setPreviewOpen] = React.useState(false)
+      const [bridge, setBridge] = React.useState(null)
+      const [actionStatus, setActionStatus] = React.useState('')
+      React.useEffect(() => {
+        let live = true
+        const update = () => { if (live) setRevision(value => value + 1) }
+        const unsubscribe = typeof sceneApi?.subscribe === 'function' ? sceneApi.subscribe(update) : undefined
+        if (!sceneApi?.getSnapshot?.().config || sceneApi.getSnapshot?.().configError) {
+          void loadSceneWorkbench(sceneContext, { select: false }).then(async loaded => {
+            if (!loaded || !sceneApi?.retryLoadConfig) throw new Error('business-scene-unavailable')
+            const config = await sceneApi.retryLoadConfig()
+            if (!config || sceneApi.getSnapshot?.().configError) throw new Error('business-scene-unavailable')
+            if (live) setActionStatus('')
+          }).catch(() => { if (live) setActionStatus('业务文件暂时无法连接，请重试。') })
+        }
+        return () => { live = false; unsubscribe?.() }
+      }, [attempt, scene?.id])
+      React.useEffect(() => {
+        if (!scene || typeof sceneApi?.createFileSelectionMessageHandler !== 'function') return undefined
+        const getFrames = () => [...(window.document?.querySelectorAll?.(`[data-source-business-key="${panelKey}"] iframe[data-tradeloom-business-frame]`) ?? [])]
+        const handler = sceneApi.createFileSelectionMessageHandler(scene, getFrames, window.location.origin,
+          () => sceneApi.getSnapshot?.().businessPathsByScene?.[scene.id] ?? panel?.path ?? '')
+        window.addEventListener('message', handler)
+        setBridge({ sceneId: scene.id, handler })
+        return () => {
+          window.removeEventListener('message', handler)
+          handler.dispose?.()
+        }
+      }, [scene?.id, panelKey])
+      const snapshot = sceneApi?.getSnapshot?.()
+      const selection = scene ? sceneApi?.getFileSelection?.(scene.id) : null
+      const generation = scene ? snapshot?.fileSelectionGenerations?.[scene.id] ?? 0 : 0
+      const filesPanel = scene?.panels?.find(item => item.id === 'files')
+      const previewPanel = scene?.panels?.find(item => item.id === 'preview')
+      const BusinessFrame = sceneApi?.PANEL_REGISTRY?.['business-iframe']
+      const mainPath = scene ? snapshot?.businessPathsByScene?.[scene.id] ?? panel?.path ?? '' : ''
+      const openFiles = () => {
+        if (!filesPanel || typeof BusinessFrame !== 'function') return false
+        setFilesMounted(true)
+        setFilesOpen(true)
+        setActionStatus('')
+        return true
+      }
+      const mainFrame = panel && BusinessFrame ? h(BusinessFrame, {
+        panel, path: mainPath, proposalHref: snapshot?.proposalHrefsByScene?.[scene?.id] ?? '',
+        refreshKey: snapshot?.layouts?.[scene?.id]?.refreshCounts?.[panel.id] ?? 0, fitContainer: true,
+      }) : null
+      const markdownPreview = previewOpen && selection?.kind === 'artifact' && selection.previewMime === 'text/markdown'
+        && typeof sceneApi?.ArtifactMarkdownPreview === 'function'
+        ? h(sceneApi.ArtifactMarkdownPreview, {
+          key: `${scene?.id}:${generation}:${selection.id}`, sceneId: scene?.id, selection, generation,
+          activeScene: snapshot?.activeSceneId === scene?.id,
+          requestFileExport: bridge?.handler?.requestFileExport,
+          requestFileFocus: bridge?.handler?.requestFileFocus,
+          openFilesPanel: openFiles, closePanel: () => setPreviewOpen(false),
+        }) : null
+      return h('section', {
+        'data-source-business-key': panelKey, 'data-business-path': routePath,
+        'data-source-file-kind': selection?.kind ?? '', 'data-source-file-id': selection?.id ?? '',
+        'data-source-file-generation': generation,
+        className: 'tl-source-business-workspace', style: {
+        display: 'flex', flex: '1 1 auto', flexDirection: 'column', width: '100%', height: '100%', minWidth: 0, minHeight: 0, overflow: 'hidden',
+      } },
+        h('style', null, `
+          .tl-source-business-workspace { box-sizing:border-box; }
+          .tl-source-business-workspace [data-source-business-toolbar] { display:flex; flex:0 0 auto; flex-wrap:wrap; align-items:center; gap:var(--tl-space-1); min-width:0; padding:var(--tl-space-1) var(--tl-space-2); border-bottom:1px solid var(--tl-theme-border); color:var(--tl-theme-text); background:var(--tl-theme-header); }
+          .tl-source-business-workspace [data-source-business-toolbar] button { box-sizing:border-box; min-height:var(--tl-control-height); padding:var(--tl-space-1) var(--tl-space-2); border:1px solid var(--tl-theme-border); border-radius:var(--tl-corner-radius); color:var(--tl-theme-text); background:var(--tl-theme-panel); font:inherit; font-size:var(--tl-font-compact); cursor:pointer; }
+          .tl-source-business-workspace [data-source-business-toolbar] button[aria-pressed="true"] { border-color:var(--tl-theme-accent); background:var(--tl-theme-accent-soft); }
+          .tl-source-business-workspace [data-source-business-body] { display:flex; flex:1 1 0; min-width:0; min-height:0; overflow:hidden; }
+          .tl-source-business-workspace [data-source-business-main] { display:flex; flex:1 1 0; min-width:0; min-height:0; overflow:hidden; }
+          .tl-source-business-workspace [data-source-business-pane] { display:flex; flex:0 1 35%; min-width:0; min-height:0; overflow:hidden; border-inline-start:1px solid var(--tl-theme-border); }
+          .tl-source-business-workspace [data-source-business-pane][hidden] { display:none !important; }
+          .tl-source-business-workspace [data-source-business-pane] iframe { display:block; flex:1 1 0; width:100%; height:100%; min-width:0; min-height:0; border:0; }
+          .tl-source-business-workspace [data-source-business-status] { margin:0; padding:var(--tl-space-1) var(--tl-space-2); color:var(--tl-theme-muted); font-size:var(--tl-font-compact); }
+          .tl-source-business-workspace [data-source-business-preview] { display:flex; flex:1 1 0; min-width:0; min-height:0; overflow:hidden; }
+          .tl-source-business-workspace .tl-markdown-preview { display:flex; flex:1 1 0; width:100%; height:100%; min-width:0; min-height:0; flex-direction:column; overflow:hidden; color:var(--tl-theme-text); background:var(--tl-theme-panel); font:inherit; }
+          .tl-source-business-workspace .tl-markdown-preview-header { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:var(--tl-space-1) var(--tl-space-2); flex:0 0 auto; min-height:var(--tl-control-height); padding:var(--tl-space-1) var(--tl-space-2); border-bottom:1px solid var(--tl-theme-border); background:linear-gradient(180deg,var(--tl-theme-header),color-mix(in srgb,var(--tl-theme-header) 78%,var(--tl-theme-panel))); }
+          .tl-source-business-workspace .tl-markdown-preview-header > strong { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:var(--tl-font-body); font-weight:600; }
+          .tl-source-business-workspace .tl-markdown-preview-controls,.tl-source-business-workspace .tl-markdown-preview-modes { display:inline-flex; align-items:center; gap:var(--tl-space-1); flex:0 0 auto; }
+          .tl-source-business-workspace .tl-markdown-preview-controls { flex-wrap:wrap; min-width:0; max-width:100%; }
+          .tl-source-business-workspace .tl-preview-icon-action svg { width:var(--tl-icon-size); height:var(--tl-icon-size); }
+          .tl-source-business-workspace .tl-preview-actions-menu { box-sizing:border-box; position:fixed; inset:auto; margin:0; width:calc(184px * var(--tl-ui-scale,1)); max-width:calc(100vw - 16px); max-height:calc(100dvh - 16px); overflow-y:auto; padding:calc(4px * var(--tl-ui-scale,1)); border:1px solid var(--tl-theme-border); border-radius:var(--tl-corner-radius); background:var(--tl-theme-panel); color:var(--tl-theme-text); box-shadow:0 8px 24px rgb(0 0 0 / 22%); font:var(--tl-font-compact)/1.4 var(--tl-font-family); }
+          .tl-source-business-workspace .tl-preview-actions-menu:popover-open { display:grid; gap:calc(2px * var(--tl-ui-scale,1)); }
+          .tl-source-business-workspace .tl-preview-actions-menu button { justify-content:flex-start; width:100%; border:0; white-space:normal; overflow-wrap:anywhere; }
+          .tl-source-business-workspace .tl-markdown-preview-controls button,.tl-source-business-workspace .tl-markdown-preview-controls a { box-sizing:border-box; display:inline-flex; align-items:center; justify-content:center; min-height:calc(var(--tl-control-height) * .82); padding:0 var(--tl-space-2); border:1px solid var(--tl-theme-border); border-radius:var(--tl-corner-radius); color:var(--tl-theme-text); background:var(--tl-theme-panel); font:inherit; font-size:var(--tl-font-compact); line-height:1.2; text-decoration:none; white-space:nowrap; cursor:pointer; }
+          .tl-source-business-workspace .tl-markdown-preview-controls button:hover,.tl-source-business-workspace .tl-markdown-preview-controls a:hover { border-color:var(--tl-theme-accent); background:var(--tl-theme-header); }
+          .tl-source-business-workspace .tl-markdown-preview-controls button:focus-visible,.tl-source-business-workspace .tl-markdown-preview-controls a:focus-visible { outline:2px solid var(--tl-theme-accent); outline-offset:1px; }
+          .tl-source-business-workspace .tl-markdown-preview-modes button[aria-pressed="true"] { border-color:var(--tl-theme-accent); box-shadow:0 0 0 1px color-mix(in srgb,var(--tl-theme-accent) 35%,transparent); }
+          .tl-source-business-workspace .tl-markdown-preview-content { flex:1 1 auto; min-width:0; min-height:0; overflow:auto; padding:var(--tl-space-3); }
+          .tl-source-business-workspace .tl-markdown-preview-content.is-source { display:flex; overflow:hidden; }
+          .tl-source-business-workspace .tl-markdown-preview-source { box-sizing:border-box; flex:1 1 auto; width:100%; min-width:0; min-height:0; margin:0; padding:var(--tl-space-3); overflow:auto; border:1px solid var(--tl-theme-border); border-radius:var(--tl-corner-radius); background:var(--tl-theme-canvas); color:var(--tl-theme-text); font-family:ui-monospace,SFMono-Regular,Consolas,monospace; font-size:var(--tl-font-compact); line-height:1.55; white-space:pre; tab-size:2; }
+          .tl-source-business-workspace .tl-markdown-preview-reader { max-width:100%; color:var(--tl-theme-text); font:inherit; }
+          .tl-source-business-workspace .tl-markdown-preview-reader img { max-width:100%; height:auto; object-fit:contain; }
+          .tl-source-business-workspace .tl-markdown-preview-reader table { display:block; max-width:100%; overflow:auto; border-collapse:collapse; border-spacing:0; }
+          .tl-source-business-workspace .tl-markdown-preview-reader th,.tl-source-business-workspace .tl-markdown-preview-reader td { border:1px solid var(--tl-theme-border); padding:calc(6px * var(--tl-ui-scale,1)) calc(9px * var(--tl-ui-scale,1)); text-align:left; }
+          .tl-source-business-workspace .tl-markdown-preview-reader th { background:var(--tl-theme-header); font-weight:600; }
+          .tl-source-business-workspace .tl-markdown-preview-reader td { background:transparent; }
+          .tl-source-business-workspace .tl-markdown-preview-reader :not(pre)>code { padding:1px 4px; border-radius:3px; background:var(--tl-theme-header); font-size:.92em; }
+          .tl-source-business-workspace .tl-markdown-preview-reader blockquote { margin:var(--tl-space-3) 0; padding:var(--tl-space-2) var(--tl-space-3); border-left:3px solid var(--tl-theme-accent); background:color-mix(in srgb,var(--tl-theme-accent) 12%,var(--tl-theme-canvas)); }
+          .tl-source-business-workspace .tl-markdown-preview-status { display:grid; align-content:center; min-height:100%; color:var(--tl-theme-muted); font-size:var(--tl-font-body); text-align:center; }
+          .tl-source-business-workspace .tl-markdown-preview-status.is-error { color:var(--tl-theme-warning); }
+          .tl-source-business-workspace .tl-markdown-preview-footer { display:flex; flex:0 0 auto; flex-wrap:wrap; justify-content:space-between; gap:var(--tl-space-2); padding:var(--tl-space-1) var(--tl-space-3); border-top:1px solid var(--tl-theme-border); color:var(--tl-theme-muted); font-size:var(--tl-font-compact); }
+          .tl-source-business-workspace .tl-markdown-preview-footer > * { min-width:0; max-width:100%; }
+          .tl-source-business-workspace .tl-preview-version-details > span { display:block; margin-block:var(--tl-space-1); overflow-wrap:anywhere; }
+          .tl-source-business-workspace .tl-preview-version-details summary { cursor:pointer; }
+          .tl-source-business-workspace .tl-markdown-preview-version-id,.tl-source-business-workspace .tl-markdown-preview-version-id code { overflow-wrap:anywhere; }
+          @media (max-width:520px) {
+            .tl-source-business-workspace .tl-markdown-preview-header { flex-wrap:wrap; justify-content:flex-start; }
+            .tl-source-business-workspace .tl-markdown-preview-header > strong { flex:1 1 100%; }
+            .tl-source-business-workspace .tl-markdown-preview-controls { width:100%; justify-content:flex-end; flex-wrap:wrap; }
+            .tl-source-business-workspace .tl-markdown-preview-controls button,.tl-source-business-workspace .tl-markdown-preview-controls a { padding-inline:var(--tl-space-1); }
+          }
+        `),
+        h('div', { 'data-source-business-toolbar': 'true', role: 'toolbar', 'aria-label': '业务文件操作' },
+          filesPanel ? h('button', { type: 'button', 'aria-pressed': filesOpen, onClick: () => filesOpen ? setFilesOpen(false) : openFiles() }, filesOpen ? '关闭文件栏' : '文件') : null,
+          previewPanel ? h('button', { type: 'button', 'aria-pressed': previewOpen, onClick: () => setPreviewOpen(value => !value) }, previewOpen ? '关闭预览' : '预览') : null,
+          actionStatus ? h('span', { role: 'alert', 'data-source-business-status': 'true' }, actionStatus,
+            h('button', { type: 'button', onClick: () => setAttempt(value => value + 1) }, '重试')) : null),
+        h('div', { 'data-source-business-body': 'true' },
+          h('div', { 'data-source-business-main': 'true' }, children ?? mainFrame),
+          filesMounted && filesPanel ? h('div', { 'data-source-business-pane': 'files', hidden: !filesOpen, 'aria-label': '业务文件栏' },
+            h(BusinessFrame, { panel: filesPanel, path: filesPanel.path, fitContainer: true, refreshKey: 0 })) : null,
+          previewPanel ? h('div', { 'data-source-business-pane': 'preview', hidden: !previewOpen, 'aria-label': '业务预览栏' },
+            h('div', { 'data-source-preview-fallback': 'true', hidden: Boolean(markdownPreview), style: { display: markdownPreview ? 'none' : 'flex', flex: '1 1 0', minWidth: 0, minHeight: 0, overflow: 'hidden' } },
+              h(BusinessFrame, { panel: previewPanel, path: previewPanel.path, fitContainer: true, refreshKey: 0 })),
+            markdownPreview ? h('div', { 'data-source-business-preview': 'true' }, markdownPreview) : null) : null))
+    }
+
+    function SourceBusinessRoutePanel({ label, path, panelKey }) {
+      const [, setRevision] = React.useState(0)
+      const [failed, setFailed] = React.useState(false)
+      const [attempt, setAttempt] = React.useState(0)
+      React.useEffect(() => {
+        let live = true
+        let unsubscribeSnapshot
+        const update = () => { if (live) setRevision(value => value + 1) }
+        const attachSnapshot = () => {
+          if (!unsubscribeSnapshot && typeof sceneApi?.subscribe === 'function') unsubscribeSnapshot = sceneApi.subscribe(update)
+        }
+        sceneLoadListeners.add(update)
+        attachSnapshot()
+        void ensureSourceSceneConfig().then(() => {
+          attachSnapshot()
+          if (live) { setFailed(false); update() }
+        }).catch(() => { if (live) { setFailed(true); update() } })
+        return () => { live = false; sceneLoadListeners.delete(update); unsubscribeSnapshot?.() }
+      }, [attempt])
+      const snapshot = sceneApi?.getSnapshot?.()
+      const route = snapshot?.config?.businessRoutes?.[path]
+      const scene = route && snapshot.config.scenes.find(item => item.id === route.sceneId)
+      const panel = scene?.panels?.find(item => item.id === route.panelId)
+      if (failed) return h('div', { role: 'alert', className: 'tl-source-business-state', 'data-source-cold-error': 'true' },
+        h('span', null, '业务页面暂时无法读取。'), h('button', { type: 'button', onClick: () => setAttempt(value => value + 1) }, '重试'))
+      if (!panel || typeof sceneApi?.PANEL_REGISTRY?.['business-iframe'] !== 'function') return h('p', { role: 'status', className: 'tl-source-business-state' }, '正在读取业务页面配置…')
+      const BusinessFrame = sceneApi.PANEL_REGISTRY['business-iframe']
+      return h(SourceBusinessWorkspace, { scene, panel, routePath: path, panelKey }, h(BusinessFrame, {
+        panel, path: snapshot.businessPathsByScene?.[scene.id] ?? panel.path,
+        refreshKey: snapshot.layouts?.[scene.id]?.refreshCounts?.[panel.id] ?? 0, fitContainer: true,
+      }))
+    }
+
+    function SourceErpNextStatus() {
+      const [attempt, setAttempt] = React.useState(0)
+      const [state, setState] = React.useState({ loading: true, error: '' })
+      React.useEffect(() => {
+        let live = true
+        setState({ loading: true, error: '' })
+        void loadSceneWorkbench(sceneContext, { select: false }).then(loaded => {
+          if (!live) return
+          if (!loaded || typeof sceneApi?.ERPNextStatus !== 'function') setState({ loading: false, error: 'ERPNext 状态组件暂时无法加载。' })
+          else setState({ loading: false, error: '' })
+        })
+        return () => { live = false }
+      }, [attempt])
+      if (state.error) return h('div', { className: 'tl-source-erpnext-state', role: 'alert' },
+        h('span', null, state.error),
+        h('button', { type: 'button', onClick: () => setAttempt(value => value + 1) }, '重试'))
+      if (state.loading || typeof sceneApi?.ERPNextStatus !== 'function') return h('p', { className: 'tl-source-erpnext-state', role: 'status' }, '正在加载 ERPNext 状态…')
+      return h('div', { 'data-source-erpnext-panel': 'true', style: {
+        display: 'flex', flex: '1 1 0', minWidth: 0, minHeight: 0,
+        overflow: 'auto', color: 'var(--tl-theme-text)',
+      } },
+        h('style', { 'data-source-erpnext-style': 'true' }, `
+          [data-source-erpnext-panel] .tl-erpnext-status { display:flex; flex:1 1 0; flex-direction:column; gap:var(--tl-space-2); min-width:0; min-height:0; color:var(--tl-theme-text); }
+          [data-source-erpnext-panel] .tl-erpnext-status-heading,[data-source-erpnext-panel] .tl-erpnext-controls,[data-source-erpnext-panel] .tl-erpnext-pagination,[data-source-erpnext-panel] .tl-erpnext-detail-heading { display:flex; align-items:center; flex-wrap:wrap; gap:var(--tl-space-2); }
+          [data-source-erpnext-panel] .tl-erpnext-status-heading h3,[data-source-erpnext-panel] .tl-erpnext-detail-heading h4 { flex:1 1 auto; margin:0; font-size:var(--tl-font-body); }
+          [data-source-erpnext-panel] .tl-erpnext-status p,[data-source-erpnext-panel] .tl-erpnext-source { margin:0; color:var(--tl-theme-muted); font-size:var(--tl-font-compact); }
+          [data-source-erpnext-panel] .tl-erpnext-status a { align-self:flex-start; color:var(--tl-theme-accent); }
+          [data-source-erpnext-panel] .tl-erpnext-status button { box-sizing:border-box; min-height:var(--tl-control-height); padding:var(--tl-space-1) var(--tl-space-2); border:1px solid var(--tl-theme-border); border-radius:var(--tl-corner-radius); color:var(--tl-theme-text); background:var(--tl-theme-panel); font:inherit; font-size:var(--tl-font-compact); cursor:pointer; }
+          [data-source-erpnext-panel] .tl-erpnext-browser { display:flex; flex-direction:column; gap:var(--tl-space-2); min-width:0; min-height:0; }
+          [data-source-erpnext-panel] .tl-erpnext-controls label { display:inline-flex; align-items:center; gap:var(--tl-space-1); color:var(--tl-theme-muted); }
+          [data-source-erpnext-panel] .tl-erpnext-controls button,[data-source-erpnext-panel] .tl-erpnext-controls select,[data-source-erpnext-panel] .tl-erpnext-browser button,[data-source-erpnext-panel] .tl-erpnext-status-heading button,[data-source-erpnext-panel] .tl-erpnext-status > button,[data-source-erpnext-panel] .tl-erpnext-detail-heading button { box-sizing:border-box; min-height:var(--tl-control-height); padding:var(--tl-space-1) var(--tl-space-2); border:1px solid var(--tl-theme-border); border-radius:var(--tl-corner-radius); background:var(--tl-theme-panel); color:var(--tl-theme-text); font:inherit; font-size:var(--tl-font-compact); cursor:pointer; }
+          [data-source-erpnext-panel] .tl-erpnext-browser button:hover,[data-source-erpnext-panel] .tl-erpnext-status button:hover { background:var(--tl-theme-header); }
+          [data-source-erpnext-panel] .tl-erpnext-browser button:focus-visible,[data-source-erpnext-panel] .tl-erpnext-status button:focus-visible,[data-source-erpnext-panel] .tl-erpnext-controls select:focus-visible { outline:2px solid var(--tl-theme-accent); outline-offset:1px; }
+          [data-source-erpnext-panel] .tl-erpnext-table-wrap { max-width:100%; min-width:0; overflow:auto; border:1px solid var(--tl-theme-border); border-radius:var(--tl-corner-radius); }
+          [data-source-erpnext-panel] .tl-erpnext-table-wrap table { border-collapse:collapse; width:100%; min-width:640px; background:var(--tl-theme-panel); }
+          [data-source-erpnext-panel] .tl-erpnext-table-wrap th,[data-source-erpnext-panel] .tl-erpnext-table-wrap td { padding:var(--tl-space-1) var(--tl-space-2); border-bottom:1px solid var(--tl-theme-border); text-align:left; white-space:nowrap; }
+          [data-source-erpnext-panel] .tl-erpnext-table-wrap th { position:sticky; top:0; background:var(--tl-theme-canvas); color:var(--tl-theme-muted); font-weight:600; }
+          [data-source-erpnext-panel] .tl-erpnext-pagination { justify-content:flex-end; color:var(--tl-theme-muted); font-size:var(--tl-font-compact); }
+          [data-source-erpnext-panel] .tl-erpnext-detail { display:flex; flex-direction:column; gap:var(--tl-space-2); min-width:0; padding-top:var(--tl-space-2); border-top:1px solid var(--tl-theme-border); }
+          [data-source-erpnext-panel] .tl-erpnext-detail dl { display:grid; grid-template-columns:minmax(100px,.35fr) minmax(0,1fr); gap:var(--tl-space-1) var(--tl-space-3); margin:0; }
+          [data-source-erpnext-panel] .tl-erpnext-detail dt { color:var(--tl-theme-muted); }
+          [data-source-erpnext-panel] .tl-erpnext-detail dd { min-width:0; margin:0; overflow-wrap:anywhere; }
+          [data-source-erpnext-panel] .tl-erpnext-child-table h5 { margin:var(--tl-space-1) 0; font-size:var(--tl-font-compact); }
+          [data-source-erpnext-panel] .tl-erpnext-child-table pre { max-width:100%; overflow:auto; padding:var(--tl-space-2); border:1px solid var(--tl-theme-border); border-radius:var(--tl-corner-radius); background:var(--tl-theme-canvas); color:var(--tl-theme-text); }
+          [data-source-erpnext-panel] .tl-erpnext-draft { display:flex; flex-direction:column; gap:var(--tl-space-2); min-width:0; padding-top:var(--tl-space-2); border-top:1px solid var(--tl-theme-border); }
+          [data-source-erpnext-panel] .tl-erpnext-draft-fields { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:var(--tl-space-2); }
+          [data-source-erpnext-panel] .tl-erpnext-draft-field { display:flex; flex-direction:column; gap:var(--tl-space-1); min-width:0; color:var(--tl-theme-muted); font-size:var(--tl-font-compact); }
+          [data-source-erpnext-panel] .tl-erpnext-draft-field input { box-sizing:border-box; width:100%; min-height:var(--tl-control-height); padding:var(--tl-space-1) var(--tl-space-2); border:1px solid var(--tl-theme-border); border-radius:var(--tl-corner-radius); background:var(--tl-theme-panel); color:var(--tl-theme-text); font:inherit; font-size:var(--tl-font-body); }
+          [data-source-erpnext-panel] .tl-erpnext-draft-field input:focus-visible { outline:2px solid var(--tl-theme-accent); outline-offset:1px; }
+          [data-source-erpnext-panel] .tl-erpnext-draft-items { display:flex; flex-direction:column; gap:var(--tl-space-1); }
+          [data-source-erpnext-panel] .tl-erpnext-draft-item { display:grid; grid-template-columns:repeat(4,minmax(90px,1fr)) auto; align-items:end; gap:var(--tl-space-1); }
+          [data-source-erpnext-panel] .tl-erpnext-draft-actions { display:flex; flex-wrap:wrap; align-items:center; gap:var(--tl-space-1); }
+          [data-source-erpnext-panel] .tl-erpnext-draft-actions button { min-height:var(--tl-control-height); padding:var(--tl-space-1) var(--tl-space-2); border:1px solid var(--tl-theme-border); border-radius:var(--tl-corner-radius); background:var(--tl-theme-panel); color:var(--tl-theme-text); font:inherit; font-size:var(--tl-font-compact); cursor:pointer; }
+          [data-source-erpnext-panel] .tl-erpnext-draft-actions button:hover { background:var(--tl-theme-header); }
+          [data-source-erpnext-panel] .tl-erpnext-draft-actions button:focus-visible { outline:2px solid var(--tl-theme-accent); outline-offset:1px; }
+          @media (max-width:760px) { [data-source-erpnext-panel] .tl-erpnext-draft-item { grid-template-columns:repeat(2,minmax(100px,1fr)); } }
+        `), h(sceneApi.ERPNextStatus))
+    }
+
+    function SourceRoleFilesPanel({ SessionProvider, renderFactorySlot }) {
+      const [, setRevision] = React.useState(0)
+      const [attempt, setAttempt] = React.useState(0)
+      const [error, setError] = React.useState('')
+      React.useEffect(() => {
+        let live = true
+        const update = () => setRevision(value => value + 1)
+        sceneLoadListeners.add(update)
+        const unsubscribe = typeof sceneApi?.subscribe === 'function' ? sceneApi.subscribe(update) : undefined
+        if (!sceneApi?.getSnapshot?.().config || sceneApi.getSnapshot?.().configError) {
+          void loadSceneWorkbench(sceneContext, { select: false }).then(async loaded => {
+            if (!loaded || !sceneApi?.retryLoadConfig) throw new Error('scene-unavailable')
+            const config = await sceneApi.retryLoadConfig()
+            if (!config || sceneApi.getSnapshot?.().configError) throw new Error('scene-unavailable')
+            if (live) setError('')
+          }).catch(() => { if (live) setError('工作区暂时无法读取，请重试。') })
+        }
+        return () => { live = false; sceneLoadListeners.delete(update); unsubscribe?.() }
+      }, [attempt])
+      const snapshot = sceneApi?.getSnapshot?.()
+      if (error) return h('div', { role: 'alert', className: 'tl-source-role-files-state' },
+        h('span', null, error), h('button', { type: 'button', onClick: () => setAttempt(value => value + 1) }, '重试'))
+      if (!snapshot?.config || snapshot.configError) return h('p', { role: 'status', className: 'tl-source-role-files-state' }, '正在读取工作区…')
+      const roleId = sourceActiveRole
+      const role = snapshot.config.roles?.find(item => item.id === roleId)
+      const sessionId = role ? snapshot.sessionBindings?.[roleId] : undefined
+      const scene = role ? snapshot.config.scenes.find(item => item.roleId === roleId) : undefined
+      if (!role || typeof sessionId !== 'string' || !sessionId || !scene) return h('p', {
+        role: 'status', className: 'tl-source-role-files-state', 'data-role-files-unbound': 'true',
+      }, '请先从助手列表打开一个已连接的助手，再查看其角色文件。')
+      if (typeof sceneApi?.NativeWorkspacePanel !== 'function') return h('p', { role: 'status', className: 'tl-source-role-files-state' }, '原生文件组件暂时不可用。')
+      return h('div', { className: 'tl-source-role-files-panel', style: {
+        display: 'flex', flex: '1 1 0', width: '100%', height: '100%', minWidth: 0, minHeight: 0, overflow: 'hidden',
+      } }, h(sceneApi.NativeWorkspacePanel, {
+        sceneId: scene.id, panelId: 'source-role-files', roleId,
+        SessionProvider, renderFactorySlot, active: true,
+      }))
+    }
+
+    function SourceWorkflowCanvas() {
+      const [state, setState] = React.useState(sceneLoadState)
+      React.useEffect(() => {
+        let live = true
+        const listener = () => setState(sceneLoadState)
+        sceneLoadListeners.add(listener)
+        if (!sceneApi) void loadSourceWorkflowCanvas().then(() => { if (live) setState(sceneLoadState) })
+        return () => { live = false; sceneLoadListeners.delete(listener) }
+      }, [])
+      if (state.error) return h('div', { role: 'alert', className: 'tl-source-workflow-state' },
+        h('span', null, '工作流画布暂时无法加载。'),
+        h('button', { type: 'button', onClick: () => { void loadSourceWorkflowCanvas() } }, '重试画布'))
+      if (state.loading || !sceneApi?.WorkflowCanvasPane) return h('p', { role: 'status', className: 'tl-source-workflow-state' }, '正在加载工作流画布…')
+      return h('div', { className: 'tl-source-workflow-host', style: {
+        ...sceneApi.workbenchUiStyles(workbenchUiTokens), display: 'flex', flex: '1 1 0', flexDirection: 'column',
+        width: '100%', height: '100%', minWidth: 0, minHeight: 0, overflow: 'hidden',
+      } },
+        h('style', { 'data-tradeloom-source-workflow-style': 'true' }, `
+          .tl-source-workflow-host { display:flex; flex:1 1 0; flex-direction:column; min-width:0; min-height:0; height:100%; overflow:hidden; }
+          .tl-workflow-canvas-pane { display:flex; flex:1 1 0; flex-direction:column; min-width:0; min-height:0; overflow:hidden; }
+          .tl-workflow-canvas-pane>.tl-wf { flex:1 1 0; min-height:0; }
+          .tl-workflow-model-hint { flex:0 0 auto; margin:0; padding:var(--tl-space-1) var(--tl-space-2); color:var(--tl-theme-muted); font-size:var(--tl-font-compact); border-bottom:1px solid var(--tl-theme-border); }
+        `), h(sceneApi.WorkflowCanvasPane))
+    }
+
+    function PluginInventoryOverview({ onClose }) {
+      const [revision, setRevision] = React.useState(0)
+      const [inventory, setInventory] = React.useState({ status: 'loading' })
+      React.useEffect(() => {
+        let current = true
+        setInventory({ status: 'loading' })
+        if (typeof shellPluginInventory?.list !== 'function') {
+          setInventory({ status: 'unavailable' })
+          return undefined
+        }
+        Promise.resolve().then(() => shellPluginInventory.list()).then(result => {
+          if (!current) return
+          if (!result?.ok || !Array.isArray(result.value?.entries)) {
+            setInventory({ status: 'error' })
+            return
+          }
+          setInventory({ status: 'ready', snapshot: result.value })
+        }).catch(() => { if (current) setInventory({ status: 'error' }) })
+        return () => { current = false }
+      }, [revision])
+      const text = value => {
+        if (typeof value === 'string') return value
+        if (value && typeof value === 'object') return shellLocale?.resolveText?.(value) || value.zh || value.en || ''
+        return ''
+      }
+      const phases = { pending: '等待加载', loading: '加载中', active: '已加载', failed: '加载失败', unloading: '卸载中' }
+      const row = (entry, index) => h('article', { key: `${entry.entryId ?? entry.moduleName}:${index}`, className: 'tl-plugin-inventory-row' },
+        h('div', { className: 'tl-plugin-inventory-name' },
+          h('strong', null, text(entry.meta?.title) || entry.moduleName || '名称未知'),
+          h('span', { className: 'tl-plugin-inventory-version' }, '版本未知')),
+        text(entry.meta?.description) ? h('details', { className: 'tl-plugin-inventory-description' },
+          h('summary', { 'aria-label': `展开或收起${text(entry.meta?.title) || entry.moduleName || '插件'}的说明` },
+            h('span', { className: 'tl-plugin-description-preview' }, text(entry.meta.description)),
+            h('span', { className: 'tl-plugin-description-more' }, '展开说明'),
+            h('span', { className: 'tl-plugin-description-less' }, '收起说明')),
+          h('p', null, text(entry.meta.description))) : h('p', { className: 'tl-plugin-inventory-description' }, '描述未知'),
+        h('code', { title: entry.moduleName }, entry.moduleName || '模块未知'),
+        h('div', { className: 'tl-plugin-inventory-state' },
+          h('span', { 'data-enabled': String(entry.enabled) }, entry.enabled === true ? '已启用' : entry.enabled === false ? '已停用' : entry.enabled === 'conditional' ? '按条件启用' : '启用状态未知'),
+          h('span', { 'data-phase': entry.fiberPhase ?? 'unobserved' }, entry.fiberPhase == null ? '运行状态未观测' : phases[entry.fiberPhase] || `未知状态（${entry.fiberPhase}）`)))
+      const snapshot = inventory.snapshot
+      return h('section', { id: 'tl-plugin-inventory-panel', className: `tl-plugin-inventory-panel tl-shell-top is-${activeColorScheme}`, role: 'dialog', 'aria-modal': 'true', 'aria-label': '插件概览' },
+        h('style', { 'data-tradeloom-plugin-inventory-style': true }, `
+          .tl-plugin-inventory-panel { position:relative; display:flex; flex-direction:column; box-sizing:border-box; width:min(calc(560px * var(--tl-ui-scale,1)),calc(100% - var(--tl-space-5) * 2)); max-height:calc(100% - var(--tl-space-5) * 2); padding:var(--tl-space-3); gap:var(--tl-space-2); overflow:hidden; border:1px solid var(--tl-shell-line); border-radius:var(--tl-corner-radius); background:var(--tl-shell-surface); color:var(--tl-shell-ink); box-shadow:0 8px 24px rgb(0 0 0 / 20%); font:var(--tl-font-compact)/1.45 var(--tl-font-family); }
+          .tl-plugin-inventory-panel header,.tl-plugin-inventory-panel footer { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:var(--tl-space-2); flex:none; }
+          .tl-plugin-inventory-panel button { font:inherit; color:inherit; background:var(--tl-shell-soft); border:1px solid var(--tl-shell-line); border-radius:var(--tl-corner-radius); padding:var(--tl-space-1) var(--tl-space-2); min-height:var(--tl-control-height); cursor:pointer; }
+          .tl-plugin-inventory-panel button:focus-visible { outline:2px solid var(--tl-shell-accent); outline-offset:-2px; }
+          .tl-plugin-inventory-note { margin:0; color:var(--tl-shell-muted); overflow-wrap:anywhere; }
+          .tl-plugin-inventory-list { min-height:0; overflow:auto; scrollbar-gutter:stable; display:grid; gap:var(--tl-space-2); }
+          .tl-plugin-inventory-row { min-width:0; display:grid; gap:var(--tl-space-1); padding:var(--tl-space-2); border:1px solid var(--tl-shell-line); border-radius:var(--tl-corner-radius); overflow-wrap:anywhere; }
+          .tl-plugin-inventory-name,.tl-plugin-inventory-state { display:flex; flex-wrap:wrap; align-items:baseline; gap:var(--tl-space-2); }
+          .tl-plugin-inventory-name strong { flex:1; min-width:0; }
+          .tl-plugin-inventory-version,.tl-plugin-inventory-row code { color:var(--tl-shell-muted); font:inherit; }
+          .tl-plugin-inventory-description { margin:0; }
+          .tl-plugin-inventory-description summary { cursor:pointer; list-style:none; }
+          .tl-plugin-inventory-description summary::-webkit-details-marker { display:none; }
+          .tl-plugin-inventory-description summary:focus-visible { outline:2px solid var(--tl-shell-accent); outline-offset:2px; }
+          .tl-plugin-description-preview { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+          .tl-plugin-description-more,.tl-plugin-description-less { color:var(--tl-shell-accent); }
+          .tl-plugin-description-less,.tl-plugin-inventory-description[open] .tl-plugin-description-preview,.tl-plugin-inventory-description[open] .tl-plugin-description-more { display:none; }
+          .tl-plugin-inventory-description[open] .tl-plugin-description-less { display:inline; }
+          .tl-plugin-inventory-description p { margin:var(--tl-space-1) 0 0; }
+          .tl-plugin-inventory-state { color:var(--tl-shell-muted); }
+          .tl-plugin-inventory-state [data-enabled="true"] { color:var(--tl-theme-success,var(--tl-shell-ink)); }
+          .tl-plugin-inventory-state [data-phase="failed"] { color:var(--tl-theme-danger,var(--tl-shell-ink)); }
+          .tl-plugin-inventory-presets { min-width:0; }
+          .tl-plugin-inventory-presets summary { cursor:pointer; padding:var(--tl-space-1) 0; overflow-wrap:anywhere; }
+        `),
+        h('header', null, h('strong', null, '插件概览'), h('button', { type: 'button', onClick: onClose, 'aria-label': '关闭插件概览' }, '×')),
+        h('p', { className: 'tl-plugin-inventory-note' }, '当前配置条目与预设组合；不代表全部下载包或 MCP 连接。版本信息尚未提供。'),
+        h('div', { className: 'tl-plugin-inventory-list', 'aria-busy': inventory.status === 'loading' },
+          inventory.status === 'loading' ? h('p', { role: 'status' }, '正在读取插件清单…') : null,
+          inventory.status === 'error' ? h('p', { role: 'alert' }, '插件清单读取失败，请重试。') : null,
+          inventory.status === 'unavailable' ? h('p', { role: 'status' }, '插件清单服务暂不可用。') : null,
+          snapshot ? h(React.Fragment, null,
+            h('p', { className: 'tl-plugin-inventory-note' }, `当前配置 · ${snapshot.entries.length} 条`),
+            snapshot.entries.length ? snapshot.entries.map(row) : h('p', null, '当前配置没有插件条目。'),
+            (snapshot.agentPresets ?? []).map(preset => h('details', { key: preset.id, className: 'tl-plugin-inventory-presets' },
+              h('summary', null, `${preset.name || preset.id}${preset.isDefault ? ' · 默认预设' : ''} · ${preset.rows?.length ?? 0} 条`),
+              preset.broken ? h('p', { role: 'status' }, '预设组合暂不可读取。') : (preset.rows ?? []).map(row)))) : null),
+        h('footer', null, h('button', { type: 'button', disabled: inventory.status === 'loading', onClick: () => setRevision(value => value + 1) }, '刷新清单'),
+          h('button', { type: 'button', onClick: () => { onClose(); layout?.selectPanel('plugins') } }, '完整插件管理')))
+    }
+
+    function ShellToolsMenu(props = {}) {
+      const [, refreshNativeEntries] = React.useState(0)
+      React.useEffect(() => shellSlots?.subscribe?.('sidebar.settings', () => refreshNativeEntries(value => value + 1)), [])
+      const settingsEntry = shellSlots?.entries?.('sidebar.settings')?.find(entry => typeof entry.store?.create === 'function')
+      const openNativeSettings = () => {
+        const store = settingsEntry?.store.create()
+        if (store?.getSnapshot?.().open) store.actions.close()
+        else store?.actions.open()
+      }
+      const themeSnapshot = shellThemeService?.getTheme?.()
+      const themePreferences = ['system', ...(themeSnapshot?.themes ?? []).map(theme => theme.id)]
+      const cycleTheme = () => {
+        const current = shellThemeService.getTheme().preference ?? 'system'
+        const next = themePreferences[(themePreferences.indexOf(current) + 1) % themePreferences.length]
+        shellThemeService.setTheme(next)
+      }
+      const [open, setOpen] = React.useState(false)
+      const [usageOpen, setUsageOpen] = React.useState(false)
+      const [usageRevision, setUsageRevision] = React.useState(0)
+      const [usageCatalogRevision, setUsageCatalogRevision] = React.useState(0)
+      const [usageGroupOpen, setUsageGroupOpen] = React.useState({})
+      const [fontSizeOpen, setFontSizeOpen] = React.useState(false)
+      const [fontSizeError, setFontSizeError] = React.useState('')
+      const [motionOpen, setMotionOpen] = React.useState(false)
+      const [motionPreference, setMotionPreference] = React.useState(() => {
+        try {
+          const value = window.localStorage?.getItem('tradeloom.workbench.motion')
+          return ['system', 'on', 'off'].includes(value) ? value : 'system'
+        } catch { return 'system' }
+      })
       const [mobileOpen, setMobileOpen] = React.useState(false)
       const [mobileUrl, setMobileUrl] = React.useState('')
       const [mobileBusy, setMobileBusy] = React.useState(false)
       const [mobileError, setMobileError] = React.useState('')
+      const [mobileQr, setMobileQr] = React.useState(null)
+      const [mobileQrError, setMobileQrError] = React.useState('')
       const mobileRequest = React.useRef(0)
       const rootRef = React.useRef(null)
       const triggerRef = React.useRef(null)
+      const usageTriggerRef = React.useRef(null)
+      const fontSizeTriggerRef = React.useRef(null)
+      const motionTriggerRef = React.useRef(null)
+      const [pluginsOpen, setPluginsOpen] = React.useState(false)
+      React.useLayoutEffect(() => {
+        if (!open && !usageOpen && !fontSizeOpen && !motionOpen && !pluginsOpen) return undefined
+        const panelSelector = '.tl-shell-tools-menu,.tl-session-usage-panel,.tl-font-size-panel,.tl-motion-preference-panel'
+        const positionPanels = () => {
+          const root = rootRef.current
+          const anchor = (usageOpen ? usageTriggerRef.current : triggerRef.current)?.getBoundingClientRect()
+          if (!root || !anchor) return
+          const popupTop = anchor.bottom + 4
+          const availableBelowAnchor = Math.max(0, window.innerHeight - popupTop - 8)
+          for (const panel of root.querySelectorAll(panelSelector)) {
+            if (!panel.hasAttribute('data-tl-topbar-popover-open')) {
+              panel.setAttribute('popover', 'manual')
+              panel.setAttribute('data-tl-topbar-popover', '')
+              if (typeof panel.showPopover !== 'function') continue
+              panel.showPopover()
+              panel.setAttribute('data-tl-topbar-popover-open', '')
+            }
+            Object.assign(panel.style, { position: 'fixed', inset: 'auto', insetInlineEnd: 'auto', insetBlockStart: 'auto', margin: '0',
+              maxWidth: `${Math.max(0, window.innerWidth - 16)}px` })
+            if (panel.matches('.tl-session-usage-panel')) {
+              panel.style.setProperty('--tl-viewport-max-height', `${availableBelowAnchor}px`)
+            } else {
+              panel.style.maxHeight = `${availableBelowAnchor}px`
+            }
+            const rect = panel.getBoundingClientRect()
+            panel.style.left = `${Math.max(8, Math.min(window.innerWidth - rect.width - 8, anchor.right - rect.width))}px`
+            panel.style.top = `${popupTop}px`
+          }
+        }
+        positionPanels()
+        const observer = typeof window.ResizeObserver === 'function' ? new window.ResizeObserver(positionPanels) : undefined
+        for (const panel of rootRef.current?.querySelectorAll(panelSelector) ?? []) observer?.observe(panel)
+        window.addEventListener('resize', positionPanels)
+        return () => { observer?.disconnect(); window.removeEventListener('resize', positionPanels) }
+      }, [open, usageOpen, fontSizeOpen, motionOpen, pluginsOpen, workbenchUiTokens.fontBody])
       const current = sceneApi?.getSnapshot?.()
       const bindingKey = `${current?.activeSceneId ?? ''}`
+      const boundUsageKey = JSON.stringify(Object.entries(current?.sessionBindings ?? {}).filter(([, id]) => typeof id === 'string' && id).sort(([left], [right]) => left.localeCompare(right)))
       const activeBinding = React.useRef(bindingKey)
       React.useEffect(() => {
         if (!sceneApi?.subscribe) return undefined
@@ -209,39 +1488,211 @@ window.__ModuleLoader__.load({
           if (latestKey !== activeBinding.current) {
             activeBinding.current = latestKey
             setOpen(false)
+            setUsageOpen(false)
+            setFontSizeOpen(false)
+            setMotionOpen(false)
+            setPluginsOpen(false)
           }
         }
         return sceneApi.subscribe(onSnapshot)
       }, [sceneApi])
       React.useEffect(() => {
-        if (!open) return undefined
+        if (!open && !usageOpen && !fontSizeOpen && !motionOpen && !pluginsOpen) return undefined
+        const closeTopbarPopover = restoreFocus => {
+          if (open) { setOpen(false); if (restoreFocus) triggerRef.current?.focus?.() }
+          else if (usageOpen) { setUsageOpen(false); if (restoreFocus) usageTriggerRef.current?.focus?.() }
+          else if (fontSizeOpen) { setFontSizeOpen(false); if (restoreFocus) triggerRef.current?.focus?.() }
+          else if (motionOpen) { setMotionOpen(false); if (restoreFocus) triggerRef.current?.focus?.() }
+        }
+        const handleTopbarPopoverDismissal = () => closeTopbarPopover(true)
         const dismiss = event => {
           if (event.type === 'keydown') {
+            if (event.defaultPrevented) return
             if (event.key !== 'Escape') return
+            if (activeTopbarPopover()) {
+              event.preventDefault?.()
+              requestTopbarPopoverDismissal()
+              return
+            }
+            if (workspaceModalState().state?.owners.length) return
             event.preventDefault?.()
-            setOpen(false)
-            triggerRef.current?.focus?.()
             return
           }
-          if (!rootRef.current?.contains?.(event.target)) setOpen(false)
+          const root = rootRef.current
+          const eventPath = typeof event.composedPath === 'function' ? event.composedPath() : undefined
+          const inModalPortal = Array.isArray(eventPath) && eventPath.some(node => node?.classList?.contains('tl-workspace-modal-backdrop'))
+          if (inModalPortal) {
+            if (activeTopbarPopover()) closeTopbarPopover(false)
+            return
+          }
+          const insideRoot = root && (Array.isArray(eventPath)
+            ? eventPath.includes(root)
+            : root.contains?.(event.target))
+          if (!insideRoot) {
+            closeTopbarPopover(false)
+          }
         }
+        document.addEventListener('tl-shell-dismiss-topbar-popover', handleTopbarPopoverDismissal)
         document.addEventListener('keydown', dismiss)
         document.addEventListener('click', dismiss)
         return () => {
+          document.removeEventListener('tl-shell-dismiss-topbar-popover', handleTopbarPopoverDismissal)
           document.removeEventListener('keydown', dismiss)
           document.removeEventListener('click', dismiss)
         }
-      }, [open])
+      }, [open, usageOpen, fontSizeOpen, motionOpen, pluginsOpen])
+
+      React.useEffect(() => {
+        const root = window.document?.documentElement
+        if (!root) return
+        root.dataset.tlWorkbenchMotion = motionPreference
+      }, [motionPreference])
+
+      function updateMotionPreference(value) {
+        if (!['system', 'on', 'off'].includes(value)) return
+        try { window.localStorage?.setItem('tradeloom.workbench.motion', value) } catch { /* Keep the choice for this renderer session. */ }
+        const root = window.document?.documentElement
+        if (root) root.dataset.tlWorkbenchMotion = value
+        try { window.dispatchEvent?.(new window.CustomEvent('tradeloom:workbench-motion-preference-change', { detail: { value } })) } catch { /* Popout documents also receive the preference on attach. */ }
+        setMotionPreference(value)
+      }
+
+      React.useEffect(() => {
+        if (!usageOpen) return undefined
+        const sessions = sceneContext?.sessions
+        if (!sessions?.list?.subscribe) return undefined
+        return sessions.list.subscribe(() => {
+            setUsageRevision(value => value + 1)
+            setUsageCatalogRevision(value => value + 1)
+        })
+      }, [usageOpen, sceneContext?.sessions?.list])
+
+      React.useEffect(() => {
+        if (!usageOpen) return undefined
+        const unsubscribe = []
+        const sessions = sceneContext?.sessions
+        if (!sessions?.scope || !sessions?.sessionOf) return undefined
+        const sessionIds = [...new Set(Object.values(sceneApi?.getSnapshot?.()?.sessionBindings ?? {})
+          .filter(sessionId => typeof sessionId === 'string' && sessionId))]
+        for (const sessionId of sessionIds) {
+          const scoped = sessions.scope(sessionId)
+          const session = scoped ? sessions.sessionOf(scoped) : undefined
+          const face = session?.projections?.faceOf?.('contextPressure')
+          if (face?.subscribe) unsubscribe.push(face.subscribe(() => setUsageRevision(value => value + 1)))
+        }
+        return () => { for (const stop of unsubscribe) stop() }
+      }, [usageOpen, boundUsageKey, sceneApi, sceneContext?.sessions?.list, usageCatalogRevision])
+
+      function sessionUsageRows() {
+        const state = sceneApi?.getSnapshot?.()
+        const roles = state?.config?.roles ?? []
+        const roleById = new Map(roles.map(role => [role.id, role]))
+        const sessions = sceneContext?.sessions
+        const catalog = sessions?.list?.getSnapshot?.()
+        const catalogIds = Array.isArray(catalog?.ids)
+          ? [...new Set(catalog.ids.filter(sessionId => typeof sessionId === 'string' && sessionId))] : []
+        const listedIds = new Set(catalogIds)
+        const roleIdsBySession = new Map()
+        for (const [roleId, sessionId] of Object.entries(state?.sessionBindings ?? {})) {
+          if (typeof sessionId !== 'string' || !sessionId || !roleById.has(roleId)) continue
+          const roleIds = roleIdsBySession.get(sessionId) ?? []
+          roleIds.push(roleId)
+          roleIdsBySession.set(sessionId, roleIds)
+        }
+        const pendingBindings = [...roleIdsBySession.entries()]
+          .filter(([sessionId]) => !listedIds.has(sessionId))
+          .map(([, roleIds]) => roleIds.map(roleId => roleById.get(roleId)?.assistantLabel || roleById.get(roleId)?.label || roleId))
+          .flat()
+        const rows = catalogIds.map(sessionId => {
+          const summary = catalog?.byId?.[sessionId]
+          const roleIds = roleIdsBySession.get(sessionId) ?? []
+          let pressure = catalog?.projectionsBySession?.[sessionId]?.values?.contextPressure
+            ?? summary?.projectionValues?.contextPressure
+          let loaded = false
+          if (roleIds.length && sessions?.scope && sessions?.sessionOf) {
+            const scoped = sessions.scope(sessionId)
+            const session = scoped ? sessions.sessionOf(scoped) : undefined
+            const face = session?.projections?.faceOf?.('contextPressure')
+            if (scoped) loaded = true
+            const livePressure = face?.getSnapshot?.()
+            if (livePressure && typeof livePressure === 'object') pressure = livePressure
+          }
+          const group = roleIds.length ? 'scene' : summary?.origin === 'subagent' || summary?.parentId ? 'assistant' : 'other'
+          return {
+            sessionId,
+            title: typeof summary?.displayTitle === 'string' && summary.displayTitle.trim()
+              ? summary.displayTitle : typeof summary?.title === 'string' && summary.title.trim() ? summary.title : '未命名会话',
+            roleLabels: roleIds.map(roleId => roleById.get(roleId)?.assistantLabel || roleById.get(roleId)?.label || roleId),
+            group,
+            loaded,
+            pressure: pressure && typeof pressure === 'object' ? pressure : undefined,
+          }
+        })
+        const groups = [
+          { key: 'scene', label: '场景会话', description: '已绑定到工作场景的会话', defaultOpen: false },
+          { key: 'assistant', label: '助手会话', description: '会话目录标记为子助手的记录', defaultOpen: true },
+          { key: 'other', label: '其他会话', description: '其他已列入目录的会话', defaultOpen: true },
+        ].map(group => ({ ...group, rows: rows.filter(row => row.group === group.key) }))
+        return {
+          catalogPhase: catalog?.phase ?? 'unavailable',
+          directoryCount: rows.length,
+          pendingBindings,
+          groups,
+          rows,
+        }
+      }
+
+      function formatUsage(value) {
+        if (!Number.isFinite(value) || value < 0) return '未知'
+        if (value >= 10000) {
+          const compact = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(value / 10000)
+          return `${compact}万`
+        }
+        return new Intl.NumberFormat().format(value)
+      }
+
+      function formatExactUsage(value) {
+        return Number.isFinite(value) && value >= 0 ? new Intl.NumberFormat().format(value) : '未知'
+      }
+
+      function setTextFontSize(value) {
+        const fontSize = Number(value)
+        if (!Number.isInteger(fontSize) || fontSize < 10 || fontSize > 22) return
+        if (typeof shellThemeService?.setFontSize !== 'function') {
+          setFontSizeError('当前环境不支持保存界面大小。')
+          return
+        }
+        try {
+          shellThemeService.setFontSize('text', fontSize)
+          setFontSizeError('')
+        } catch {
+          setFontSizeError('界面大小保存失败，请重试。')
+        }
+      }
+
+      const usage = usageOpen ? sessionUsageRows() : null
+      const fontBody = workbenchUiTokens.fontBody
+      const interfaceScalePercent = Math.round(fontBody / DEFAULT_WORKBENCH_FONT_BODY * 100)
+      const canSetFontSize = typeof shellThemeService?.setFontSize === 'function'
 
       async function showMobileLink() {
+        if (mobileOpen) { closeMobileLink(); return }
         if (mobileBusy) return
         const requestId = ++mobileRequest.current
-        setMobileBusy(true); setMobileError(''); setMobileUrl(''); setMobileOpen(true)
+        setMobileBusy(true); setMobileError(''); setMobileQrError(''); setMobileQr(null); setMobileUrl(''); setMobileOpen(true)
         try {
           const response = await fetch('/tradeloom/mobile-link', { method: 'GET', credentials: 'same-origin' })
           const result = await response.json()
           if (!response.ok || typeof result.url !== 'string') throw new Error()
-          if (mobileRequest.current === requestId) setMobileUrl(result.url)
+          if (mobileRequest.current !== requestId) return
+          setMobileUrl(result.url)
+          try {
+            const qr = await loadMobileQr()
+            const matrix = qr.createQrMatrix(result.url)
+            if (mobileRequest.current === requestId) setMobileQr(matrix)
+          } catch {
+            if (mobileRequest.current === requestId) setMobileQrError('二维码暂不可用，请复制下方授权链接到手机浏览器打开。')
+          }
         } catch {
           if (mobileRequest.current === requestId) setMobileError('暂时无法生成手机连接链接，请确认电脑已连接局域网后重试。')
         } finally {
@@ -251,7 +1702,7 @@ window.__ModuleLoader__.load({
 
       function closeMobileLink() {
         mobileRequest.current++
-        setMobileOpen(false); setMobileBusy(false); setMobileUrl(''); setMobileError('')
+        setMobileOpen(false); setMobileBusy(false); setMobileUrl(''); setMobileQr(null); setMobileQrError(''); setMobileError('')
       }
 
       async function copyMobileLink() {
@@ -263,6 +1714,30 @@ window.__ModuleLoader__.load({
         }
       }
 
+      function qrPath(matrix) {
+        if (!matrix || !Number.isInteger(matrix.size) || matrix.size < 21 || matrix.size > 177
+          || !Array.isArray(matrix.modules) || matrix.modules.length !== matrix.size) return ''
+        const quietZone = 4
+        const segments = []
+        for (let row = 0; row < matrix.size; row++) {
+          const line = matrix.modules[row]
+          if (typeof line !== 'string' || line.length !== matrix.size || !/^[01]+$/.test(line)) return ''
+          let col = 0
+          while (col < matrix.size) {
+            if (line[col] !== '1') { col++; continue }
+            const start = col
+            while (col < matrix.size && line[col] === '1') col++
+            const x = start + quietZone
+            const y = row + quietZone
+            const width = col - start
+            segments.push(`M${x} ${y}h${width}v1h-${width}z`)
+          }
+        }
+        return segments.join('')
+      }
+
+      const qrD = qrPath(mobileQr)
+
       function action(label, onClick, disabled = false) {
         return h('button', { key: label, type: 'button', disabled, onClick: () => {
           onClick()
@@ -270,15 +1745,136 @@ window.__ModuleLoader__.load({
         } }, label)
       }
 
+      const usagePanelElement = usageOpen ? (() => {
+        const groupNodes = usage.groups.filter(group => group.rows.length).map(group => h('details', {
+          key: group.key, open: usageGroupOpen[group.key] ?? group.defaultOpen, className: 'tl-session-usage-group',
+          onToggle: event => {
+            const isOpen = Boolean(event.currentTarget.open)
+            setUsageGroupOpen(previous => ({ ...previous, [group.key]: isOpen }))
+          },
+        },
+        h('summary', { className: 'tl-session-usage-summary' },
+          h('span', { className: 'tl-session-usage-caret', 'aria-hidden': 'true' }, '›'),
+          h('span', { 'aria-hidden': 'true', className: 'tl-session-usage-group-icon' }, group.key === 'scene' ? '▦' : group.key === 'assistant' ? '◇' : '○'),
+          h('span', { className: 'tl-session-usage-group-heading' },
+            h('span', { title: group.description }, group.label)),
+          h('span', { className: 'tl-session-usage-count' }, `${group.rows.length} 条`)),
+        group.rows.map(row => {
+          const pressure = row.pressure && typeof row.pressure === 'object' ? row.pressure : undefined
+          const used = pressure?.projectedTokens ?? pressure?.pressureTokens
+          const capacity = pressure?.contextWindow
+          const hasUsed = Number.isFinite(used) && used >= 0
+          const hasCapacity = Number.isFinite(capacity) && capacity > 0
+          const percent = hasUsed && hasCapacity ? Math.round(used / capacity * 100) : null
+          const hasRecentUsage = hasUsed || hasCapacity
+          const tone = percent === null ? 'muted' : percent < 100 ? 'success' : percent <= 200 ? 'warning' : 'danger'
+          const toneColor = tone === 'muted' ? 'var(--tl-shell-muted)' : `var(--tl-theme-${tone})`
+          const subtitle = row.roleLabels.length ? row.roleLabels.join(' / ') : ''
+          const ratio = percent === null ? '未知' : `${percent}%`
+          const exactValues = hasRecentUsage
+            ? `最近上下文估算 ${formatExactUsage(used)} / ${formatExactUsage(capacity)} tokens` : '暂无用量记录，上下文估算未知'
+          const exceeded = percent !== null && percent >= 100
+          return h('article', {
+            key: row.sessionId, role: 'listitem', 'data-session-id': row.sessionId, 'data-usage-tone': tone,
+            className: 'tl-session-usage-record',
+          },
+          h('div', { className: 'tl-session-usage-row' },
+            h('span', { 'aria-hidden': 'true', className: 'tl-session-usage-dot', style: { background: toneColor } }),
+            h('strong', { className: 'tl-session-usage-title', title: row.title }, row.title),
+            h('span', { className: 'tl-session-usage-percent', title: `上下文估算占比：${ratio}；${exactValues}`, 'aria-label': `上下文估算占比 ${ratio}；${exactValues}`, style: { color: toneColor } },
+              exceeded && h('span', { className: 'tl-session-usage-warning', role: 'img', 'aria-label': '上下文估算达到或超出窗口' }, '⚠'), ratio)),
+          subtitle && h('div', { className: 'tl-session-usage-role' }, subtitle),
+          h('div', { className: 'tl-session-usage-detail', title: exactValues },
+            h('span', null, '已用 ', h('b', { 'data-usage-value': 'used' }, formatUsage(used))),
+            h('span', null, '容量 ', h('b', { 'data-usage-value': 'capacity' }, formatUsage(capacity)))),
+          h('div', {
+            className: `tl-session-usage-meter${percent === null ? ' is-unknown' : ''}`,
+            role: percent === null ? 'img' : 'progressbar', 'aria-label': percent === null ? '上下文估算占比未知' : '上下文估算占比',
+            'aria-valuemin': percent === null ? undefined : 0, 'aria-valuemax': percent === null ? undefined : 100,
+            'aria-valuenow': percent === null ? undefined : Math.min(100, percent),
+            'aria-valuetext': percent === null ? undefined : `${ratio}；${exactValues}${exceeded ? '；达到或超出窗口' : ''}`,
+          }, percent !== null && h('span', { style: { width: `${Math.min(100, percent)}%`, background: toneColor } })))
+        })))
+        return h('section', {
+          id: 'tl-session-usage-panel', className: 'tl-session-usage-panel', role: 'dialog', 'aria-label': '会话用量',
+          'data-revision': usageRevision,
+          style: { position: 'absolute', zIndex: 1001, insetBlockStart: 'calc(100% + var(--tl-space-1))', insetInlineEnd: 0, display: 'flex', flexDirection: 'column', width: 'min(calc(440px * var(--tl-ui-scale, 1)), calc(100vw - var(--tl-space-5) * 2))', maxHeight: 'min(calc(520px * var(--tl-ui-scale, 1)), calc(100vh - var(--tl-space-5) * 8), var(--tl-viewport-max-height, 100vh))', overflow: 'hidden', padding: 'var(--tl-space-3)', border: '1px solid var(--tl-shell-line)', borderRadius: 'var(--tl-corner-radius)', background: 'var(--tl-shell-surface)', color: 'var(--tl-shell-ink)', boxShadow: '0 8px 24px rgb(0 0 0 / 20%)', font: 'var(--tl-font-body)/1.3 var(--tl-font-family)' },
+        },
+        h('header', { className: 'tl-session-usage-header' },
+          h('strong', null, '会话上下文'),
+          h('span', { style: { color: 'var(--tl-shell-muted)', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' } }, `共 ${usage.directoryCount} 条`),
+          h('button', { type: 'button', className: 'tl-session-usage-close', 'aria-label': '关闭会话用量', onClick: () => { setUsageOpen(false); usageTriggerRef.current?.focus?.() } }, '×')),
+        usage.catalogPhase === 'pending' ? h('p', { className: 'tl-session-usage-state', role: 'status' }, '正在读取已有会话目录。') : null,
+        usage.catalogPhase === 'unavailable' ? h('p', { className: 'tl-session-usage-state', role: 'status' }, '当前会话目录不可用。') : null,
+        usage.pendingBindings.length ? h('p', { className: 'tl-session-usage-state', role: 'note' },
+          `${usage.pendingBindings.length} 个角色绑定尚未由目录确认，未计入目录记录。`) : null,
+        h('div', { className: 'tl-session-usage-list', role: 'list' },
+          groupNodes,
+          usage.directoryCount === 0 && usage.catalogPhase === 'ready'
+            ? h('p', { className: 'tl-session-usage-empty' }, '会话目录中暂无记录。') : null),
+        h('details', { className: 'tl-session-usage-footer' },
+          h('summary', null, '轮数 / 压缩 / 成本：未知', h('span', null, ' 口径')),
+          h('p', null, '上下文数值来自原生 contextPressure 最近投影，不是累计用量或费用。未提供的数据明确显示未知；真实 0 保留为 0。进度条仅在占比可计算时显示，超过窗口保留实际百分比。轮数、压缩和成本的数据合同尚未接入。')))
+      })() : null
+
       return h('div', { className: 'tl-shell-tools', ref: rootRef },
-        h('button', { ref: triggerRef, type: 'button', className: 'tl-shell-tools-trigger', 'aria-label': '打开工具菜单', title: '工具', 'aria-controls': 'tl-shell-tools-menu', 'aria-expanded': open, onClick: () => setOpen(value => !value) }, '⋯'),
+        h('button', { type: 'button', className: 'tl-shell-quick-action', title: '显示或收起原生会话侧栏', 'aria-label': '切换会话侧栏', onClick: () => layout?.toggleSidebar?.() },
+          h('svg', { viewBox: '0 0 20 20', 'aria-hidden': true }, h('rect', { x: 3, y: 4, width: 14, height: 12, rx: 2 }), h('path', { d: 'M8 4v12' }))),
+        h('button', { type: 'button', className: 'tl-shell-quick-action', title: '连接手机', 'aria-label': '连接手机', onClick: () => { void showMobileLink() } },
+          h('svg', { viewBox: '0 0 20 20', 'aria-hidden': true }, h('rect', { x: 6, y: 2, width: 8, height: 16, rx: 2 }), h('path', { d: 'M9 15h2' }))),
+        h('button', { type: 'button', className: 'tl-shell-quick-action', title: '设置 · 外观、快捷键、版本与开发者工具', 'aria-label': '打开原生设置', disabled: !settingsEntry, onClick: openNativeSettings },
+          h('svg', { viewBox: '0 0 20 20', 'aria-hidden': true }, h('path', { d: 'M8 3h4l.5 2 2 1 2-.5 2 3.5-1.5 1.5v2l1.5 1.5-2 3.5-2-.5-2 1-.5 2H8l-.5-2-2-1-2 .5-2-3.5L3 12v-2L1.5 8.5l2-3.5 2 .5 2-1Z', transform: 'translate(1 -1) scale(.9)' }), h('circle', { cx: 10, cy: 10, r: 3 }))),
+        h('button', { type: 'button', className: 'tl-shell-quick-action', title: `切换主题 · 当前${themeSnapshot?.preference === 'system' ? '跟随系统' : activeColorScheme === 'dark' ? '深色' : '浅色'}`, 'aria-label': '切换界面主题', disabled: typeof shellThemeService?.setTheme !== 'function' || themePreferences.length < 2, onClick: cycleTheme },
+          h('svg', { viewBox: '0 0 20 20', 'aria-hidden': true }, h('path', { d: 'M16.5 12.2A7 7 0 0 1 7.8 3.5a7 7 0 1 0 8.7 8.7Z' }))),
+        h('button', { ref: usageTriggerRef, type: 'button', className: 'tl-shell-quick-action tl-session-usage-trigger', 'aria-label': '显示会话用量', title: '会话用量', 'aria-controls': 'tl-session-usage-panel', 'aria-expanded': usageOpen, onClick: () => { setOpen(false); setFontSizeOpen(false); setMotionOpen(false); setUsageOpen(value => !value) } },
+          h('svg', { viewBox: '0 0 20 20', 'aria-hidden': true }, h('circle', { cx: 10, cy: 10, r: 7 }), h('path', { d: 'M10 4.5V10l4 2.5' }))),
+        h('button', { ref: triggerRef, type: 'button', className: 'tl-shell-tools-trigger', 'aria-label': '打开工具菜单', title: '工具', 'aria-controls': pluginsOpen ? 'tl-plugin-inventory-panel' : 'tl-shell-tools-menu', 'aria-expanded': open || pluginsOpen, onClick: () => { setUsageOpen(false); setFontSizeOpen(false); setMotionOpen(false); if (pluginsOpen) { setPluginsOpen(false); setOpen(false) } else setOpen(value => !value) } }, '⋯'),
         open ? h('div', { id: 'tl-shell-tools-menu', className: 'tl-shell-tools-menu', role: 'group', 'aria-label': '工作台工具' },
+          h('span', { className: 'tl-shell-menu-heading' }, '工作台'),
           action(sceneApi?.getSnapshot?.()?.configError ? '重试读取场景' : '刷新场景配置', () => { void sceneApi?.retryLoadConfig?.() }),
-          action('返回工作台', () => layout?.selectPanel('scene-workbench')),
-          action('插件管理', () => layout?.selectPanel('plugins')),
+          action('返回工作台', () => {
+            if (typeof props.onReturnWorkspace === 'function') props.onReturnWorkspace()
+            else layout?.selectPanel('scene-workbench')
+          }),
+          h('span', { className: 'tl-shell-menu-heading' }, '原生功能'),
+          action('插件管理', () => { setUsageOpen(false); setFontSizeOpen(false); setMotionOpen(false); setPluginsOpen(value => !value) }),
           action('自动化', () => layout?.selectPanel('schedules')),
           action('切换会话侧栏', () => layout?.toggleSidebar?.()),
-          action('连接手机', () => { void showMobileLink() })) : null,
+          action('连接手机', () => { void showMobileLink() }),
+          h('span', { className: 'tl-shell-menu-heading' }, '显示与会话'),
+          h('button', { key: '界面大小', ref: fontSizeTriggerRef, type: 'button', onClick: () => { setUsageOpen(false); setOpen(false); setFontSizeError(''); setFontSizeOpen(true) }, 'aria-expanded': fontSizeOpen }, '界面大小'),
+          h('button', { key: '工作台动效', ref: motionTriggerRef, type: 'button', onClick: () => { setUsageOpen(false); setFontSizeOpen(false); setOpen(false); setMotionOpen(value => !value) }, 'aria-expanded': motionOpen }, '工作台动效'),
+          h('button', { key: '会话用量', type: 'button', onClick: () => { setFontSizeOpen(false); setOpen(false); setUsageOpen(value => !value) }, 'aria-expanded': usageOpen }, '会话用量')) : null,
+        usagePanelElement,
+        pluginsOpen ? h(WorkspaceModalLayer, { onClose: () => { setPluginsOpen(false); triggerRef.current?.focus?.() } }, h(PluginInventoryOverview, { onClose: () => { setPluginsOpen(false); triggerRef.current?.focus?.() } })) : null,
+        motionOpen ? h('section', {
+          className: 'tl-motion-preference-panel', role: 'dialog', 'aria-label': '工作台动效',
+          style: { position: 'absolute', zIndex: 1002, insetBlockStart: 'calc(100% + var(--tl-space-1))', insetInlineEnd: 0, display: 'grid', gap: 'var(--tl-space-2)', width: 'min(calc(250px * var(--tl-ui-scale, 1)), calc(100vw - var(--tl-space-5) * 2))', padding: 'var(--tl-space-3)', border: '1px solid var(--tl-shell-line)', borderRadius: 'var(--tl-corner-radius)', background: 'var(--tl-shell-surface)', color: 'var(--tl-shell-ink)', boxShadow: '0 8px 24px rgb(0 0 0 / 20%)', font: 'var(--tl-font-compact)/1.45 var(--tl-font-family)' },
+        },
+        h('strong', null, '工作台动效'),
+        h('fieldset', { style: { display: 'grid', gap: 'var(--tl-space-1)', minWidth: 0, margin: 0, padding: 0, border: 0 } },
+          h('legend', { style: { marginBottom: 'var(--tl-space-1)', color: 'var(--tl-shell-muted)' } }, '面板几何动效'),
+          [['system', '跟随系统'], ['on', '开启'], ['off', '关闭']].map(([value, label]) => h('label', {
+            key: value, style: { display: 'flex', alignItems: 'center', gap: 'var(--tl-space-2)', minHeight: 'var(--tl-control-height)', padding: '0 var(--tl-space-2)', borderRadius: 'var(--tl-corner-radius)', background: motionPreference === value ? 'var(--tl-shell-soft)' : 'transparent', cursor: 'pointer' },
+          }, h('input', { type: 'radio', name: 'tl-workbench-motion', value, checked: motionPreference === value, onChange: () => updateMotionPreference(value) }), label))),
+        h('p', { style: { margin: 0, color: 'var(--tl-shell-muted)' } }, '“跟随系统”会遵循系统的减少动态效果设置。')) : null,
+        fontSizeOpen ? h('section', {
+          className: 'tl-font-size-panel', role: 'dialog', 'aria-label': '界面大小',
+          style: { position: 'absolute', zIndex: 1001, insetBlockStart: 'calc(100% + var(--tl-space-1))', insetInlineEnd: 0, display: 'grid', gap: 'var(--tl-space-3)', width: 'min(calc(320px * var(--tl-ui-scale, 1)), calc(100vw - var(--tl-space-5) * 2))', padding: 'var(--tl-space-3)', border: '1px solid var(--tl-shell-line)', borderRadius: 'var(--tl-corner-radius)', background: 'var(--tl-shell-surface)', color: 'var(--tl-shell-ink)', boxShadow: '0 8px 24px rgb(0 0 0 / 20%)', font: 'var(--tl-font-compact)/1.45 var(--tl-font-family)' },
+        },
+        h('header', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--tl-space-3)' } },
+          h('strong', null, '界面大小'),
+          h('span', { style: { color: 'var(--tl-shell-muted)', fontVariantNumeric: 'tabular-nums' } }, `${interfaceScalePercent}% · 正文${fontBody}px`)),
+          h('label', { htmlFor: 'tl-shell-font-size', style: { display: 'grid', gap: 'var(--tl-space-2)' } },
+          h('span', null, '字号、按钮与间距同步'),
+          h('input', { id: 'tl-shell-font-size', type: 'range', min: 10, max: 22, step: 1, value: fontBody,
+            disabled: !canSetFontSize, 'aria-label': '界面大小',
+            'aria-valuetext': `${interfaceScalePercent}%，正文${fontBody}像素`, onChange: event => setTextFontSize(event.currentTarget.value) })),
+        h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--tl-space-3)' } },
+          h('span', { style: { color: 'var(--tl-shell-muted)', fontSize: 'var(--tl-font-compact)' } }, `${Math.round(10 / 14 * 100)}% · 10 px`, '　', `${Math.round(22 / 14 * 100)}% · 22 px`),
+          h('button', { type: 'button', className: 'tl-font-size-reset', disabled: !canSetFontSize, onClick: () => setTextFontSize(DEFAULT_WORKBENCH_FONT_BODY) }, '恢复参考大小')),
+        fontSizeError ? h('p', { role: 'status', style: { margin: 0, color: 'var(--tl-shell-danger)' } }, fontSizeError)
+          : !canSetFontSize ? h('p', { role: 'note', style: { margin: 0, color: 'var(--tl-shell-muted)' } }, '当前环境不支持保存界面大小。') : null) : null,
         mobileOpen ? h('section', {
           role: 'dialog', 'aria-label': '连接手机', 'aria-modal': 'false',
           className: 'tl-mobile-link-panel',
@@ -288,8 +1884,14 @@ window.__ModuleLoader__.load({
         h('ol', null,
           h('li', null, '电脑保持开启。'),
           h('li', null, '手机连接同一 Wi-Fi。'),
-          h('li', null, '复制授权链接，在手机浏览器打开。')),
+          h('li', null, '扫码或复制授权链接，在手机浏览器打开。')),
         mobileBusy ? h('p', { role: 'status' }, '正在生成链接…') : null,
+        qrD ? h('div', { className: 'tl-mobile-link-qr-frame' }, h('svg', {
+          className: 'tl-mobile-link-qr', viewBox: `0 0 ${mobileQr.size + 8} ${mobileQr.size + 8}`,
+          role: 'img', 'aria-label': '手机授权链接二维码', shapeRendering: 'crispEdges',
+        }, h('rect', { x: 0, y: 0, width: mobileQr.size + 8, height: mobileQr.size + 8, fill: '#fff' }),
+        h('path', { d: qrD, fill: '#000' }))) : null,
+        mobileQrError ? h('p', { role: 'status' }, mobileQrError) : null,
         mobileUrl ? h('div', null,
           h('input', { type: 'text', readOnly: true, value: mobileUrl, 'aria-label': '手机授权链接', onFocus: event => event.currentTarget.select() }),
           h('button', { type: 'button', onClick: () => { void copyMobileLink() } }, '复制链接')) : null,
@@ -322,58 +1924,160 @@ window.__ModuleLoader__.load({
         .tl-shell-top {
           /* Collapsed-sidebar styling can hide this shell slot through inherited visibility. */
           visibility: visible;
-          --tl-shell-surface: var(--dsw-alias-bg-layer-1, #ffffff); --tl-shell-soft: var(--dsw-alias-bg-layer-2, #e9eef6); --tl-shell-ink: var(--dsw-alias-label-primary, #202b3a);
-          --tl-shell-muted: var(--dsw-alias-label-secondary, #68778c); --tl-shell-line: var(--dsw-alias-border-l1, #cbd5e2); --tl-shell-accent: var(--dsw-alias-brand-primary, #356fc4);
-          --tl-shell-accent-strong: #285ca4; --tl-shell-accent-soft: var(--dsw-alias-bg-layer-2, #e5eefb);
-          --tl-shell-danger: #ba2121; --tl-shell-danger-bg: #fdecea; --tl-shell-danger-line: #f5c6c6;
+          --tl-shell-surface: var(--tl-theme-panel); --tl-shell-soft: var(--tl-theme-header); --tl-shell-ink: var(--tl-theme-text);
+          --tl-shell-muted: var(--tl-theme-muted); --tl-shell-line: var(--tl-theme-border); --tl-shell-accent: var(--tl-theme-accent);
+          --tl-shell-accent-strong: var(--tl-theme-accent-strong); --tl-shell-accent-soft: var(--tl-theme-accent-soft);
+          --tl-shell-danger: var(--tl-theme-danger); --tl-shell-danger-bg: var(--tl-theme-danger-bg); --tl-shell-danger-line: var(--tl-theme-danger-border);
+          --tl-shell-overlay-z: 1100;
+          background: var(--tl-theme-canvas); color: var(--tl-shell-ink);
         }
-        .tl-shell-top.is-dark {
-          --tl-shell-surface: var(--dsw-alias-bg-layer-1, #131925); --tl-shell-soft: var(--dsw-alias-bg-layer-2, #171f2c); --tl-shell-ink: var(--dsw-alias-label-primary, #dfe7f3);
-          --tl-shell-muted: var(--dsw-alias-label-secondary, #8b97ab); --tl-shell-line: var(--dsw-alias-border-l1, #293345); --tl-shell-accent: var(--dsw-alias-brand-primary, #4d83dd);
-          --tl-shell-accent-strong: #6d9cec; --tl-shell-accent-soft: var(--dsw-alias-bg-layer-2, #202e47);
-          --tl-shell-danger: #ff8f8f; --tl-shell-danger-bg: #3a2323; --tl-shell-danger-line: #7a3b3b;
+        html[data-windows-titlebar] .tl-shell-top .tl-top-model-row {
+          position: fixed; z-index: 1101; inset-block-start: 0; inset-inline-start: 40px; inset-inline-end: 140px;
+          width: auto; min-height: var(--dsh-windows-titlebar-height, 32px); height: var(--dsh-windows-titlebar-height, 32px);
+          max-height: var(--dsh-windows-titlebar-height, 32px); padding: 0 8px; overflow: visible;
+          background: transparent; -webkit-app-region: drag;
+        }
+        html[data-windows-titlebar] .tl-shell-top .tl-top-model-row button,
+        html[data-windows-titlebar] .tl-shell-top .tl-top-model-row a,
+        html[data-windows-titlebar] .tl-shell-top .tl-top-model-row input,
+        html[data-windows-titlebar] .tl-shell-top .tl-top-model-row select,
+        html[data-windows-titlebar] .tl-shell-top .tl-top-model-row textarea,
+        html[data-windows-titlebar] .tl-shell-top .tl-top-model-row summary,
+        html[data-windows-titlebar] .tl-shell-top .tl-top-model-row [role="button"],
+        html[data-windows-titlebar] .tl-shell-top .tl-top-model-row [data-windows-menu] { -webkit-app-region: no-drag; }
+        html[data-windows-titlebar] .tl-top-model-row .tl-shell-quick-action,
+        html[data-windows-titlebar] .tl-top-model-row .tl-shell-tools-trigger {
+          width: 26px; height: 26px; padding: 4px;
+        }
+        html[data-windows-titlebar] .tl-top-model-row .tl-shell-quick-action svg { width:16px; height:16px; }
+        html[data-windows-titlebar] .tl-top-model-row .tl-shell-brand-mark { width:22px; height:22px; }
+        html[data-windows-titlebar] .tl-top-model-row .tl-agent-selector > summary {
+          min-height:26px; height:26px; padding-block:0; font-size:min(var(--tl-font-compact), 16px);
+        }
+        html[data-windows-titlebar] .tl-top-model-row .tl-model-rail { min-height:0; height:28px; max-height:28px; padding-block:0; }
+        html[data-windows-titlebar] .tl-top-model-row .tl-model-group { min-width:28px; max-width:28px; }
+        html[data-windows-titlebar] .tl-top-model-row .tl-model-group > summary,
+        html[data-windows-titlebar] .tl-top-model-row .tl-model-picker-trigger {
+          width:28px; min-width:28px; height:28px; max-height:28px; font-size:min(var(--tl-font-body),16px);
+        }
+        @media (max-width:900px) {
+          html[data-windows-titlebar] .tl-top-model-row .tl-shell-quick-action[aria-label="切换会话侧栏"],
+          html[data-windows-titlebar] .tl-top-model-row .tl-shell-quick-action[aria-label="连接手机"] { display:none; }
+          html[data-windows-titlebar] .tl-top-model-row .tl-shell-brand { display:none; }
         }
         .tl-navigation {
-          box-sizing: border-box; display: flex; align-items: center; flex-wrap: nowrap; gap: 5px;
-          min-width: 0; min-height: 38px; max-height: 38px; overflow-x: auto; overflow-y: hidden;
-          white-space: nowrap; padding: 3px 10px;
+          box-sizing: border-box; display: flex; align-items: center; flex-wrap: nowrap; gap: var(--tl-space-1);
+          min-width: 0; min-height: var(--tl-nav-height); max-height: var(--tl-nav-height); overflow-x: auto; overflow-y: hidden;
+          white-space: nowrap; padding: var(--tl-space-1) var(--tl-space-3);
           border-bottom: 1px solid var(--tl-shell-line); background: var(--tl-shell-surface); color: var(--tl-shell-ink);
-          font-family: "Segoe UI", "Microsoft YaHei", sans-serif; font-size: 13px;
+          font-family: var(--tl-font-family); font-size: var(--tl-font-compact);
         }
         .tl-top-model-row {
-          display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; position: relative;
-          padding: 1px 10px; box-sizing: border-box;
+          display: flex; align-items: center; gap: var(--tl-space-2); width: 100%; min-width: 0; min-height: var(--tl-row-height); position: relative;
+          padding: 0 var(--tl-space-3); box-sizing: border-box;
         }
-        .tl-shell-brand { display:flex; align-items:center; gap:7px; flex:0 0 auto; color:var(--tl-shell-ink); }
-        .tl-shell-brand-mark { width:26px; height:26px; }
-        .tl-shell-brand > div { line-height:1.05 !important; }
-        .tl-shell-brand strong { font-size:13px !important; }
+        .tl-native-menu-slot { display:flex; flex:0 0 auto; align-items:center; height:100%; }
+        .tl-shell-brand { display:flex; align-items:center; gap:var(--tl-space-2); flex:0 0 auto; color:var(--tl-shell-ink); }
+        .tl-shell-brand-mark { flex:0 0 auto; width:calc(22px * var(--tl-ui-scale, 1)); height:calc(22px * var(--tl-ui-scale, 1)); }
+        .tl-shell-brand > div { min-width:0; line-height:1.05 !important; white-space:nowrap; overflow:hidden; }
+        .tl-shell-brand strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .tl-shell-brand strong { font-size:var(--tl-font-body) !important; }
         .tl-shell-brand span { display:none; }
         .tl-top-model-row > :first-child { flex: 0 1 auto; min-width: 0; }
-        .tl-shell-tools { margin-inline-start: auto; position: relative; flex: 0 0 auto; }
+        @media (max-width:600px) { .tl-shell-brand > div { display:none !important; } .tl-top-model-row > :first-child { flex:0 0 auto; } .tl-shell-top .tl-shell-quick-action, .tl-shell-top .tl-shell-tools-trigger { width:max(28px, calc(var(--tl-control-height) * .8)); } .tl-top-model-row { gap:var(--tl-space-1); } }
+        .tl-shell-top .tl-model-rail .tl-theme-toggle { display:none; }
+        .tl-shell-tools { display:flex; align-items:center; gap:var(--tl-space-1); margin-inline-start: auto; position: relative; flex: 0 0 auto; }
+        .tl-shell-quick-action { display:inline-flex; align-items:center; justify-content:center; width:var(--tl-control-height); height:var(--tl-control-height); padding:var(--tl-space-1); border:1px solid transparent; border-radius:var(--tl-corner-radius); color:var(--tl-shell-muted); background:transparent; cursor:pointer; }
+        .tl-shell-quick-action svg { width:var(--tl-icon-size); height:var(--tl-icon-size); fill:none; stroke:currentColor; stroke-width:1.5; }
+        .tl-shell-quick-action:disabled { opacity:.4; cursor:default; }
+        .tl-shell-quick-action:hover:not(:disabled) { color:var(--tl-shell-ink); background:var(--tl-shell-soft); border-color:var(--tl-shell-line); }
+        .tl-shell-quick-action:focus-visible { outline:2px solid var(--tl-shell-accent); outline-offset:1px; }
+        .tl-shell-menu-heading { padding:var(--tl-space-2) var(--tl-space-3) var(--tl-space-1); color:var(--tl-shell-muted); font-size:var(--tl-font-compact); font-weight:600; }
+        .tl-shell-menu-heading:not(:first-child) { margin-top:var(--tl-space-1); border-top:1px solid var(--tl-shell-line); }
         .tl-shell-tools-trigger {
-          display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 32px;
-          border: 1px solid var(--tl-shell-line); border-radius: 6px; background: var(--tl-shell-surface);
-          color: var(--tl-shell-ink); font: 20px/1 "Segoe UI", sans-serif; cursor: pointer;
+          display: inline-flex; align-items: center; justify-content: center; width: var(--tl-control-height); height: var(--tl-control-height);
+          border: 1px solid var(--tl-shell-line); border-radius: var(--tl-corner-radius); background: var(--tl-shell-surface);
+          color: var(--tl-shell-ink); font: var(--tl-font-body)/1 var(--tl-font-family); cursor: pointer;
         }
         .tl-shell-tools-trigger:hover, .tl-shell-tools-menu button:hover { background: var(--tl-shell-soft); }
         .tl-shell-tools-trigger:focus-visible, .tl-shell-tools-menu button:focus-visible { outline: 2px solid var(--tl-shell-accent); outline-offset: 2px; }
         .tl-shell-tools-menu {
-          position: absolute; z-index: 1000; inset-block-start: calc(100% + 4px); inset-inline-end: 0;
-          display: grid; gap: 2px; min-width: 190px; padding: 6px; border: 1px solid var(--tl-shell-line);
-          border-radius: 8px; background: var(--tl-shell-surface); color: var(--tl-shell-ink);
+          box-sizing:border-box; max-width:calc(100vw - var(--tl-space-5) * 2);
+          max-height:calc(100dvh - var(--tl-row-height) - var(--tl-space-4) * 2); overflow-y:auto; overscroll-behavior:contain; scrollbar-gutter:stable;
+          position: absolute; z-index: 1000; inset-block-start: calc(100% + var(--tl-space-1)); inset-inline-end: 0;
+          display: grid; gap: var(--tl-space-1); min-width: calc(190px * var(--tl-ui-scale, 1)); padding: var(--tl-space-2); border: 1px solid var(--tl-shell-line);
+          border-radius: var(--tl-corner-radius); background: var(--tl-shell-surface); color: var(--tl-shell-ink);
           box-shadow: 0 8px 24px rgb(0 0 0 / 16%);
         }
         .tl-shell-tools-menu button {
-          min-height: 34px; padding: 6px 9px; border: 0; border-radius: 5px; background: transparent;
+          min-height: var(--tl-control-height); padding: var(--tl-space-2) var(--tl-space-3); border: 0; border-radius: var(--tl-corner-radius); background: transparent;
           color: inherit; font: inherit; text-align: start; cursor: pointer;
         }
-        html[data-meow-smooth-furled] .tl-top-model-row { padding-inline-start: 66px; }
+        .tl-font-size-reset { box-sizing:border-box; min-height:var(--tl-control-height); padding:var(--tl-space-1) var(--tl-space-2); border:1px solid var(--tl-shell-line); border-radius:var(--tl-corner-radius); background:var(--tl-shell-soft); color:var(--tl-shell-ink); font:inherit; cursor:pointer; }
+        .tl-font-size-reset:not(:disabled):hover { background:var(--tl-shell-accent-soft); border-color:var(--tl-shell-accent); }
+        .tl-font-size-reset:focus-visible { outline:2px solid var(--tl-shell-accent); outline-offset:2px; }
+        .tl-font-size-reset:disabled { opacity:.4; cursor:default; }
+        .tl-motion-preference-panel,.tl-font-size-panel { box-sizing:border-box; max-height:calc(100dvh - var(--tl-row-height) - var(--tl-space-4) * 2); overflow-y:auto; overscroll-behavior:contain; scrollbar-gutter:stable; }
+        .tl-session-usage-panel {
+          box-sizing: border-box; min-width: 0;
+        }
+        .tl-session-usage-header { flex:0 0 auto; display:flex; align-items:center; gap:var(--tl-space-2); padding-bottom:var(--tl-space-2); border-bottom:1px solid var(--tl-shell-line); }
+        .tl-session-usage-header strong { margin-inline-end:auto; }
+        .tl-session-usage-close { flex:none; border:0; background:transparent; color:var(--tl-shell-muted); padding:.1em .35em; font:inherit; cursor:pointer; border-radius:var(--tl-corner-radius); }
+        .tl-session-usage-close:hover { background:var(--tl-shell-soft); color:var(--tl-shell-ink); }
+        .tl-session-usage-close:focus-visible, .tl-session-usage-footer summary:focus-visible { outline:2px solid var(--tl-shell-accent); outline-offset:1px; }
+        .tl-session-usage-state { flex:0 0 auto; margin:var(--tl-space-2) 0 0; color:var(--tl-shell-muted); overflow-wrap:anywhere; }
+        .tl-session-usage-list { min-height:0; flex:1 1 auto; overflow:auto; overscroll-behavior:contain; padding-inline-end:var(--tl-space-1); scrollbar-gutter:stable; }
+        .tl-session-usage-list::-webkit-scrollbar { width:5px; height:5px; }
+        .tl-session-usage-list::-webkit-scrollbar-thumb { border-radius:5px; background:var(--tl-shell-muted); }
+        .tl-session-usage-group { margin:0; }
+        .tl-session-usage-group > summary { display:flex; align-items:center; gap:var(--tl-space-1); min-height:1.7em; padding:var(--tl-space-1); cursor:pointer; font-weight:600; list-style:none; border-radius:var(--tl-corner-radius); }
+        .tl-session-usage-group > summary:hover, .tl-session-usage-group > summary:focus-visible, .tl-session-usage-group[open] > summary { background:var(--tl-shell-soft); }
+        .tl-session-usage-group > summary:focus-visible { outline:2px solid var(--tl-shell-accent); outline-offset:1px; }
+        .tl-session-usage-group > summary::-webkit-details-marker { display:none; }
+        .tl-session-usage-caret { display:inline-block; flex:none; transition:transform .12s ease; }
+        .tl-session-usage-group[open] > summary .tl-session-usage-caret { transform:rotate(90deg); }
+        .tl-session-usage-group-icon { color:var(--tl-shell-muted); }
+        .tl-session-usage-group-heading { min-width:0; line-height:1.25; }
+        .tl-session-usage-count { margin-inline-start:auto; white-space:nowrap; color:var(--tl-shell-muted); font-weight:400; font-variant-numeric:tabular-nums; }
+        .tl-session-usage-record { padding:var(--tl-space-2) var(--tl-space-1); border-bottom:1px solid var(--tl-shell-line); }
+        .tl-session-usage-row { display:flex; align-items:baseline; gap:var(--tl-space-2); min-width:0; }
+        .tl-session-usage-dot { flex:none; width:.3em; height:.3em; border-radius:50%; align-self:center; }
+        .tl-session-usage-title { min-width:0; flex:1; overflow-wrap:anywhere; line-height:1.25; font-weight:600; }
+        .tl-session-usage-percent { flex:none; min-width:4.5em; text-align:end; white-space:nowrap; font-weight:600; font-variant-numeric:tabular-nums; }
+        .tl-session-usage-warning { margin-inline-end:.25em; }
+        .tl-session-usage-role { margin-top:.1em; color:var(--tl-shell-muted); overflow-wrap:anywhere; }
+        .tl-session-usage-detail { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:var(--tl-space-2); margin-top:.15em; color:var(--tl-shell-muted); font-variant-numeric:tabular-nums; }
+        .tl-session-usage-detail > span { min-width:0; overflow-wrap:anywhere; }
+        .tl-session-usage-detail > span:last-child { text-align:end; }
+        .tl-session-usage-detail b { color:var(--tl-shell-ink); font-weight:500; }
+        .tl-session-usage-meter { margin-top:.25em; height:.25em; min-height:4px; overflow:hidden; border-radius:2px; background:var(--tl-shell-soft); border:1px solid var(--tl-shell-line); }
+        .tl-session-usage-meter > span { display:block; height:100%; }
+        .tl-session-usage-meter.is-unknown { background:repeating-linear-gradient(135deg,var(--tl-shell-soft),var(--tl-shell-soft) 4px,var(--tl-shell-line) 4px,var(--tl-shell-line) 5px); }
+        .tl-session-usage-footer { flex:0 0 auto; margin:var(--tl-space-2) 0 0; padding-top:var(--tl-space-1); border-top:1px solid var(--tl-shell-line); color:var(--tl-shell-muted); }
+        .tl-session-usage-footer summary { cursor:pointer; overflow-wrap:anywhere; }
+        .tl-session-usage-footer summary span { color:var(--tl-shell-accent); }
+        .tl-session-usage-footer p { margin:var(--tl-space-1) 0 0; max-height:7em; overflow:auto; overflow-wrap:anywhere; }
+        .tl-mobile-link-panel {
+          position: fixed; z-index: 1100; inset-block-start: calc(var(--tl-row-height) + var(--tl-nav-height) + var(--tl-space-3)); inset-inline-end: var(--tl-space-3);
+          box-sizing: border-box; display: grid; gap: var(--tl-space-3); width: min(calc(420px * var(--tl-ui-scale, 1)), calc(100vw - var(--tl-space-5) * 2));
+          max-block-size: calc(100vh - var(--tl-space-5) * 8); max-block-size: calc(100dvh - var(--tl-space-5) * 8); overflow: auto;
+          padding: var(--tl-space-3); border: 1px solid var(--tl-shell-line); border-radius: var(--tl-corner-radius);
+          background: var(--tl-shell-surface); color: var(--tl-shell-ink); box-shadow: 0 10px 32px rgb(0 0 0 / 20%);
+          font: var(--tl-font-compact)/1.5 var(--tl-font-family);
+        }
+        .tl-mobile-link-panel ol { margin: 0; padding-inline-start: calc(22px * var(--tl-ui-scale, 1)); color: var(--tl-shell-muted); }
+        .tl-mobile-link-panel input { box-sizing: border-box; width: 100%; min-width: 0; min-height: var(--tl-control-height); padding: var(--tl-space-2) var(--tl-space-3); border: 1px solid var(--tl-shell-line); border-radius: var(--tl-corner-radius); background: var(--tl-shell-surface); color: var(--tl-shell-ink); font: inherit; }
+        .tl-mobile-link-panel button { min-height: var(--tl-control-height); padding: var(--tl-space-2) var(--tl-space-3); border: 1px solid var(--tl-shell-line); border-radius: var(--tl-corner-radius); background: var(--tl-shell-soft); color: var(--tl-shell-ink); font: inherit; cursor: pointer; }
+        .tl-mobile-link-panel button:focus-visible { outline: 2px solid var(--tl-shell-accent); outline-offset: 2px; }
+        .tl-mobile-link-qr-frame { box-sizing: border-box; width: min(calc(264px * var(--tl-ui-scale, 1)), 100%); aspect-ratio: 1; margin-inline: auto; padding: var(--tl-space-3); border: 1px solid #d5d5d5; border-radius: var(--tl-corner-radius); background: #fff; }
+        .tl-mobile-link-qr { display: block; width: 100%; height: 100%; background: #fff; shape-rendering: crispEdges; }
+        html[data-meow-smooth-furled] .tl-top-model-row { padding-inline-start: 8px; }
         .tl-navigation .tl-scene-tab { font: inherit; color: inherit; background: transparent; }
         .tl-navigation .tl-conversation-entry {
           display: inline-flex; align-items: center; justify-content: center;
-          min-height: 30px; padding: 4px 9px;
-          border: 1px solid var(--tl-shell-line); border-radius: 5px;
+          min-height: calc(var(--tl-control-height) - var(--tl-space-1)); padding: var(--tl-space-1) var(--tl-space-3);
+          border: 1px solid var(--tl-shell-line); border-radius: var(--tl-corner-radius);
           background: var(--tl-shell-surface); color: var(--tl-shell-ink);
           font: inherit; cursor: pointer;
         }
@@ -381,6 +2085,9 @@ window.__ModuleLoader__.load({
         .tl-navigation .tl-conversation-entry[aria-current="page"] { background: var(--tl-shell-accent-soft); border-color: var(--tl-shell-accent); }
         .tl-navigation .tl-conversation-entry:disabled { opacity: .65; cursor: default; }
         .tl-navigation .tl-conversation-entry:focus-visible { outline: 2px solid var(--tl-shell-accent); outline-offset: 2px; }
+        .tl-shell-top .tl-navigation .tl-conversation-entry:focus-visible,
+        .tl-shell-top .tl-navigation .tl-scene-tab:focus-visible,
+        .tl-shell-top .tl-navigation .tl-scene-layout-trigger:focus-visible { outline-offset: -2px; }
       `), h('button', { type: 'button', className: 'tl-conversation-entry', onClick: openCurrentConversation,
         disabled: !currentSessionId, title: currentSessionId ? '打开当前助手的原生对话' : conversationUnavailable,
         'aria-label': currentSessionId ? '打开当前对话' : conversationUnavailable,
@@ -398,21 +2105,22 @@ window.__ModuleLoader__.load({
     }
 
     function capabilityPanelPlacement(anchorRect, viewport) {
-      const gutter = 8
-      const gap = 8
+      const scale = workbenchUiTokens.fontBody / DEFAULT_WORKBENCH_FONT_BODY
+      const gutter = Math.round(8 * scale)
+      const gap = Math.round(8 * scale)
       const viewportWidth = viewport.width
       const viewportHeight = viewport.height
       const viewportLeft = viewport.left
       const viewportTop = viewport.top
-      const width = Math.max(0, Math.min(720, viewportWidth - gutter * 2))
+      const width = Math.max(0, Math.min(Math.round(720 * scale), viewportWidth - gutter * 2))
       const minLeft = viewportLeft + gutter
       const maxLeft = Math.max(minLeft, viewportLeft + viewportWidth - gutter - width)
       const anchor = anchorRect ?? { left: minLeft, top: viewportTop + gutter, bottom: viewportTop + gutter }
       const below = Math.max(0, viewportTop + viewportHeight - anchor.bottom - gutter * 2)
       const above = Math.max(0, anchor.top - viewportTop - gutter * 2)
-      const placeBelow = below >= 260 || below >= above
+      const placeBelow = below >= Math.round(260 * scale) || below >= above
       const availableHeight = placeBelow ? below : above
-      const maxHeight = Math.min(680, availableHeight, Math.max(0, viewportHeight - gutter * 2))
+      const maxHeight = Math.min(Math.round(680 * scale), availableHeight, Math.max(0, viewportHeight - gutter * 2))
       const minTop = viewportTop + gutter
       const maxTop = Math.max(minTop, viewportTop + viewportHeight - gutter - maxHeight)
       const top = placeBelow
@@ -437,6 +2145,9 @@ window.__ModuleLoader__.load({
       const [capabilityInfo, setCapabilityInfo] = React.useState({ status: 'idle', data: null, error: '' })
       const capabilityRequest = React.useRef(0)
       const [capabilityTab, setCapabilityTab] = React.useState('current')
+      const [capabilityExpanded, setCapabilityExpanded] = React.useState({ mcp: true, tools: false })
+      const [selectedCapabilitySkill, setSelectedCapabilitySkill] = React.useState('')
+      const [capabilitySkillView, setCapabilitySkillView] = React.useState('list')
       const [configurationByRole, setConfigurationByRole] = React.useState({})
       const configurationByRoleRef = React.useRef(configurationByRole)
       configurationByRoleRef.current = configurationByRole
@@ -450,6 +2161,16 @@ window.__ModuleLoader__.load({
       const roleMetadata = sceneLoadState.roleMetadata ?? { status: 'idle', error: '', roles: null }
       const roles = roleMetadata.status === 'ready' && Array.isArray(roleMetadata.roles) ? roleMetadata.roles : []
       async function retryRoles() {
+        if (typeof props.onRetryRoles === 'function' || typeof props.onRequestRoles === 'function') {
+          try {
+            await (props.onRetryRoles ?? props.onRequestRoles)()
+            setError('')
+            return true
+          } catch {
+            setError('助手列表暂时无法读取。')
+            return false
+          }
+        }
         try {
           if (sceneApi) await sceneApi.retryLoadConfig()
           else await loadSceneWorkbench()
@@ -463,7 +2184,9 @@ window.__ModuleLoader__.load({
         if (busy) return
         setBusy(role); setError('')
         try {
-          if (sceneApi) {
+          if (typeof props.onOpenRole === 'function') {
+            if (await props.onOpenRole(role) !== true) throw new Error('会话暂时无法打开。')
+          } else if (sceneApi) {
             if (!await sceneApi.selectRole(role)) throw new Error('会话暂时无法连接')
           } else {
             const response = await fetch('/tradeloom/session', {
@@ -476,7 +2199,7 @@ window.__ModuleLoader__.load({
             layout?.selectPanel('scene-workbench')
           }
           setMenuOpen(false)
-        } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)) }
+        } catch (cause) { setError(typeof props.onOpenRole === 'function' ? '会话暂时无法打开。' : cause instanceof Error ? cause.message : String(cause)) }
         finally { setBusy('') }
       }
       function editableConfiguration(result) {
@@ -615,7 +2338,15 @@ window.__ModuleLoader__.load({
             return
           }
           let selectedNewSession = false
-          if (capabilityRoleRef.current === role) {
+          const select = capabilityRoleRef.current === role
+          if (typeof props.onConfiguredSession === 'function') {
+            if (await props.onConfiguredSession(role, result, { select }) !== true) throw new Error('新会话已创建，但原生会话绑定暂时无法更新。')
+            if (select) {
+              setCapabilityTab('current')
+              await loadCapabilities(role)
+              selectedNewSession = true
+            }
+          } else if (select) {
             if (!await sceneApi.selectRole(role, result.sessionId)) throw new Error('已创建新会话，但工作台暂时无法切换到它。')
             setCapabilityTab('current')
             await loadCapabilities(role)
@@ -642,6 +2373,7 @@ window.__ModuleLoader__.load({
         void loadSavedConfiguration(role)
         const requestId = ++capabilityRequest.current
         setCapabilityRole(role)
+        setSelectedCapabilitySkill('')
         setCapabilityInfo({ status: 'loading', data: null, error: '' })
         try {
           const response = await fetch(`/tradeloom/agent-capabilities?role=${encodeURIComponent(role)}`, {
@@ -654,15 +2386,31 @@ window.__ModuleLoader__.load({
           if (capabilityRequest.current === requestId) setCapabilityInfo({ status: 'error', data: null, error: '能力信息暂时无法读取，请重试。' })
         }
       }
-      function showCapabilities() {
+      function showCapabilities(preferredRole) {
         const current = sceneApi?.getSnapshot?.()
         const activeScene = current?.config?.scenes?.find(item => item.id === current.activeSceneId)
-        const role = current?.roleByScene?.[current.activeSceneId] ?? activeScene?.roleId ?? roles[0]?.id
+        const role = typeof preferredRole === 'string' && preferredRole
+          ? preferredRole
+          : typeof props.resolveCapabilityRole === 'function'
+          ? props.resolveCapabilityRole()
+          : current?.roleByScene?.[current.activeSceneId] ?? activeScene?.roleId ?? roles[0]?.id
+        if (typeof props.resolveCapabilityRole === 'function' && !roles.some(item => item.id === role)) {
+          setError('请先读取并选择一个有效助手。')
+          setMenuOpen(false)
+          return
+        }
         setMenuOpen(false)
         setCapabilityOpen(true)
         setCapabilityTab('current')
         void loadCapabilities(role)
       }
+      React.useEffect(() => {
+        const target = typeof window === 'undefined' ? undefined : window
+        if (!target?.addEventListener) return undefined
+        const openCapabilities = event => { showCapabilities(event?.detail?.roleId) }
+        target.addEventListener('tradeloom:open-agent-capabilities', openCapabilities)
+        return () => target.removeEventListener('tradeloom:open-agent-capabilities', openCapabilities)
+      }, [])
       function updateCapabilityPanelBounds() {
         const visualViewport = window.visualViewport
         const viewportWidth = Number(visualViewport?.width) > 0 ? Number(visualViewport.width) : Math.max(0, window.innerWidth || document.documentElement?.clientWidth || 0)
@@ -699,6 +2447,7 @@ window.__ModuleLoader__.load({
         if (!capabilityOpen) return undefined
         const handlePanelKeyDown = event => {
           if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing) return
+          if (workspaceModalState().state?.owners.length) return
           closeCapabilities()
         }
         window.addEventListener?.('keydown', handlePanelKeyDown)
@@ -712,6 +2461,7 @@ window.__ModuleLoader__.load({
         capabilitySelectorRef.current?.focus?.()
       }
       const capabilityData = capabilityInfo.data
+      const capabilityRoleLabel = roles.find(item => item.id === capabilityRole)?.label ?? capabilityRole
       const mcpLabels = {
         declared_only: '该预设声明了 MCP 客户端；这不代表当前会话已连接。',
         visible_tool: '当前助手可见 MCP 工具；这不代表服务器健康或已成功调用。',
@@ -720,6 +2470,21 @@ window.__ModuleLoader__.load({
       }
       const skillItems = capabilityData?.skills?.items
       const toolItems = capabilityData?.tools?.items
+      function capabilityCountSummary() {
+        if (capabilityInfo.status !== 'ready') return ''
+        if (capabilityData?.status !== 'ready') return ''
+        const counts = []
+        if (capabilityData.skills?.status === 'available') {
+          const count = Number.isInteger(capabilityData.skills.total) ? capabilityData.skills.total : (skillItems?.length ?? 0)
+          if (Number.isInteger(capabilityData.skills.total) || Array.isArray(skillItems)) counts.push(`Skill ${count}`)
+        }
+        if (capabilityData.tools?.status === 'available') {
+          const count = Number.isInteger(capabilityData.tools.total) ? capabilityData.tools.total : (toolItems?.length ?? 0)
+          if (Number.isInteger(capabilityData.tools.total) || Array.isArray(toolItems)) counts.push(`工具 ${count}`)
+        }
+        if (Array.isArray(capabilityData.mcp?.visibleTools)) counts.push(`MCP 已返回 ${capabilityData.mcp.visibleTools.length}${capabilityData.mcp.visibleToolsTruncated ? ' · 已截断' : ''}`)
+        return counts.join(' · ')
+      }
       const selectedConfiguration = configurationByRole[capabilityRole]
       function updateServer(role, index, transform) {
         updateConfiguration(role, draft => ({ ...draft, mcpServers: draft.mcpServers.map((server, item) => item === index ? transform(server) : server) }))
@@ -862,41 +2627,83 @@ window.__ModuleLoader__.load({
         if (capabilityTab === 'configuration') {
           content.push(renderConfigurationEditor())
         } else {
-          if (capabilityInfo.status === 'loading') content.push(h('p', { key: 'loading', role: 'status' }, '正在读取当前助手能力…'))
-          if (capabilityInfo.status === 'error') content.push(h('div', { key: 'error', role: 'alert' },
+          if (capabilityInfo.status === 'loading') content.push(h('p', { key: 'loading', className: 'tl-capability-notice', role: 'status' }, '正在读取当前助手能力…'))
+          if (capabilityInfo.status === 'error') content.push(h('div', { key: 'error', className: 'tl-capability-notice is-error', role: 'alert' },
             h('p', null, capabilityInfo.error),
             h('button', { type: 'button', onClick: () => { void loadCapabilities(capabilityRole) } }, '重试')))
           if (capabilityData?.status === 'not_bound') {
-            content.push(h('p', { key: 'not-bound', role: 'status' }, '该助手当前没有已绑定的原生会话，工具与 Skill 能力未知。'))
+            content.push(h('p', { key: 'not-bound', className: 'tl-capability-notice', role: 'status' }, '该助手当前没有已绑定的原生会话，工具与 Skill 能力未知。'))
             content.push(h('h4', { key: 'mcp-title' }, 'MCP'))
             content.push(h('p', { key: 'mcp-status' }, mcpLabels[capabilityData.mcp?.status] ?? mcpLabels.unavailable))
           }
           if (capabilityData?.status === 'ready') {
-            content.push(h('h4', { key: 'mcp-title' }, 'MCP'))
-            content.push(h('p', { key: 'mcp-status' }, mcpLabels[capabilityData.mcp?.status] ?? mcpLabels.unavailable))
-            if (capabilityData.mcp?.visibleTools?.length) content.push(h('ul', { key: 'mcp-tools', 'aria-label': '当前可见 MCP 工具' },
-              capabilityData.mcp.visibleTools.map(name => h('li', { key: name }, name))))
-            content.push(h('h4', { key: 'tools-title' }, '工具'))
-            content.push(capabilityData.tools?.status === 'available'
+            const mcpVisibleTools = capabilityData.mcp?.visibleTools
+            const mcpCount = Array.isArray(mcpVisibleTools) ? `已返回 ${mcpVisibleTools.length} 项` : '数量未知'
+            const mcpContent = Array.isArray(mcpVisibleTools) && mcpVisibleTools.length
+              ? h('ul', { className: 'tl-capability-tool-list', 'aria-label': '当前可见 MCP 工具' },
+                mcpVisibleTools.map(name => h('li', { key: name }, h('code', null, name))))
+              : h('p', { className: 'tl-capability-empty' }, Array.isArray(mcpVisibleTools)
+                ? '当前返回列表没有 MCP 工具。' : 'MCP 可见工具数量未知。')
+            content.push(h('details', { key: 'mcp-group', className: 'tl-capability-group tl-capability-disclosure', open: capabilityExpanded.mcp,
+              onToggle: event => { const open = event.currentTarget.open; setCapabilityExpanded(current => current.mcp === open ? current : { ...current, mcp: open }) } },
+              h('summary', null, h('span', { id: 'tl-capability-mcp-title', className: 'tl-capability-group-title' }, 'MCP 可见工具'),
+                h('span', { className: 'tl-capability-count' }, mcpCount)),
+              h('div', { className: 'tl-capability-group-content' },
+                h('p', { className: 'tl-capability-group-status' }, mcpLabels[capabilityData.mcp?.status] ?? mcpLabels.unavailable),
+                h('p', { className: 'tl-capability-group-status' }, '服务归属与连接状态：未知（尚未提供观测）。'),
+                capabilityData.mcp?.visibleToolsTruncated
+                  ? h('p', { className: 'tl-capability-notice', role: 'status' }, `MCP 列表已截断；${mcpCount}，完整数量未知。`) : null,
+                mcpContent)))
+
+            const toolCount = Number.isInteger(capabilityData.tools?.total) ? capabilityData.tools.total : (Array.isArray(toolItems) ? toolItems.length : null)
+            const toolContent = capabilityData.tools?.status === 'available'
               ? (toolItems?.length
-                ? h('ul', { key: 'tools', 'aria-label': '当前助手可见工具' }, toolItems.map(item => h('li', { key: item.name }, item.name)))
-                : h('p', { key: 'tools-empty' }, '当前助手没有已列出的工具。'))
-              : h('p', { key: 'tools-unavailable' }, '工具目录暂不可用。'))
-            if (capabilityData.tools?.truncated) content.push(h('p', { key: 'tools-truncated' }, `工具列表已截断，当前共 ${capabilityData.tools.total} 项。`))
-            content.push(h('h4', { key: 'skills-title' }, 'Skill'))
-            content.push(capabilityData.skills?.status === 'available'
-              ? (skillItems?.length
-                ? h('ul', { key: 'skills', 'aria-label': '当前助手范围内的 Skill' }, skillItems.map(item => h('li', { key: item.name },
-                  h('strong', null, item.name), item.description ? ` — ${item.description}` : '',
-                  h('small', { style: { display: 'block', color: 'var(--tl-shell-muted)' } }, `${item.source} · 模型调用${item.invocation?.modelInvocable ? '可用' : '不可用'} · 用户调用${item.invocation?.userInvocable ? '可用' : '不可用'}`))))
-                : h('p', { key: 'skills-empty' }, '当前助手范围内没有已列出的 Skill。'))
-              : h('p', { key: 'skills-unavailable' }, 'Skill 目录暂不可用。'))
+                ? h('ul', { className: 'tl-capability-tool-list', 'aria-label': '当前助手可见工具' },
+                  toolItems.map(item => h('li', { key: item.name }, h('code', null, item.name))))
+                : h('p', { className: 'tl-capability-empty' }, Array.isArray(toolItems) ? '当前助手没有已列出的工具。' : '工具列表未知。'))
+              : h('p', { className: 'tl-capability-empty' }, '工具目录暂不可用。')
+            content.push(h('details', { key: 'tools-group', className: 'tl-capability-group tl-capability-disclosure', open: capabilityExpanded.tools,
+              onToggle: event => { const open = event.currentTarget.open; setCapabilityExpanded(current => current.tools === open ? current : { ...current, tools: open }) } },
+              h('summary', null, h('span', { id: 'tl-capability-tools-title', className: 'tl-capability-group-title' }, '全部可见工具'),
+                h('span', { className: 'tl-capability-count' }, toolCount !== null && capabilityData.tools?.status === 'available' ? `${toolCount} 项` : '数量未知')),
+              h('div', { className: 'tl-capability-group-content' },
+                h('p', { className: 'tl-capability-group-status' }, '含上方 MCP 工具；此处为当前助手可见目录。'),
+                capabilityData.tools?.truncated ? h('p', { className: 'tl-capability-notice', role: 'status' }, `工具列表已截断，当前共 ${capabilityData.tools.total} 项。`) : null,
+                toolContent)))
+
+            const skillCount = Number.isInteger(capabilityData.skills?.total) ? capabilityData.skills.total : (Array.isArray(skillItems) ? skillItems.length : null)
+            const skillCards = skillItems?.length
+              ? h('div', { className: 'tl-capability-skill-grid', 'data-display-mode': capabilitySkillView, role: 'list', 'aria-label': '当前助手范围内的 Skill' },
+                skillItems.map(item => {
+                  const selected = selectedCapabilitySkill === item.name
+                  return h('article', { key: item.name, role: 'listitem', className: 'tl-capability-skill-item' },
+                    h('button', {
+                      type: 'button', className: 'tl-capability-skill-card',
+                      'aria-pressed': selected, 'aria-expanded': selected, onClick: () => setSelectedCapabilitySkill(selected ? '' : item.name),
+                    },
+                    h('span', { className: 'tl-capability-skill-title' }, h('strong', null, item.name),
+                      h('span', { className: 'tl-capability-skill-kind' }, 'Skill')),
+                    item.description ? h('span', { className: 'tl-capability-skill-description' }, item.description) : null,
+                    h('span', { className: 'tl-capability-skill-meta' },
+                      item.source ? h('span', { className: 'tl-capability-skill-source' }, `来源 · ${item.source}`) : null,
+                      h('span', { className: `tl-capability-skill-state${item.invocation?.modelInvocable === true ? ' is-available' : ''}` }, `模型调用 ${item.invocation?.modelInvocable === true ? '可用' : item.invocation?.modelInvocable === false ? '不可用' : '未知'}`),
+                      h('span', { className: `tl-capability-skill-state${item.invocation?.userInvocable === true ? ' is-available' : ''}` }, `用户调用 ${item.invocation?.userInvocable === true ? '可用' : item.invocation?.userInvocable === false ? '不可用' : '未知'}`))))
+                }))
+              : h('p', { className: 'tl-capability-empty' }, Array.isArray(skillItems) ? '当前助手范围内没有已列出的 Skill。' : 'Skill 列表未知。')
+            const skillContent = capabilityData.skills?.status === 'available'
+              ? skillCards
+              : h('p', { className: 'tl-capability-empty' }, 'Skill 目录暂不可用。')
+            content.push(h('section', { key: 'skills-group', className: 'tl-capability-group tl-capability-skill-group', 'aria-labelledby': 'tl-capability-skills-title' },
+              h('div', { className: 'tl-capability-group-heading' },
+                h('h4', { id: 'tl-capability-skills-title' }, 'Skill'),
+                h('div', { className: 'tl-capability-view-switch', role: 'group', 'aria-label': 'Skill显示方式' },
+                  ...[['list', '列表'], ['grid', '卡片']].map(([view, label]) => h('button', { key: view, type: 'button', 'aria-pressed': capabilitySkillView === view, onClick: () => setCapabilitySkillView(view) }, label))),
+                capabilityData.skills?.status === 'available' ? h('span', { className: 'tl-capability-count' }, skillCount === null ? '数量未知' : String(skillCount)) : null),
+              skillContent))
             if (capabilityData.skills?.truncated || capabilityData.skills?.complete === false) {
               content.push(h('p', { key: 'skills-incomplete' }, `Skill 列表不完整${Number.isInteger(capabilityData.skills.total) ? `，当前共 ${capabilityData.skills.total} 项` : ''}。`))
             }
           }
-          content.push(h('div', { key: 'actions', className: 'tl-capability-actions' },
-            capabilityInfo.status === 'ready' ? h('button', { type: 'button', onClick: () => { void loadCapabilities(capabilityRole) } }, '重新读取') : null))
         }
         const visualViewport = window.visualViewport
         const bounds = capabilityPanelBounds ?? capabilityPanelPlacement(null, {
@@ -906,28 +2713,34 @@ window.__ModuleLoader__.load({
           top: Number(visualViewport?.offsetTop) || 0,
         })
         const panel = h('section', {
-          className: `tl-agent-capabilities tl-shell-top is-${activeColorScheme}`, role: 'dialog', 'aria-modal': 'false',
+          className: `tl-agent-capabilities tl-shell-top is-${activeColorScheme}`, role: 'dialog', 'aria-modal': 'true',
           'aria-labelledby': 'tl-agent-capabilities-title',
-          style: { position: 'fixed', left: `${bounds.left}px`, top: `${bounds.top}px`, width: `${bounds.width}px`, maxHeight: `${bounds.maxHeight}px` },
+          style: { position: 'relative', left: 'auto', top: 'auto', width: 'min(calc(720px * var(--tl-ui-scale, 1)), calc(100% - var(--tl-space-5) * 2))', maxHeight: 'calc(100% - var(--tl-space-5) * 2)' },
         },
         h('header', { className: 'tl-agent-capabilities-header' },
-          h('h3', { id: 'tl-agent-capabilities-title' }, '助手能力与配置'),
-          h('button', { ref: capabilityCloseRef, type: 'button', 'aria-label': '关闭助手能力与配置', onClick: closeCapabilities }, '关闭')),
+          h('div', { className: 'tl-agent-capabilities-heading' },
+            h('h3', { id: 'tl-agent-capabilities-title' }, `助手能力 · ${capabilityRoleLabel || '当前助手'}`),
+            capabilityTab === 'current' && capabilityCountSummary()
+              ? h('span', { className: 'tl-agent-capabilities-counts', 'aria-label': '能力目录数量' }, capabilityCountSummary()) : null),
+          h('div', { className: 'tl-agent-capabilities-header-actions' },
+            capabilityTab === 'current' && capabilityInfo.status === 'ready'
+              ? h('button', { type: 'button', onClick: () => { void loadCapabilities(capabilityRole) }, title: '重新读取当前助手能力' }, '重新读取') : null,
+            h('button', { ref: capabilityCloseRef, type: 'button', 'aria-label': '关闭助手能力与配置', onClick: closeCapabilities, title: '关闭' }, '×'))),
         h('div', { className: 'tl-agent-capabilities-body', style: { minHeight: 0, overflowY: 'auto', flex: '1 1 auto' } }, ...content))
-        return ReactDOM.createPortal(panel, window.document.body)
+        return h(WorkspaceModalLayer, { onClose: closeCapabilities }, panel)
       }
       return h('section', { className: 'tl-agent-directory', 'aria-label': '助手选择' },
         h('style', { 'data-tradeloom-agent-style': 'true' }, `
           .tl-agent-directory {
             position: relative; flex: 0 0 auto;
             color: var(--tl-shell-ink);
-            font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
-            font-size: 13px;
+            font-family: var(--tl-font-family);
+            font-size: var(--tl-font-compact);
           }
           .tl-agent-selector { position: relative; }
           .tl-agent-selector > summary {
-            display: inline-flex; align-items: center; min-height: 30px; padding: 3px 10px;
-            border: 1px solid var(--tl-shell-line); border-radius: 5px;
+            display: inline-flex; align-items: center; min-height: var(--tl-control-height); padding: var(--tl-space-1) var(--tl-space-3);
+            border: 1px solid var(--tl-shell-line); border-radius: var(--tl-corner-radius);
             background: var(--tl-shell-surface); color: inherit; font: inherit;
             cursor: pointer; list-style: none; white-space: nowrap;
           }
@@ -935,20 +2748,20 @@ window.__ModuleLoader__.load({
           .tl-agent-selector > summary:focus-visible { outline: 2px solid var(--tl-shell-accent); outline-offset: 2px; }
           .tl-agent-selector[open] > summary { background: var(--tl-shell-soft); }
           .tl-agent-menu {
-            position: absolute; top: calc(100% + 5px); left: 0; z-index: 60;
-            display: grid; gap: 3px; min-width: 170px; padding: 5px;
-            border: 1px solid var(--tl-shell-line); border-radius: 6px;
+            position: absolute; top: calc(100% + var(--tl-space-1)); left: 0; z-index: 60;
+            display: grid; gap: var(--tl-space-1); min-width: calc(170px * var(--tl-ui-scale, 1)); padding: var(--tl-space-2);
+            border: 1px solid var(--tl-shell-line); border-radius: var(--tl-corner-radius);
             background: var(--tl-shell-surface); color: inherit;
             box-shadow: 0 8px 22px rgba(0,0,0,.16);
           }
           .tl-agent-directory button, .tl-agent-capabilities button {
             font: inherit;
             color: inherit;
-            min-height: 32px;
+            min-height: var(--tl-control-height);
             text-align: left;
-            padding: 6px 10px;
+            padding: var(--tl-space-2) var(--tl-space-3);
             border: 1px solid transparent;
-            border-radius: 5px;
+            border-radius: var(--tl-corner-radius);
             background: transparent;
             cursor: pointer;
             overflow: hidden;
@@ -964,25 +2777,69 @@ window.__ModuleLoader__.load({
           }
           .tl-agent-directory button:disabled, .tl-agent-capabilities button:disabled { cursor: wait; opacity: .7; }
           .tl-agent-menu button { width: 100%; }
-          .tl-agent-capabilities { z-index: 70; display: flex; flex-direction: column; overflow: hidden; box-sizing: border-box; padding: 0; border: 1px solid var(--tl-shell-line); border-radius: 8px; background: var(--tl-shell-surface); color: var(--tl-shell-ink); box-shadow: 0 8px 22px rgba(0,0,0,.16); white-space: normal; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; font-size: 13px; }
-          .tl-agent-capabilities-header { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--tl-shell-line); background: var(--tl-shell-surface); }
-          .tl-agent-capabilities-header h3 { min-width: 0; margin: 0; font-size: 14px; }
-          .tl-agent-capabilities-body { padding: 10px 14px 14px; }
-          .tl-agent-capabilities p { margin: 6px 0; color: var(--tl-shell-muted); font-size: 12px; line-height: 1.45; }
-          .tl-agent-capabilities select { max-width: 100%; min-height: 30px; font: inherit; color: inherit; background: var(--tl-shell-surface); border: 1px solid var(--tl-shell-line); border-radius: 5px; }
-          .tl-agent-capabilities ul { padding-left: 18px; margin: 6px 0 10px; }
-          .tl-agent-capabilities li { margin: 4px 0; overflow-wrap: anywhere; font-size: 12px; }
-          .tl-agent-capabilities .tl-capability-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 8px; }
-          .tl-agent-capabilities .tl-capability-tabs, .tl-agent-capabilities .tl-config-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
-          .tl-agent-capabilities .tl-config-server { margin: 7px 0; padding: 7px 9px; border: 1px solid var(--tl-shell-line); border-radius: 6px; }
+          /* Body portal layer: above Dockview's z-index:99 sash, shared with fixed shell overlays. */
+          .tl-agent-capabilities { z-index: var(--tl-shell-overlay-z, 1100); display: flex; flex-direction: column; overflow: hidden; box-sizing: border-box; padding: 0; border: 1px solid var(--tl-shell-line); border-radius: var(--tl-corner-radius); background: var(--tl-shell-surface); color: var(--tl-shell-ink); box-shadow: 0 8px 22px rgba(0,0,0,.16); white-space: normal; font-family: var(--tl-font-family); font-size: var(--tl-font-compact); }
+          .tl-agent-capabilities-header { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: var(--tl-space-3); min-height: calc(42px * var(--tl-ui-scale, 1)); padding: var(--tl-space-2) var(--tl-space-3) var(--tl-space-2) var(--tl-space-4); border-bottom: 1px solid var(--tl-shell-line); background: linear-gradient(115deg, var(--tl-theme-header), var(--tl-theme-panel)); }
+          .tl-agent-capabilities-heading { display: grid; min-width: 0; gap: var(--tl-space-1); }
+          .tl-agent-capabilities-header h3 { min-width: 0; margin: 0; font-size: var(--tl-font-body); font-weight: 650; line-height: 1.25; }
+          .tl-agent-capabilities-counts { color: var(--tl-shell-muted); font-size: var(--tl-font-compact); font-variant-numeric: tabular-nums; }
+          .tl-agent-capabilities-header-actions { display: flex; flex: 0 0 auto; align-items: center; gap: var(--tl-space-1); }
+          .tl-agent-capabilities-header-actions button { min-height: var(--tl-control-height); padding: var(--tl-space-1) var(--tl-space-2); border-color: var(--tl-shell-line); background: color-mix(in srgb, var(--tl-theme-panel) 70%, transparent); font-size: var(--tl-font-compact); }
+          .tl-agent-capabilities-header-actions button:last-child { min-width: var(--tl-control-height); padding: var(--tl-space-1); text-align: center; font-size: var(--tl-font-body); line-height: 1; }
+          .tl-agent-capabilities-body { padding: var(--tl-space-4) var(--tl-space-5) var(--tl-space-5); }
+          .tl-agent-capabilities p { margin: var(--tl-space-2) 0; color: var(--tl-shell-muted); font-size: var(--tl-font-compact); line-height: var(--tl-line-height); }
+          .tl-agent-capabilities select { max-width: 100%; min-height: var(--tl-control-height); font: inherit; color: inherit; background: var(--tl-shell-surface); border: 1px solid var(--tl-shell-line); border-radius: var(--tl-corner-radius); }
+          .tl-agent-capabilities ul { padding: 0; margin: var(--tl-space-2) 0 var(--tl-space-1); list-style: none; }
+          .tl-agent-capabilities li { margin: 0; overflow-wrap: anywhere; font-size: var(--tl-font-compact); }
+          .tl-capability-group { min-width: 0; margin: var(--tl-space-4) 0 calc(var(--tl-space-5) + var(--tl-space-2)); }
+          .tl-capability-group-heading { display: flex; align-items: center; gap: var(--tl-space-3); margin-bottom: var(--tl-space-1); }
+          .tl-capability-group-heading h4 { margin: 0; font-size: var(--tl-font-compact); font-weight: 650; }
+          .tl-capability-count { display: inline-flex; align-items: center; justify-content: center; min-width: calc(20px * var(--tl-ui-scale, 1)); height: calc(20px * var(--tl-ui-scale, 1)); padding: 0 var(--tl-space-1); border: 1px solid var(--tl-shell-line); border-radius: var(--tl-corner-radius); color: var(--tl-shell-muted); font-size: var(--tl-font-compact); font-variant-numeric: tabular-nums; }
+          .tl-capability-group-status { margin: var(--tl-space-1) 0 var(--tl-space-2) !important; }
+          .tl-capability-disclosure { margin: var(--tl-space-3) 0; border: 0; border-top: 1px solid var(--tl-shell-line); border-radius: 0; }
+          .tl-capability-disclosure:focus-within { outline: 2px solid var(--tl-shell-accent); outline-offset: 2px; }
+          .tl-capability-disclosure > summary { display: flex; align-items: baseline; gap: var(--tl-space-2); padding: var(--tl-space-2) var(--tl-space-3); cursor: pointer; list-style: none; }
+          .tl-capability-disclosure > summary::-webkit-details-marker { display: none; }
+          .tl-capability-disclosure > summary::before { content: '›'; flex: 0 0 auto; }
+          .tl-capability-disclosure[open] > summary::before { content: '⌄'; }
+          .tl-capability-group-title { flex: 1 1 auto; min-width: 0; font-weight: 650; overflow-wrap: anywhere; }
+          .tl-capability-disclosure .tl-capability-count { flex: 0 1 auto; height: auto; min-width: 0; text-align: end; }
+          .tl-capability-group-content { padding: 0 var(--tl-space-3) var(--tl-space-2); }
+          .tl-capability-notice { padding: var(--tl-space-2) 0; overflow-wrap: anywhere; }
+          .tl-capability-notice.is-error { padding-inline-start: var(--tl-space-3); border-inline-start: 3px solid var(--tl-shell-accent); }
+          .tl-capability-tool-list { display: flex; flex-direction: column; gap: 0; }
+          .tl-capability-tool-list li { min-width: 0; }
+          .tl-capability-tool-list code { display: block; max-width: 100%; padding: var(--tl-space-1) 0; border-bottom: 1px solid var(--tl-shell-line); color: var(--tl-shell-ink); white-space: normal; overflow-wrap: anywhere; font: var(--tl-font-compact)/1.4 ui-monospace, SFMono-Regular, Consolas, monospace; }
+          .tl-capability-skill-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(calc(260px * var(--tl-ui-scale, 1)), 100%), 1fr)); gap: var(--tl-space-3); }
+          .tl-agent-capabilities .tl-capability-skill-card { position:relative; box-sizing:border-box; display:flex; width:100%; min-width:0; min-height:calc(84px * var(--tl-ui-scale,1)); flex-direction:column; align-items:stretch; gap:var(--tl-space-1); padding:var(--tl-space-2) var(--tl-space-3); border:1px solid var(--tl-shell-line); border-left:calc(3px * var(--tl-ui-scale,1)) solid var(--tl-theme-teal); border-radius:var(--tl-corner-radius); background:var(--tl-theme-canvas); white-space:normal; text-align:start; cursor:pointer; }
+          .tl-agent-capabilities .tl-capability-skill-card:hover { border-color:var(--tl-shell-accent); border-left-color:var(--tl-theme-teal); background:var(--tl-theme-panel); }
+          .tl-agent-capabilities .tl-capability-skill-card[aria-pressed="true"] { border-color:var(--tl-shell-accent); border-left-color:var(--tl-theme-teal); background:color-mix(in srgb,var(--tl-shell-accent-soft) 32%,var(--tl-theme-canvas)); box-shadow:0 0 8px color-mix(in srgb,var(--tl-shell-accent) 18%,transparent); }
+          .tl-capability-skill-title { display: flex; min-width: 0; align-items: center; gap: var(--tl-space-2); }
+          .tl-capability-skill-title strong { overflow: hidden; color: var(--tl-shell-ink); text-overflow: ellipsis; font-size: var(--tl-font-compact); }
+          .tl-capability-skill-kind { flex: 0 0 auto; padding: var(--tl-space-1) var(--tl-space-2); border-radius: var(--tl-corner-radius); background: var(--tl-shell-accent-soft); color: var(--tl-shell-accent-strong); font-size: var(--tl-font-compact); font-weight: 600; }
+          .tl-capability-skill-description { display:-webkit-box; overflow:hidden; color:var(--tl-shell-ink); font-size:var(--tl-font-compact); font-weight:400; line-height:1.45; overflow-wrap:anywhere; -webkit-box-orient:vertical; -webkit-line-clamp:2; }
+          .tl-capability-skill-card[aria-expanded="true"] .tl-capability-skill-description { display:block; -webkit-line-clamp:unset; }
+          .tl-capability-skill-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--tl-space-1); margin-top: auto; }
+          .tl-capability-skill-meta span { padding: var(--tl-space-1) var(--tl-space-2); border: 1px solid var(--tl-shell-line); border-radius: var(--tl-corner-radius); color: var(--tl-shell-muted); font-size: var(--tl-font-compact); font-weight: 500; }
+          .tl-capability-skill-meta .is-available { border-color: color-mix(in srgb, var(--tl-theme-success) 42%, var(--tl-shell-line)); color: var(--tl-theme-success); }
+          .tl-capability-skill-grid[data-display-mode="list"] { grid-template-columns:minmax(0,1fr); }
+          .tl-capability-skill-grid[data-display-mode="list"] .tl-capability-skill-card { min-height:0; }
+          .tl-capability-view-switch { display:inline-flex; margin-inline-start:auto; border:1px solid var(--tl-shell-line); border-radius:var(--tl-corner-radius); padding:1px; }
+          .tl-agent-capabilities .tl-capability-view-switch button { min-height:calc(var(--tl-control-height) * .8); padding:var(--tl-space-1) var(--tl-space-2); }
+          .tl-capability-view-switch button[aria-pressed="true"] { color:var(--tl-shell-accent); background:var(--tl-shell-accent-soft); }
+          .tl-capability-empty { padding: var(--tl-space-2) 0; }
+          @media (max-width: 520px) { .tl-capability-skill-grid { grid-template-columns: minmax(0, 1fr); } }
+          .tl-agent-capabilities .tl-capability-actions { display: flex; justify-content: flex-end; gap: var(--tl-space-2); margin-top: var(--tl-space-3); }
+          .tl-agent-capabilities .tl-capability-tabs, .tl-agent-capabilities .tl-config-actions { display: flex; flex-wrap: wrap; gap: var(--tl-space-2); margin: var(--tl-space-3) 0; }
+          .tl-agent-capabilities .tl-config-server { margin: var(--tl-space-3) 0; padding: var(--tl-space-3); border: 1px solid var(--tl-shell-line); border-radius: var(--tl-corner-radius); }
           .tl-agent-capabilities .tl-config-server summary { cursor: pointer; font-weight: 600; }
-          .tl-agent-capabilities .tl-config-fields { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; margin-top: 8px; }
-          .tl-agent-capabilities label { display: grid; gap: 4px; margin: 6px 0; overflow-wrap: anywhere; }
-          .tl-agent-capabilities input:not([type=checkbox]), .tl-agent-capabilities textarea { box-sizing: border-box; width: 100%; min-width: 0; min-height: 32px; padding: 6px 8px; border: 1px solid var(--tl-shell-line); border-radius: 5px; color: var(--tl-shell-ink); background: var(--tl-shell-surface); font: inherit; }
-          .tl-agent-capabilities textarea { min-height: 58px; resize: vertical; }
-          .tl-agent-capabilities .tl-config-secret-ref { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; padding: 7px 0; border-top: 1px solid var(--tl-shell-line); }
-          .tl-agent-capabilities .tl-config-presence { align-self: end; color: var(--tl-shell-muted); font-size: 12px; }
-          .tl-agent-capabilities .tl-config-tool-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 2px 8px; }
+          .tl-agent-capabilities .tl-config-fields { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--tl-space-3); margin-top: var(--tl-space-3); }
+          .tl-agent-capabilities label { display: grid; gap: var(--tl-space-1); margin: var(--tl-space-2) 0; overflow-wrap: anywhere; }
+          .tl-agent-capabilities input:not([type=checkbox]), .tl-agent-capabilities textarea { box-sizing: border-box; width: 100%; min-width: 0; min-height: var(--tl-control-height); padding: var(--tl-space-2) var(--tl-space-3); border: 1px solid var(--tl-shell-line); border-radius: var(--tl-corner-radius); color: var(--tl-shell-ink); background: var(--tl-shell-surface); font: inherit; }
+          .tl-agent-capabilities textarea { min-height: calc(58px * var(--tl-ui-scale, 1)); resize: vertical; }
+          .tl-agent-capabilities .tl-config-secret-ref { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--tl-space-2); padding: var(--tl-space-3) 0; border-top: 1px solid var(--tl-shell-line); }
+          .tl-agent-capabilities .tl-config-presence { align-self: end; color: var(--tl-shell-muted); font-size: var(--tl-font-compact); }
+          .tl-agent-capabilities .tl-config-tool-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(calc(180px * var(--tl-ui-scale, 1)), 100%), 1fr)); gap: var(--tl-space-1) var(--tl-space-3); }
           @media (max-width: 520px) { .tl-agent-capabilities .tl-config-secret-ref { grid-template-columns: minmax(0, 1fr); } }
         `),
         h('details', {
@@ -999,18 +2856,21 @@ window.__ModuleLoader__.load({
             onClick: () => { void openRole(id) },
             'aria-label': label,
           }, busy === id ? `${label}…` : label))
-          : h('p', { role: 'status', style: { margin: 4, color: 'var(--tl-shell-muted)', fontSize: 12 } },
-            roleMetadata.status === 'error' ? roleMetadata.error : '正在读取助手列表…'),
+          : h('p', { role: 'status', style: { margin: 'var(--tl-space-2)', color: 'var(--tl-shell-muted)', fontSize: 'var(--tl-font-compact)' } },
+            roleMetadata.status === 'error' ? roleMetadata.error : roleMetadata.status === 'idle' ? '尚未读取助手列表。' : '正在读取助手列表…'),
+        !roles.length && roleMetadata.status === 'idle' && typeof props.onRequestRoles === 'function'
+          ? h('button', { type: 'button', disabled: busy !== '', onClick: () => { void retryRoles() } }, '读取助手列表') : null,
         h('button', { type: 'button', disabled: roles.length === 0, onClick: showCapabilities }, '查看 MCP 与 Skill 能力'))),
         roleMetadata.status === 'error' ? h('div', { role: 'alert', className: 'tl-agent-load-error' },
           h('span', null, roleMetadata.error),
           h('button', { type: 'button', onClick: retryRoles }, '重试助手列表')) : null,
-        error ? h('p', { role: 'status', style: { color: 'var(--tl-shell-danger, #b42318)', fontSize: 12 } }, error) : null,
+        error ? h('p', { role: 'status', style: { color: 'var(--tl-shell-danger)', fontSize: 'var(--tl-font-compact)' } }, error) : null,
         renderCapabilityPanel())
     }
 
-    function businessPanel(label, path, panelKey) {
+    function businessPanel(label, path, panelKey, { fitContainer = false } = {}) {
       return function BusinessPanel() {
+        if (fitContainer && sourceAccountMode) return h(SourceBusinessRoutePanel, { label, path, panelKey })
         const [src, setSrc] = React.useState(() => panelKey === 'business-agent-center' ? agentCenterHref : `/business${path}`)
         React.useEffect(() => {
           if (panelKey !== 'business-agent-center') return undefined
@@ -1018,12 +2878,18 @@ window.__ModuleLoader__.load({
           agentCenterHrefListeners.add(listener)
           return () => agentCenterHrefListeners.delete(listener)
         }, [])
-        return h('section', { 'data-business-path': path, style: { width: '100%', height: '100%', minHeight: '70vh' } },
+        return h('section', { 'data-business-path': path, style: {
+          width: '100%', height: '100%', minHeight: fitContainer ? 0 : '70vh',
+          ...(fitContainer ? { display: 'flex', flexDirection: 'column', flex: '1 1 auto' } : {}),
+        } },
           h('iframe', {
             'data-tradeloom-business-frame': 'true',
             title: `织贸助手 · ${label}`,
             src,
-            style: { display: 'block', width: '100%', height: '100%', minHeight: '70vh', border: 0 },
+            style: {
+              display: 'block', width: '100%', height: '100%', minHeight: fitContainer ? 0 : '70vh', border: 0,
+              ...(fitContainer ? { flex: '1 1 auto' } : {}),
+            },
           }))
       }
     }
@@ -1044,22 +2910,254 @@ window.__ModuleLoader__.load({
       h('path', { d: 'M512 434v156', stroke: '#F7FAFA', strokeWidth: 30, strokeLinecap: 'round' }))
     }
 
-    function TradeLoomWordmark() {
-      return h('div', { style: { display: 'flex', flexDirection: 'column', lineHeight: 1.15, color: 'inherit' } },
-        h('strong', { style: { fontSize: 14, fontWeight: 650, letterSpacing: '0.02em' } }, '织贸助手'),
-        h('span', { style: { marginTop: 2, fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', opacity: 0.72 } }, 'TradeLoom'))
+    function TradeLoomWordmark({ sidebar = false } = {}) {
+      return h('div', { style: { display: 'flex', flexDirection: 'column', lineHeight: 1.15, color: 'inherit', ...(sidebar ? { height: 24, justifyContent: 'flex-start' } : {}) } },
+        h('strong', { style: { fontSize: sidebar ? 12 : 14, ...(sidebar ? { lineHeight: '13px' } : {}), fontWeight: 650, letterSpacing: '0.02em' } }, '织贸助手'),
+        h('span', { style: { marginTop: sidebar ? 0 : 2, fontSize: 10, ...(sidebar ? { lineHeight: '10px' } : {}), fontWeight: 600, letterSpacing: '0.08em', opacity: 0.72 } }, 'TradeLoom'))
+    }
+
+    function registerTradeLoomBrand(ctx, { conversationHero = true } = {}) {
+      ctx.slots.inject('sidebar.brand.mark', () => ctx.slots.register({ name: 'sidebar.brand.mark' }, TradeLoomMark))
+      ctx.slots.inject('sidebar.brand.name', () => ctx.slots.register({ name: 'sidebar.brand.name' }, () => h(TradeLoomWordmark, { sidebar: true })))
+      if (conversationHero) {
+        ctx.slots.inject('conversation.hero.brand.mark', () => ctx.slots.register({ name: 'conversation.hero.brand.mark' }, TradeLoomMark))
+      }
+    }
+
+    async function installSourceAccountThemeBridge(ctx, bridge) {
+      const sourceTheme = bridge?.sourceTheme
+      if (typeof sourceTheme?.publishSnapshot !== 'function' || typeof sourceTheme?.onPreferenceSet !== 'function') return
+
+      let disposed = false
+      const pendingPreferences = new Set()
+      const normalizePreference = value => ['light', 'dark', 'system'].includes(value) ? value : 'system'
+      const publishCurrentTheme = async snapshot => {
+        if (disposed) return
+        const theme = snapshot ?? ctx.theme?.getTheme?.()
+        const preference = normalizePreference(theme?.preference)
+        const colorScheme = ['light', 'dark'].includes(theme?.active?.colorScheme) ? theme.active.colorScheme : 'light'
+        activeColorScheme = colorScheme
+        syncWorkbenchFontSize(theme)
+        activeResolvedPalette = resolveWorkbenchPalette()
+        try {
+          await sourceTheme.publishSnapshot({
+            preference,
+            colorScheme,
+            palette: { ...activeResolvedPalette },
+            ui: { ...workbenchUiTokens },
+          })
+        } catch {}
+      }
+      const removeThemeChangeListener = ctx.on?.('theme/change', snapshot => {
+        Promise.resolve().then(() => {
+          if (!disposed) void publishCurrentTheme(snapshot)
+        })
+      })
+      const removePreferenceListener = sourceTheme.onPreferenceSet(async (preference, request) => {
+        if (disposed || !['light', 'dark', 'system'].includes(preference) || typeof ctx.theme?.setTheme !== 'function') return
+        const correlated = request && Object.keys(request).sort().join(',') === 'generation,requestId'
+          && Number.isSafeInteger(request.requestId) && request.requestId > 0
+          && Number.isSafeInteger(request.generation) && request.generation > 0
+          && typeof sourceTheme.completePreference === 'function'
+        if (request !== undefined && !correlated) return
+        if (correlated) pendingPreferences.add(request)
+        let ok = false
+        try { ok = await ctx.theme.setTheme(preference) === true } catch {}
+        if (correlated) {
+          try { if (!disposed) await publishCurrentTheme(ctx.theme?.getTheme?.()) } catch { ok = false }
+          pendingPreferences.delete(request)
+          try { await sourceTheme.completePreference(request, !disposed && ok) } catch {}
+        }
+      })
+      await publishCurrentTheme(ctx.theme?.getTheme?.())
+      ctx.effect?.(() => () => {
+        disposed = true
+        for (const request of pendingPreferences) { try { Promise.resolve(sourceTheme.completePreference(request, false)).catch(() => {}) } catch {} }
+        pendingPreferences.clear()
+        removeThemeChangeListener?.()
+        removePreferenceListener?.()
+      }, 'tradeloom account theme bridge')
+    }
+
+    function registerAccountMobileLink(ctx, bridge) {
+      if (typeof ctx.effect !== 'function' || typeof bridge?.onMobileLinkRequested !== 'function'
+        || typeof bridge?.mobileLinkResult !== 'function' || typeof bridge?.nativeSurfaceDescriptor !== 'function') return
+      ctx.effect(() => {
+        let live = true
+        const pending = new Set()
+        const stop = bridge.onMobileLinkRequested(async request => {
+          if (!Number.isSafeInteger(request?.requestId) || request.requestId < 1
+            || !Number.isSafeInteger(request?.generation) || request.generation < 1) return
+          const isCurrentAccount = async () => {
+            const descriptor = await bridge.nativeSurfaceDescriptor()
+            return live && descriptor?.kind === 'account' && descriptor.generation === request.generation
+          }
+          let controller
+          try {
+            if (!await isCurrentAccount()) return
+            controller = typeof AbortController === 'function' ? new AbortController() : undefined
+            if (controller) pending.add(controller)
+            const response = await fetch('/tradeloom/mobile-link', {
+              method: 'GET', credentials: 'same-origin', cache: 'no-store',
+              ...(controller ? { signal: controller.signal } : {}),
+            })
+            if (!response?.ok) throw new Error('mobile link unavailable')
+            const result = await response.json()
+            if (typeof result?.url !== 'string' || !result.url || !await isCurrentAccount()) return
+            const qrModule = await loadMobileQr()
+            const qrMatrix = qrModule.createQrMatrix(result.url)
+            if (!qrMatrix || !Number.isInteger(qrMatrix.size) || qrMatrix.size < 21 || qrMatrix.size > 177
+              || qrMatrix.quietZone !== 4 || !Array.isArray(qrMatrix.modules) || qrMatrix.modules.length !== qrMatrix.size
+              || qrMatrix.modules.some(row => typeof row !== 'string' || row.length !== qrMatrix.size || !/^[01]+$/.test(row))) {
+              throw new Error('mobile link QR unavailable')
+            }
+            if (!await isCurrentAccount()) return
+            await bridge.mobileLinkResult(request, {
+              url: result.url,
+              qrMatrix: { size: qrMatrix.size, quietZone: 4, modules: qrMatrix.modules },
+            })
+          } catch {
+            try {
+              if (await isCurrentAccount()) await bridge.mobileLinkResult(request, { error: 'unavailable' }).catch(() => {})
+            } catch {}
+          } finally {
+            if (controller) pending.delete(controller)
+          }
+        })
+        return () => {
+          live = false
+          stop()
+          for (const controller of pending) controller.abort()
+          pending.clear()
+        }
+      }, 'source-account-mobile-link')
     }
 
     return {
-      inject: ['slots', 'layout', 'uiWorkspace', 'sessions', 'modelDirectories', 'remote', 'remote.session', 'theme'],
+      inject: ['slots', 'layout', 'uiWorkspace', 'sessions', 'modelDirectories', 'remote', 'remote.session', 'remote.pluginInventory', 'locale', 'theme'],
       async apply(ctx) {
+        sourceAccountMode = false
+        const bridge = window.dshDesktop
+        if (typeof bridge?.nativeSurfaceDescriptor === 'function') {
+          const descriptor = await bridge.nativeSurfaceDescriptor()
+          if (descriptor !== undefined) {
+            if (descriptor.kind === 'role') reportRoleGuestPhase(descriptor, 'palette-start')
+            try {
+              await installReplicaPalette(ctx)
+              if (descriptor.kind === 'role') reportRoleGuestPhase(descriptor, 'palette-end')
+            } catch (error) {
+              if (descriptor.kind === 'role') reportRoleGuestPhase(descriptor, 'palette-error')
+              throw error
+            }
+            if (descriptor.kind === 'account-sidebar') {
+              installBusinessThemeBridge(ctx)
+              registerTradeLoomBrand(ctx, { conversationHero: false })
+              const nativeSurface = await require.async('./client.source-native.js')
+              nativeSurface.registerAccountSidebarControls(ctx, bridge)
+              return
+            }
+            if (descriptor.kind === 'account') {
+              const nativeSurface = await require.async('./client.source-native.js')
+              registerAccountMobileLink(ctx, bridge)
+              nativeSurface.registerAccountInventory(ctx, bridge)
+              nativeSurface.registerAccountModelCatalog(ctx, bridge)
+              nativeSurface.registerAccountSettings(ctx, bridge)
+              layout = ctx.layout
+              uiWorkspace = ctx.uiWorkspace
+              shellSlots = ctx.slots
+              shellPluginInventory = ctx.remote?.pluginInventory
+              shellLocale = ctx.locale
+              sceneContext = ctx
+              sourceAccountMode = true
+              installProposalHandoff()
+              installBusinessThemeBridge(ctx)
+              await installSourceAccountThemeBridge(ctx, bridge)
+              registerTradeLoomBrand(ctx)
+              if (descriptor.businessNavigation === 'shell') await ensureConfiguredRoleSessions(ctx)
+              if (descriptor.businessNavigation !== 'shell') {
+                ctx.slots.inject('shell.top', () => ctx.slots.register({ name: 'shell.top' }, SourceBusinessMenu))
+                for (const [panelKey, label, path] of menus) {
+                  ctx.slots.inject('main', () => ctx.slots.register({
+                    name: 'main', key: panelKey, inject: () => ({}),
+                  }, panelKey === 'business-agent-center' ? SourceAgentCenterPanel : businessPanel(label, path, panelKey, { fitContainer: true })))
+                }
+                ctx.slots.inject('main', () => ctx.slots.register({
+                  name: 'main', key: 'role-files-native', inject: () => ({}),
+                  children: { 'scene.workbench.chat': { kind: 'single', scope: 'session' } },
+                }, SourceRoleFilesPanel))
+                ctx.slots.inject('main', () => ctx.slots.register({
+                  name: 'main', key: 'workflow-canvas-native', inject: () => ({}),
+                }, SourceWorkflowCanvas))
+                ctx.slots.inject('main', () => ctx.slots.register({
+                  name: 'main', key: 'erpnext-status-native', inject: () => ({}),
+                }, SourceErpNextStatus))
+              }
+              return
+            }
+            if (descriptor.kind === 'scene-component') {
+              if (!Number.isSafeInteger(descriptor.generation)
+                || typeof descriptor.sceneId !== 'string' || !descriptor.sceneId
+                || typeof descriptor.panelId !== 'string' || !descriptor.panelId) return
+              const component = descriptor.componentKey === 'workflow-canvas-native'
+                && descriptor.sceneId === 'agent-center' && descriptor.panelId === 'business-main'
+                ? SourceWorkflowCanvas
+                : descriptor.componentKey === 'erpnext-status-native'
+                  && descriptor.sceneId === 'erpnext' && descriptor.panelId === 'business-main'
+                  ? SourceErpNextStatus : undefined
+              if (typeof component !== 'function') return
+              layout = ctx.layout
+              uiWorkspace = ctx.uiWorkspace
+              shellSlots = ctx.slots
+              shellPluginInventory = ctx.remote?.pluginInventory
+              shellLocale = ctx.locale
+              sceneContext = ctx
+              sourceAccountMode = true
+              installBusinessThemeBridge(ctx)
+              const factoryName = `scene.component.${descriptor.componentKey}`
+              ctx.slots.registerFactory({ name: factoryName, scope: 'root' }, component)
+              function SourceSceneComponent({ renderFactorySlot }) {
+                const available = ctx.slots.snapshot?.().some(entry => entry.type === 'factory' && entry.name === factoryName) === true
+                const slot = available && typeof renderFactorySlot === 'function'
+                  ? renderFactorySlot(factoryName, {}, { fallback: h('div', { role: 'alert' }, '原生面板组件不可用。') })
+                  : null
+                React.useEffect(() => {
+                  if (!available || slot == null) return undefined
+                  let live = true
+                  const surfaceBridge = window.dshDesktop
+                  void Promise.resolve(surfaceBridge?.nativeSurfaceDescriptor?.()).then(current => {
+                    if (!live || current?.kind !== 'scene-component' || current.componentKey !== descriptor.componentKey
+                      || current.sceneId !== descriptor.sceneId || current.panelId !== descriptor.panelId
+                      || current.generation !== descriptor.generation) return
+                    return surfaceBridge.nativeSurfaceMounted(current)
+                  }).catch(() => {})
+                  return () => { live = false }
+                }, [available])
+                return slot ?? h('div', { role: 'alert' }, '原生面板组件不可用。')
+              }
+              ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: 'source-native', inject: () => ({}) }, SourceSceneComponent))
+              ctx.layout.selectPanel('source-native')
+              return
+            }
+            if (descriptor.kind === 'role') reportRoleGuestPhase(descriptor, 'register-start')
+            try {
+              const nativeSurface = await require.async('./client.source-native.js')
+              nativeSurface.register(ctx, descriptor, bridge)
+              if (descriptor.kind === 'role') reportRoleGuestPhase(descriptor, 'register-end')
+            } catch (error) {
+              if (descriptor.kind === 'role') reportRoleGuestPhase(descriptor, 'register-error')
+              throw error
+            }
+            return
+          }
+        }
         layout = ctx.layout
         uiWorkspace = ctx.uiWorkspace
+        shellSlots = ctx.slots
+        shellPluginInventory = ctx.remote?.pluginInventory
+        shellLocale = ctx.locale
         installBusinessThemeBridge(ctx)
         ctx.slots.inject('shell.top', () => ctx.slots.register({ name: 'shell.top' }, SceneTopNavigation))
-        ctx.slots.inject('sidebar.brand.mark', () => ctx.slots.register({ name: 'sidebar.brand.mark' }, TradeLoomMark))
-        ctx.slots.inject('sidebar.brand.name', () => ctx.slots.register({ name: 'sidebar.brand.name' }, TradeLoomWordmark))
-        ctx.slots.inject('conversation.hero.brand.mark', () => ctx.slots.register({ name: 'conversation.hero.brand.mark' }, TradeLoomMark))
+        registerTradeLoomBrand(ctx)
         for (const [panelKey, label, path] of menus) {
           ctx.slots.inject('main', () => ctx.slots.register({
             name: 'main', key: panelKey, inject: () => ({})

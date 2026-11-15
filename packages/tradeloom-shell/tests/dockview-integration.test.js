@@ -125,6 +125,7 @@ test('real Dockview snapshot survives the client HTTP save and server restore co
   sceneState.activeSceneId = 'products'
   sceneState.businessPath = '/products'
   const dockLayouts = normalizeDockLayouts(config, { version: 2, scenes: {} }, sceneState.layouts)
+  t.diagnostic(JSON.stringify({ sourceDockGrid: dockLayouts.scenes.products.dockview.grid }))
   const putBodies = []
   const validatorErrors = []
   const putValidations = []
@@ -216,10 +217,12 @@ test('real Dockview snapshot survives the client HTTP save and server restore co
   })
 
     root = createRoot(host)
-    const App = () => React.createElement(sceneExports.SceneWorkbench, {
-      SessionProvider: ({ children }) => children,
-      renderSlot: () => React.createElement('div', { 'data-native-chat-instance': 'true' }, 'native chat fixture'),
-    })
+    const App = () => React.createElement(React.Fragment, null,
+      React.createElement(sceneExports.SceneTabs, { workbenchActive: true }),
+      React.createElement(sceneExports.SceneWorkbench, {
+        SessionProvider: ({ children }) => children,
+        renderSlot: () => React.createElement('div', { 'data-native-chat-instance': 'true' }, 'native chat fixture'),
+      }))
     await act(async () => {
       root.render(React.createElement(App))
       await settle(80)
@@ -234,17 +237,18 @@ test('real Dockview snapshot survives the client HTTP save and server restore co
     assert.equal(activeScene.classList.contains('is-narrow'), false,
       'the 980x650 collaboration fixture uses the wide workbench DnD mode')
     const recommendation = api.toJSON()
+    t.diagnostic(JSON.stringify({ initialGrid: recommendation.grid }))
     assert.equal(recommendation.grid.orientation, 'VERTICAL')
     assertSplitPercentages(recommendation.grid.root.data, [60, 40])
     assertSplitPercentages(recommendation.grid.root.data[0].data, [75, 25])
-    assertSplitPercentages(recommendation.grid.root.data[1].data, [50, 50])
+    assertSplitPercentages(recommendation.grid.root.data[1].data, [40, 60])
     assert.deepEqual(walkLeaves(recommendation.grid.root).map(leaf => leaf.views), [
-      ['business-main'], ['auxiliary'], ['reference'], ['native-chat'],
+      ['business-main'], ['files'], ['preview'], ['native-chat'],
     ])
     const nativeChatRootBeforeDrop = activeScene.querySelector('[data-native-chat-instance="true"]')
     assert.ok(nativeChatRootBeforeDrop, 'the mounted native-chat panel has a live React content node before a center drop')
-    const sourceTab = activeScene.querySelector('.dv-tab[data-tab-panel-id="reference"]')
-    const sourcePanel = api.getPanel('reference')
+    const sourceTab = activeScene.querySelector('.dv-tab[data-tab-panel-id="preview"]')
+    const sourcePanel = api.getPanel('preview')
     const targetPanel = api.getPanel('native-chat')
     assert.ok(sourceTab && sourcePanel && targetPanel)
     assert.equal(api.dndCapabilities.pointer, true,
@@ -329,7 +333,7 @@ test('real Dockview snapshot survives the client HTTP save and server restore co
       assert.equal(activeScene.querySelector('.tl-dock-drop-intent'), null,
         'a settled center drop removes the custom intent after Dockview completes its pointerup final hit and drop callbacks')
     })
-    assert.equal(api.getPanel('reference').api.group.id, targetGroupId,
+    assert.equal(api.getPanel('preview').api.group.id, targetGroupId,
       'center drop swaps the dragged active panel into the destination group')
     assert.equal(api.getPanel('native-chat').api.group.id, sourceGroupId,
       'the destination active panel moves to the dragged panel source group')
@@ -348,13 +352,13 @@ test('real Dockview snapshot survives the client HTTP save and server restore co
     const multiTarget = api.getPanel('native-chat')
     const multiTargetGroup = multiTarget.api.group
     await act(async () => {
-      api.getPanel('auxiliary').api.moveTo({ group: multiTargetGroup, index: 1, skipSetActive: true })
+      api.getPanel('files').api.moveTo({ group: multiTargetGroup, index: 1, skipSetActive: true })
       api.getPanel('business-main').api.moveTo({ group: multiTargetGroup, index: 2, skipSetActive: true })
       await settle(50)
     })
     const nonActiveTabsBeforeSwap = multiTargetGroup.panels.map(panel => panel.id).filter(id => id !== 'native-chat')
-    assert.deepEqual(nonActiveTabsBeforeSwap, ['auxiliary', 'business-main'])
-    const multiSource = api.getPanel('reference')
+    assert.deepEqual(nonActiveTabsBeforeSwap, ['files', 'business-main'])
+    const multiSource = api.getPanel('preview')
     const multiSourceGroupId = multiSource.api.group.id
     assert.notEqual(multiSourceGroupId, multiTargetGroup.id,
       `multitab source and destination are distinct Dockview groups; source=${multiSourceGroupId} target=${multiTargetGroup.id} targetPanels=${JSON.stringify(multiTargetGroup.panels.map(panel => panel.id))}`)
@@ -367,7 +371,7 @@ test('real Dockview snapshot survives the client HTTP save and server restore co
       offsetWidth: { configurable: true, get: () => dropRect.width },
       offsetHeight: { configurable: true, get: () => dropRect.height },
     })
-    const multiSourceTab = activeScene.querySelector('.dv-tab[data-tab-panel-id="reference"]')
+    const multiSourceTab = activeScene.querySelector('.dv-tab[data-tab-panel-id="preview"]')
     assert.ok(multiSourceTab?.isConnected, 'the multitab drag source is the currently mounted Dockview tab')
     assert.equal(api.dndCapabilities.pointer, true, 'pointer DnD remains enabled after restoring the recommendation')
     const geometryBeforeMultiSwap = geometrySignature(api.toJSON().grid)
@@ -384,18 +388,18 @@ test('real Dockview snapshot survives the client HTTP save and server restore co
     assert.equal(multiTarget.api.group.id, multiSourceGroupId,
       'a center drop swaps the destination active panel when its group has multiple tabs')
     assert.equal(multiSource.api.group.id, multiTargetGroup.id)
-    assert.deepEqual(multiTargetGroup.panels.map(panel => panel.id).filter(id => id !== 'reference'), nonActiveTabsBeforeSwap,
+    assert.deepEqual(multiTargetGroup.panels.map(panel => panel.id).filter(id => id !== 'preview'), nonActiveTabsBeforeSwap,
       'center swap preserves the destination nonactive tab order')
-    assert.equal(multiTargetGroup.activePanel.id, 'reference', 'the dragged panel becomes active in the destination group')
+    assert.equal(multiTargetGroup.activePanel.id, 'preview', 'the dragged panel becomes active in the destination group')
     assert.deepEqual(geometrySignature(api.toJSON().grid), geometryBeforeMultiSwap,
       'multitab swap preserves group topology, IDs, orientations, and split sizes')
     assert.equal(activeScene.querySelector('[data-native-chat-instance="true"]'), nativeChatRootBeforeDrop,
       'multitab swap preserves the native-chat React content node')
     await act(async () => { api.fromJSON(recommendation, { reuseExistingPanels: true }); await settle(50) })
     assert.deepEqual(walkLeaves(api.toJSON().grid.root).map(leaf => leaf.views),
-      [['business-main'], ['auxiliary'], ['reference'], ['native-chat']], 'the fixture can restore its recommendation after the multitab swap')
+      [['business-main'], ['files'], ['preview'], ['native-chat']], 'the fixture can restore its recommendation after the multitab swap')
 
-    const edgeSource = api.getPanel('auxiliary')
+    const edgeSource = api.getPanel('files')
     const edgeTarget = api.getPanel('business-main')
     const edgeSourceGroup = edgeTarget.api.group
     await act(async () => {
@@ -413,7 +417,7 @@ test('real Dockview snapshot survives the client HTTP save and server restore co
     pointerHits.length = 0
     previewEvents.length = 0
     pointerId++
-    const sameGroupTab = activeScene.querySelector('.dv-tab[data-tab-panel-id="auxiliary"]')
+    const sameGroupTab = activeScene.querySelector('.dv-tab[data-tab-panel-id="files"]')
     assert.ok(sameGroupTab?.isConnected)
     const sameGroupIdBeforeEdge = edgeSourceGroup.id
     await act(async () => {
@@ -425,11 +429,11 @@ test('real Dockview snapshot survives the client HTTP save and server restore co
       dom.window.dispatchEvent(dragPointer('pointerup', 916, 511))
       await settle(60)
     })
-    assert.notEqual(api.getPanel('auxiliary').api.group.id, sameGroupIdBeforeEdge,
+    assert.notEqual(api.getPanel('files').api.group.id, sameGroupIdBeforeEdge,
       'dragging a tab out of a same-group multitab center edge creates the native split shown by its preview')
     assert.equal(api.getPanel('business-main').api.group.id, sameGroupIdBeforeEdge)
     assert.deepEqual(walkLeaves(api.toJSON().grid.root).map(leaf => leaf.views),
-      [['business-main'], ['auxiliary'], ['reference'], ['native-chat']])
+      [['business-main'], ['files'], ['preview'], ['native-chat']])
 
     await act(async () => { api.fromJSON(recommendation, { reuseExistingPanels: true }); await settle(50) })
     const groupSource = api.getPanel('business-main')
@@ -437,11 +441,11 @@ test('real Dockview snapshot survives the client HTTP save and server restore co
     const groupSourceGroup = groupSource.api.group
     const groupTargetGroup = groupTarget.api.group
     await act(async () => {
-      api.getPanel('auxiliary').api.moveTo({ group: groupSourceGroup, index: 1, skipSetActive: true })
+      api.getPanel('files').api.moveTo({ group: groupSourceGroup, index: 1, skipSetActive: true })
       groupSource.api.setActive()
       await settle(40)
     })
-    assert.deepEqual(groupSourceGroup.panels.map(panel => panel.id), ['business-main', 'auxiliary'])
+    assert.deepEqual(groupSourceGroup.panels.map(panel => panel.id), ['business-main', 'files'])
     const groupHeaderSpace = groupSourceGroup.element.querySelector('.dv-void-container')
     targetContent = groupTargetGroup.element.querySelector('.dv-content-container')
     assert.ok(groupHeaderSpace && targetContent, 'the source group exposes blank header space and the target exposes its content')
@@ -476,7 +480,7 @@ test('real Dockview snapshot survives the client HTTP save and server restore co
       'dropping a whole-group header source at the content center swaps its active panel into the target group')
     assert.equal(api.getPanel('native-chat').api.group.id, groupIdBeforeGroupSwap,
       'the content target active panel moves into the dragged source group')
-    assert.deepEqual(api.getPanel('auxiliary').api.group.panels.map(panel => panel.id), ['native-chat', 'auxiliary'],
+    assert.deepEqual(api.getPanel('files').api.group.panels.map(panel => panel.id), ['native-chat', 'files'],
       'a group swap preserves the source group nonactive tab')
     assert.deepEqual(geometrySignature(api.toJSON().grid), geometryBeforeGroupSwap,
       'a group-header center swap preserves the existing Dockview topology and split sizes')
@@ -718,17 +722,17 @@ test('real Dockview snapshot survives the client HTTP save and server restore co
       'the custom 63/37 tree is observably different from the default 60/40 recommendation')
     assertSizesNear(customApplied.grid.root.data.map(child => child.size), expectedCustomSizes, 2)
 
-    const auxiliary = api.getPanel('auxiliary')
-    assert.ok(auxiliary)
+    const filesPanel = api.getPanel('files')
+    assert.ok(filesPanel)
     await act(async () => {
-      auxiliary.api.close()
+      filesPanel.api.close()
       await settle(20)
     })
     await act(async () => { await settle(30) })
     assert.ok(putBodies.length > 0, 'closing a real panel reaches the client queueDockLayoutSave HTTP PUT path')
     const bodyOverHttp = JSON.parse(JSON.stringify(putBodies.at(-1)))
     const sentRecord = bodyOverHttp.scenes.products
-    assert.deepEqual(sentRecord.closedPanelIds, ['auxiliary'])
+    assert.deepEqual(sentRecord.closedPanelIds, ['files', 'assistant-center', 'assistant-delivery', 'assistant-user-profile', 'native-workspace'])
     assertSizesNear(sentRecord.dockview.grid.root.data.map(child => child.size), expectedCustomSizes, 2,
       'the actual HTTP save preserves the changed split, rather than merely preserving its ordering')
     const extraKeysAfterJson = [...new Set(Object.values(sentRecord.dockview.panels).flatMap(panel =>
@@ -736,12 +740,21 @@ test('real Dockview snapshot survives the client HTTP save and server restore co
     assert.deepEqual(extraKeysAfterJson, [], 'undefined Dockview UI defaults disappear at the real JSON HTTP boundary; persisted fields match the strict schema')
     assert.deepEqual(validatorErrors, [], 'the production server layout validator accepts the HTTP payload')
 
+    const closeActions = [...host.querySelectorAll('[data-pane-action="close"]')]
+    assert.ok(closeActions.length >= 1, 'an open panel exposes a close action in the visible panel menu')
+    const restoreActions = [...host.querySelectorAll('[data-pane-action="restore-files"]')]
+    assert.ok(restoreActions.length >= 1, 'a closed panel exposes a restore action in the visible panel menu')
+    await act(async () => { restoreActions[0].click(); await settle(90) })
+    assert.ok(api.getPanel('files'), 'the visible restore action recreates the closed panel')
+    assert.equal(Object.keys(api.toJSON().panels).filter(id => id === 'files').length, 1,
+      'the visible restore action creates exactly one files panel')
+
     const normalized = normalizeDockLayouts(config, bodyOverHttp).scenes.products
     const beforeRestore = walkLeaves(normalized.dockview.grid.root)
     await act(async () => { api.fromJSON(normalized.dockview); await settle() })
     await act(async () => { await settle(20) })
     const restored = JSON.parse(JSON.stringify(api.toJSON()))
-    assert.deepEqual(Object.keys(restored.panels).sort(), ['business-main', 'native-chat', 'reference'])
+    assert.deepEqual(Object.keys(restored.panels).sort(), ['business-main', 'native-chat', 'preview'])
     assert.equal(restored.grid.orientation, 'VERTICAL')
     assert.deepEqual(walkLeaves(restored.grid.root).map(leaf => leaf.views), beforeRestore.map(leaf => leaf.views))
     assertSplitPercentages(restored.grid.root.data, [63, 37])
@@ -767,4 +780,21 @@ test('real Dockview snapshot survives the client HTTP save and server restore co
     await resizeThroughRealSash(7)
     assert.equal(host.querySelector('.tl-dock-layout-error[role="alert"]'), null,
       'a later successful production save clears the prior error')
+
+    const beforeReopenPutCount = putBodies.length
+    const layoutTrigger = host.querySelector('button[aria-label="工作区布局"]')
+    assert.ok(layoutTrigger, 'the production scene exposes its layout menu after a panel is closed')
+    await act(async () => { layoutTrigger.click(); await settle() })
+    const reopenButton = [...host.querySelectorAll('button')].find(button => button.textContent === '恢复文件')
+    assert.ok(reopenButton, 'the production layout menu lists the closed files panel for restoration')
+    await act(async () => { reopenButton.click(); await settle(60) })
+    const reopenedFiles = api.getPanel('files')
+    assert.ok(reopenedFiles, 'the layout-menu restore recreates the closed files panel through the production path')
+    assert.equal(Object.keys(api.toJSON().panels).filter(id => id === 'files').length, 1, 'restore creates exactly one files panel instance')
+    assert.equal(api.activePanel?.id, 'files', 'the restored files panel becomes active')
+    assert.ok(putBodies.length > beforeReopenPutCount, 'the restore reaches the production HTTP layout save queue')
+    const reopenedRecord = JSON.parse(JSON.stringify(putBodies.at(-1))).scenes.products
+    assert.equal(reopenedRecord.closedPanelIds.includes('files'), false, 'the saved closed-panel list is cleared after restoration')
+    assert.deepEqual(validatorErrors, [], 'the restored layout passes the production validator')
+    assert.equal(putValidations.at(-1), true)
 })

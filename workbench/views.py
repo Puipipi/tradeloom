@@ -11,6 +11,7 @@ from django.utils.dateparse import parse_datetime
 from django.views.decorators.csrf import ensure_csrf_cookie
 
 from .diagnostics import collect_local_diagnostics, safe_run_error_summary
+from .delivery.service import get_artifact_byte_size
 from .models import (
     AgentRun,
     Artifact,
@@ -60,6 +61,7 @@ STATUS_LABELS = {
     "pending": "待处理",
     "submitted": "已提交，待核验",
     "pending_review": "待交付审核",
+    "approved": "已批准",
     "rejected": "已驳回",
     "failed": "失败",
     "completed": "已完成",
@@ -425,18 +427,66 @@ def artifacts(request):
         artifact.version_rows = []
         for version in artifact.versions.order_by("-version"):
             version.artifact_type_label = artifact.artifact_type_label
+            version.status_label = _label(STATUS_LABELS, version.status)
             version.download_url = f"/api/workflow-tasks/{artifact.task_id}/artifact-versions/{version.id}/download"
+            version.download_filename = {
+                "catalog_html": "catalog.html",
+                "catalog_markdown": "catalog.md",
+                "sample_checklist_csv": "sample_checklist.csv",
+                "sample_checklist_json": "sample_checklist.json",
+                "quality_report_json": "quality_report.json",
+            }.get(artifact.artifact_type, "交付文件")
+            version.mime_type = {
+                "catalog_html": "text/html",
+                "catalog_markdown": "text/markdown",
+                "sample_checklist_csv": "text/csv",
+                "sample_checklist_json": "application/json",
+                "quality_report_json": "application/json",
+            }.get(artifact.artifact_type, "application/octet-stream")
             if artifact.artifact_type in {"catalog_html", "catalog_markdown", "sample_checklist_csv"}:
                 version.preview_url = f"/api/workflow-tasks/{artifact.task_id}/artifact-versions/{version.id}/preview"
             else:
                 version.preview_url = None
+            version.created_at_display = timezone.localtime(version.created_at).strftime("%Y-%m-%d %H:%M")
+            version.last_modified_ms = int(timezone.localtime(version.created_at).timestamp() * 1000)
+            version.byte_size = get_artifact_byte_size(version)
             artifact.version_rows.append(version)
+    file_browser_rows = [
+        {
+            "id": version.id,
+            "kind": "artifact",
+            "artifact_type": artifact.artifact_type,
+            "name": f"{artifact.artifact_type_label} · v{version.version}",
+            "category": "交付版本",
+            "status": version.status_label,
+            "timestamp": version.created_at_display,
+            "preview_url": version.preview_url,
+            "download_url": version.download_url,
+            "filename": version.download_filename,
+            "mime_type": version.mime_type,
+            "last_modified": version.last_modified_ms,
+            "byte_size": version.byte_size,
+            "task_title": artifact.task.batch.title,
+            "extension": {
+                "catalog_html": "HTML",
+                "catalog_markdown": "MD",
+                "sample_checklist_csv": "CSV",
+                "sample_checklist_json": "JSON",
+                "quality_report_json": "JSON",
+            }.get(artifact.artifact_type, "FILE"),
+            "sha256": version.sha256,
+            "source_product_versions": version.source_product_versions,
+        }
+        for artifact in artifact_rows
+        for version in artifact.version_rows
+    ]
     return render(
         request,
         "workbench/artifacts.html",
         _page_context(
             "artifacts",
             artifacts=artifact_rows,
+            file_browser_rows=file_browser_rows,
             artifact_count=len(artifact_rows),
             version_count=ArtifactVersion.objects.count(),
             intake_field_schemas=FIELD_SCHEMAS,

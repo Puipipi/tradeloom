@@ -5,21 +5,38 @@
   "type": "module",
   "exports": {
     ".": "./host.js",
+    "./listener-identity": "./listener-identity.js",
     "./client": "./client.js",
     "./policy": "./policy.js",
     "./profile": "./profile-tool.js",
     "./business-tools": "./business-tools.js",
+    "./tool-schemas": "./tool-schemas.js",
+    "./skills-open": "./skills-open.js",
     "./step-policy": "./step-policy.js",
     "./state": "./state.js",
+    "./execution-origin-authority": "./execution-origin-authority.js",
+    "./scene-memory-store": "./scene-memory-store.js",
+    "./diagnostics-store": "./diagnostics-store.js",
+    "./diagnostics-http": "./diagnostics-http.js",
     "./proxy": "./proxy.js",
-    "./tool-policy": "./tool-policy.js"
+    "./tool-policy": "./tool-policy.js",
+    "./workflow-tools": "./workflow-tools.js",
+    "./workflow-schema": "./workflow-schema.js",
+    "./workflow-engine": "./workflow-engine.js",
+    "./workflow-native-tools": "./workflow-native-tools.js",
+    "./workflow-definition-postgres": "./workflow-definition-postgres.js",
+    "./native-task-authority": "./workflow-native-task-authority.js",
+    "./webai-file-tools": "./webai-file-tools.js",
+    "./webai-local-directory": "./webai-local-directory.js",
+    "./webai-tool-envelope": "./webai-tool-envelope.js",
+    "./webai-runtime-files": "./webai-runtime-files.js"
   },
-  "files": ["host.js", "agent-configuration.js", "tool-policy.js", "client.js", "client.scenes.js", "client.dockview.js", "capabilities.js", "scenes.json", "scene-layout.js", "dock-layout.js", "policy.js", "profile-tool.js", "business-tools.js", "step-policy.js", "state.js", "roles.js", "proxy.js", "cordis.patch.yml", "assets/tradeloom-mark.svg", "vendor/dockview-entry.ts", "vendor/dockview.css", "vendor/dockview-package-lock.json", "vendor/LICENSE.dockview-react", "scripts/build-dockview-chunk.mjs"],
+  "files": ["host.js", "listener-identity.js", "listener-identity.ps1", "native-import-authorization.js", "agent-configuration.js", "agent-configuration-snapshots.js", "tool-policy.js", "client.js", "client.replica-palette.js", "client.source-native.js", "client.scenes.js", "client.mobile-qr.js", "client.dockview.js", "capabilities.js", "scenes.json", "scene-layout.js", "dock-layout.js", "policy.js", "profile-tool.js", "business-tools.js", "tool-schemas.js", "skills-open.js", "step-policy.js", "state.js", "execution-origin-authority.js", "scene-memory-store.js", "scene-rotation.js", "diagnostics-store.js", "diagnostics-http.js", "roles.js", "proxy.js", "cordis.patch.yml", "assets/tradeloom-mark.svg", "vendor/dockview-entry.ts", "vendor/dockview.css", "vendor/dockview-package-lock.json", "vendor/LICENSE.dockview-react", "vendor/qrcode-generator-2.0.4.js", "vendor/LICENSE.qrcode-generator", "scripts/build-dockview-chunk.mjs", "scripts/build-mobile-qr-chunk.mjs", "workflow-engine.js", "workflow-schema.js", "workflow-tools.js", "client.workflow.js", "skills/wf-planner/SKILL.md", "workflow-definition.js", "workflow-local-nodes.js", "workflow-review.js", "workflow-postgres.js", "workflow-definition-postgres.js", "workflow-run-journal.js", "workflow-native-graph.js", "workflow-native-binding.js", "workflow-native-executor.js", "workflow-native-service.js", "workflow-native-tools.js", "workflow-native-ui.js", "workflow-native-artifact-http.js", "workflow-artifact-source.js", "webai-file-tools.js", "webai-local-directory.js", "webai-tool-envelope.js", "webai-runtime-files.js", "workflow-native-ui-gate.js", "workflow-native-command-attribution.js", "workflow-native-task-authority.js"],
   "dsh": {
     "bundle": { "patch": "./cordis.patch.yml" },
     "client": { "platform": "web", "immediately": true, "inject": ["@deepseek-ai/dsh-client-ui-conversation", "@deepseek-ai/dsh-client-ui-layout", "@deepseek-ai/dsh-client-ui-sidebar", "@deepseek-ai/dsh-client-ui-workspace", "@deepseek-ai/dsh-client-ui-model-selection"], "external": ["react", "react-dom", "react-dom/client", "react/jsx-runtime"] }
   },
-  "scripts": { "build:dockview": "node scripts/build-dockview-chunk.mjs", "test": "node --test tests/*.test.js", "test:intake-ui": "node --test tests/intake-ui.test.js" },
-  "peerDependencies": { "@deepseek-ai/dsh-scope": "0.2.1-rc.2" },
+  "scripts": { "build:dockview": "node scripts/build-dockview-chunk.mjs", "build:mobile-qr": "node scripts/build-mobile-qr-chunk.mjs", "test": "node --test tests/*.test.js", "test:intake-ui": "node --test tests/intake-ui.test.js" },
+  "peerDependencies": { "@deepseek-ai/dsh-scope": "0.2.1-rc.3" },
   "devDependencies": { "jsdom": "30.1.3" }
 }

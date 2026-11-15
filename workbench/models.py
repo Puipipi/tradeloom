@@ -11,6 +11,76 @@ def hex_uuid() -> str:
     return uuid.uuid4().hex
 
 
+class CanvasWorkflowRun(models.Model):
+    """Durable visual-workflow receipt; distinct from confirmed business tasks."""
+
+    id = models.UUIDField(primary_key=True, editable=False)
+    workflow_id = models.CharField(max_length=48, db_index=True)
+    revision = models.PositiveIntegerField(default=1)
+    status = models.CharField(max_length=20)
+    execution_mode = models.CharField(max_length=20)
+    snapshot = models.JSONField()
+    owner_namespace_id = models.UUIDField(null=True, blank=True)
+    owner_id = models.UUIDField(null=True, blank=True)
+    owner_epoch = models.BigIntegerField(null=True, blank=True)
+    owner_token_hash = models.CharField(max_length=64, null=True, blank=True)
+    owner_create_fingerprint = models.CharField(max_length=64, null=True, blank=True)
+    owner_lease_expires_at = models.DateTimeField(null=True, blank=True)
+    owner_released_at = models.DateTimeField(null=True, blank=True)
+    owner_fenced_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["workflow_id"],
+                condition=models.Q(status__in=["running", "waiting"]),
+                name="canvas_one_active_workflow_run",
+            )
+        ]
+
+
+class CanvasWorkflowRunNamespace(models.Model):
+    """Server-created identity for the database that owns workflow runs."""
+
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+    namespace_id = models.UUIDField(unique=True, editable=False)
+
+    class Meta:
+        constraints = [models.CheckConstraint(condition=models.Q(id=1), name="canvas_workflow_run_namespace_singleton")]
+
+    def save(self, *args, **kwargs):
+        if self.pk != 1:
+            raise ValidationError("Canvas workflow run namespace is a singleton")
+        if not self._state.adding:
+            current = type(self).objects.using(kwargs.get("using") or self._state.db).filter(pk=1).values_list(
+                "namespace_id", flat=True
+            ).first()
+            if current is not None and current != self.namespace_id:
+                raise ValidationError("Canvas workflow run namespace is immutable")
+        return super().save(*args, **kwargs)
+
+
+class CanvasWorkflowDefinition(models.Model):
+    """Latest durable Canvas definition, independent of historical run snapshots."""
+
+    workflow_id = models.CharField(max_length=48, primary_key=True)
+    revision = models.PositiveBigIntegerField(default=1)
+    definition_revision = models.CharField(max_length=71, null=True, blank=True)
+    # Text JSON preserves legal JSON strings containing U+0000, which PostgreSQL jsonb rejects.
+    document = models.TextField(null=True, blank=True)
+    deleted = models.BooleanField(default=False)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["workflow_id"]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(revision__gt=0), name="canvas_workflow_definition_revision_positive"),
+        ]
+
+
 class Task(models.Model):
     id = models.CharField(
         primary_key=True,
@@ -218,6 +288,55 @@ class IntakeOperationReceipt(models.Model):
     class Meta:
         ordering = ["created_at"]
 
+
+class BusinessDispatch(models.Model):
+    """Auditable notification/action sent from one native agent session to another."""
+
+    class Kind(models.TextChoices):
+        NOTIFICATION = "notification", "Notification"
+        ACTION = "action", "Action"
+
+    class Status(models.TextChoices):
+        QUEUED = "queued", "Queued"
+        CLAIMED = "claimed", "Claimed"
+        ACKNOWLEDGED = "acknowledged", "Acknowledged"
+        COMPLETED = "completed", "Completed"
+        FAILED = "failed", "Failed"
+
+    id = models.CharField(primary_key=True, max_length=32, default=hex_uuid, editable=False)
+    kind = models.CharField(max_length=16, choices=Kind.choices)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.QUEUED)
+    sender_session_id = models.CharField(max_length=256, db_index=True)
+    sender_agent_id = models.CharField(max_length=256)
+    sender_preset = models.CharField(max_length=80)
+    recipient_session_id = models.CharField(max_length=256, db_index=True)
+    recipient_agent_id = models.CharField(max_length=256)
+    recipient_preset = models.CharField(max_length=80)
+    source = models.CharField(max_length=200)
+    requirement = models.TextField(max_length=4000)
+    idempotency_key = models.CharField(max_length=200)
+    request_fingerprint = models.CharField(max_length=64)
+    delivery_result = models.JSONField(default=dict)
+    receipt = models.JSONField(null=True, blank=True)
+    receipt_fingerprint = models.CharField(max_length=64, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    claimed_at = models.DateTimeField(null=True, blank=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["sender_session_id", "idempotency_key"],
+                name="uniq_dispatch_sender_idem",
+            ),
+            models.UniqueConstraint(
+                fields=["recipient_session_id"],
+                condition=models.Q(kind="action", status="claimed"),
+                name="uniq_dispatch_action_claim_recipient",
+            ),
+        ]
 
 class IntakeMappingRevision(AppendOnlyModel):
     id = models.CharField(primary_key=True, max_length=32, default=hex_uuid, editable=False)
@@ -936,6 +1055,34 @@ class ErpNextDraftOperation(models.Model):
     def delete(self, *args, **kwargs):
         raise ValidationError("ERPNext 草稿操作记录不可删除。")
 
+class NativeArtifactVersion(models.Model):
+    """Immutable registered bytes with frozen native terminal provenance."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    run = models.ForeignKey(CanvasWorkflowRun, on_delete=models.PROTECT, related_name="native_artifacts")
+    node_id = models.CharField(max_length=128)
+    attempt = models.PositiveIntegerField()
+    child_session_id = models.CharField(max_length=256)
+    native_run_id = models.CharField(max_length=256)
+    request_id = models.CharField(max_length=256)
+    tool_call_id = models.CharField(max_length=256)
+    parent_agent_id = models.CharField(max_length=256)
+    parent_session_id = models.CharField(max_length=256)
+    binding_revision = models.CharField(max_length=128)
+    definition_revision = models.CharField(max_length=128)
+    source_session_seq = models.PositiveBigIntegerField()
+    file_index = models.PositiveIntegerField()
+    present_call_id = models.CharField(max_length=256)
+    source_turn = models.PositiveBigIntegerField()
+    grant_root_scope = models.CharField(max_length=256)
+    display_name = models.CharField(max_length=255)
+    mime_type = models.CharField(max_length=128)
+    byte_size = models.PositiveBigIntegerField()
+    sha256 = models.CharField(max_length=64)
+    storage_key = models.CharField(max_length=500, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['run', 'node_id', 'attempt', 'source_session_seq', 'file_index'], name='uniq_native_artifact_coordinate')]
 
 class Customer(models.Model):
     id = models.CharField(primary_key=True, max_length=32, default=hex_uuid, editable=False)
