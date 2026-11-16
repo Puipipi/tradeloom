@@ -5,13 +5,20 @@ from typing import Any
 
 from django.conf import settings
 from django.http import HttpRequest, JsonResponse
-from django.views.decorators.http import require_GET, require_POST
+from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from workbench.intake.api import _error, _json_object
 
-from .catalog import CATALOG_DISCLAIMER, CATALOG_SOURCE, CATALOG_VERSION, MaterialItem, material_items
+from .catalog import CATALOG_DISCLAIMER, CATALOG_SOURCE, CATALOG_VERSION, MaterialItem
 from .resolver import normalize_reference
 from .rules import BLOCKING, MaterialIssue, evaluate_lines
+from .intake_apply import MaterialApplyError, apply_material_candidate
+from .store import (
+    MaterialStoreError,
+    create_item,
+    load_items,
+    update_item,
+)
 
 MAX_QUERY_CHARS = 80
 MAX_LINES = 50
@@ -20,6 +27,13 @@ MAX_TEXT_CHARS = 500
 MAX_UNIT_CHARS = 64
 MAX_REFERENCE_CHARS = 140
 _MAX_LIMIT = 50
+
+_MAINTENANCE_ERROR_STATUS = {"item_exists": 409, "item_not_found": 404}
+_APPLY_ERROR_STATUS = {
+    "candidate_not_found": 404, "unsupported_candidate_type": 422,
+    "missing_field_values": 422, "invalid_material": 422,
+    "item_exists": 409, "idempotency_conflict": 409, "unavailable": 503,
+}
 
 
 def _item_summary(item: MaterialItem) -> dict[str, Any]:
@@ -47,7 +61,7 @@ def _erpnext_configured() -> bool:
 def status(request: HttpRequest) -> JsonResponse:
     if request.GET:
         return _error("invalid_arguments")
-    items = material_items()
+    items = load_items()
     return JsonResponse({
         "ok": True,
         "source": CATALOG_SOURCE,
@@ -59,8 +73,10 @@ def status(request: HttpRequest) -> JsonResponse:
     })
 
 
-@require_GET
+@require_http_methods(["GET", "POST"])
 def items(request: HttpRequest) -> JsonResponse:
+    if request.method == "POST":
+        return _create_item(request)
     if set(request.GET) - {"q", "limit"} or any(len(request.GET.getlist(key)) != 1 for key in request.GET):
         return _error("invalid_arguments")
     query = request.GET.get("q", "")
@@ -72,7 +88,7 @@ def items(request: HttpRequest) -> JsonResponse:
 
     key = normalize_reference(query)
     matched = []
-    for item in material_items():
+    for item in load_items():
         names = (item.item_code, item.item_name, *item.aliases)
         if not key or any(key in normalize_reference(name) for name in names):
             matched.append(item)
@@ -85,6 +101,80 @@ def items(request: HttpRequest) -> JsonResponse:
         "items": [_item_summary(item) for item in page],
         "total": len(matched),
     })
+
+
+def _create_item(request: HttpRequest) -> JsonResponse:
+    if request.content_type != "application/json":
+        return _error("invalid_arguments")
+    try:
+        body = _json_object(request)
+    except ValueError:
+        return _error("invalid_arguments")
+    if set(body) - {"item_code", "item_name", "item_group", "stock_uom", "aliases"} or \
+            not {"item_code", "item_name", "item_group", "stock_uom"}.issubset(body):
+        return _error("invalid_arguments")
+    try:
+        row = create_item(
+            item_code=body["item_code"], item_name=body["item_name"], item_group=body["item_group"],
+            stock_uom=body["stock_uom"], aliases=body.get("aliases"),
+        )
+    except MaterialStoreError as exc:
+        return JsonResponse({"ok": False, "error_code": exc.code},
+                            status=_MAINTENANCE_ERROR_STATUS.get(exc.code, 422))
+    return JsonResponse({"ok": True, "item": _store_summary(row)}, status=201)
+
+
+def _store_summary(row) -> dict[str, Any]:
+    return {
+        "item_code": row.item_code,
+        "item_name": row.item_name,
+        "item_group": row.item_group,
+        "stock_uom": row.stock_uom,
+        "aliases": list(row.aliases or ()),
+        "disabled": row.disabled,
+        "source": row.source,
+    }
+
+
+@require_POST
+def item_update(request: HttpRequest, item_code: str) -> JsonResponse:
+    if request.content_type != "application/json" or not item_code or len(item_code) > MAX_REFERENCE_CHARS:
+        return _error("invalid_arguments")
+    try:
+        body = _json_object(request)
+    except ValueError:
+        return _error("invalid_arguments")
+    if not body:
+        return _error("invalid_arguments")
+    try:
+        row = update_item(item_code, patch=body)
+    except MaterialStoreError as exc:
+        return JsonResponse({"ok": False, "error_code": exc.code},
+                            status=_MAINTENANCE_ERROR_STATUS.get(exc.code, 422))
+    return JsonResponse({"ok": True, "item": _store_summary(row)})
+
+
+@require_POST
+def apply_material(request: HttpRequest, candidate_id: str) -> JsonResponse:
+    try:
+        key = _key_from_request(request)
+        application, created = apply_material_candidate(candidate_id, key)
+        status = 201 if created else 200
+        return JsonResponse({"ok": True, **application}, status=status)
+    except MaterialApplyError as exc:
+        return JsonResponse({"ok": False, "error_code": exc.code},
+                            status=_APPLY_ERROR_STATUS.get(exc.code, 422))
+    except ValueError as exc:
+        if str(exc) == "invalid_idempotency_key":
+            return _error("invalid_idempotency_key")
+        return _error("invalid_json")
+    except Exception:
+        return _error("unavailable", 503)
+
+
+def _key_from_request(request: HttpRequest) -> str:
+    from workbench.intake.api import _key
+    return _key(request)
 
 
 def _valid_line(line: Any) -> dict[str, Any] | None:
@@ -159,4 +249,4 @@ def check(request: HttpRequest) -> JsonResponse:
     })
 
 
-__all__ = ["check", "items", "status"]
+__all__ = ["apply_material", "check", "item_update", "items", "status"]

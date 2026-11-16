@@ -1315,3 +1315,24 @@ class CustomerAction(models.Model):
         constraints = [
             models.UniqueConstraint(fields=["prediction", "action_type"], name="uniq_customer_action_prediction"),
         ]
+
+
+class MaterialItem(models.Model):
+    """物料主数据（人工维护 / 打表导入 / 演示种子），是物料核对规则的比对基准。
+
+    主数据允许人工修订（改名、停用），不属于证据追加记录；来源持续标注在 source 字段。
+    """
+
+    id = models.CharField(primary_key=True, max_length=32, default=hex_uuid, editable=False)
+    item_code = models.CharField(max_length=140, unique=True)
+    item_name = models.CharField(max_length=200)
+    item_group = models.CharField(max_length=120)
+    stock_uom = models.CharField(max_length=64)
+    aliases = models.JSONField(default=list, blank=True)
+    disabled = models.BooleanField(default=False)
+    source = models.CharField(max_length=64, default="manual")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["item_code"]

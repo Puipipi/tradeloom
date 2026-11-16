@@ -32,6 +32,9 @@ FIELD_SCHEMAS = {
         "observed_unit": "text", "estimated_hourly_rate": "decimal", "estimated_efficiency": "decimal",
         "estimated_capacity": "decimal", "estimated_piece_rate": "decimal", "notes": "text",
     },
+    "material_master": {
+        "item_code": "text", "item_name": "text", "item_group": "text", "stock_uom": "text",
+    },
 }
 
 
