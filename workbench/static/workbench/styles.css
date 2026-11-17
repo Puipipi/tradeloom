@@ -1966,6 +1966,46 @@ textarea.intake-requirement-input {
   border-inline-start-color: var(--accent-strong);
 }
 
+.intake-material-lines {
+  display: grid;
+  gap: 6px;
+  padding: var(--wb-nested-card-inset);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: var(--wb-font-compact);
+}
+
+.intake-material-line-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+}
+
+.intake-material-line {
+  display: grid;
+  gap: 1px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  background: var(--surface-soft);
+}
+
+.intake-material-line.blocked {
+  border-inline-start: 3px solid var(--accent-strong);
+}
+
+.intake-material-line-main {
+  overflow-wrap: anywhere;
+}
+
+.intake-material-line-issues {
+  color: var(--accent-strong);
+  overflow-wrap: anywhere;
+}
+
 .intake-requirement-source-controls > select {
   flex: 1 1 130px;
 }

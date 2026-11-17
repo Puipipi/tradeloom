@@ -167,6 +167,8 @@ def draft_payload(draft: ProductionRequirementDraft, *, revision=None) -> dict:
 
 
 def requirement_result(draft: ProductionRequirementDraft, revision: ProductionRequirementRevision) -> dict:
+    from .lines import lines_summary
+
     return {
         "ok": True, "status": "succeeded",
         "draft": draft_payload(draft, revision=revision),
@@ -174,6 +176,7 @@ def requirement_result(draft: ProductionRequirementDraft, revision: ProductionRe
         "source_arithmetic_check": source_arithmetic_check(revision.fields),
         "packaging_check": packaging_check(revision),
         "material_check": material_check(revision.fields),
+        "material_lines": lines_summary(draft),
     }
 
 

@@ -97,7 +97,7 @@ class IntakeMappingSchemaTests(SimpleTestCase):
 
     def test_candidate_schemas_are_closed_and_separate_unconfirmed_domains(self):
         self.assertEqual(SCHEMA_VERSION, 1)
-        self.assertEqual(set(FIELD_SCHEMAS), {"product_identity", "commercial_source", "production_instruction", "labor_analysis", "material_master"})
+        self.assertEqual(set(FIELD_SCHEMAS), {"product_identity", "commercial_source", "production_instruction", "labor_analysis", "material_master", "production_instruction_line"})
         self.assertIn("customer_item_code", FIELD_SCHEMAS["product_identity"])
         self.assertIn("party_text", FIELD_SCHEMAS["commercial_source"])
         self.assertNotIn("party_role", FIELD_SCHEMAS["commercial_source"])

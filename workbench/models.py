@@ -441,6 +441,35 @@ class ProductionRequirementRevision(AppendOnlyModel):
         constraints = [models.UniqueConstraint(fields=["draft", "revision"], name="uniq_req_revision_number")]
 
 
+class ProductionRequirementLine(models.Model):
+    """生产要求的明细行（物料×数量×单位），来自 production_instruction_line 打表候选。
+
+    行由候选 apply 生成并随主数据补齐重新 apply 刷新；阻断问题未清时
+    阻止生产要求确认（对应 PMC 核料闸门）。
+    """
+
+    id = models.CharField(primary_key=True, max_length=32, default=hex_uuid, editable=False)
+    draft = models.ForeignKey(ProductionRequirementDraft, on_delete=models.PROTECT, related_name="material_lines")
+    source_candidate = models.ForeignKey(IntakeCandidate, on_delete=models.PROTECT, related_name="requirement_lines")
+    position = models.PositiveIntegerField()
+    material = models.CharField(max_length=500)
+    item_ref = models.JSONField(null=True, blank=True)
+    item_status = models.CharField(max_length=24, default="unresolved")
+    quantity = models.CharField(max_length=40, blank=True, default="")
+    unit = models.CharField(max_length=64, blank=True, default="")
+    issues = models.JSONField(default=list)
+    source_refs = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["draft_id", "position", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["source_candidate", "position"], name="uniq_req_line_candidate_position"),
+            models.CheckConstraint(condition=models.Q(material__gt=""), name="req_line_material_present"),
+        ]
+
+
 class ExecutionPlanRevision(AppendOnlyModel):
     class Status(models.TextChoices):
         DRAFT = "draft", "Draft"

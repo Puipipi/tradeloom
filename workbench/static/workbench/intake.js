@@ -136,7 +136,10 @@
     requirement_source_value_mismatch: "修改值与原单元格不一致，请提供修改依据或保留待确认。",
     stale_requirement: "其他操作已更新此草稿。请重新读取当前版本，再核对你的修改。",
     unresolved_requirement: "仍有待确认字段，请先补充内容和出处。",
+    requirement_lines_blocked: "存在阻断的明细行（物料缺主数据或数量/单位无效），请先补齐物料主数据后重新应用明细行，再确认此版本。",
     requirement_exists: "这份候选已有草稿，正在读取已有记录。",
+    row_shape_mismatch: "明细行列的单元格数量不一致，请重新映射各列。",
+    empty_rows: "明细行映射为空，请选择物料、数量、单位列。",
     narrative_not_found: "文字资料不存在，请刷新资料列表后重试。",
     invalid_narrative: "请选择有效的 UTF-8 文本文件，大小不超过 2 MiB。",
     already_confirmed: "此版本已确认，请重新读取当前记录。",
@@ -1257,6 +1260,24 @@
       const note = node("p", "intake-check-note", materialCheckText(material));
       note.dataset.materialCheck = material.state;
       target.append(note);
+    }
+    const materialLines = typeof current.material_lines === "object" && current.material_lines ? current.material_lines : null;
+    if (materialLines && materialLines.total > 0) {
+      const box = node("div", "intake-material-lines");
+      box.append(node("strong", "", `明细行 · 共 ${materialLines.total} 行，阻断 ${materialLines.blocked} 行`));
+      const list = node("ul", "intake-material-line-list");
+      for (const line of materialLines.lines) {
+        const item = node("li", line.blocked ? "intake-material-line blocked" : "intake-material-line");
+        item.append(node("span", "intake-material-line-main",
+          `${line.position}. ${line.material || "（空）"} × ${line.quantity || "?"}${line.unit ? " " + line.unit : ""}`));
+        if (line.blocked && Array.isArray(line.questions) && line.questions.length) {
+          item.append(node("small", "intake-material-line-issues", line.questions.join("；")));
+        }
+        list.append(item);
+      }
+      box.append(list);
+      box.append(node("p", "intake-muted", "阻断行未清零时不能确认此生产要求；补齐物料主数据后重新应用明细行即可解除。"));
+      target.append(box);
     }
     target.append(node("p", "intake-muted", "本地确认只表示此版本已人工确认，不代表可生产、已排产或已提交 ERP。"));
     if (isCurrent) {

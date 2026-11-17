@@ -23,6 +23,7 @@ from workbench.models import (
 )
 
 from .calculations import packaging_check, source_arithmetic_check
+from .lines import apply_requirement_lines_view  # noqa: F401 (URL 挂载)
 from .schemas import REQUIREMENT_FIELDS, validate_requirement_fields
 from .service import (
     _candidate_field_value,
@@ -45,7 +46,7 @@ _ERROR_STATUS = {
     "invalid_requirement_fields": 422, "invalid_requirement_evidence": 422,
     "invalid_requirement": 422, "requirement_exists": 409,
     "idempotency_conflict": 409, "stale_requirement": 409,
-    "unresolved_requirement": 409, "requirement_source_value_mismatch": 422,
+    "unresolved_requirement": 409, "requirement_lines_blocked": 409, "requirement_source_value_mismatch": 422,
     "narrative_not_found": 404, "already_confirmed": 409, "unavailable": 503,
 }
 
@@ -88,6 +89,7 @@ def _revision_page(request: HttpRequest, requirement_id: str) -> JsonResponse:
         return _safe_error("requirement_not_found")
     rows = list(draft.revisions.prefetch_related("evidence_records").select_related("draft")
                 .order_by("-revision")[offset:offset + limit + 1])
+    from .lines import lines_summary
     return JsonResponse({
         "ok": True,
         "current_revision": draft.current_revision,
@@ -95,6 +97,7 @@ def _revision_page(request: HttpRequest, requirement_id: str) -> JsonResponse:
                        "source_arithmetic_check": source_arithmetic_check(row.fields),
                        "packaging_check": packaging_check(row),
                        "material_check": material_check(row.fields)} for row in rows[:limit]],
+        "material_lines": lines_summary(draft),
         "next_offset": offset + limit if len(rows) > limit else None,
     })
 
@@ -426,6 +429,12 @@ def confirm_requirement(request: HttpRequest, requirement_id: str) -> JsonRespon
             if previous.unresolved_fields:
                 _fail_receipt(receipt, "unresolved_requirement")
                 return _safe_error("unresolved_requirement")
+            # PMC 核料闸门：明细行存在阻断问题时不得确认。
+            from .lines import lines_summary
+            summary = lines_summary(draft)
+            if summary["blocked"]:
+                _fail_receipt(receipt, "requirement_lines_blocked")
+                return _safe_error("requirement_lines_blocked")
             if pair is not None:
                 if (not isinstance(pair.get("unit"), str) or not isinstance(pair.get("pack_unit"), str) or
                         pair != {"unit": previous.fields.get("unit"), "pack_unit": previous.fields.get("pack_unit")}):

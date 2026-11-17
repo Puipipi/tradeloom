@@ -35,6 +35,9 @@ FIELD_SCHEMAS = {
     "material_master": {
         "item_code": "text", "item_name": "text", "item_group": "text", "stock_uom": "text",
     },
+    "production_instruction_line": {
+        "material": "text", "quantity": "decimal", "unit": "text",
+    },
 }
 
 
@@ -70,7 +73,8 @@ def validate_mapping_shape(payload: object) -> tuple[str, dict]:
         if not isinstance(mapping, dict) or set(mapping) != {"cells"}:
             raise MappingError("invalid_field_mapping")
         cells = mapping["cells"]
-        if not isinstance(cells, list) or not cells or len(cells) > 10:
+        # 明细行候选按列多选（每格一行），上限放宽到 50；总数仍受约束。
+        if not isinstance(cells, list) or not cells or len(cells) > 50:
             raise MappingError("invalid_source_cells")
         total += len(cells)
         for cell in cells:
@@ -80,6 +84,6 @@ def validate_mapping_shape(payload: object) -> tuple[str, dict]:
                 raise MappingError("invalid_source_cell")
             if not isinstance(cell["coordinate"], str) or len(cell["coordinate"]) > 16:
                 raise MappingError("invalid_source_cell")
-    if total > 100:
+    if total > 400:
         raise MappingError("too_many_source_cells")
     return candidate_type, schema
