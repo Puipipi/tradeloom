@@ -288,16 +288,16 @@ window.__ModuleLoader__.load({
       return `#${foregroundChannels.map((part, index) => Math.round(part * alpha + backgroundChannels[index] * (1 - alpha)).toString(16).padStart(2, '0')).join('')}`
     }
 
-    function resolveWorkbenchPalette() {
-      const replicaPalette = replicaPaletteAdapter?.readWorkbenchPalette?.(activeColorScheme)
+    function resolveWorkbenchPalette(colorScheme = activeColorScheme) {
+      const replicaPalette = replicaPaletteAdapter?.readWorkbenchPalette?.(colorScheme)
       if (replicaPalette && Object.keys(workbenchPalette).every(key => /^#[\da-f]{6}$/i.test(replicaPalette[key] ?? ''))) return replicaPalette
       const probe = window.document?.querySelector?.('.tl-shell-top') ?? window.document?.body ?? window.document?.documentElement
-      const computed = probe && window.getComputedStyle?.(probe)
-      const resolved = Object.fromEntries(Object.entries(workbenchPalette).map(([key, modes]) => [key, modes[activeColorScheme]]))
+      const computed = colorScheme === activeColorScheme && probe && window.getComputedStyle?.(probe)
+      const resolved = Object.fromEntries(Object.entries(workbenchPalette).map(([key, modes]) => [key, modes[colorScheme]]))
       if (!computed) {
         resolved.accentStrong = resolved.accent
-        resolved.accentSoft = compositeColor(resolved.accent, 0.12, resolved.panel) || workbenchPalette.accentSoft[activeColorScheme]
-        resolved.teal = workbenchPalette.teal[activeColorScheme]
+        resolved.accentSoft = compositeColor(resolved.accent, 0.12, resolved.panel) || workbenchPalette.accentSoft[colorScheme]
+        resolved.teal = workbenchPalette.teal[colorScheme]
         return resolved
       }
       for (const [key, alias] of Object.entries(themeAliasNames)) {
@@ -313,14 +313,14 @@ window.__ModuleLoader__.load({
           swatch.remove?.()
         }
         if (!/^#[\da-f]{6}$/i.test(value)) value = ''
-        resolved[key] = value || workbenchPalette[key][activeColorScheme]
+        resolved[key] = value || workbenchPalette[key][colorScheme]
       }
       resolved.accentStrong = resolved.accent
-      resolved.accentSoft = compositeColor(resolved.accent, 0.12, resolved.panel) || workbenchPalette.accentSoft[activeColorScheme]
-      resolved.teal = workbenchPalette.teal[activeColorScheme]
+      resolved.accentSoft = compositeColor(resolved.accent, 0.12, resolved.panel) || workbenchPalette.accentSoft[colorScheme]
+      resolved.teal = workbenchPalette.teal[colorScheme]
       for (const [key, modes] of Object.entries(workbenchPalette)) {
         if (Object.hasOwn(themeAliasNames, key) || ['accentStrong', 'accentSoft', 'teal'].includes(key)) continue
-        resolved[key] = modes[activeColorScheme]
+        resolved[key] = modes[colorScheme]
       }
       return resolved
     }
@@ -1306,7 +1306,8 @@ window.__ModuleLoader__.load({
         width: '100%', height: '100%', minWidth: 0, minHeight: 0, overflow: 'hidden',
       } },
         h('style', { 'data-tradeloom-source-workflow-style': 'true' }, `
-          .tl-source-workflow-host { display:flex; flex:1 1 0; flex-direction:column; min-width:0; min-height:0; height:100%; overflow:hidden; }
+          .tl-source-workflow-host { display:flex; flex:1 1 0; flex-direction:column; min-width:0; min-height:0; height:100%; overflow:hidden; font:var(--tl-font-body)/var(--tl-line-height) var(--tl-font-family); }
+          .tl-source-workflow-host .tl-wf-toolbar { font-size:var(--tl-font-compact); }
           .tl-workflow-canvas-pane { display:flex; flex:1 1 0; flex-direction:column; min-width:0; min-height:0; overflow:hidden; }
           .tl-workflow-canvas-pane>.tl-wf { flex:1 1 0; min-height:0; }
           .tl-workflow-model-hint { flex:0 0 auto; margin:0; padding:var(--tl-space-1) var(--tl-space-2); color:var(--tl-theme-muted); font-size:var(--tl-font-compact); border-bottom:1px solid var(--tl-theme-border); }
@@ -2158,7 +2159,7 @@ window.__ModuleLoader__.load({
       const [newSessionBusy, setNewSessionBusy] = React.useState(false)
       const newSessionFlight = React.useRef(false)
       const newSessionOperations = React.useRef({})
-      const roleMetadata = sceneLoadState.roleMetadata ?? { status: 'idle', error: '', roles: null }
+      const roleMetadata = props.roleMetadata ?? sceneLoadState.roleMetadata ?? { status: 'idle', error: '', roles: null }
       const roles = roleMetadata.status === 'ready' && Array.isArray(roleMetadata.roles) ? roleMetadata.roles : []
       async function retryRoles() {
         if (typeof props.onRetryRoles === 'function' || typeof props.onRequestRoles === 'function') {
@@ -2851,7 +2852,7 @@ window.__ModuleLoader__.load({
           setMenuOpen(open => !open)
         } }, '选择助手'),
         h('div', { className: 'tl-agent-menu', role: 'group', 'aria-label': '可用助手' }, roles.length
-          ? roles.map(({ id, label }) => h('button', {
+          ? roles.filter(() => !props.capabilitiesOnly).map(({ id, label }) => h('button', {
             key: id, type: 'button', disabled: busy !== '' || id === busy,
             onClick: () => { void openRole(id) },
             'aria-label': label,
@@ -2924,6 +2925,199 @@ window.__ModuleLoader__.load({
       }
     }
 
+    function registerSourceAccountRootMounted(ctx, descriptor, bridge) {
+      if (descriptor?.kind !== 'account') return
+      const expected = { ...descriptor }, keys = Object.keys(expected)
+      return ctx.slots.inject('shell.overlay', () => {
+        let registered = true
+        function SourceAccountRootMounted() {
+          const [failure, setFailure] = React.useState()
+          React.useEffect(() => {
+            let live = true
+            void Promise.resolve().then(async () => {
+              if (!registered || !live) return
+              const current = await bridge.nativeSurfaceDescriptor()
+              if (!registered || !live || !current || current.kind !== 'account'
+                || Object.keys(current).length !== keys.length
+                || keys.some(key => current[key] !== expected[key])) return
+              await bridge.nativeSurfaceMounted(current)
+            }).catch(error => { if (registered && live) setFailure(() => error) })
+            return () => { live = false }
+          }, [])
+          if (failure) throw failure
+          return null
+        }
+        const dispose = ctx.slots.register({ name: 'shell.overlay', id: 'tradeloom-account-root-mounted' }, SourceAccountRootMounted)
+        return () => { registered = false; dispose() }
+      })
+    }
+
+    function registerSourceAccountSidebarCollapse(ctx, descriptor, bridge) {
+      if (descriptor?.kind !== 'account' || descriptor.businessNavigation !== 'shell'
+        || typeof bridge.nativeAccountOverlayState !== 'function' || typeof bridge.onNativeAccountOverlayState !== 'function'
+        || typeof bridge.accountSidebarCommand !== 'function') return
+      return ctx.effect(() => {
+        let live = true, state, revision = -1, consumedRevision = -1
+        const receive = value => {
+          if (!live || !value || Object.keys(value).sort().join(',') !== 'eligible,generation,requestId'
+            || value.generation !== descriptor.generation || !Number.isSafeInteger(value.requestId)
+            || value.requestId < revision || typeof value.eligible !== 'boolean') return
+          revision = value.requestId; state = { ...value }
+        }
+        const stop = bridge.onNativeAccountOverlayState(receive)
+        void bridge.nativeAccountOverlayState().then(receive).catch(() => {})
+        const dispose = ctx.reflect.provide('workbenchSidebarCollapse', Object.freeze({
+          collapse() {
+            if (live && state && state.requestId === consumedRevision) return true
+            if (!live || state?.eligible !== true) return false
+            const request = { action:'collapse-workbench-pair',requestId:state.requestId,generation:descriptor.generation }
+            // A consumed request never falls back to SDK toggling after Host rejection.
+            state = { ...state, eligible:false }
+            consumedRevision = request.requestId
+            void bridge.accountSidebarCommand(request).catch(() => { console.warn('TradeLoom account overlay close rejected') })
+            return true
+          },
+        }))
+        return () => { live = false; state = undefined; stop(); void dispose() }
+      }, 'source-account-sidebar-collapse')
+    }
+
+    // One account-overlay interaction, not a general panel/layout controller.
+    function createSourceAccountPairResize(bridge, descriptor, onChange, host = window) {
+      let live = true, request, layout, revision = -1, sequence = 0, drag, raf, pendingPoint
+      const same = value => live && request?.eligible === true && value?.requestId === request.requestId && value.generation === request.generation
+      const emit = error => { if (live) onChange({ request, layout, error }) }
+      const validBounds = (value, expected) => value && Object.keys(value).sort().join(',') === 'generation,height,maxHeight,maxWidth,minHeight,minWidth,requestId,width'
+        && value.requestId === expected.requestId && value.generation === expected.generation
+        && ['width','height','minWidth','minHeight','maxWidth','maxHeight'].every(key => Number.isFinite(value[key]) && value[key] >= 0)
+        && value.minWidth <= value.width && value.width <= value.maxWidth && value.minHeight <= value.height && value.height <= value.maxHeight
+      const issue = async (action, dimensions) => {
+        if (!same(request)) return
+        const expected = { ...request }, ticket = ++sequence
+        try {
+          const value = await bridge.accountSidebarCommand({ action, requestId:expected.requestId, generation:expected.generation, ...dimensions })
+          if (!same(expected) || ticket !== sequence) return
+          if (!validBounds(value, expected)) throw Error('invalid account pair size')
+          layout = { ...value }; emit()
+          return value
+        } catch { if (same(expected) && ticket === sequence) emit('尺寸调整暂不可用，请重试。') }
+      }
+      const resize = (width, height) => {
+        if (!layout || !Number.isFinite(width) || !Number.isFinite(height)) return
+        return issue('resize-workbench-pair', { width:Math.max(layout.minWidth,Math.min(layout.maxWidth,width)), height:Math.max(layout.minHeight,Math.min(layout.maxHeight,height)) })
+      }
+      const removePointer = () => {
+        host.removeEventListener('pointermove', move); host.removeEventListener('pointerup', end)
+        host.removeEventListener('pointercancel', cancelEvent); host.removeEventListener('blur', cancelEvent)
+        if (raf !== undefined) host.cancelAnimationFrame(raf)
+        raf = undefined; pendingPoint = undefined
+      }
+      const release = current => { try { if (current?.target.hasPointerCapture?.(current.pointerId)) current.target.releasePointerCapture(current.pointerId) } catch {} }
+      const applyPoint = point => { if (drag && point && same(drag.request)) void resize(drag.width+point.x-drag.x,drag.height+point.y-drag.y) }
+      function move(event) {
+        if (!drag || event.pointerId !== drag.pointerId || !Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) return
+        pendingPoint={x:event.clientX,y:event.clientY}
+        if (raf !== undefined) return
+        raf=host.requestAnimationFrame(() => { raf=undefined;const point=pendingPoint;pendingPoint=undefined;applyPoint(point) })
+      }
+      function end(event) {
+        if (!drag || event.pointerId !== drag.pointerId) return
+        if (Number.isFinite(event.clientX) && Number.isFinite(event.clientY)) applyPoint({x:event.clientX,y:event.clientY})
+        const current=drag;drag=undefined;removePointer();release(current)
+      }
+      function cancel(restore) {
+        const current=drag;drag=undefined;removePointer();release(current)
+        if (restore && current && same(current.request)) void resize(current.width,current.height)
+      }
+      function cancelEvent() { cancel(true) }
+      const receive = value => {
+        if (!live || !value || Object.keys(value).sort().join(',') !== 'eligible,generation,requestId'
+          || value.generation !== descriptor.generation || !Number.isSafeInteger(value.requestId) || value.requestId < 0
+          || value.requestId < revision || typeof value.eligible !== 'boolean') return
+        if (value.requestId !== revision || !value.eligible) { cancel(false); sequence++; layout=undefined }
+        revision=value.requestId;request={...value};emit()
+        if (value.eligible) void issue('get-workbench-pair-bounds')
+      }
+      const stop=bridge.onNativeAccountOverlayState(receive)
+      void bridge.nativeAccountOverlayState().then(receive).catch(() => {})
+      const onViewportResize=()=>{ if (request?.eligible) void issue('get-workbench-pair-bounds') }
+      host.addEventListener('resize',onViewportResize)
+      return {
+        begin(event) {
+          if (!live || drag || !layout || !same(request) || event.button !== 0 || event.isPrimary === false) return
+          try { event.currentTarget.setPointerCapture(event.pointerId) } catch { return }
+          event.preventDefault();event.stopPropagation()
+          drag={pointerId:event.pointerId,target:event.currentTarget,x:event.clientX,y:event.clientY,width:layout.width,height:layout.height,request:{...request}}
+          host.addEventListener('pointermove',move);host.addEventListener('pointerup',end)
+          host.addEventListener('pointercancel',cancelEvent);host.addEventListener('blur',cancelEvent)
+        },
+        lostCapture(event) { if (drag?.pointerId === event.pointerId) cancel(true) },
+        key(event) {
+          if (!layout || drag || !['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home'].includes(event.key)) return
+          event.preventDefault();event.stopPropagation()
+          if (event.key === 'Home') void issue('restore-workbench-pair-bounds')
+          else void resize(layout.width+(event.key==='ArrowRight'?16:event.key==='ArrowLeft'?-16:0),layout.height+(event.key==='ArrowDown'?16:event.key==='ArrowUp'?-16:0))
+        },
+        restore() { cancel(false);void issue('restore-workbench-pair-bounds') },
+        dispose() { if (!live) return;live=false;sequence++;cancel(false);stop();host.removeEventListener('resize',onViewportResize) },
+      }
+    }
+
+    function registerSourceAccountOverlayResize(ctx, descriptor, bridge) {
+      if (descriptor?.kind !== 'account' || descriptor.businessNavigation !== 'shell'
+        || typeof bridge.nativeAccountOverlayState !== 'function' || typeof bridge.onNativeAccountOverlayState !== 'function'
+        || typeof bridge.accountSidebarCommand !== 'function') return
+      return ctx.slots.inject('shell.overlay', () => {
+        function SourceAccountOverlayResize() {
+          const [view,setView]=React.useState(), toolbar=React.useRef(), interaction=React.useRef()
+          React.useEffect(() => {
+            const control=createSourceAccountPairResize(bridge,descriptor,setView)
+            interaction.current=control
+            return () => { interaction.current=undefined;control.dispose() }
+          }, [])
+          React.useLayoutEffect(() => {
+            const node=toolbar.current, request=view?.request
+            if (!node || !request?.eligible || !view.layout) return
+            const seat=node.closest('[data-shell-overlay]'),frame=seat?.parentElement
+            if (!seat?.contains(node) || !frame || frame.ownerDocument !== node.ownerDocument) return
+            const owner=`${request.generation}:${request.requestId}`
+            const oldValue=frame.style.getPropertyValue('padding-bottom'),oldPriority=frame.style.getPropertyPriority('padding-bottom')
+            const previousOwner=frame.getAttribute('data-tradeloom-account-resize-owner')
+            const padding=parseFloat(getComputedStyle(frame).paddingBottom),height=node.getBoundingClientRect().height
+            if (!Number.isFinite(padding) || !Number.isFinite(height) || height<=0) return
+            const assigned=`${padding+height}px`
+            frame.setAttribute('data-tradeloom-account-resize-owner',owner)
+            frame.style.setProperty('padding-bottom',assigned)
+            const storedValue=frame.style.getPropertyValue('padding-bottom'),storedPriority=frame.style.getPropertyPriority('padding-bottom')
+            return () => {
+              if (frame.getAttribute('data-tradeloom-account-resize-owner')!==owner) return
+              if (frame.style.getPropertyValue('padding-bottom')===storedValue && frame.style.getPropertyPriority('padding-bottom')===storedPriority) {
+                if (oldValue) frame.style.setProperty('padding-bottom',oldValue,oldPriority)
+                else frame.style.removeProperty('padding-bottom')
+              }
+              if (previousOwner===null) frame.removeAttribute('data-tradeloom-account-resize-owner')
+              else frame.setAttribute('data-tradeloom-account-resize-owner',previousOwner)
+            }
+          }, [view?.request?.requestId,view?.request?.eligible,view?.layout?.width,view?.layout?.height])
+          if (!view?.request?.eligible || (!view.layout && !view.error)) return null
+          const controlStyle={font:'inherit',lineHeight:'inherit',color:'inherit',background:'var(--dsw-alias-bg-base)',border:'1px solid var(--dsw-alias-border-l3)',borderRadius:'var(--dsw-radius-sm)',padding:'0.1em 0.5em',cursor:'pointer'}
+          return h(React.Fragment,null,
+            h('style',null,`
+              .tl-account-pair-glow { position:fixed; inset:0; z-index:2; pointer-events:none; box-sizing:border-box; box-shadow:inset 0 0 0 1px var(--tl-theme-accent),inset 0 0 20px var(--tl-theme-accent-soft); animation:tlAccountPairGlow 2.8s ease-in-out infinite; }
+              @keyframes tlAccountPairGlow { 0%,100% { box-shadow:inset 0 0 0 1px var(--tl-theme-accent),inset 0 0 20px var(--tl-theme-accent-soft); } 50% { box-shadow:inset 0 0 0 1px var(--tl-theme-teal),inset 0 0 38px var(--tl-theme-accent-soft); } }
+              @media(prefers-reduced-motion:reduce) { .tl-account-pair-glow { animation:none; } }
+            `),
+            h('div',{className:'tl-account-pair-glow','aria-hidden':true}),
+            h('div',{ref:toolbar,role:'group','aria-label':'侧栏与会话大小',style:{position:'fixed',left:0,right:0,bottom:0,zIndex:1,display:'flex',justifyContent:'center',alignItems:'center',gap:'0.5em',padding:'0.15em 0.5em',boxSizing:'border-box',color:'var(--dsw-alias-label-secondary)',background:'var(--dsw-alias-bg-base)',borderTop:'1px solid var(--dsw-alias-border-l3)',pointerEvents:'auto',fontSize:'inherit'}},
+            view.error?h('span',{role:'status'},view.error):null,
+            h('button',{type:'button',style:controlStyle,disabled:!view.layout,onClick:()=>interaction.current?.restore()},'还原大小'),
+            h('button',{type:'button','aria-label':'调整侧栏与会话大小',title:'拖动调整大小；方向键微调，Home还原大小',disabled:!view.layout,style:{...controlStyle,cursor:'nwse-resize',touchAction:'none'},onPointerDown:event=>interaction.current?.begin(event),onLostPointerCapture:event=>interaction.current?.lostCapture(event),onKeyDown:event=>interaction.current?.key(event)},
+              h('svg',{width:16,height:16,viewBox:'0 0 16 16',fill:'none',stroke:'currentColor',strokeWidth:1.5,'aria-hidden':true},h('path',{d:'M4 12 12 4M7 12h5V7M4 9V4h5'})))))
+        }
+        return ctx.slots.register({name:'shell.overlay',id:'tradeloom-account-pair-resize'},SourceAccountOverlayResize)
+      })
+    }
+
     async function installSourceAccountThemeBridge(ctx, bridge) {
       const sourceTheme = bridge?.sourceTheme
       if (typeof sourceTheme?.publishSnapshot !== 'function' || typeof sourceTheme?.onPreferenceSet !== 'function') return
@@ -2944,6 +3138,7 @@ window.__ModuleLoader__.load({
             preference,
             colorScheme,
             palette: { ...activeResolvedPalette },
+            palettes: { light: resolveWorkbenchPalette('light'), dark: resolveWorkbenchPalette('dark') },
             ui: { ...workbenchUiTokens },
           })
         } catch {}
@@ -2962,7 +3157,15 @@ window.__ModuleLoader__.load({
         if (request !== undefined && !correlated) return
         if (correlated) pendingPreferences.add(request)
         let ok = false
-        try { ok = await ctx.theme.setTheme(preference) === true } catch {}
+        try {
+          // rc2 ThemeRuntime.setTheme returns void. Its shared official form
+          // owns persistence, revision fencing and refused-write recovery.
+          const form = ctx.configForms.get('ui-theme')
+          ok = await form.set('preference', preference) === true
+          const saved = form.getSnapshot()
+          ok = ok && saved.status === 'ready' && saved.value?.preference === preference
+            && ctx.theme.getTheme().preference === preference
+        } catch {}
         if (correlated) {
           try { if (!disposed) await publishCurrentTheme(ctx.theme?.getTheme?.()) } catch { ok = false }
           pendingPreferences.delete(request)
@@ -2977,6 +3180,38 @@ window.__ModuleLoader__.load({
         removeThemeChangeListener?.()
         removePreferenceListener?.()
       }, 'tradeloom account theme bridge')
+    }
+
+    async function installSourceNativeThemeBridge(ctx, bridge, initial) {
+      const sourceTheme = bridge?.sourceTheme
+      if (typeof sourceTheme?.onChanged !== 'function' || typeof sourceTheme?.getSnapshot !== 'function') throw Error('native theme bridge unavailable')
+      let disposed = false, sequence = 0
+      const same = (a, b) => a && b && Object.keys(a).length === Object.keys(b).length && Object.keys(a).every(key => a[key] === b[key])
+      const currentOwner = value => value && value.kind === initial.kind && Number.isSafeInteger(value.generation)
+        && (value.kind !== 'role' || (typeof value.roleId === 'string' && value.roleId && typeof value.sessionId === 'string' && value.sessionId
+          && typeof value.bindingRevision === 'string' && /^(0|[1-9][0-9]{0,63})$/.test(value.bindingRevision)))
+      const refresh = async snapshot => {
+        const ticket = ++sequence
+        if (!snapshot || !['light', 'dark', 'system'].includes(snapshot.preference)) return
+        const before = await bridge.nativeSurfaceDescriptor()
+        if (disposed || ticket !== sequence || !currentOwner(before)) return
+        // Main supplies an invalidation, not settings authority. Fold only
+        // the authenticated Host view through the official public face. Role
+        // guests never write the global preference to mirror another window.
+        const answer = await ctx.remote.settings.describe()
+        if (disposed || ticket !== sequence || answer?.ok !== true) return
+        const after = await bridge.nativeSurfaceDescriptor()
+        if (disposed || ticket !== sequence || !same(before, after)) return
+        const view = answer.value?.namespaces?.find(row => row.ns === 'ui-theme')
+        if (view?.value?.preference !== snapshot.preference) return
+        ctx.configForms.describe().acceptView(view)
+      }
+      const update = value => { void refresh(value).catch(() => { if (!disposed && initial.kind === 'role') reportRoleGuestPhase(initial, 'theme-sync-error') }) }
+      const readCurrent = () => { void sourceTheme.getSnapshot().then(update).catch(() => {}) }
+      const offTheme = sourceTheme.onChanged(update)
+      const offOwner = bridge.onNativeSurfaceChanged(() => { sequence++; readCurrent() })
+      ctx.effect(() => () => { disposed = true; sequence++; offTheme(); offOwner() }, 'source native theme invalidation')
+      await sourceTheme.getSnapshot().then(refresh).catch(() => {})
     }
 
     function registerAccountMobileLink(ctx, bridge) {
@@ -3034,7 +3269,8 @@ window.__ModuleLoader__.load({
     }
 
     return {
-      inject: ['slots', 'layout', 'uiWorkspace', 'sessions', 'modelDirectories', 'remote', 'remote.session', 'remote.pluginInventory', 'locale', 'theme'],
+      AgentDirectory,
+      inject: ['slots', 'layout', 'uiWorkspace', 'sessions', 'modelDirectories', 'remote', 'remote.session', 'remote.skills', 'remote.pluginInventory', 'remote.settings', 'configForms', 'locale', 'theme'],
       async apply(ctx) {
         sourceAccountMode = false
         const bridge = window.dshDesktop
@@ -3049,6 +3285,7 @@ window.__ModuleLoader__.load({
               if (descriptor.kind === 'role') reportRoleGuestPhase(descriptor, 'palette-error')
               throw error
             }
+            if (['role', 'account-sidebar', 'scene-component'].includes(descriptor.kind)) await installSourceNativeThemeBridge(ctx, bridge, descriptor)
             if (descriptor.kind === 'account-sidebar') {
               installBusinessThemeBridge(ctx)
               registerTradeLoomBrand(ctx, { conversationHero: false })
@@ -3057,6 +3294,8 @@ window.__ModuleLoader__.load({
               return
             }
             if (descriptor.kind === 'account') {
+              registerSourceAccountSidebarCollapse(ctx, descriptor, bridge)
+              registerSourceAccountOverlayResize(ctx, descriptor, bridge)
               const nativeSurface = await require.async('./client.source-native.js')
               registerAccountMobileLink(ctx, bridge)
               nativeSurface.registerAccountInventory(ctx, bridge)
@@ -3073,6 +3312,7 @@ window.__ModuleLoader__.load({
               installBusinessThemeBridge(ctx)
               await installSourceAccountThemeBridge(ctx, bridge)
               registerTradeLoomBrand(ctx)
+              registerSourceAccountRootMounted(ctx, descriptor, bridge)
               if (descriptor.businessNavigation === 'shell') await ensureConfiguredRoleSessions(ctx)
               if (descriptor.businessNavigation !== 'shell') {
                 ctx.slots.inject('shell.top', () => ctx.slots.register({ name: 'shell.top' }, SourceBusinessMenu))
@@ -3135,13 +3375,20 @@ window.__ModuleLoader__.load({
                 return slot ?? h('div', { role: 'alert' }, '原生面板组件不可用。')
               }
               ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: 'source-native', inject: () => ({}) }, SourceSceneComponent))
+              if (descriptor.componentKey === 'workflow-canvas-native') {
+                function SourceWorkflowRootPresenter({ renderFactorySlot }) {
+                  return h('div', { 'data-source-owned-workflow': '', style: { position: 'relative', height: '100%', minHeight: 0, minWidth: 0 } },
+                    h(SourceSceneComponent, { renderFactorySlot }))
+                }
+                ctx.slots.inject('root', () => ctx.slots.register({ name: 'root', priority: -1 }, SourceWorkflowRootPresenter))
+              }
               ctx.layout.selectPanel('source-native')
               return
             }
             if (descriptor.kind === 'role') reportRoleGuestPhase(descriptor, 'register-start')
             try {
               const nativeSurface = await require.async('./client.source-native.js')
-              nativeSurface.register(ctx, descriptor, bridge)
+              await nativeSurface.register(ctx, descriptor, bridge)
               if (descriptor.kind === 'role') reportRoleGuestPhase(descriptor, 'register-end')
             } catch (error) {
               if (descriptor.kind === 'role') reportRoleGuestPhase(descriptor, 'register-error')

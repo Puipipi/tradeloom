@@ -71,7 +71,7 @@ diff --git a/package.json b/package.json
 diff --git a/lib/main.js b/lib/main.js
 --- a/lib/main.js
 +++ b/lib/main.js
-@@ -1,21 +1,3998 @@
+@@ -1,21 +1,4010 @@
 +import { validateFailureLocation } from "./main-location-validator.mjs";
 +import { AsyncLocalStorage } from "node:async_hooks";
  import { createRequire } from "node:module";
@@ -1536,7 +1536,7 @@ diff --git a/lib/main.js b/lib/main.js
 +
 +  let generation = 1
 +  let disposed = false
-+  let current = unknown(provider, generation)
++  let current = unknownAuthState(provider, generation)
 +  let sampledDocument = null
 +  let unsubscribe
 +  let nextSampleOrder = 0
@@ -1554,7 +1554,7 @@ diff --git a/lib/main.js b/lib/main.js
 +    if (disposed) return
 +    generation += 1
 +    sampledDocument = null
-+    current = unknown(provider, generation)
++    current = unknownAuthState(provider, generation)
 +    if (close) disposed = true
 +  }
 +
@@ -1571,7 +1571,7 @@ diff --git a/lib/main.js b/lib/main.js
 +    const now = documentIdentity(readDocumentIdentity)
 +    if (sampledDocument !== null && !sameDocument(sampledDocument, now)) invalidate()
 +    if (now === null || now.origin !== PROVIDERS[provider]) {
-+      current = unknown(provider, generation)
++      current = unknownAuthState(provider, generation)
 +      sampledDocument = null
 +    }
 +  }
@@ -1634,7 +1634,7 @@ diff --git a/lib/main.js b/lib/main.js
 +  }
 +
 +  function publishUnknownForDocument(document) {
-+    current = unknown(provider, generation)
++    current = unknownAuthState(provider, generation)
 +    sampledDocument = document
 +    return current
 +  }
@@ -2285,6 +2285,7 @@ diff --git a/lib/main.js b/lib/main.js
 +	onAuthChanged;
 +	window;
 +	owner;
++	websiteMenu;
 +	phase = "closed";
 +	failure = null;
 +	busy = false;
@@ -2475,6 +2476,7 @@ diff --git a/lib/main.js b/lib/main.js
 +		window.once("closed", () => {
 +			owner.removeListener("closed", ownerClosed);
 +			if (this.window === window) {
++				this.websiteMenu = void 0;
 +				this.window = void 0;
 +				this.owner = void 0;
 +				this.phase = "closed";
@@ -2537,7 +2539,7 @@ diff --git a/lib/main.js b/lib/main.js
 +			if (this.allowedExternal(url)) shell.openExternal(url).catch(() => {});
 +			return { action: "deny" };
 +		});
-+		window.setMenu(Menu.buildFromTemplate([
++		const menu = Menu.buildFromTemplate([
 +			{
 +				label: "文件",
 +				submenu: [
@@ -2583,7 +2585,9 @@ diff --git a/lib/main.js b/lib/main.js
 +					}
 +				]
 +			}
-+		]));
++		]);
++		this.websiteMenu = { window, owner, menu };
++		window.setMenu(menu);
 +		window.loadURL(this.site.url).catch(error => {
 +			const loadClass = classifyWebAiLoadFailure(error);
 +			if (typeof observeWebAiAuthDiagnostic === "function") observeWebAiAuthDiagnostic("load-rejected", this.site.provider, () => ({
@@ -3952,6 +3956,11 @@ diff --git a/lib/main.js b/lib/main.js
 +		this.revision++;
 +		if (owner !== void 0 && !owner.isDestroyed()) this.onChanged?.(owner, this.status({ provider: this.site.provider }));
 +	}
++	restoreMenu() {
++		const captured = this.websiteMenu;
++		if (captured === void 0 || this.liveWindow() !== captured.window || this.owner !== captured.owner || captured.owner.isDestroyed()) return;
++		captured.window.setMenu(captured.menu);
++	}
 +	liveWindow() {
 +		return this.window !== void 0 && !this.window.isDestroyed() ? this.window : void 0;
 +	}
@@ -4025,6 +4034,9 @@ diff --git a/lib/main.js b/lib/main.js
 +		this.onChanged = onChanged;
 +		this.onAuthChanged = onAuthChanged;
 +	}
++	restoreMenus() {
++		for (const provider of ["deepseek", "doubao"]) this.windows.get(provider)?.restoreMenu();
++	}
 +	siteWindow(request) {
 +		if (request === null || typeof request !== "object" || Array.isArray(request) || Object.keys(request).join(",") !== "provider") throw new Error("ai web: invalid provider request");
 +		const provider = Reflect.get(request, "provider");
@@ -4075,7 +4087,7 @@ diff --git a/lib/main.js b/lib/main.js
  //#region ../../node_modules/.pnpm/mime@4.1.1/node_modules/mime/dist/types/other.js
  const types$3 = {
  	"application/prs.cww": ["cww"],
-@@ -1472,7 +5449,29 @@
+@@ -1472,7 +5461,29 @@
  	nativeThemeSet: "dsh-desktop:native-theme-set",
  	windowFullscreen: "dsh-desktop:window-fullscreen",
  	windowsAppearance: "dsh-desktop:windows-appearance",
@@ -4106,7 +4118,7 @@ diff --git a/lib/main.js b/lib/main.js
  };
  /** Scheme of Desktop-owned application documents. */
  const SCHEME = "dsh-app";
-@@ -11645,11 +15644,22 @@
+@@ -11645,11 +15656,22 @@
  /** Quit inspection deadline; a slower Host counts as unknown work and the shell asks before quitting. */
  const QUIT_INSPECTION_DEADLINE_MS = 2e3;
  const runIdSchema = uuid();
@@ -4131,7 +4143,7 @@ diff --git a/lib/main.js b/lib/main.js
  		case "shutdown-complete": return true;
  		case "ready": return typeof candidate.url === "string";
  		case "platform-session": {
-@@ -11679,12 +15689,17 @@
+@@ -11679,12 +15701,17 @@
  			}
  		}
  		case "fatal": return typeof candidate.message === "string" && (candidate.diagnostic === void 0 || typeof candidate.diagnostic === "string");
@@ -4150,7 +4162,7 @@ diff --git a/lib/main.js b/lib/main.js
  		default: return false;
  	}
  }
-@@ -11764,7 +15779,7 @@
+@@ -11764,7 +15791,7 @@
  	* @param onPlatformSession - Private credential updates for embedded Platform views.
  	* @param onPluginOperation - Optional diagnostic sink; malformed records are ignored without failing the Host.
  	*/
@@ -4159,7 +4171,7 @@ diff --git a/lib/main.js b/lib/main.js
  		this.node = node;
  		this.runtimeDir = runtimeDir;
  		this.projectDir = projectDir;
-@@ -11774,7 +15789,11 @@
+@@ -11774,7 +15801,11 @@
  		this.primaryRuntime = primaryRuntime;
  		this.packageManager = packageManager;
  		this.onPlatformSession = onPlatformSession;
@@ -4171,7 +4183,7 @@ diff --git a/lib/main.js b/lib/main.js
  	}
  	/**
  	* Start this child once and await its Web application URL.
-@@ -11789,7 +15808,7 @@
+@@ -11789,7 +15820,7 @@
  			entry,
  			this.runtimeDir,
  			this.projectDir,
@@ -4180,7 +4192,7 @@ diff --git a/lib/main.js b/lib/main.js
  			...this.packageManager === void 0 ? [] : [this.packageManager.pnpm, this.packageManager.nodeBin]
  		], {
  			cwd: this.projectDir,
-@@ -11802,39 +15821,73 @@
+@@ -11802,39 +15833,73 @@
  			]
  		});
  		this.child = child;
@@ -4271,7 +4283,7 @@ diff --git a/lib/main.js b/lib/main.js
  			}
  		});
  		child.once("error", (error) => {
-@@ -11842,6 +15895,7 @@
+@@ -11842,6 +15907,7 @@
  		});
  		this.exitPromise = new Promise((resolve) => {
  			child.once("close", (code) => {
@@ -4279,7 +4291,7 @@ diff --git a/lib/main.js b/lib/main.js
  				const suffix = this.stderr.trim() === "" ? "" : `: ${this.stderr.trim()}`;
  				if (code !== 0 && code !== null) this.fail(/* @__PURE__ */ new Error(`dsh desktop host exited with ${String(code)}${suffix}`));
  				else this.fail(/* @__PURE__ */ new Error(`dsh desktop host stopped${suffix}`));
-@@ -11935,6 +15989,7 @@
+@@ -11935,6 +16001,7 @@
  		const child = this.child;
  		if (child === void 0) return;
  		this.stopping = true;
@@ -4287,7 +4299,7 @@ diff --git a/lib/main.js b/lib/main.js
  		this.onPlatformSession?.(null);
  		if (child.connected) child.send({ type: "shutdown" }, (error) => {
  			if (error !== null) this.fail(error);
-@@ -11950,7 +16005,8 @@
+@@ -11950,7 +16017,8 @@
  		if (requireGraceful && (!graceful || child.exitCode !== 0 || !this.shutdownCompleted)) throw new DesktopHostUncleanExitError(`desktop update: Host did not complete graceful task teardown (exit ${String(child.exitCode)}, signal ${String(child.signalCode)}, shutdown acknowledged ${String(this.shutdownCompleted)}, graceful deadline exceeded ${String(!graceful)})`);
  	}
  	fail(error) {
@@ -4297,7 +4309,7 @@ diff --git a/lib/main.js b/lib/main.js
  		this.onPlatformSession?.(null);
  		this.readyReject(error);
  		for (const request of this.controlRequests.values()) request.reject(error);
-@@ -11963,6 +16019,22 @@
+@@ -11963,6 +16031,22 @@
  				console.error("desktop host failure listener failed", listenerError);
  			}
  		}
@@ -4320,7 +4332,7 @@ diff --git a/lib/main.js b/lib/main.js
  	}
  };
  //#endregion
-@@ -12513,18 +16585,22 @@
+@@ -12513,18 +16597,22 @@
  	const pending = /* @__PURE__ */ new Set();
  	const icons = /* @__PURE__ */ new Map();
  	const borrowed = /* @__PURE__ */ new Map();
@@ -4348,7 +4360,7 @@ diff --git a/lib/main.js b/lib/main.js
  			if (resource === null || basename(resource.path) !== resolveDragFileName(source) || source.sha256 !== void 0 && source.sha256 !== resource.sha256 || source.size !== void 0 && source.size !== resource.size) return void 0;
  			const version = await verifiedVersion(resource, signal);
  			if (version === void 0) return void 0;
-@@ -12539,21 +16615,23 @@
+@@ -12539,21 +16627,23 @@
  			const file = files.take(handle, false);
  			if (file === void 0) throw new Error("File transfer closed");
  			const icon = await cancellable(app.getFileIcon(file, { size: "normal" }), signal);
@@ -4376,7 +4388,7 @@ diff --git a/lib/main.js b/lib/main.js
  			preparations.delete(requestId);
  		});
  		pending.add(operation);
-@@ -12565,11 +16643,15 @@
+@@ -12565,11 +16655,15 @@
  		return operation;
  	});
  	ipcMain.handle(DESKTOP_IPC.fileDragCancel, (event, requestId) => {
@@ -4395,7 +4407,7 @@ diff --git a/lib/main.js b/lib/main.js
  		const icon = typeof handle === "string" ? icons.get(handle) : void 0;
  		if (icon === void 0 || typeof handle !== "string") return false;
  		const file = files.take(handle, false);
-@@ -12577,7 +16659,7 @@
+@@ -12577,7 +16671,7 @@
  		try {
  			const original = borrowed.get(handle);
  			if (original !== void 0 && !sameVersion(original.version, statSync(original.resource.path))) throw new Error("File changed before dragging");
@@ -4404,7 +4416,7 @@ diff --git a/lib/main.js b/lib/main.js
  			window.webContents.startDrag({
  				file,
  				icon
-@@ -12585,10 +16667,12 @@
+@@ -12585,10 +16679,12 @@
  			files.take(handle);
  			icons.delete(handle);
  			borrowed.delete(handle);
@@ -4417,7 +4429,7 @@ diff --git a/lib/main.js b/lib/main.js
  			files.release(handle).catch((error) => {
  				console.error(error);
  			});
-@@ -12596,17 +16680,20 @@
+@@ -12596,17 +16692,20 @@
  		}
  	});
  	ipcMain.handle(DESKTOP_IPC.fileDragRelease, async (event, handle) => {
@@ -4440,7 +4452,7 @@ diff --git a/lib/main.js b/lib/main.js
  			ipcMain.removeHandler(DESKTOP_IPC.fileDragPrepare);
  			ipcMain.removeHandler(DESKTOP_IPC.fileDragCancel);
  			ipcMain.removeHandler(DESKTOP_IPC.fileDragStart);
-@@ -12615,6 +16702,7 @@
+@@ -12615,6 +16714,7 @@
  		await Promise.allSettled(pending);
  		icons.clear();
  		borrowed.clear();
@@ -4448,7 +4460,7 @@ diff --git a/lib/main.js b/lib/main.js
  		await files.dispose();
  	};
  }
-@@ -12625,11 +16713,11 @@
+@@ -12625,11 +16725,11 @@
  * Install the application-lifetime directory picker IPC handler.
  * @param getWindow - Current local application window; shell pages and subframes cannot open dialogs.
  */
@@ -4463,7 +4475,7 @@ diff --git a/lib/main.js b/lib/main.js
  		assertDesktopSender(event, ["app"]);
  		const existing = pending.get(window);
  		if (existing !== void 0) return existing;
-@@ -12642,6 +16730,7 @@
+@@ -12642,6 +16742,7 @@
  		pending.set(window, result);
  		return result;
  	});
@@ -4471,7 +4483,7 @@ diff --git a/lib/main.js b/lib/main.js
  }
  //#endregion
  //#region lib/types/microphone-permissions.js
-@@ -14721,7 +18810,7 @@
+@@ -14721,7 +18822,7 @@
  	* @param discard - Clears settled library targets and platform resources before another channel is used.
  	* @param downloadResult - Once per completed download attempt, including platform preparation failures.
  	*/
@@ -4480,7 +4492,7 @@ diff --git a/lib/main.js b/lib/main.js
  		this.publish = publish;
  		this.beforeRestart = beforeRestart;
  		this.updater = updater;
-@@ -15256,6 +19345,7 @@
+@@ -15256,6 +19357,7 @@
  const MIME = {
  	".html": "text/html; charset=utf-8",
  	".js": "text/javascript; charset=utf-8",
@@ -4488,7 +4500,7 @@ diff --git a/lib/main.js b/lib/main.js
  	".css": "text/css; charset=utf-8",
  	".svg": "image/svg+xml",
  	".json": "application/json",
-@@ -15346,13 +19436,59 @@
+@@ -15346,13 +19448,59 @@
  * @param cookie - Host-issued authentication cookie.
  * @returns Host response without connection-level headers.
  */
@@ -4553,7 +4565,7 @@ diff --git a/lib/main.js b/lib/main.js
  	const headers = new Headers(request.headers);
  	for (const name of [
  		"host",
-@@ -15360,7 +19496,14 @@
+@@ -15360,7 +19508,14 @@
  		"cookie",
  		"sec-fetch-site"
  	]) headers.delete(name);
@@ -4569,7 +4581,7 @@ diff --git a/lib/main.js b/lib/main.js
  	const init = {
  		method: request.method,
  		headers,
-@@ -15369,9 +19512,33 @@
+@@ -15369,9 +19524,33 @@
  		duplex: "half",
  		redirect: "manual"
  	};
@@ -4605,7 +4617,7 @@ diff --git a/lib/main.js b/lib/main.js
  	if (PLUGIN_BUNDLE_PATH.test(source.pathname)) outgoing.set("cache-control", "no-store");
  	return new Response(response.body, {
  		status: response.status,
-@@ -19477,7 +23644,9 @@
+@@ -19477,7 +23656,9 @@
  * @param overlayInput - Current shell-owned input blocking state for the product window.
  * @returns menu construction, editor key delivery, window attachment, and teardown operations.
  */
@@ -4616,7 +4628,7 @@ diff --git a/lib/main.js b/lib/main.js
  	let definitions = [];
  	let recording = false;
  	let revision;
-@@ -19486,11 +23655,14 @@
+@@ -19486,11 +23667,14 @@
  	const scopedDesktop = platform === "windows" || platform === "macos";
  	const disposers = /* @__PURE__ */ new Set();
  	const guestInputs = /* @__PURE__ */ new Map();
@@ -4633,7 +4645,7 @@ diff --git a/lib/main.js b/lib/main.js
  			kind: "menu",
  			commandId: "page.close",
  			revision
-@@ -19507,38 +23679,54 @@
+@@ -19507,38 +23691,54 @@
  		closeBinding = close?.issue === null && close.conflicts.length === 0 ? close.binding : null;
  		if (wasEnabled !== (revision !== void 0) || previousAccelerator !== closeAccelerator()) updateMenu();
  		const window = getWindow();
@@ -4698,7 +4710,7 @@ diff --git a/lib/main.js b/lib/main.js
  		let deadKey = false;
  		const held = /* @__PURE__ */ new Set();
  		const consumed = /* @__PURE__ */ new Map();
-@@ -19553,7 +23741,7 @@
+@@ -19553,7 +23753,7 @@
  			inputRevision = void 0;
  			if (!contents.isDestroyed()) contents.setIgnoreMenuShortcuts(false);
  		};
@@ -4707,7 +4719,7 @@ diff --git a/lib/main.js b/lib/main.js
  			window,
  			reset: resetInput
  		});
-@@ -19570,7 +23758,8 @@
+@@ -19570,7 +23770,8 @@
  			persistence.setDefinitions(null);
  		};
  		const navigation = (event) => {
@@ -4717,7 +4729,7 @@ diff --git a/lib/main.js b/lib/main.js
  		};
  		const beforeInput = (event, input) => {
  			const overlay = overlayInput(window);
-@@ -19592,8 +23781,8 @@
+@@ -19592,8 +23793,8 @@
  				contents.setIgnoreMenuShortcuts(true);
  				return;
  			}
@@ -4728,7 +4740,7 @@ diff --git a/lib/main.js b/lib/main.js
  				held.clear();
  				consumed.clear();
  				return;
-@@ -19610,11 +23799,11 @@
+@@ -19610,11 +23811,11 @@
  			});
  			const match = keys.has(key);
  			const menuMatch = closeBinding !== null && closeBinding.secondCode === void 0 && modifiers.join("+") === closeBinding.modifiers.join("+") && input.key.toUpperCase() === (closeBinding.code.startsWith("Key") ? closeBinding.code.slice(3) : input.code === closeBinding.code ? input.key.toUpperCase() : "");
@@ -4742,7 +4754,7 @@ diff --git a/lib/main.js b/lib/main.js
  				held.clear();
  				consumed.clear();
  				return;
-@@ -19678,7 +23867,7 @@
+@@ -19678,7 +23879,7 @@
  			}
  			let embedding = frame;
  			while (guestName === void 0 && !main && embedding.parent !== null && embedding.parent !== contents.mainFrame) embedding = embedding.parent;
@@ -4751,7 +4763,7 @@ diff --git a/lib/main.js b/lib/main.js
  				kind: guestName === void 0 ? main ? "keyboard" : "iframe" : "webview",
  				revision,
  				frameName: guestName ?? (main ? "" : embedding.name),
-@@ -19720,10 +23909,11 @@
+@@ -19720,10 +23921,11 @@
  		return dispose;
  	}
  	return {
@@ -4766,7 +4778,7 @@ diff --git a/lib/main.js b/lib/main.js
  			contents.focus();
  			const previous = editingInput;
  			editingInput = contents;
-@@ -19740,7 +23930,7 @@
+@@ -19740,7 +23942,7 @@
  				});
  			} finally {
  				editingInput = previous;
@@ -4775,7 +4787,7 @@ diff --git a/lib/main.js b/lib/main.js
  			}
  		},
  		fileMenu: (labels) => {
-@@ -19760,7 +23950,44 @@
+@@ -19760,7 +23962,44 @@
  			attachInput(window, window.webContents);
  		},
  		attachGuest: attachInput,
@@ -4820,7 +4832,7 @@ diff --git a/lib/main.js b/lib/main.js
  			for (const dispose of disposers) dispose();
  			persistence.dispose();
  			for (const channel of [
-@@ -20065,6 +24292,8 @@
+@@ -20065,6 +24304,8 @@
  let backendReady = false;
  /** Error-level console output of the primary window, attached to crash reports. */
  const rendererConsole = new RendererConsoleTail();
@@ -4829,7 +4841,7 @@ diff --git a/lib/main.js b/lib/main.js
  app.setAppLogsPath();
  function currentDesktopLocale() {
  	return resolveDesktopLocale(windowsLanguage ?? app.getLocale());
-@@ -20240,13 +24469,15 @@
+@@ -20240,13 +24481,15 @@
  	url.searchParams.set("theme", nativeTheme.shouldUseDarkColors ? "dark" : "light");
  	return url.href;
  }
@@ -4846,7 +4858,7 @@ diff --git a/lib/main.js b/lib/main.js
  		...process.platform === "win32" && primary ? {
  			backgroundColor: chromeFallbackFill(),
  			titleBarStyle: "hidden",
-@@ -20256,7 +24487,7 @@
+@@ -20256,7 +24499,7 @@
  				symbolColor: nativeTheme.shouldUseDarkColors ? "#f9fafb" : "#0f1115"
  			}
  		} : {},
@@ -4855,7 +4867,7 @@ diff --git a/lib/main.js b/lib/main.js
  			titleBarStyle: "hiddenInset",
  			trafficLightPosition: {
  				x: 16,
-@@ -20276,8 +24507,61 @@
+@@ -20276,8 +24519,61 @@
  			devTools: true
  		}
  	});
@@ -4919,7 +4931,7 @@ diff --git a/lib/main.js b/lib/main.js
  		return { action: "deny" };
  	});
  	if (process.platform === "darwin" || process.platform === "win32") {
-@@ -20355,10 +24639,21 @@
+@@ -20355,10 +24651,21 @@
  			if (["http:", "https:"].includes(destination.protocol)) shell.openExternal(url);
  		}
  	});
@@ -4941,7 +4953,7 @@ diff --git a/lib/main.js b/lib/main.js
  	pruneCrashReports(app.getPath("logs"));
  	const journalDirectory = process.env.DSH_DESKTOP_UPDATE_JOURNAL_DIR;
  	const updateJournal = journalDirectory === void 0 ? void 0 : new DesktopUpdateJournal(journalDirectory, app.getVersion());
-@@ -20382,12 +24677,20 @@
+@@ -20382,12 +24689,20 @@
  	};
  	let quitting = false;
  	let startup;
@@ -4964,7 +4976,7 @@ diff --git a/lib/main.js b/lib/main.js
  		return host.resolveDragResource(address, signal);
  	});
  	const fileDragCleanups = new Set([installFileDrag()]);
-@@ -20419,11 +24722,6 @@
+@@ -20419,11 +24734,6 @@
  	let mandatoryUI;
  	let policyAuth;
  	let tray;
@@ -4976,7 +4988,7 @@ diff --git a/lib/main.js b/lib/main.js
  	let sessionEnding = false;
  	const isQuitting = () => quitting;
  	const currentMainWindow = () => mainWindow;
-@@ -20472,6 +24770,19 @@
+@@ -20472,6 +24782,19 @@
  	let hostUrl;
  	let hostCookie;
  	const browserGuests = new DesktopBrowserGuests(() => hostUrl);
@@ -4996,7 +5008,7 @@ diff --git a/lib/main.js b/lib/main.js
  	let injections = [];
  	let welcomeBackend;
  	let reportedLaunch = false;
-@@ -20493,8 +24804,7 @@
+@@ -20493,8 +24816,7 @@
  	let previousAccountStatus;
  	const assertProductSender = (event) => {
  		assertDesktopSender(event, ["app"]);
@@ -5006,7 +5018,7 @@ diff --git a/lib/main.js b/lib/main.js
  	};
  	let navigation;
  	const navigateMain = (url) => {
-@@ -20506,42 +24816,72 @@
+@@ -20506,42 +24828,72 @@
  			url,
  			promise: Promise.resolve()
  		};
@@ -5092,7 +5104,7 @@ diff --git a/lib/main.js b/lib/main.js
  				analyticsEnabled = await welcomeBackend.analyticsEnabled().catch(() => false);
  				if (!reportedLaunch) {
  					reportedLaunch = true;
-@@ -20586,19 +24926,30 @@
+@@ -20586,19 +24938,30 @@
  			stop: async () => {
  				analyticsEnabled = false;
  				stopAccount?.();
@@ -5125,7 +5137,7 @@ diff --git a/lib/main.js b/lib/main.js
  		else if (!shuttingDown) backendReady = state.phase === "ready";
  	});
  	const updateErrors = /* @__PURE__ */ new WeakMap();
-@@ -20643,7 +24994,7 @@
+@@ -20643,7 +25006,7 @@
  				const recovery = hostReady.then(async () => {
  					if (quitting) return;
  					navigation = void 0;
@@ -5134,7 +5146,7 @@ diff --git a/lib/main.js b/lib/main.js
  					if (backend.host !== void 0) updateJournal?.action("workspace-ready");
  				});
  				workspaceRecovery = recovery;
-@@ -20673,11 +25024,16 @@
+@@ -20673,11 +25036,16 @@
  		}
  	};
  	const reconcileBackend = () => {
@@ -5153,7 +5165,7 @@ diff --git a/lib/main.js b/lib/main.js
  			if (backend.host !== void 0) await openInitialWindow();
  			if (backend.host !== void 0) updateJournal?.action("workspace-ready");
  		})().catch((error) => {
-@@ -20685,9 +25041,16 @@
+@@ -20685,9 +25053,16 @@
  			reportFatal(error, "main");
  			throw error;
  		}).finally(() => {
@@ -5172,7 +5184,7 @@ diff --git a/lib/main.js b/lib/main.js
  	};
  	const manifest = JSON.parse(await readFile$1(join(app.getAppPath(), "package.json"), "utf8"));
  	const packagedChannel = desktopUpdateChannel(manifest);
-@@ -20698,6 +25061,206 @@
+@@ -20698,6 +25073,206 @@
  		packagedChannel,
  		changing: false,
  		...initialChannel.kind === "error" ? { error: configurationFailure(initialChannel.error) } : {}
@@ -5379,7 +5391,7 @@ diff --git a/lib/main.js b/lib/main.js
  	};
  	const updates = new DesktopUpdateCoordinator(publishUpdate, async () => {
  		await commandManager.idle();
-@@ -20789,27 +25352,187 @@
+@@ -20789,27 +25364,187 @@
  			resolve();
  		});
  	});
@@ -5573,7 +5585,7 @@ diff --git a/lib/main.js b/lib/main.js
  		if (backend.host === void 0 || hostUrl === void 0) throw new Error("Desktop Host is unavailable");
  		return {
  			injections,
-@@ -20822,6 +25545,42 @@
+@@ -20822,6 +25557,42 @@
  		if (typeof message !== "string") throw new Error("dsh desktop: startup failure must be text");
  		reportFatal(new Error(message), "web-boot");
  	});
@@ -5616,7 +5628,7 @@ diff --git a/lib/main.js b/lib/main.js
  	ipcMain.handle(DESKTOP_IPC.browserAcquire, (event, workspace) => {
  		assertProductSender(event);
  		return browserGuests.acquire(event.sender, workspace);
-@@ -20830,7 +25589,7 @@
+@@ -20830,7 +25601,7 @@
  		assertProductSender(event);
  		return browserGuests.release(event.sender, lease);
  	});
@@ -5625,7 +5637,7 @@ diff --git a/lib/main.js b/lib/main.js
  		if (hostUrl === void 0 || hostCookie === void 0 || details.webContentsId !== mainWindow?.webContents.id) {
  			callback({});
  			return;
-@@ -20853,6 +25612,22 @@
+@@ -20853,6 +25624,22 @@
  			"sec-fetch-site": "same-origin"
  		} });
  	});
@@ -5648,7 +5660,7 @@ diff --git a/lib/main.js b/lib/main.js
  	const assertMainApplication = (event) => {
  		const owner = mainWindow;
  		if (owner === void 0 || event.sender !== owner.webContents || event.senderFrame !== owner.webContents.mainFrame || !event.senderFrame.url.startsWith("dsh-app://app/")) throw new Error("Rejected Platform command");
-@@ -20880,12 +25655,12 @@
+@@ -20880,12 +25667,12 @@
  		platformView.close();
  	});
  	ipcMain.on(DESKTOP_IPC.nativeThemeSet, (event, source) => {
@@ -5665,7 +5677,7 @@ diff --git a/lib/main.js b/lib/main.js
  		if (welcomeBackend === void 0) throw new Error("desktop welcome: backend unavailable");
  		return {
  			languages: systemLanguages,
-@@ -20894,9 +25669,8 @@
+@@ -20894,9 +25681,8 @@
  	});
  	ipcMain.on(DESKTOP_IPC.localeChanged, (event, next) => {
  		const window = mainWindow;
@@ -5676,7 +5688,7 @@ diff --git a/lib/main.js b/lib/main.js
  		if (current.id === locale.id) return;
  		locale = current;
  		platformView.notifyLocaleChanged();
-@@ -20968,6 +25742,7 @@
+@@ -20968,6 +25754,7 @@
  	});
  	ipcMain.handle(DESKTOP_IPC.onboardingApiKey, async (event) => {
  		assertProductSender(event);
@@ -5684,7 +5696,7 @@ diff --git a/lib/main.js b/lib/main.js
  		return (await readWelcomeState()).hasApiKey;
  	});
  	ipcMain.on(DESKTOP_IPC.onboardingActive, (event, active) => {
-@@ -21053,7 +25828,6 @@
+@@ -21053,7 +25840,6 @@
  	};
  	let promptOperation;
  	let policyAuthenticationQueued = false;
@@ -5692,7 +5704,7 @@ diff --git a/lib/main.js b/lib/main.js
  	const openUpdatePrompt = (manual = false) => {
  		if (channelState?.error !== void 0) return showConfigurationError();
  		if (authenticationOperation !== void 0) {
-@@ -21249,6 +26023,13 @@
+@@ -21249,6 +26035,13 @@
  	const applicationIconPath = development ? join(app.getAppPath(), "resources", "icon-windows.png") : join(process.resourcesPath, "icon.png");
  	app.setAboutPanelOptions({
  		applicationName: "DeepSeek Harness",
@@ -5706,7 +5718,7 @@ diff --git a/lib/main.js b/lib/main.js
  		applicationVersion: app.getVersion(),
  		version: "",
  		copyright: "",
-@@ -21370,6 +26151,14 @@
+@@ -21370,11 +26163,20 @@
  		role: "toggleDevTools",
  		visible: false
  	}, devToolsF12Shortcut];
@@ -5721,7 +5733,13 @@ diff --git a/lib/main.js b/lib/main.js
  	const refreshApplicationMenu = () => {
  		Menu.setApplicationMenu(Menu.buildFromTemplate(process.platform === "win32" ? windowsDevToolsShortcuts : [{
  			label: darwin ? app.name : currentDesktopLocale().messages.application,
-@@ -21411,16 +26200,17 @@
+ 			submenu: [...applicationItems(), devToolsF12Shortcut]
+ 		}, ...platformMenus()]));
++		if (process.platform === "win32") aiWebWindows.restoreMenus();
+ 		tray?.relabel();
+ 	};
+ 	refreshApplicationMenu();
+@@ -21411,16 +26213,17 @@
  		...process.platform === "win32" ? { icon: nativeImage.createFromPath(trayIconPath) } : {}
  	});
  	if (process.platform === "win32") {
@@ -5743,7 +5761,7 @@ diff --git a/lib/main.js b/lib/main.js
  				}
  			});
  			const items = name === "application" ? applicationItems() : [
-@@ -21434,19 +26224,25 @@
+@@ -21434,19 +26237,25 @@
  				{ type: "separator" },
  				editItem(currentDesktopLocale().messages.selectAll, "A", ["control"], "Ctrl+A")
  			];
@@ -5773,7 +5791,7 @@ diff --git a/lib/main.js b/lib/main.js
  			const validColor = (value) => typeof value === "string" && /^(?:#[\da-f]{3,8}|rgba?\([\d.,%\s]+\))$/iu.test(value);
  			if (validColor(color) && validColor(symbolColor)) mainWindow.setTitleBarOverlay({
  				color,
-@@ -21463,10 +26259,10 @@
+@@ -21463,10 +26272,10 @@
  		} else window.hide();
  	};
  	const createMainWindow = () => {
@@ -5786,7 +5804,7 @@ diff --git a/lib/main.js b/lib/main.js
  		window.on("focus", automaticCheck);
  		window.on("close", (event) => {
  			if (quitting || shellInstallerOwnsQuit || sessionEnding) return;
-@@ -21475,11 +26271,7 @@
+@@ -21475,11 +26284,7 @@
  				updateDialog.focus();
  				return;
  			}
@@ -5799,7 +5817,7 @@ diff --git a/lib/main.js b/lib/main.js
  		});
  		if (process.platform === "win32") window.on("session-end", () => {
  			sessionEnding = true;
-@@ -21514,11 +26306,15 @@
+@@ -21514,11 +26319,15 @@
  	const enterWorkspace = async ({ activate = true } = {}) => {
  		if (quitting) return;
  		const window = mainWindow ?? createMainWindow();
@@ -5817,7 +5835,7 @@ diff --git a/lib/main.js b/lib/main.js
  		enteredWorkspace = true;
  		if (welcomeWindow !== void 0) {
  			welcomeWindow.close();
-@@ -21538,6 +26334,7 @@
+@@ -21538,6 +26347,7 @@
  		if (welcomeWindow !== void 0 && !welcomeWindow.isDestroyed()) {
  			if (!welcomeWindow.isVisible()) track("auth_page_view", {});
  			welcomeWindow.show();
@@ -5825,7 +5843,7 @@ diff --git a/lib/main.js b/lib/main.js
  			welcomeWindow.focus();
  			return Promise.resolve();
  		}
-@@ -21592,21 +26389,35 @@
+@@ -21592,21 +26402,35 @@
  		return openingWelcome;
  	};
  	const openInitialWindow = async () => {
@@ -5864,7 +5882,7 @@ diff --git a/lib/main.js b/lib/main.js
  	};
  	focusPrimaryWindow = () => {
  		if (quitting) return;
-@@ -21632,10 +26443,10 @@
+@@ -21632,10 +26456,10 @@
  		window.show();
  		window.focus();
  	};
@@ -5877,7 +5895,7 @@ diff --git a/lib/main.js b/lib/main.js
  	});
  	app.on("activate", (_event, hasVisibleWindows) => {
  		if (!hasVisibleWindows) focusPrimaryWindow();
-@@ -21678,6 +26489,8 @@
+@@ -21678,6 +26502,8 @@
  	};
  	app.on("before-quit", (event) => {
  		if (shellInstallerOwnsQuit) {
@@ -5886,7 +5904,7 @@ diff --git a/lib/main.js b/lib/main.js
  			shuttingDown = true;
  			quitConfirmation.dispose();
  			backgroundNotice?.dispose();
-@@ -21702,7 +26515,7 @@
+@@ -21702,7 +26528,7 @@
  				finishQuit();
  				return;
  			}

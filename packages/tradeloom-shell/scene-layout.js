@@ -1,4 +1,19 @@
+import { createHash } from 'node:crypto'
 import { ROLE_IDS } from './roles.js'
+
+// The saved configuration is owned by the Host state transaction, not a renderer
+// file. Hash the complete validated document so concurrent editors cannot silently
+// overwrite each other; role/session bindings remain separate state.
+export function resolveSceneConfiguration(defaults, state) {
+  return validateSceneConfig(structuredClone(state?.sceneConfiguration?.value ?? defaults))
+}
+
+export function sceneConfigurationRevision(config) {
+  const stable = value => Array.isArray(value) ? value.map(stable)
+    : value && typeof value === 'object'
+      ? Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])])) : value
+  return createHash('sha256').update(JSON.stringify(stable(validateSceneConfig(config)))).digest('hex')
+}
 
 export const BUSINESS_ROUTE_PATHS = Object.freeze(['/home', '/products', '/agent-center', '/artifacts', '/runs'])
 export const PANEL_TYPES = Object.freeze(['business-iframe', 'placeholder', 'native-chat', 'native-workspace', 'erpnext-status'])

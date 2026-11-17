@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import { validateArtifactRangeStart, validateArtifactEvidence } from './workflow-artifact-source.js'
 import { verifyWorkflowDefinition } from './workflow-definition.js'
+import { executeNativeTool } from './workflow-native-command-attribution.js'
 import { createStateStore, getRoleBindingRevision, resolveOwnedHome } from './state.js'
 import { submissionIdentity } from './workflow-native-service.js'
 import { ROLE_PRESETS } from './roles.js'
@@ -284,7 +285,7 @@ export function createNativeWorkflowAccess(ctx, dependencies = {}) {
           definitionRevision: args.expectedDefinitionRevision, bindingRevision: args.expectedBindingRevision },
         isCurrent: () => ctx.agents.get(agent.id) === agent && agent.session === session }
       result = await authority.runCommand(intent)
-    } else result = await ctx.tools.execute(request)
+    } else result = await executeNativeTool(ctx.tools, request)
     if (result?.isError) throw fail(safe(result.error?.info?.code ?? result.error?.code))
     const value = result?.value
     if (!record(value) || value.ok !== true || typeof value.data !== 'string') throw fail(safe(value?.error_code))

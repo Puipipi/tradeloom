@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto'
+import { executeNativeTool } from './workflow-native-command-attribution.js'
+import { scopeOf } from '@deepseek-ai/dsh-scope'
 import { ARTIFACT_EVIDENCE_SCHEMA, MAX_DECLARATIONS, validateArtifactEvidence, validateArtifactRangeStart } from './workflow-artifact-source.js'
 
 const TOOL_NAME = 'subagent'
@@ -47,6 +49,8 @@ function terminalStatus(stopReason) {
 export function createWorkflowNativeExecutor(ctx, {
   resolveBinding,
   recordChildAck,
+  executeTool = input => executeNativeTool(ctx.tools, input),
+  createLifecycleScope,
   toolName = TOOL_NAME,
   timeoutMs = DEFAULT_TIMEOUT_MS,
   createCallId = randomUUID,
@@ -56,6 +60,8 @@ export function createWorkflowNativeExecutor(ctx, {
   }
   if (typeof resolveBinding !== 'function') throw new TypeError('trusted Host binding resolver is required')
   if (recordChildAck !== undefined && typeof recordChildAck !== 'function') throw new TypeError('recordChildAck must be a Host callback')
+  if (typeof executeTool !== 'function') throw new TypeError('executeTool must be a Host callback')
+  if (typeof createLifecycleScope !== 'function') throw new TypeError('createLifecycleScope must be a Host callback')
   if (typeof toolName !== 'string' || toolName !== TOOL_NAME) {
     throw new TypeError('only the configured official subagent tool is supported')
   }
@@ -219,7 +225,7 @@ export function createWorkflowNativeExecutor(ctx, {
     })
 
     const acceptStart = info => {
-      if (!info || typeof info.id !== 'string' || typeof info.runId !== 'string') return
+      if (!info || typeof info.id !== 'string' || typeof info.runId !== 'string' || info.parentSessionId !== binding.sessionId) return
       starts.set(pairKey(info.id, info.runId), info)
       // Public event payload has no range. Capture next-seq synchronously,
       // before this runtime version admits the initial child message.
@@ -256,7 +262,7 @@ export function createWorkflowNativeExecutor(ctx, {
       }
     }
     const acceptEnd = info => {
-      if (!info || typeof info.id !== 'string' || typeof info.runId !== 'string') return
+      if (!info || typeof info.id !== 'string' || typeof info.runId !== 'string' || info.parentSessionId !== binding.sessionId) return
       const key = pairKey(info.id, info.runId)
       if (!starts.has(key) || ends.has(key)) return
       const capture = artifactCaptures.get(key)
@@ -298,35 +304,41 @@ export function createWorkflowNativeExecutor(ctx, {
       return result?.kind === 'deadline' ? null : result
     }
 
-    // Do not set global:true: Cordis documents that it bypasses scoped event
-    // filtering and would expose other parents' child lifecycle events here.
-    const disposeStart = parent.ctx.on('subagent/start', acceptStart)
-    let disposeEnd
+    // The public lifecycle carrier filters both the service namespace and Agent.
+    // Keep the existing Agent scope chain; own only this attempt's observer fiber.
+    const lifecycleScope = createLifecycleScope(parent)
+    if (scopeOf(lifecycleScope.ctx) !== parent) { await lifecycleScope.dispose(); throw fail('NATIVE_EVENTS_UNAVAILABLE', 'owned observer scope does not match the exact parent') }
+    let disposeStart, disposeEnd
     try {
-      disposeEnd = parent.ctx.on('subagent/end', acceptEnd)
+      disposeStart = lifecycleScope.ctx.on('subagent/start', acceptStart)
+      disposeEnd = lifecycleScope.ctx.on('subagent/end', acceptEnd)
     } catch (error) {
-      if (typeof disposeStart === 'function') disposeStart()
-      else disposeStart?.dispose?.()
+      try {
+        if (typeof disposeStart === 'function') disposeStart()
+        else disposeStart?.dispose?.()
+      } finally { await lifecycleScope.dispose() }
       throw error
     }
     let startDisposed = false
     let endDisposed = false
-    cleanup = () => {
+    cleanup = async () => {
       if (startDisposed) return
       startDisposed = true
-      controller.signal.removeEventListener('abort', onCombinedAbort)
-      callerSignal.removeEventListener('abort', abortFromCaller)
-      if (deadlineTimer) clearTimeout(deadlineTimer)
-      for (const capture of artifactCaptures.values()) {
-        try { if (typeof capture.dispose === 'function') capture.dispose(); else capture.dispose?.dispose?.() } catch { /* Best-effort optional observer cleanup. */ }
-      }
-      if (typeof disposeStart === 'function') disposeStart()
-      else disposeStart?.dispose?.()
-      if (!endDisposed) {
-        endDisposed = true
-        if (typeof disposeEnd === 'function') disposeEnd()
-        else disposeEnd?.dispose?.()
-      }
+      try {
+        controller.signal.removeEventListener('abort', onCombinedAbort)
+        callerSignal.removeEventListener('abort', abortFromCaller)
+        if (deadlineTimer) clearTimeout(deadlineTimer)
+        for (const capture of artifactCaptures.values()) {
+          try { if (typeof capture.dispose === 'function') capture.dispose(); else capture.dispose?.dispose?.() } catch { /* Best-effort optional observer cleanup. */ }
+        }
+        if (typeof disposeStart === 'function') disposeStart()
+        else disposeStart?.dispose?.()
+        if (!endDisposed) {
+          endDisposed = true
+          if (typeof disposeEnd === 'function') disposeEnd()
+          else disposeEnd?.dispose?.()
+        }
+      } finally { await lifecycleScope.dispose() }
     }
     const abortFromCaller = () => controller.abort(callerSignal.reason)
     controller.signal.addEventListener('abort', onCombinedAbort, { once: true })
@@ -352,14 +364,19 @@ export function createWorkflowNativeExecutor(ctx, {
     const dispatchPromise = (async () => {
       try {
         toolCallId = createCallId()
-        return { kind: 'dispatch', result: await ctx.tools.execute({
+        const result = await executeTool({
           callId: toolCallId,
           name: toolName,
           arguments: { description: DESCRIPTION, prompt: binding.prompt, agent_preset: binding.agentPreset,
             ...(binding.modelRequest ? { provider: binding.modelRequest.provider, model: binding.modelRequest.model } : {}) },
           agent: parent,
           signal: controller.signal,
-        }) }
+        })
+        const value = result?.value
+        const childId = !result?.isError && isRecord(value) && value.kind === 'activation' && typeof value.name === 'string' && value.name
+          && typeof ctx.subagents?.resolveName === 'function'
+          ? await ctx.subagents.resolveName(parent, value.name) : null
+        return { kind: 'dispatch', result, childId }
       } catch (error) {
         return { kind: 'dispatch-error', error }
       }
@@ -368,8 +385,8 @@ export function createWorkflowNativeExecutor(ctx, {
     const candidatesFor = childId => [...starts.values()].filter(start => start.id === childId)
     const ackStart = outcome => {
       const value = outcome?.kind === 'dispatch' ? outcome.result?.value : undefined
-      if (!isRecord(value) || value.kind !== 'activation' || typeof value.subagentId !== 'string') return null
-      const candidates = candidatesFor(value.subagentId)
+      if (!isRecord(value) || value.kind !== 'activation' || typeof value.name !== 'string' || !value.name || typeof outcome.childId !== 'string') return null
+      const candidates = candidatesFor(outcome.childId)
       return candidates.length === 1 ? candidates[0] : null
     }
     const disposeAfterLateDispatch = () => {
@@ -387,10 +404,10 @@ export function createWorkflowNativeExecutor(ctx, {
           await waitForEnd(start, drainDeadline)
           clearTimeout(drainTimer)
         }
-        cleanup()
-      }).catch(error => {
+        await cleanup()
+      }).catch(async error => {
         cancelError = error
-        cleanup()
+        await cleanup()
       })
     }
 
@@ -439,7 +456,7 @@ export function createWorkflowNativeExecutor(ctx, {
       }
 
       const value = result.value
-      if (!isRecord(value) || value.kind !== 'activation' || typeof value.subagentId !== 'string') {
+      if (!isRecord(value) || value.kind !== 'activation' || typeof value.name !== 'string' || !value.name || typeof outcome.childId !== 'string') {
         return receipt({
           status: 'tool_error',
           errorCategory: 'INVALID_SUBAGENT_ACK',
@@ -447,12 +464,12 @@ export function createWorkflowNativeExecutor(ctx, {
         })
       }
 
-      const candidates = candidatesFor(value.subagentId)
+      const candidates = candidatesFor(outcome.childId)
       if (candidates.length !== 1) {
         return receipt({
           status: 'unknown',
           errorCategory: candidates.length === 0 ? 'SUBAGENT_START_EVENT_MISSING' : 'SUBAGENT_START_EVENT_AMBIGUOUS',
-          childId: value.subagentId,
+          childId: outcome.childId,
           terminalSource: 'unknown',
         })
       }
@@ -515,7 +532,7 @@ export function createWorkflowNativeExecutor(ctx, {
       })
     } finally {
       callerSignal.removeEventListener('abort', observeCallerAbort)
-      if (!retainListenersForLateDispatch) cleanup()
+      if (!retainListenersForLateDispatch) await cleanup()
     }
   }
 

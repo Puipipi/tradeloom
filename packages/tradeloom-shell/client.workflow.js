@@ -149,8 +149,10 @@ window.__ModuleLoader__.load({
         : !list.some(item => item.id === doc?.id) ? '请先保存工作流。'
           : !doc?.confirmed ? '请先确认工作流草稿。'
             : !Array.isArray(doc.nodes) || doc.nodes.length < 1 || doc.nodes.length > 40
-              || doc.nodes.some(node => node.kind !== 'agent' || typeof node.agent !== 'string' || !node.agent || node.agent === 'center')
-              ? '原生运行支持非中心助手节点；其他节点仍可模拟运行。' : ''
+              || !doc.nodes.some(node => node.kind === 'agent')
+              || doc.nodes.some(node => !['input', 'agent', 'review', 'output'].includes(node.kind)
+                || node.kind === 'agent' && (typeof node.agent !== 'string' || !node.agent || node.agent === 'center'))
+              ? '原生运行支持输入、非中心助手、人工确认和输出节点，且至少需要一个助手节点；其他节点仅可模拟运行。' : ''
       const nativeErrorText = code => ({
         center_session_not_live: '请先打开真实中心助手会话，再重新准备。',
         run_parent_mismatch: '中心绑定已变化，已停止旧记录查询；请重新准备。',
@@ -224,7 +226,14 @@ window.__ModuleLoader__.load({
           const nodes = prepared?.graph?.nodes ?? (prepared?.node ? [prepared.node] : [])
           const graph = prepared?.graph
           const sameNodes = (left, right) => Array.isArray(left) && Array.isArray(right) && left.length === right.length
-            && left.every((node, index) => node?.id === right[index]?.id && node.roleId === right[index]?.roleId && node.agentPreset === right[index]?.agentPreset)
+            && left.every((node, index) => node && right[index]
+              && JSON.stringify(Object.entries(node).sort()) === JSON.stringify(Object.entries(right[index]).sort()))
+          const matchesDefinition = (node, definition) => node?.id === definition.id && Object.keys(node).length === 3
+            && (definition.kind === 'agent'
+              ? node.roleId === definition.agent && typeof node.agentPreset === 'string' && Boolean(node.agentPreset)
+                && !Object.hasOwn(node, 'kind') && !Object.hasOwn(node, 'executionMode')
+              : ['input', 'output', 'review'].includes(definition.kind) && node.kind === definition.kind
+                && node.executionMode === (definition.kind === 'review' ? 'user-questions' : 'local'))
           if (prepared?.workflowId !== doc.id || prepared.eligible !== true || prepared.confirmed !== true
             || prepared.executionMode !== 'native_dsh' || !/^sha256:[a-f0-9]{64}$/.test(prepared.definitionRevision ?? '')
             || !/^(?:0|[1-9][0-9]{0,63})$/.test(prepared.bindingRevision ?? '')
@@ -232,10 +241,10 @@ window.__ModuleLoader__.load({
             || typeof prepared.center.sessionId !== 'string' || !prepared.center.sessionId
             || typeof prepared.center.workspaceId !== 'string' || !prepared.center.workspaceId
             || !Array.isArray(nodes) || nodes.length !== doc.nodes.length
-            || nodes.some((node, index) => node?.id !== doc.nodes[index].id || node.roleId !== doc.nodes[index].agent || typeof node.agentPreset !== 'string' || !node.agentPreset)
+            || nodes.some((node, index) => !matchesDefinition(node, doc.nodes[index]))
             || new Set(nodes.map(node => node.id)).size !== nodes.length
             || (graph ? graph.nodeCount !== nodes.length || graph.edgeCount !== doc.edges.length || graph.maxConcurrent !== 1
-              || JSON.stringify(graph.roleIds) !== JSON.stringify([...new Set(nodes.map(node => node.roleId))])
+              || JSON.stringify(graph.roleIds) !== JSON.stringify([...new Set(nodes.filter(node => typeof node.roleId === 'string').map(node => node.roleId))])
               || (nodes.length === 1 ? !sameNodes([prepared.node], nodes) : Object.hasOwn(prepared, 'node') || !sameNodes(prepared.nodes, nodes))
               : nodes.length !== 1 || doc.edges.length !== 0)) throw Object.assign(new Error('prepare'), { code: 'invalid_native_response' })
           patchNative({ prepared: { ...prepared, nodes }, phase: 'confirming' })
@@ -247,16 +256,57 @@ window.__ModuleLoader__.load({
             || !Number.isSafeInteger(node.attempt) || node.attempt < 0 || typeof node.settled !== 'boolean' || typeof node.succeeded !== 'boolean') return false
           if (!node.settled) return node.succeeded === false && node.terminalReceipt == null
           const receipt = node.terminalReceipt
-          if (!receipt || receipt.workflowRunId !== value.id || receipt.nodeId !== node.id || !Number.isSafeInteger(receipt.sequence) || receipt.sequence < 1) return false
+          if (!receipt || receipt.workflowRunId !== value.id || receipt.nodeId !== node.id) return false
+          const childless = node.attempt === 0 && receipt.attempt === 0
+            && ['childId', 'nativeRunId', 'toolCallId'].every(key => node[key] == null)
+          if (receipt.source === 'workflow/local') {
+            if (!['input', 'output'].includes(node.kind) || node.executionSource !== 'workflow/local' || !childless
+              || !Number.isSafeInteger(receipt.sequence) || receipt.sequence < 1) return false
+            if (receipt.status === 'failed') return node.status === 'failed' && node.succeeded === false
+              && typeof receipt.reason === 'string' && Boolean(receipt.reason) && node.localReceipt == null
+            const local = node.localReceipt
+            return receipt.status === 'completed' && node.status === 'done' && node.succeeded === true
+              && local?.source === 'workflow/local' && local.mode === node.kind
+              && local.workflowRunId === value.id && local.workflowId === value.workflowId && local.nodeId === node.id
+              && local.definitionRevision === value.definitionRevision && local.bindingRevision === value.bindingRevision
+              && local.attempt === 0 && ['requestId', 'childId', 'nativeRunId', 'toolCallId'].every(key => local[key] === null)
+              && Array.isArray(local.upstream) && typeof local.output === 'string' && node.output === local.output
+          }
+          if (receipt.source === 'dsh-user-questions') {
+            const unavailable = receipt.status === 'failed' && node.reviewStatus === 'unavailable'
+            const questionId = unavailable && node.questionId == null ? receipt.questionId : node.questionId
+            if (node.kind !== 'review' || node.executionSource !== 'dsh-user-questions' || !childless
+              || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(questionId ?? '')
+              || receipt.questionId !== questionId) return false
+            if (receipt.status === 'approved' || receipt.status === 'rejected') {
+              const review = node.reviewReceipt, approved = receipt.status === 'approved'
+              return node.reviewStatus === receipt.status && node.status === (approved ? 'done' : 'failed')
+                && node.succeeded === approved && review?.source === 'dsh-user-questions' && review.decision === receipt.status
+                && review.questionId === node.questionId && review.workflowRunId === value.id && review.workflowId === value.workflowId
+                && review.nodeId === node.id && review.sessionId === value.sessionId
+                && review.definitionRevision === value.definitionRevision && review.bindingRevision === value.bindingRevision
+                && review.attempt === 0 && ['requestId', 'childId', 'nativeRunId', 'toolCallId'].every(key => review[key] === null)
+                && review.selected === (approved ? '批准' : '拒绝') && typeof review.output === 'string' && node.output === review.output
+            }
+            return node.succeeded === false && (receipt.status === 'interrupted'
+              ? node.status === 'interrupted' && node.reviewStatus === 'interrupted'
+              : receipt.status === 'failed' && node.status === 'failed' && node.reviewStatus === 'unavailable')
+          }
           if (receipt.source === 'subagent/end') {
+            const definitionNode = doc.nodes.find(definition => definition.id === node.id)
+            if (definitionNode?.kind !== 'agent' || node.roleId !== definitionNode.agent) return false
             const status = receipt.stopReason === 'completed' ? 'done' : receipt.stopReason === 'aborted' ? 'interrupted' : 'failed'
             const receiptStatus = status === 'done' ? 'completed' : status
             return typeof receipt.stopReason === 'string' && Boolean(receipt.stopReason) && receipt.status === receiptStatus && node.status === status
+              && Number.isSafeInteger(receipt.sequence) && receipt.sequence > 0
               && node.attempt > 0 && receipt.attempt === node.attempt
               && ['childId', 'nativeRunId', 'toolCallId'].every(key => typeof node[key] === 'string' && node[key] && receipt[key] === node[key])
               && node.succeeded === (status === 'done')
           }
-          return receipt.source === 'native-run-journal' && receipt.status === 'skipped' && receipt.reason === 'UPSTREAM_FAILED'
+          return receipt.source === 'native-run-journal' && receipt.status === 'skipped'
+            && (receipt.reason === 'UPSTREAM_FAILED' || node.kind === 'review' && node.executionSource === 'dsh-user-questions'
+              && node.reviewStatus === 'blocked' && node.error === 'UPSTREAM_FAILED' && !Object.hasOwn(receipt, 'reason'))
+            && Number.isSafeInteger(receipt.sequence) && receipt.sequence > 0
             && node.status === 'skipped' && node.attempt === 0 && node.succeeded === false
             && ['childId', 'nativeRunId', 'toolCallId'].every(key => node[key] == null)
             && Array.isArray(receipt.blockedBy) && receipt.blockedBy.length > 0
@@ -272,8 +322,8 @@ window.__ModuleLoader__.load({
           || (expected?.definitionRevision && value.definitionRevision !== expected.definitionRevision)
           || (expected?.bindingRevision && value.bindingRevision !== expected.bindingRevision)
           || (expected?.nodes && (value.nodes.length !== expected.nodes.length || !expected.nodes.every(node => value.nodes.some(actual => actual.id === node.id
-            && (node.roleId == null || actual.roleId == null || actual.roleId === node.roleId)
-            && (node.agentPreset == null || actual.agentPreset == null || actual.agentPreset === node.agentPreset)))))
+            && (node.kind == null ? actual.roleId === node.roleId && actual.agentPreset === node.agentPreset
+              : actual.kind === node.kind && actual.executionSource === (node.kind === 'review' ? 'dsh-user-questions' : 'workflow/local'))))))
           || value.settled !== value.nodes.every(node => node.settled)
           || (value.settled && (!Array.isArray(value.terminalReceipt) || value.terminalReceipt.length !== value.nodes.length
             || value.terminalReceipt.some((receipt, index) => !receipt || typeof receipt !== 'object'
@@ -617,8 +667,8 @@ window.__ModuleLoader__.load({
         })
       }
 
-      function addNode(kind) {
-        const base = kind === 'agent' ? { agent: catalog?.agents[1]?.id ?? 'center', model: null } : kind === 'external' ? { platform: '免费网页模型' } : {}
+      function addNode(kind, agentId) {
+        const base = kind === 'agent' ? { agent: agentId ?? catalog?.agents[1]?.id ?? 'center', model: null } : kind === 'external' ? { platform: '免费网页模型' } : {}
         const id = `${kind}-${shortId().slice(-4)}`
         const position = { x: Math.round(-view.x / view.scale + 80 + doc.nodes.length * 18), y: Math.round(-view.y / view.scale + 80 + doc.nodes.length * 14) }
         edit({ ...doc, nodes: [...doc.nodes, { id, kind, title: KIND_DEFAULT_TITLE[kind], instruction: '', ...base, position }] })
@@ -691,8 +741,10 @@ window.__ModuleLoader__.load({
         && currentNativeRun.definitionRevision === projection.definitionRevision && currentNativeRun.bindingRevision === projection.bindingRevision
         && Array.isArray(currentNativeRun.nodes) && currentNativeRun.nodes.length === doc.nodes.length
         && currentNativeRun.nodes.every(node => projection.nodes.some(expected => node.id === expected.id
-          && node.roleId === expected.roleId && node.agentPreset === expected.agentPreset
-          && doc.nodes.some(current => current.id === node.id && current.agent === expected.roleId)))
+          && (expected.kind == null ? node.roleId === expected.roleId && node.agentPreset === expected.agentPreset
+            && doc.nodes.some(current => current.id === node.id && current.kind === 'agent' && current.agent === expected.roleId)
+            : node.kind === expected.kind && node.executionSource === (expected.kind === 'review' ? 'dsh-user-questions' : 'workflow/local')
+              && doc.nodes.some(current => current.id === node.id && current.kind === expected.kind))))
       const displayNativeState = node => {
         const status = node.status === 'done' ? node.settled && node.succeeded ? 'done' : 'unknown'
           : ['failed', 'interrupted', 'cancelled', 'skipped'].includes(node.status) ? node.settled && !node.succeeded ? node.status : 'unknown'
@@ -765,11 +817,13 @@ window.__ModuleLoader__.load({
           : nativeLabels[native.phase]),
         native.error && h('p', { role: 'alert' }, native.error),
         native.prepared && h('div', { className: 'tl-wf-native-summary' },
-          h('p', null, `${native.prepared.title} · ${native.prepared.nodes.length} 个助手节点`),
+          h('p', null, `${native.prepared.title} · ${native.prepared.nodes.length} 个节点`),
           h('p', null, native.prepared.graph ? `${native.prepared.graph.edgeCount} 条连线 · 实际并发上限 ${native.prepared.graph.maxConcurrent}` : '单节点执行'),
-          h('ul', null, native.prepared.nodes.map(node => h('li', { key: node.id }, `${nativeRoleLabel(node.roleId)} · 节点 ${node.id}`))),
+          h('ul', null, native.prepared.nodes.map(node => h('li', { key: node.id }, `${node.kind ? KIND_DEFAULT_TITLE[node.kind] : nativeRoleLabel(node.roleId)} · 节点 ${node.id}`))),
           h('details', null, h('summary', null, '确认详情'),
-            native.prepared.nodes.map(node => h('p', { key: node.id }, `节点 ${node.id} · 角色 ${node.roleId} · 预设 ${node.agentPreset}`)),
+            native.prepared.nodes.map(node => h('p', { key: node.id }, node.kind
+              ? `节点 ${node.id} · ${KIND_DEFAULT_TITLE[node.kind]} · ${node.executionMode === 'local' ? '本地执行' : '人工确认'}`
+              : `节点 ${node.id} · 角色 ${node.roleId} · 预设 ${node.agentPreset}`)),
             h('p', null, `中心会话 ${native.prepared.center.sessionId} · 工作区 ${native.prepared.center.workspaceId}`),
             h('p', null, `定义 ${native.prepared.definitionRevision}`), h('p', null, `绑定 ${native.prepared.bindingRevision}`))),
         native.phase === 'confirming' && h('button', { type: 'button', onClick: submitNative }, '确认并启动真实原生执行'),
@@ -846,17 +900,20 @@ window.__ModuleLoader__.load({
       }
 
       const toolbar = h('div', { className: 'tl-wf-toolbar', role: 'toolbar', 'aria-label': '工作流操作', inert: draft ? '' : undefined },
+        h('div', { className: 'tl-wf-primary' },
         h('select', {
           'aria-label': '选择工作流', value: list.some(item => item.id === doc.id) ? doc.id : '',
           onChange: event => event.target.value && open(event.target.value),
         }, !list.some(item => item.id === doc.id) && h('option', { value: '' }, `${doc.title}（未保存）`),
           list.map(item => h('option', { key: item.id, value: item.id }, `${item.source === 'agent' ? '🤖 ' : ''}${item.title}${item.confirmed ? '' : '（待确认）'}`))),
+        h('button', { type: 'button', onClick: newWorkflow, disabled: editingRun }, '新建'),
+        h('button', { type: 'button', onClick: prepareNative, disabled: nativeBusy || Boolean(nativeEligibility), title: nativeEligibility || '准备真实原生执行，核对后显式确认', ref: nativeTrigger }, '开始…'),
         h('button', { type: 'button', onClick: save, disabled: editingRun }, dirty ? '保存*' : '保存'),
+        h('button', { type: 'button', onClick: listNative, disabled: nativeBusy, title: '查询真实原生运行记录' }, '历史'),
         h('details', { className: 'tl-wf-doc-menu', onToggle: placeToolbarMenu },
           h('summary', { 'aria-label': '工作流文档操作', title: '重命名、新建、确认草稿、删除' }, '⋯'),
           h('div', { className: 'tl-wf-doc-actions', role: 'group', 'aria-label': '工作流文档操作菜单' },
             h('label', null, '工作流名称', h('input', { 'aria-label': '工作流名称', value: doc.title, disabled: editingRun, onChange: event => edit({ ...doc, title: event.target.value }) })),
-            h('button', { type: 'button', onClick: event => { newWorkflow(); event.currentTarget.closest('details').open = false } }, '新建'),
             !doc.confirmed && h('button', { type: 'button', className: 'is-primary', onClick: confirm }, '确认草稿'),
             h('button', { type: 'button', onClick: remove, disabled: editingRun || !list.some(item => item.id === doc.id) }, '删除'))),
         h('details', { className: 'tl-wf-execution-menu', onToggle: placeToolbarMenu },
@@ -865,18 +922,23 @@ window.__ModuleLoader__.load({
             h('p', { className: 'tl-wf-execution-note' }, '模拟执行未连接真实 Agent/外部平台；模拟运行记录仅在当前窗口内存保留 30 条。'),
             active ? h('button', { type: 'button', className: 'is-danger', onClick: closeMenuAfter(cancel) }, '停止')
               : h('button', { type: 'button', className: 'is-primary', onClick: closeMenuAfter(start), disabled: !doc.confirmed }, '▶ 模拟运行'),
-            h('button', { type: 'button', onClick: closeMenuAfter(prepareNative), disabled: nativeBusy || Boolean(nativeEligibility), title: nativeEligibility || '准备真实原生执行，核对节点与连线' }, '原生运行…'),
-            h('button', { type: 'button', onClick: closeMenuAfter(listNative), disabled: nativeBusy }, '原生记录'))),
+            h('p', { className: 'tl-wf-execution-note' }, '真实执行请使用上方“开始…”，准备后仍需明确确认。'))),
         h('span', { className: `tl-wf-runstate${nativeCanvas ? ' tl-wf-source' : ''}`, role: 'status', 'aria-live': 'polite' },
           nativeCanvas ? `原生运行 · ${nativeGraphMatches ? '当前返回状态' : '等待状态核验'}`
-            : `模拟执行 · ${doc.source === 'agent' && !doc.confirmed ? '草稿待确认' : run ? RUN_LABEL[run.status] ?? run.status : '未运行'}`),
-        h('details', { className: 'tl-wf-kinds', onToggle: placeToolbarMenu },
-          h('summary', { 'aria-label': '添加节点', title: '添加输入、助手、人工确认、网页平台或输出节点' }, '＋', h('span', { className: 'tl-wf-kind-label' }, ' 节点')),
-          h('div', { className: 'tl-wf-kind-menu', role: 'group', 'aria-label': '添加节点' },
-          (catalog?.kinds ?? []).map(kind => h('button', {
-            key: kind.kind, type: 'button', disabled: editingRun, onClick: event => { addNode(kind.kind); event.currentTarget.closest('details').open = false },
-            title: `添加${kind.label}节点`, style: { '--tl-wf-color': kind.color },
-          }, h('span', { 'aria-hidden': true }, kind.icon), ` ${kind.label}`)))),
+            : `模拟执行 · ${doc.source === 'agent' && !doc.confirmed ? '草稿待确认' : run ? RUN_LABEL[run.status] ?? run.status : '未运行'}`)),
+        h('div', { className: 'tl-wf-categories', role: 'group', 'aria-label': '业务节点分类' },
+          (catalog?.kinds ?? []).map(kind => h('details', {
+            key: kind.kind, className: 'tl-wf-category', onToggle: placeToolbarMenu,
+            onMouseEnter: event => { event.currentTarget.open = true },
+            onMouseLeave: event => { if (!event.currentTarget.contains(document.activeElement)) event.currentTarget.open = false },
+            onBlur: event => { if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false },
+          }, h('summary', { title: kind.kind === 'external' ? '外部平台：仅模拟/说明，原生不可运行' : `添加${kind.label}节点` }, kind.label),
+          h('div', { className: 'tl-wf-kind-menu', role: 'group', 'aria-label': kind.label },
+            (kind.kind === 'agent' ? catalog.agents : [kind]).map(item => h('button', {
+              key: item.id ?? item.kind, type: 'button', disabled: editingRun,
+              onClick: event => { addNode(kind.kind, item.id); event.currentTarget.closest('details').open = false },
+              title: kind.kind === 'external' ? '仅模拟/说明，原生不可运行' : `添加${item.label}节点`,
+            }, h('span', { 'aria-hidden': true }, item.icon ?? kind.icon), ` ${item.label}${kind.kind === 'external' ? '（仅模拟）' : ''}`)))))),
         h('div', { className: 'tl-wf-view-tools', role: 'group', 'aria-label': '画布视图' },
           h('button', { type: 'button', onClick: fit, title: '适应全部节点（主动缩放）', 'aria-label': '适应全部节点' }, '⊡', h('span', { className: 'tl-wf-tool-label' }, ' 适应')),
           h('button', { type: 'button', onClick: () => setView(current => ({ ...current, scale: Math.max(.05, current.scale / 1.1) })), 'aria-label': '缩小画布' }, '−'),
@@ -1044,14 +1106,18 @@ window.__ModuleLoader__.load({
       .tl-wf-artifact-description { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
       .tl-wf-artifact-card details { margin-top:.4em; }
       .tl-wf-artifact-card summary { font-size:.85em; }
-      .tl-wf-toolbar { flex:none; display:flex; flex-wrap:wrap; align-items:center; gap:6px; padding:6px 8px; border-bottom:1px solid var(--tl-border,#cbd5e2); }
+      .tl-wf-toolbar { flex:none; display:flex; flex-wrap:wrap; align-items:center; gap:4px; padding:4px 6px; border-bottom:1px solid var(--tl-border,#cbd5e2); }
+      .tl-wf-primary { display:flex; flex:1 1 100%; flex-wrap:wrap; align-items:center; min-width:0; gap:4px; }
       .tl-wf-toolbar button, .tl-wf-inspector button { border:1px solid var(--tl-border,#cbd5e2); background:var(--tl-surface,#fff); color:inherit; border-radius:6px; padding:3px 9px; cursor:pointer; }
       .tl-wf-toolbar button[style] { border-color:var(--tl-wf-color); }
       .tl-wf-toolbar button:disabled { opacity:.45; cursor:default; }
       .tl-wf button.is-primary { background:var(--tl-accent,#356fc4); border-color:var(--tl-accent,#356fc4); color:var(--tl-theme-button-ink,#fff); }
       .tl-wf button.is-danger { border-color:var(--tl-danger,#c0392b); color:var(--tl-danger,#c0392b); }
       .tl-wf-title { width:12em; min-width:0; }
-      .tl-wf-kinds, .tl-wf-status-menu, .tl-wf-doc-menu { position:relative; }
+      .tl-wf-kinds, .tl-wf-category, .tl-wf-status-menu, .tl-wf-doc-menu { position:relative; }
+      .tl-wf-categories { display:flex; flex-wrap:wrap; align-items:center; gap:.3em; }
+      .tl-wf-toolbar :is(button,select,summary) { font:inherit; min-height:initial; }
+      .tl-wf-category > .tl-wf-kind-menu { top:100%; padding-top:.4em; }
       .tl-wf summary { list-style:none; border:1px solid var(--tl-border,#cbd5e2); border-radius:6px; padding:.3em .6em; cursor:pointer; background:var(--tl-surface,#fff); }
       .tl-wf summary::-webkit-details-marker { display:none; }
       .tl-wf-kind-menu, .tl-wf-status-list, .tl-wf-doc-actions { position:absolute; top:calc(100% + 5px); left:0; z-index:12; display:flex; flex-direction:column; gap:4px; padding:6px; min-width:10em; border:1px solid var(--tl-border,#cbd5e2); border-radius:8px; background:var(--tl-surface,#fff); box-shadow:0 8px 24px #0003; }
@@ -1075,27 +1141,27 @@ window.__ModuleLoader__.load({
       .tl-wf-execution-actions, .tl-wf-view-actions { position:absolute; z-index:24; top:calc(100% + 4px); left:0; box-sizing:border-box; min-width:10em; max-width:calc(100cqw - 16px); display:flex; flex-direction:column; gap:.25em; padding:.4em; border:1px solid var(--tl-border,#cbd5e2); border-radius:var(--tl-corner-radius,6px); background:var(--tl-surface,#fff); box-shadow:0 8px 24px #0003; }
       .tl-wf-execution-actions > button, .tl-wf-view-actions > button { text-align:left; white-space:normal; }
       .tl-wf :is(.tl-wf-doc-actions,.tl-wf-execution-actions,.tl-wf-view-actions,.tl-wf-kind-menu,.tl-wf-status-list) { box-sizing:border-box; overflow:auto; overscroll-behavior:contain; scrollbar-gutter:stable; }
-      @container (max-width:900px) {
-        .tl-wf-view-tools > button .tl-wf-tool-label, .tl-wf-kind-label { display:none; }
-        .tl-wf-toolbar > select { flex-basis:7em; max-width:12em; }
-      }
-      .tl-wf-view-tools { display:contents; }
+      .tl-wf-view-tools { display:flex; flex-wrap:wrap; align-items:center; gap:4px; min-width:0; margin-left:auto; }
       .tl-wf-view-tools button { flex-shrink:0; }
       .tl-wf-toolbar input, .tl-wf-toolbar select, .tl-wf-toolbar button { font:inherit; min-width:0; max-width:100%; box-sizing:border-box; }
       .tl-wf-toolbar input, .tl-wf-toolbar select { background:var(--tl-surface,#fff); color:inherit; border:1px solid var(--tl-border,#cbd5e2); border-radius:6px; padding:.3em .5em; }
-      .tl-wf-toolbar > select { width:12em; flex:1 1 8em; max-width:18em; }
-      .tl-wf-toolbar button { padding:.3em .6em; }
-      .tl-wf-toolbar summary, .tl-wf-toolbar button { min-height:2em; }
+      .tl-wf-primary > select { width:10em; flex:0 1 10em; max-width:100%; }
+      .tl-wf-toolbar button, .tl-wf-toolbar summary { padding:.2em .45em; }
+      .tl-wf-toolbar summary, .tl-wf-toolbar button { min-height:initial; line-height:1.4; }
       .tl-wf-toolbar summary { box-sizing:border-box; }
       .tl-wf-execution-note { margin:.25em 0; color:var(--tl-muted,#68778c); font-size:.85em; overflow-wrap:anywhere; }
+      @container (max-width:900px) {
+        .tl-wf-view-tools > button .tl-wf-tool-label, .tl-wf-kind-label { display:none; }
+        .tl-wf-primary > select { flex-basis:7em; max-width:12em; }
+      }
       @container (max-width:32em) {
-        .tl-wf-toolbar > select { width:0; flex-basis:calc(100% - 7em - 12px); max-width:none; }
+        .tl-wf-primary > select { width:8em; flex-basis:8em; }
         .tl-wf-view-tools > button:not([aria-label="适应全部节点"]) { display:none; }
         .tl-wf-overflow-zoom { display:flex; flex-direction:column; gap:.25em; }
         .tl-wf-view-level { display:none; }
       }
       .tl-wf button:focus-visible, .tl-wf summary:focus-visible, .tl-wf input:focus-visible, .tl-wf select:focus-visible, .tl-wf textarea:focus-visible { outline:2px solid var(--tl-accent,#356fc4); outline-offset:2px; }
-      .tl-wf-runstate { order:10; flex-basis:100%; color:var(--tl-muted,#68778c); font-size:.85em; overflow-wrap:anywhere; }
+      .tl-wf-runstate { margin-left:auto; min-width:0; color:var(--tl-muted,#68778c); font-size:.85em; overflow-wrap:anywhere; }
       .tl-wf-message { padding:4px 10px; background:var(--tl-surface-soft,#eef3f9); }
       .tl-wf-message ul { margin:2px 0 0 18px; padding:0; color:var(--tl-danger,#c0392b); }
       .tl-wf-body { flex:1 1 0; min-height:0; min-width:0; display:flex; position:relative; }
@@ -1165,7 +1231,7 @@ window.__ModuleLoader__.load({
       }
       .tl-wf :is(.tl-wf-native,.tl-wf-dialog-fields,.tl-wf-output)::-webkit-scrollbar { width:5px; height:5px; }
       .tl-wf :is(.tl-wf-native,.tl-wf-dialog-fields,.tl-wf-output)::-webkit-scrollbar-thumb { background:var(--tl-muted,#68778c); border-radius:5px; }
-      @media(max-width:800px) { .tl-wf-toolbar { gap:4px; } .tl-wf-tool-label { display:none; } .tl-wf-toolbar > select { max-width:12em; } }
+      @media(max-width:800px) { .tl-wf-toolbar { gap:4px; } .tl-wf-tool-label { display:none; } .tl-wf-primary > select { max-width:12em; } }
       .tl-wf-decide { display:flex; gap:6px; }
       .tl-wf-quick { position:absolute; pointer-events:none; }
       .tl-wf-quick-btn { pointer-events:auto; position:absolute; top:50%; width:calc(40px * var(--tl-ui-scale,1)); height:calc(40px * var(--tl-ui-scale,1)); margin-top:calc(-20px * var(--tl-ui-scale,1)); border:0; border-radius:50%; color:var(--tl-wf-status-button-ink); font-size:calc(20px * var(--tl-ui-scale,1)); font-weight:700; cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,.35); }

@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { randomUUID } from 'node:crypto'
 import { isAbsolute, resolve } from 'node:path'
 import { createLocalDirectoryLister } from './webai-local-directory.js'
+import { executeNativeTool } from './workflow-native-command-attribution.js'
 
 export const WEB_AI_RUNTIME_LIST_TOOL = 'tradeloom_webai_list_directory'
 export const WEB_AI_RUNTIME_READ_TOOL = 'tradeloom_webai_read_file'
@@ -16,7 +17,7 @@ const codeMap = Object.freeze({
   FS_NOT_DIRECTORY: 'NOT_DIRECTORY', FS_NOT_OBSERVED: 'ALREADY_EXISTS',
   FS_STALE_VERSION: 'ALREADY_EXISTS', FS_SANDBOX_DENIED: 'TOOL_DENIED',
   FS_ABORTED: 'CANCELLED', ABORTED: 'CANCELLED', ABORTED_BEFORE_DISPATCH: 'CANCELLED',
-  O07_GRANT: 'INVALID_GRANT', O07_SIZE: 'TOO_LARGE', O07_EXISTS: 'ALREADY_EXISTS',
+  O07_GRANT: 'INVALID_GRANT', O07_DENIED: 'TOOL_DENIED', O07_SIZE: 'TOO_LARGE', O07_EXISTS: 'ALREADY_EXISTS',
 })
 function validRequest(request) {
   if (!request || typeof request !== 'object' || Array.isArray(request)) return false
@@ -35,13 +36,25 @@ function validRequest(request) {
  * Mount FileSystem before the standard tool-fs plugin. This is not a page API.
  * Request-id replay remains owned by the existing filetools/envelope ledger.
  */
-export function createWebAiRuntimeFiles(ctx, { ToolRuntime, LocalFileSystem, SandboxedFileSystem, FsError, scopeOf, standardFsTools }, { enableFullRead = false, enableStandardWrite = false } = {}) {
+export function createWebAiRuntimeFiles(ctx, { ToolRuntime, ToolExecutionPipeline, LocalFileSystem, SandboxedFileSystem, FsError, scopeOf, standardFsTools }, { enableFullRead = false, enableStandardWrite = false, useMountedFileSystem = false } = {}) {
   if (!(ctx.tools instanceof ToolRuntime) || !(SandboxedFileSystem.prototype instanceof LocalFileSystem)
     || typeof FsError !== 'function' || typeof scopeOf !== 'function' || typeof ctx.agents?.get !== 'function'
-    || typeof enableFullRead !== 'boolean' || typeof enableStandardWrite !== 'boolean'
+    || typeof enableFullRead !== 'boolean' || typeof enableStandardWrite !== 'boolean' || typeof useMountedFileSystem !== 'boolean'
     || enableStandardWrite && typeof standardFsTools?.apply !== 'function') throw new TypeError('Actual runtime services are required')
   const fail = code => { throw new FsError('File operation unavailable', code) }
-  const liveExecutions = new WeakSet()
+  // The batch API creates root calls; the public pipeline preserves opaque
+  // parent/root correlation for these bounded native nested calls.
+  if (typeof ctx.tools.selectExecutor === 'function' && typeof ToolExecutionPipeline !== 'function') throw new TypeError('Actual public nested tool pipeline required')
+  const nestedPipeline = typeof ctx.tools.selectExecutor === 'function' ? new ToolExecutionPipeline(ctx) : undefined
+  async function executeNested(input) {
+    if (!nestedPipeline) return executeNativeTool(ctx.tools, input)
+    const prepared = await nestedPipeline.prepare(input)
+    const outcome = prepared.kind === 'dispatch' ? await nestedPipeline.dispatch(prepared.exec) : prepared
+    return nestedPipeline.complete(prepared.exec, outcome)
+  }
+  // The origin authority supplies a verified execution copy. Its pipeline-minted
+  // opaque token (and exact Agent) survives that copy; object identity does not.
+  const liveExecutions = new Map()
   const grants = new WeakMap()
   const owned = new Set()
   const pending = new Map()
@@ -51,7 +64,7 @@ export function createWebAiRuntimeFiles(ctx, { ToolRuntime, LocalFileSystem, San
   const alive = grant => {
     try {
       return !closed && !grant.revoked && Date.now() < grant.expiresAt
-        && !grant.exec.signal.aborted && liveExecutions.has(grant.exec)
+        && !grant.exec.signal.aborted && liveExecutions.get(grant.exec.token)?.agent === grant.agent
         && ctx.agents.get(grant.agent.id) === grant.agent && grant.agent.session === grant.session
         && scopeOf(grant.agent.ctx) === grant.agent && grant.isCurrent() === true
         && resolve(grant.getRoot()) === grant.rootPath
@@ -88,10 +101,13 @@ export function createWebAiRuntimeFiles(ctx, { ToolRuntime, LocalFileSystem, San
   }
   const unguard = ctx.tools.guard(exec => {
     const item = pending.get(exec.callId)
-    return item && exec.agent === item.grant.agent && (!alive(item.grant) || denied(item)) ? DENIAL : undefined
+    if (!item || exec.agent !== item.grant.agent) return
+    if (!alive(item.grant)) return { reason: DENIAL, info: { code: 'O07_GRANT' } }
+    if (denied(item)) return { reason: DENIAL, info: { code: 'O07_DENIED' } }
   })
   const unaround = ctx.on('tools/execute', async (exec, next) => {
-    liveExecutions.add(exec)
+    if (typeof exec.token !== 'symbol') fail('O07_GRANT')
+    liveExecutions.set(exec.token, exec)
     const item = pending.get(exec.callId)
     const originalSignal = exec.signal
     try {
@@ -108,10 +124,22 @@ export function createWebAiRuntimeFiles(ctx, { ToolRuntime, LocalFileSystem, San
       return result
     } finally {
       exec.signal = originalSignal
-      liveExecutions.delete(exec)
-      for (const grant of owned) if (grant.exec === exec) revokeGrant(grant)
+      liveExecutions.delete(exec.token)
+      for (const grant of owned) if (grant.exec.token === exec.token && grant.agent === exec.agent) revokeGrant(grant)
     }
   })
+  // rc2 already owns its local (optionally sandboxed) filesystem. Reuse it and
+  // its standard write tool rather than replacing the Host's fs service.
+  // This is the same public intent seam used by tool-fs immediately before
+  // writeText; cancellation still reaches the provider's atomic publication.
+  const unwrite = useMountedFileSystem ? ctx.on('fs/write-intent', async (target, exec, next) => {
+    const item = active.getStore()
+    if (!item || item.name !== 'write') return next()
+    if (item.exec?.token !== exec.token || exec.agent !== item.grant.agent || !pending.has(exec.callId)) fail('O07_GRANT')
+    await checkTarget(item.grant.fileSystem, target, item, exec.signal)
+    return { kind: 'createIfAbsent' }
+  }) : () => {}
+  const acceptedFileSystem = value => useMountedFileSystem ? value instanceof LocalFileSystem : value instanceof RuntimeFiles
   class RuntimeFiles extends SandboxedFileSystem {
     async writeText(target, content, intent, signal, sandboxPolicy) {
       const item = active.getStore()
@@ -129,13 +157,17 @@ export function createWebAiRuntimeFiles(ctx, { ToolRuntime, LocalFileSystem, San
     const mounting = agent.ctx.plugin({
       name: 'tradeloom-webai-runtime-files', inject: ['tools', 'agents', 'fs'],
       async apply(scoped) {
-        if (scopeOf(scoped) !== agent || !(scoped.tools instanceof ToolRuntime) || !(scoped.fs instanceof RuntimeFiles)) fail('O07_GRANT')
+        if (scopeOf(scoped) !== agent || !(scoped.tools instanceof ToolRuntime) || !acceptedFileSystem(scoped.fs)) fail('O07_GRANT')
         scopedContext = scoped
         // Optional native assembly, never a global tool enablement. Existing
         // definitions retain their original scope, guards and lifetime.
-        if (enableStandardWrite && scoped.tools.get('write', agent) === undefined) fail('UNKNOWN_TOOL')
+        if (enableStandardWrite && !useMountedFileSystem && scoped.tools.get('write', agent) === undefined) fail('UNKNOWN_TOOL')
         const list = createLocalDirectoryLister(scoped.fs, LocalFileSystem)
-        scoped.tools.guard(exec => [WEB_AI_RUNTIME_LIST_TOOL, WEB_AI_RUNTIME_READ_TOOL].includes(exec.name) && (!pending.has(exec.callId) || denied(pending.get(exec.callId))) ? DENIAL : undefined)
+        scoped.tools.guard(exec => {
+          if (![WEB_AI_RUNTIME_LIST_TOOL, WEB_AI_RUNTIME_READ_TOOL].includes(exec.name)) return
+          if (!pending.has(exec.callId)) return { reason: DENIAL, info: { code: 'O07_GRANT' } }
+          if (denied(pending.get(exec.callId))) return { reason: DENIAL, info: { code: 'O07_DENIED' } }
+        })
         if (enableFullRead) scoped.tools.register({
           name: WEB_AI_RUNTIME_READ_TOOL,
           description: 'Native-owned full UTF-8 file read, bounded to 256 KiB. Requires explicit full-file approval and a live directory grant.',
@@ -146,7 +178,7 @@ export function createWebAiRuntimeFiles(ctx, { ToolRuntime, LocalFileSystem, San
           },
           async execute(args, exec) {
             const item = pending.get(exec.callId)
-            if (!item || item.exec !== exec || exec.agent !== agent || args.path !== item.path) fail('O07_GRANT')
+            if (!item || item.exec?.token !== exec.token || exec.agent !== agent || args.path !== item.path) fail('O07_GRANT')
             const target = await scoped.fs.resolve(args.path, { cwd: item.grant.rootPath, signal: exec.signal })
             const fresh = await checkTarget(scoped.fs, target, item, exec.signal)
             const info = await scoped.fs.stat(fresh, exec.signal)
@@ -217,7 +249,7 @@ export function createWebAiRuntimeFiles(ctx, { ToolRuntime, LocalFileSystem, San
   const dispose = () => disposal ??= (async () => {
     closed = true
     for (const grant of owned) revokeGrant(grant)
-    owned.clear(); unaround(); unguard()
+    owned.clear(); unaround(); unguard(); unwrite()
     for (const registration of scopes.values()) { try { await (await registration).dispose() } catch {} }
     scopes.clear()
   })()
@@ -225,13 +257,13 @@ export function createWebAiRuntimeFiles(ctx, { ToolRuntime, LocalFileSystem, San
   return Object.freeze({
     FileSystem: RuntimeFiles,
     async bind({ exec, root, getRoot, isCurrent, getDeniedTools, ttlMs = 300000 }) {
-      if (closed || !liveExecutions.has(exec) || !exec.agent || ctx.agents.get(exec.agent.id) !== exec.agent
+      if (closed || typeof exec?.token !== 'symbol' || liveExecutions.get(exec.token)?.agent !== exec.agent || !exec.agent || ctx.agents.get(exec.agent.id) !== exec.agent
         || typeof getRoot !== 'function' || typeof isCurrent !== 'function' || typeof getDeniedTools !== 'function'
         || !Number.isSafeInteger(ttlMs) || ttlMs < 1 || ttlMs > 300000) fail('O07_GRANT')
       const { context: scoped } = await ensureListScope(exec.agent)
-      if (!(scoped.fs instanceof RuntimeFiles)) fail('O07_GRANT')
+      if (!acceptedFileSystem(scoped.fs)) fail('O07_GRANT')
       const rootTarget = await scoped.fs.resolve(root, { signal: exec.signal })
-      const grant = { exec, agent: exec.agent, session: exec.agent.session, rootTarget, rootPath: scoped.fs.processPath(rootTarget), getRoot, isCurrent, getDeniedTools, expiresAt: Date.now() + ttlMs, controller: new AbortController(), revoked: false }
+      const grant = { exec, agent: exec.agent, session: exec.agent.session, fileSystem: scoped.fs, rootTarget, rootPath: scoped.fs.processPath(rootTarget), getRoot, isCurrent, getDeniedTools, expiresAt: Date.now() + ttlMs, controller: new AbortController(), revoked: false }
       if ((await scoped.fs.stat(rootTarget, exec.signal))?.type !== 'directory' || !alive(grant)) fail('O07_GRANT')
       assertLive(grant, exec.signal)
       const capability = Object.freeze(Object.create(null))
@@ -245,6 +277,7 @@ export function createWebAiRuntimeFiles(ctx, { ToolRuntime, LocalFileSystem, San
       if (!grant || !alive(grant)) return error('INVALID_GRANT')
       if (!validRequest(request)) return error('INVALID_REQUEST')
       if (request.op === 'read' && !enableFullRead) return error('TOOL_UNAVAILABLE')
+      if (request.op === 'write_new' && (!enableStandardWrite || ctx.tools.get('write', grant.agent) === undefined)) return error('TOOL_UNAVAILABLE')
       const name = request.op === 'list' ? WEB_AI_RUNTIME_LIST_TOOL : request.op === 'read' ? WEB_AI_RUNTIME_READ_TOOL : 'write'
       const path = resolve(grant.rootPath, request.path)
       const args = request.op === 'write_new' ? { file_path: path, content: request.content } : { path: request.path }
@@ -252,7 +285,8 @@ export function createWebAiRuntimeFiles(ctx, { ToolRuntime, LocalFileSystem, San
       const item = { grant, name, args, path: request.path, consumed: false }
       pending.set(callId, item)
       try {
-        const result = await ctx.tools.execute({ callId, name, arguments: args, agent: grant.agent, signal: AbortSignal.any([grant.exec.signal, grant.controller.signal]), parent: grant.exec.token, rootCallId: grant.exec.rootCallId })
+        const result = await executeNested({ callId, name, arguments: args, agent: grant.agent, signal: AbortSignal.any([grant.exec.signal, grant.controller.signal]), parent: grant.exec.token, rootCallId: grant.exec.rootCallId,
+          ...(grant.exec.operationOrigin === undefined ? {} : { operationOrigin: grant.exec.operationOrigin, operationOriginWorkId: grant.exec.operationOriginWorkId }) })
         if (result.isError) return error(codeMap[result.error?.info?.code] ?? 'TOOL_FAILED')
         if (!alive(grant) || !item.consumed) return error('INVALID_GRANT')
         if (!item.bodySnapshot || JSON.stringify({ value: result.value, content: result.content }) !== item.bodySnapshot) return error('TOOL_FAILED')

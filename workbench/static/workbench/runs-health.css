@@ -180,7 +180,7 @@ html[data-business-iframe="true"] .runs-event-scroll .timeline-item + .timeline-
   .runs-layout > .page-stack { grid-column: 1; grid-row: 2; }
 }
 
-@media (max-width: 700px) {
+@media (max-width: 980px) {
   .runs-layout { grid-template-columns: minmax(0, 1fr); gap: 8px; }
   .runs-layout > .platform-card { grid-column: 1; grid-row: 1; }
   .runs-layout > .page-stack { grid-column: 1; grid-row: 2; }

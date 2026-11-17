@@ -1,0 +1,209 @@
+.panel-controls .pi-action {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  padding: 0;
+  border-radius: 5px;
+  font-size: 13px;
+  font-family: inherit;
+  font-weight: 400;
+  line-height: 1;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.panel-controls .pi-action:hover,
+.panel-controls .pi-action[aria-pressed="true"] {
+  color: var(--text);
+  background: var(--bg-panel-hover);
+}
+
+.panel-controls .pi-action:focus-visible,
+.pi-menu-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* 场景导航是点击切换；保留标签拖动进行中的反馈和面板拖动光标。 */
+#scenario-tabs .tab:not(.tab-dragging) {
+  cursor: pointer;
+}
+
+#scenario-tabs .tab.tab-dragging {
+  cursor: grabbing;
+}
+
+.modal-title-group {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  flex: 1;
+}
+
+.modal-title-group .modal-title {
+  min-width: 0;
+  flex: 1;
+}
+
+.modal-tool-back[hidden] {
+  display: none;
+}
+
+.panel.pi-maximized {
+  overflow: hidden;
+  border-color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 58%, var(--border));
+  border-radius: 8px;
+  box-shadow: 0 18px 64px var(--surface-shadow);
+}
+
+.panel.pi-animating {
+  transition:
+    left 320ms cubic-bezier(.22, .61, .36, 1),
+    top 320ms cubic-bezier(.22, .61, .36, 1),
+    width 320ms cubic-bezier(.22, .61, .36, 1),
+    height 320ms cubic-bezier(.22, .61, .36, 1),
+    box-shadow 320ms ease;
+}
+
+.pi-slot {
+  min-width: 0;
+  min-height: 0;
+  pointer-events: none;
+}
+
+/* Keep the full 8px seam available for resizing; only show the compact desktop16 accent marker. */
+#grid.pi-split-resize-enabled { --ui-grid-gap: 8px; }
+
+.pi-resize-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 600;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.pi-resize-layer[hidden] { display: none; }
+
+.pi-resize-handle {
+  position: absolute;
+  display: block;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--accent);
+  pointer-events: auto;
+  touch-action: none;
+  z-index: 1;
+}
+
+.pi-resize-handle[data-axis="x"] { cursor: col-resize; }
+.pi-resize-handle[data-axis="y"] { cursor: row-resize; }
+.pi-resize-handle[data-axis="xy"] { cursor: nwse-resize; }
+
+.pi-resize-handle::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 3px;
+  height: 30px;
+  border-radius: 999px;
+  background: var(--accent);
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  transition: opacity 100ms ease-out;
+}
+.pi-resize-handle[data-axis="y"]::after { width: 30px; height: 3px; }
+.pi-resize-handle[data-axis="xy"]::after { width: 3px; height: 3px; }
+
+.pi-resize-handle:hover:not([data-pointer-suppressed="true"])::after,
+.pi-resize-handle:focus-visible:not([data-pointer-suppressed="true"])::after,
+.pi-grid-resizing .pi-resize-handle[data-active="true"]::after {
+  opacity: .9;
+}
+
+.pi-resize-layer[data-input-modality="pointer"] .pi-resize-handle:focus-visible:not(:hover):not([data-active="true"])::after {
+  opacity: 0;
+}
+
+.pi-resize-handle:focus-visible { outline: none; }
+.pi-grid-resizing, .pi-grid-resizing * { user-select: none !important; }
+
+.pi-menu {
+  position: fixed;
+  z-index: 20000;
+  min-width: min(188px, calc(100vw - 16px));
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  box-sizing: border-box;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 5px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: var(--bg-panel);
+  box-shadow: 0 14px 40px var(--surface-shadow);
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+  font-weight: 400;
+  line-height: 1.35;
+}
+
+.pi-menu-item {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.pi-menu-item:hover,
+.pi-menu-item:focus-visible {
+  background: var(--bg-panel-hover);
+}
+
+.pi-toast {
+  position: fixed;
+  z-index: 21000;
+  right: 18px;
+  bottom: 18px;
+  max-width: min(420px, calc(100vw - 36px));
+  padding: 10px 13px;
+  border: 1px solid var(--line-2);
+  border-radius: 7px;
+  background: var(--bg-panel);
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+  font-weight: 400;
+  line-height: 1.4;
+  opacity: 0;
+  transform: translateY(5px);
+  pointer-events: none;
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+
+.pi-toast-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pi-toast {
+    transition-duration: 0.01ms;
+  }
+}

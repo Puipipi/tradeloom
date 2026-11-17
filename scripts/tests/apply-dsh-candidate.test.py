@@ -15,7 +15,9 @@ class Interruption(BaseException):pass
 
 class SamePathProgramTests(unittest.TestCase):
     def cli(self,operation,target,work):
-        return subprocess.run([sys.executable,'-B',str(R/'scripts/apply-dsh-candidate.py'),operation,'--target',str(target),'--work-root',str(work)],capture_output=True,creationflags=subprocess.CREATE_NO_WINDOW)
+        argv=[sys.executable,'-B',str(R/'scripts/apply-dsh-candidate.py'),operation,'--target',str(target),'--work-root',str(work)]
+        if apply.activation_path(target,'lock').exists():argv+=['--activation-token',apply.load(work/'state.json')['activationToken']]
+        return subprocess.run(argv,capture_output=True,creationflags=subprocess.CREATE_NO_WINDOW)
 
     def fixture(self,folder,schema=1):
         root=Path(folder);target=root/'program';work=root/'update';target.mkdir();work.mkdir()
@@ -76,13 +78,56 @@ class SamePathProgramTests(unittest.TestCase):
                 target,work,state,config=self.fixture(directory,schema=2 if boundary=='runtime-log-preserved' else 1)
                 if boundary=='runtime-log-preserved':
                     (target/apply.RUNTIME_LOG).write_bytes(b'interrupted runtime history\n');state['runtimeLogBefore']=apply.pin(target/apply.RUNTIME_LOG);apply.save(work/'state.json',state)
-                def interrupt(name):
-                    if name==boundary:raise Interruption()
-                with patch.object(apply,'stopped',return_value=None),patch.object(apply,'_checkpoint',side_effect=interrupt):
-                    with self.assertRaises(Interruption):apply.install_prepared(target,work,state)
+                # The CLI process really exits at the actual rename boundary;
+                # its lease remains. Recovery must verify that exact PID+creation
+                # is gone, adopt this journal and release only its own lock.
+                code="import importlib.util,os,sys;from pathlib import Path;s=importlib.util.spec_from_file_location('owned_apply',sys.argv[1]);a=importlib.util.module_from_spec(s);s.loader.exec_module(a);a._checkpoint=lambda name:os._exit(73) if name==sys.argv[4] else None;a.install_prepared(Path(sys.argv[2]),Path(sys.argv[3]),a.load(Path(sys.argv[3])/'state.json'))"
+                child=subprocess.run([sys.executable,'-B','-c',code,str(R/'scripts/apply-dsh-candidate.py'),str(target),str(work),boundary],capture_output=True,creationflags=subprocess.CREATE_NO_WINDOW)
+                self.assertEqual(child.returncode,73,child.stdout+child.stderr)
+                interrupted=apply.load(work/'state.json')
+                self.assertIsNone(apply.activation_process_identity(interrupted['activationLeaseOwner']['pid']))
+                self.assertTrue(apply.activation_path(target,'lock').exists())
                 recovered=self.cli('recover',target,work);self.assertEqual(recovered.returncode,0,recovered.stdout+recovered.stderr)
                 self.assert_restored(target,work,config)
+                self.assertFalse(apply.activation_path(target,'lock').exists())
                 if boundary=='runtime-log-preserved':self.assertEqual((target/apply.RUNTIME_LOG).read_bytes(),b'interrupted runtime history\n')
+                next_work=Path(directory)/'next-update';next_work.mkdir()
+                next_state={key:value for key,value in interrupted.items() if key not in ['activationToken','activationLeaseOwner','activationAfter','activationRestored']}
+                next_state.update(work=str(next_work),phase='prepared',activationBefore=apply.activation_revision(target))
+                for name in ['before-entry-manifest.json','candidate-entry-manifest.json','before-launcher.json','before-engine-inventory.json','after-engine-inventory.json']:shutil.copyfile(work/name,next_work/name)
+                app_source=work/'failed-app' if (work/'failed-app').exists() else work/'staged-app'
+                wrapper_source=work/'failed-launcher.exe' if (work/'failed-launcher.exe').exists() else work/'staged-launcher.exe'
+                shutil.copytree(app_source,next_work/'staged-app');shutil.copyfile(wrapper_source,next_work/'staged-launcher.exe')
+                apply.save(next_work/'state.json',next_state)
+                with patch.object(apply,'stopped',return_value=None):apply.install_prepared(target,next_work,next_state)
+                self.assertEqual((target/'app/payload.bin').read_bytes(),b'new app')
+                self.assertFalse(apply.activation_path(target,'lock').exists(),'successful explicit recovery must not block the next real swap')
+
+    def test_live_cli_owner_cannot_be_adopted_and_worker_lease_stays_worker_owned(self):
+        with tempfile.TemporaryDirectory(prefix='tradeloom-live-lease-') as directory:
+            target,work,state,config=self.fixture(directory)
+            token='synthetic-worker-token';state['activationToken']=token
+            lock={'schemaVersion':1,'target':str(target),'token':token,'expectedRevision':None,'ownerPid':os.getpid()}
+            apply.save(apply.activation_path(target,'lock'),lock);apply.save(work/'state.json',state)
+            with patch.object(apply,'stopped',return_value=None):apply.install_prepared(target,work,state)
+            self.assertEqual(apply.load(apply.activation_path(target,'lock')),lock,'worker, not child CLI, retains cleanup responsibility')
+            state['activationLeaseOwner']={'kind':'cli',**apply.activation_process_identity(os.getpid())};apply.save(work/'state.json',state)
+            refused=self.cli('rollback',target,work)
+            self.assertNotEqual(refused.returncode,0);self.assertIn(b'still active',refused.stderr)
+            self.assertTrue(apply.activation_path(target,'lock').exists())
+            self.assertEqual((target/'app/payload.bin').read_bytes(),b'new app')
+
+    def test_rollback_refuses_third_party_empty_directory_without_overwriting_it(self):
+        with tempfile.TemporaryDirectory(prefix='tradeloom-empty-directory-cas-') as directory:
+            target,work,state,config=self.fixture(directory)
+            with patch.object(apply,'stopped',return_value=None):apply.install_prepared(target,work,state)
+            (target/'app/third-party-empty-directory').mkdir()
+            before=apply.engine_entries(target/'app')
+            rejected=self.cli('rollback',target,work)
+            self.assertNotEqual(rejected.returncode,0)
+            self.assertEqual(apply.engine_entries(target/'app'),before)
+            self.assertEqual((target/'launcher.json').read_bytes(),config)
+            self.assertTrue(apply.activation_path(target,'lock').exists(),'uncertain new generation keeps evidence/lease')
 
     def test_real_payload_validation_rejects_modified_and_unlisted_files(self):
         with tempfile.TemporaryDirectory(prefix='tradeloom-app-files-') as directory:
@@ -110,7 +155,8 @@ class SamePathProgramTests(unittest.TestCase):
             (target/apply.RUNTIME_LOG).write_bytes(b'fixture existing runtime history\n');state['runtimeLogBefore']=apply.pin(target/apply.RUNTIME_LOG)
             with patch.object(apply,'stopped',return_value=None):apply.install_prepared(target,work,state)
             self.assertFalse((target/apply.RUNTIME_LOG).exists());self.assertEqual((work/'before-runtime-launcher.log').read_bytes(),b'fixture existing runtime history\n')
-            with patch.object(apply,'stopped',return_value=None):apply._restore(target,work,state)
+            restored=self.cli('rollback',target,work)
+            self.assertEqual(restored.returncode,0,restored.stdout+restored.stderr)
             self.assertEqual((target/apply.RUNTIME_LOG).read_bytes(),b'fixture existing runtime history\n');self.assert_restored(target,work,config)
 
     def test_actual_cim_refuses_unusual_named_process_under_target(self):

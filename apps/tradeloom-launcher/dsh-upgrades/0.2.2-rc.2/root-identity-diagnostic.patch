@@ -1,0 +1,67 @@
+--- a/dsh/node_modules/@deepseek-ai/dsh-app-boot/lib/index.js
++++ b/dsh/node_modules/@deepseek-ai/dsh-app-boot/lib/index.js
+@@ -4530,6 +4530,48 @@
+ 	]);
+ }
+ const bootstrapIncludes = /* @__PURE__ */ new WeakMap();
++// Diagnostic observations only: this record never supplies an Include or authorizes reload.
++// Counts describe observed identities, not active profiles or modules.
++// Weak roots avoid extending any profile lifetime; module tokens contain no URL or content.
++const rootIdentityModuleToken = {};
++let rootIdentityDiagnostic;
++try {
++	if (typeof WeakRef === "function") {
++		const key = Symbol.for("tradeloom.root-identity-diagnostic.v1");
++		if (process[key] === void 0) Object.defineProperty(process, key, { value: {
++			roots: new WeakSet(), rootCount: 0, moduleCount: 0, emitted: 0
++		} });
++		rootIdentityDiagnostic = process[key];
++		rootIdentityDiagnostic.moduleCount = Math.min(3, rootIdentityDiagnostic.moduleCount + 1);
++	}
++} catch (_error) {}
++function reportRootIdentity(ctx, rootIncludePresent, registered = false) {
++	try {
++		const state = rootIdentityDiagnostic;
++		if (state === void 0) return;
++		if (registered && !state.roots.has(ctx)) {
++			state.roots.add(ctx);
++			state.rootCount = Math.min(3, state.rootCount + 1);
++			if (state.firstRoot === void 0) {
++				state.firstRoot = new WeakRef(ctx);
++				state.firstModule = rootIdentityModuleToken;
++			}
++		}
++		if (state.emitted >= 16) return;
++		const receipt = {
++			rootCount: state.rootCount,
++			moduleCount: state.moduleCount,
++			rootIncludePresent
++		};
++		const firstRoot = state.firstRoot?.deref();
++		if (state.rootCount === 1 && firstRoot !== void 0) {
++			receipt.ownerRootMatchesBootRoot = ctx === firstRoot;
++			receipt.appBootModuleInstanceMatches = rootIdentityModuleToken === state.firstModule;
++		}
++		state.emitted++;
++		process.stdout.write(`[UI18_ROOT_IDENTITY_V1]${JSON.stringify(receipt)}\n`);
++	} catch (_error) {}
++}
+ const userPatchesSchema = entryListSchema;
+ /**
+ * Recompose the profile from its complete patch list, together with its runtime resolution. The rows the generation no
+@@ -4570,6 +4612,7 @@
+ 	let stopped = [];
+ 	try {
+ 		const entry = bootstrapIncludes.get(ctx);
++		reportRootIdentity(ctx, entry !== void 0);
+ 		if (entry === void 0) throw new Error(`${binName}: profile reload requires the root Include entry`);
+ 		const previousFailures = (await inactiveEntries(ctx, false)).map((failure) => ({
+ 			entry: failure.entry,
+@@ -4916,6 +4959,7 @@
+ 	if (loader === void 0) return void 0;
+ 	const entry = loader.resolve(includeId);
+ 	bootstrapIncludes.set(ctx, entry);
++	reportRootIdentity(ctx, entry !== void 0, true);
+ 	return entry;
+ }
+ const assembledActivationRejections = /* @__PURE__ */ new Map();

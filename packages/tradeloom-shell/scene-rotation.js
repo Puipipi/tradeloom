@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { ROLE_IDS, ROLE_PRESETS } from './roles.js'
 import { createStateStore, getRoleBindingRevision, replaceRoleBinding, roleWorkspacePath } from './state.js'
-import { validateSceneConfig } from './scene-layout.js'
+import { resolveSceneConfiguration } from './scene-layout.js'
 
 export const SCENE_ROTATION_PREVIEW_ROUTE = '/tradeloom/scene-rotation/preview'
 export const SCENE_ROTATION_CONFIRM_ROUTE = '/tradeloom/scene-rotation/confirm'
@@ -116,7 +116,7 @@ export function createSceneRotationHandlers(ctx, dependencies = {}) {
   let disposed = false
   const assertOpen = () => { if (disposed) throw new SceneRotationError('rotation-unavailable', 503) }
   const store = async () => await storeFactory()
-  const scenes = async () => validateSceneConfig(JSON.parse(await readScenes()))
+  const scenes = async () => resolveSceneConfiguration(JSON.parse(await readScenes()), await (await store()).read())
   const prunePreviews = now => {
     for (const [token, preview] of previews) if (preview.expiresAt <= now) previews.delete(token)
     for (const [token, preview] of consumedPreviews) if (preview.expiresAt <= now) consumedPreviews.delete(token)

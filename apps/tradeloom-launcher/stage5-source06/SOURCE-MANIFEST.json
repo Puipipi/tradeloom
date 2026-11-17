@@ -1,0 +1,2484 @@
+{
+  "schemaVersion": 1,
+  "sourceVersion": "source06",
+  "baseCommit": "048cb638ae43db92c866e36fefddf0d4e575e544",
+  "status": "source-and-exact-postimages-candidate-not-installed",
+  "canonicalSource06": {
+    "provenanceSHA256": "565ddebed83f4dcb6c691439429b17020c6f6fc42e4080d5fca2da8856685ddd",
+    "sourceArchiveSHA256": "7defd09a8bad4d2a625d28f2c83def4392be741e52dd86d6db3ea7668560168d"
+  },
+  "records": [
+    {
+      "kind": "business",
+      "target": "agent-configuration-snapshots.js",
+      "source": "packages/tradeloom-shell/agent-configuration-snapshots.js",
+      "bytes": 24801,
+      "sha256": "dcb8d6ed748f03ef7262e34c59d0f5e0f5411ffc34313caec0aa0ae7448a9ee2"
+    },
+    {
+      "kind": "business",
+      "target": "agent-configuration.js",
+      "source": "packages/tradeloom-shell/agent-configuration.js",
+      "bytes": 55012,
+      "sha256": "c86e10ac218c149c47b5eec5b72a22ecbd28a6a7296e395bfad31c6fa892b84b"
+    },
+    {
+      "kind": "business",
+      "target": "assets/tradeloom-mark.svg",
+      "source": "packages/tradeloom-shell/assets/tradeloom-mark.svg",
+      "bytes": 961,
+      "sha256": "7e2cdb6592de4456295d455056a1d5ca500cf8ef3c759aef90ceba66c76b5849"
+    },
+    {
+      "kind": "business",
+      "target": "business-tools.js",
+      "source": "packages/tradeloom-shell/business-tools.js",
+      "bytes": 125582,
+      "sha256": "44eb5b3d36626aa7af4390e0f0b9c0b2647762c6e3fc82b7661fbdddf7a601e6"
+    },
+    {
+      "kind": "business",
+      "target": "capabilities.js",
+      "source": "packages/tradeloom-shell/capabilities.js",
+      "bytes": 6874,
+      "sha256": "1812c134313048369c40963a8e259f2b97926872dcf83af13c103907826d400d"
+    },
+    {
+      "kind": "business",
+      "target": "client.dockview.js",
+      "source": "packages/tradeloom-shell/client.dockview.js",
+      "bytes": 978001,
+      "sha256": "63f1a125d08d469895d1e55cf54bad9fc76f97ddd94f7370eb69385c438bbc9b"
+    },
+    {
+      "kind": "business",
+      "target": "client.js",
+      "source": "packages/tradeloom-shell/client.js",
+      "bytes": 257710,
+      "sha256": "a42797beecb94562031aded29b16b7355a9446398d734323234c1ffa88bfcddc"
+    },
+    {
+      "kind": "business",
+      "target": "client.mcp-runtime.js",
+      "source": "packages/tradeloom-shell/client.mcp-runtime.js",
+      "bytes": 405,
+      "sha256": "c3eabe53f5776339159e79b9c5512bf2571a02eda34ab6bc3857fdcd26676749"
+    },
+    {
+      "kind": "business",
+      "target": "client.mobile-qr.js",
+      "source": "packages/tradeloom-shell/client.mobile-qr.js",
+      "bytes": 57681,
+      "sha256": "dd1e38ed79c19ef4d642bd9913ce73b42f27a3881a84f830929f1c914fcc468d"
+    },
+    {
+      "kind": "business",
+      "target": "client.replica-palette.js",
+      "source": "packages/tradeloom-shell/client.replica-palette.js",
+      "bytes": 7434,
+      "sha256": "ba85fdfa59ead0ddf2b69049ae87d4963dab3a06e17e78f11fd3fae33d530f22"
+    },
+    {
+      "kind": "business",
+      "target": "client.scene-drafts.js",
+      "source": "packages/tradeloom-shell/client.scene-drafts.js",
+      "bytes": 3721,
+      "sha256": "8457511309687817b413b1881ead25329b9eb87467a2246e5c8f3fb07395c206"
+    },
+    {
+      "kind": "business",
+      "target": "client.scene-memory.js",
+      "source": "packages/tradeloom-shell/client.scene-memory.js",
+      "bytes": 12022,
+      "sha256": "68e8e15545fe65b1c6556e8d0beab2ef5b6ee1cbe9466a9407c57d5f5613f472"
+    },
+    {
+      "kind": "business",
+      "target": "client.scenes.js",
+      "source": "packages/tradeloom-shell/client.scenes.js",
+      "bytes": 399523,
+      "sha256": "99bda0b4de4723d9581adca0ab13108b05f6e162de47f7d535b89193ec8df64b"
+    },
+    {
+      "kind": "business",
+      "target": "client.session-audio.js",
+      "source": "packages/tradeloom-shell/client.session-audio.js",
+      "bytes": 8615,
+      "sha256": "d09d5dfe795fda0de3f743aa4c03bdf3306e35199151645d864f37b552e4c54a"
+    },
+    {
+      "kind": "business",
+      "target": "client.source-native.js",
+      "source": "packages/tradeloom-shell/client.source-native.js",
+      "bytes": 38674,
+      "sha256": "00fb98c355024cec70d8a0ff1c0daef02883136ffadcea5279f30665cef1a7a4"
+    },
+    {
+      "kind": "business",
+      "target": "client.workflow.js",
+      "source": "packages/tradeloom-shell/client.workflow.js",
+      "bytes": 105865,
+      "sha256": "5cf50f331a1c17e5de4b51817a61807f88f1fe38a0a8e5ab166689ba2792db9e"
+    },
+    {
+      "kind": "business",
+      "target": "cordis.patch.yml",
+      "source": "packages/tradeloom-shell/cordis.patch.yml",
+      "bytes": 16222,
+      "sha256": "cff5a1239cfa0cb892991c99075c24fe1f85edb5068ab318c08c2b3cff198461"
+    },
+    {
+      "kind": "business",
+      "target": "diagnostics-http.js",
+      "source": "packages/tradeloom-shell/diagnostics-http.js",
+      "bytes": 17958,
+      "sha256": "80102ed022bc9240af22f8ac54c1bf277d8a356c5b49d5ac7235a9fe25339cae"
+    },
+    {
+      "kind": "business",
+      "target": "diagnostics-store.js",
+      "source": "packages/tradeloom-shell/diagnostics-store.js",
+      "bytes": 12980,
+      "sha256": "d613aba0cb148718917ed129094da404475479de245e2de0b884b27555ea2534"
+    },
+    {
+      "kind": "business",
+      "target": "dock-layout.js",
+      "source": "packages/tradeloom-shell/dock-layout.js",
+      "bytes": 24305,
+      "sha256": "58acc26a4b26899635b4901514309e6c71053947be897fba803035f11072d7c7"
+    },
+    {
+      "kind": "business",
+      "target": "engine-generation-owner.js",
+      "source": "packages/tradeloom-shell/engine-generation-owner.js",
+      "bytes": 18222,
+      "sha256": "a451ed54e9e5c1189f7fad0babc1dad3757a32644b47a3980bcb7462d8c78cb1"
+    },
+    {
+      "kind": "business",
+      "target": "engine-generation-snapshots.js",
+      "source": "packages/tradeloom-shell/engine-generation-snapshots.js",
+      "bytes": 31955,
+      "sha256": "651244997e383613c3500c9e247468e417d197d1e4581bc2d605065e04bc09a2"
+    },
+    {
+      "kind": "business",
+      "target": "execution-origin-authority.js",
+      "source": "packages/tradeloom-shell/execution-origin-authority.js",
+      "bytes": 31497,
+      "sha256": "62a43a4cccd512a3df851e566cdf163b83a5476b25dfc3431e26bc9d3db9e2ae"
+    },
+    {
+      "kind": "business",
+      "target": "host.js",
+      "source": "packages/tradeloom-shell/host.js",
+      "bytes": 58483,
+      "sha256": "f668340d9b425149b8852e2507ce53504c3d41de75824ae16093592cdd711ae1"
+    },
+    {
+      "kind": "business",
+      "target": "listener-identity.js",
+      "source": "packages/tradeloom-shell/listener-identity.js",
+      "bytes": 15697,
+      "sha256": "82e1e16420ff515ecd21f2062bd61baef37df3a03a7819643d8c6276c6f1a80e"
+    },
+    {
+      "kind": "business",
+      "target": "listener-identity.ps1",
+      "source": "packages/tradeloom-shell/listener-identity.ps1",
+      "bytes": 7663,
+      "sha256": "f204d307d4a0343c3d84ef30a948c163d30ea5afde47aa289a1cef2b4c6b54c9"
+    },
+    {
+      "kind": "business",
+      "target": "mcp-runtime.js",
+      "source": "packages/tradeloom-shell/mcp-runtime.js",
+      "bytes": 10346,
+      "sha256": "4bb00ada46bb4d7e7950fa01ececce79acd477752fcde9a20f28cd71fe94cabb"
+    },
+    {
+      "kind": "business",
+      "target": "native-import-authorization.js",
+      "source": "packages/tradeloom-shell/native-import-authorization.js",
+      "bytes": 846,
+      "sha256": "ae98685c7601a03b5ff07fcc4b06574e1a1bccebb0790bc78fb88517eceeb71a"
+    },
+    {
+      "kind": "business",
+      "target": "package.json",
+      "source": "packages/tradeloom-shell/package.json",
+      "bytes": 4695,
+      "sha256": "201716c7fe5fe3de69f5c00a852441275cc2af3aa7ceb839eebbc34a4bbfe806"
+    },
+    {
+      "kind": "business",
+      "target": "policy.js",
+      "source": "packages/tradeloom-shell/policy.js",
+      "bytes": 13276,
+      "sha256": "146364db031fe97aa350503e7823dfadc024b08452d0a0cd992ecda92d985e89"
+    },
+    {
+      "kind": "business",
+      "target": "profile-tool.js",
+      "source": "packages/tradeloom-shell/profile-tool.js",
+      "bytes": 1368,
+      "sha256": "6a6ddb71a2e777d0a59fae6b19ddb60e167ac54ebdc68eb3507cd6e4a8848d3b"
+    },
+    {
+      "kind": "business",
+      "target": "proxy.js",
+      "source": "packages/tradeloom-shell/proxy.js",
+      "bytes": 9039,
+      "sha256": "c6452b89dd2e8493d67e3ad1692038af6b016d7c232d05d07c3d655c66c4ba63"
+    },
+    {
+      "kind": "business",
+      "target": "roles.js",
+      "source": "packages/tradeloom-shell/roles.js",
+      "bytes": 1824,
+      "sha256": "d1f67e79c5aca73e3d82e4a71b083aa830d87a6d98815deef128a5971abf05bb"
+    },
+    {
+      "kind": "business",
+      "target": "scene-layout.js",
+      "source": "packages/tradeloom-shell/scene-layout.js",
+      "bytes": 10996,
+      "sha256": "329250127433abc03bdefc165dec52949746137246d789e4ee9b1bfd62a94647"
+    },
+    {
+      "kind": "business",
+      "target": "scene-memory-graph.js",
+      "source": "packages/tradeloom-shell/scene-memory-graph.js",
+      "bytes": 14170,
+      "sha256": "2e3e76ff3d9ed761e4a97c178ebb76603ac174fcc245f3674f496057adca5357"
+    },
+    {
+      "kind": "business",
+      "target": "scene-memory-store.js",
+      "source": "packages/tradeloom-shell/scene-memory-store.js",
+      "bytes": 11322,
+      "sha256": "fb18b62fb1ff1fa13c8ca1a3d5d6801a89d76456e4546248b2c5a26e86beda33"
+    },
+    {
+      "kind": "business",
+      "target": "scene-memory.js",
+      "source": "packages/tradeloom-shell/scene-memory.js",
+      "bytes": 7256,
+      "sha256": "c10fdc81b88500ddb6d50c1109268e63fdab74c302c8300c6fa240a5f4d44526"
+    },
+    {
+      "kind": "business",
+      "target": "scene-rotation.js",
+      "source": "packages/tradeloom-shell/scene-rotation.js",
+      "bytes": 31086,
+      "sha256": "da8ff9ece2506408cb24471366d1dd7913fcb2376cbbb57c81b3fd7b6e5d771b"
+    },
+    {
+      "kind": "business",
+      "target": "scenes.json",
+      "source": "packages/tradeloom-shell/scenes.json",
+      "bytes": 16815,
+      "sha256": "c45fbc6c16e770df51de39f554c5b0475de7d0b4e785968f2ed032d4bd6d6ccb"
+    },
+    {
+      "kind": "business",
+      "target": "scripts/build-dockview-chunk.mjs",
+      "source": "packages/tradeloom-shell/scripts/build-dockview-chunk.mjs",
+      "bytes": 3577,
+      "sha256": "d022e79da41d2896e060c7f09f7f258e7e0cec74892a678573cd84b0a64ce37c"
+    },
+    {
+      "kind": "business",
+      "target": "scripts/build-mobile-qr-chunk.mjs",
+      "source": "packages/tradeloom-shell/scripts/build-mobile-qr-chunk.mjs",
+      "bytes": 1745,
+      "sha256": "f8080af52d25e86f8199c02923b7806ab792321f80bd72f1f9dea4ffcba3ced8"
+    },
+    {
+      "kind": "business",
+      "target": "session-speech.js",
+      "source": "packages/tradeloom-shell/session-speech.js",
+      "bytes": 17067,
+      "sha256": "5da53f2d220cfc789472eb31aa4f96a0ba293c7fbda5425ac956fcf377a29499"
+    },
+    {
+      "kind": "business",
+      "target": "skills/wf-planner/SKILL.md",
+      "source": "packages/tradeloom-shell/skills/wf-planner/SKILL.md",
+      "bytes": 4983,
+      "sha256": "aaec14bd5ec85d4252aebf905a95f017f52f8dd56a6ecacce47d853b590811d6"
+    },
+    {
+      "kind": "business",
+      "target": "skills-open.js",
+      "source": "packages/tradeloom-shell/skills-open.js",
+      "bytes": 6606,
+      "sha256": "abd3ebbb8b30fa333467469c832b96c08f291ca8ea41bd4f05d2a9f41429d38d"
+    },
+    {
+      "kind": "business",
+      "target": "state.js",
+      "source": "packages/tradeloom-shell/state.js",
+      "bytes": 14358,
+      "sha256": "1a18e47338c1af76663c436966df99443885b3c17228d77aab87b81f1d1b886d"
+    },
+    {
+      "kind": "business",
+      "target": "step-policy.js",
+      "source": "packages/tradeloom-shell/step-policy.js",
+      "bytes": 479,
+      "sha256": "9749399b874a3599548d0b2e21d299611750991ea5297497126a6cb24f930cce"
+    },
+    {
+      "kind": "business",
+      "target": "tool-policy.js",
+      "source": "packages/tradeloom-shell/tool-policy.js",
+      "bytes": 1608,
+      "sha256": "b66001725b882c07b13b9de1e4a97fa6557014346ff2ef78180f907a348aa51a"
+    },
+    {
+      "kind": "business",
+      "target": "tool-schemas.js",
+      "source": "packages/tradeloom-shell/tool-schemas.js",
+      "bytes": 2212,
+      "sha256": "4514f4396bb22ac07db32786dcbf3878d96a6b0c75a86e17502c0a17239c09f0"
+    },
+    {
+      "kind": "business",
+      "target": "vendor/dockview-entry.ts",
+      "source": "packages/tradeloom-shell/vendor/dockview-entry.ts",
+      "bytes": 330,
+      "sha256": "26c0e668bb56be72aa3c4d5a42450a0fe7b7318edeef8d8bae8b95e8d174c54a"
+    },
+    {
+      "kind": "business",
+      "target": "vendor/dockview-package-lock.json",
+      "source": "packages/tradeloom-shell/vendor/dockview-package-lock.json",
+      "bytes": 1608,
+      "sha256": "b05d55ac0d0723da236cf7b0dcbb401a0e98434bcdc8943c5f241b6a0e948422"
+    },
+    {
+      "kind": "business",
+      "target": "vendor/dockview.css",
+      "source": "packages/tradeloom-shell/vendor/dockview.css",
+      "bytes": 159552,
+      "sha256": "72a757b4d2d0d0f1e38b928b1343c85a7b09766bb2dc2c16c9e3c880f231545d"
+    },
+    {
+      "kind": "business",
+      "target": "vendor/LICENSE.dockview-react",
+      "source": "packages/tradeloom-shell/vendor/LICENSE.dockview-react",
+      "bytes": 1063,
+      "sha256": "1d56757fdc06c9b33c0f80821efe4f4b11960dd7fb6544232cff61752101f513"
+    },
+    {
+      "kind": "business",
+      "target": "vendor/LICENSE.qrcode-generator",
+      "source": "packages/tradeloom-shell/vendor/LICENSE.qrcode-generator",
+      "bytes": 1071,
+      "sha256": "3a850fa5f08101db6f40676c2786e10bd2cd5fff7b12ffdf1e0c434d4e49d90c"
+    },
+    {
+      "kind": "business",
+      "target": "vendor/qrcode-generator-2.0.4.js",
+      "source": "packages/tradeloom-shell/vendor/qrcode-generator-2.0.4.js",
+      "bytes": 56694,
+      "sha256": "79ec86f82856005b1c887905cfccfcfbec3821ca61c7fd5a952faa5f778f791c"
+    },
+    {
+      "kind": "business",
+      "target": "windows-speech-provider.js",
+      "source": "packages/tradeloom-shell/windows-speech-provider.js",
+      "bytes": 8868,
+      "sha256": "d4260a4795711125d304bd8dc01df28c8d752b7f30a703cac79dac9327313c8d"
+    },
+    {
+      "kind": "business",
+      "target": "windows-speech-provider.ps1",
+      "source": "packages/tradeloom-shell/windows-speech-provider.ps1",
+      "bytes": 1777,
+      "sha256": "43e67514c1025a35365fa15cada75d5a7092749d6ee8e6c376ac5c9f02096699"
+    },
+    {
+      "kind": "business",
+      "target": "workflow-artifact-source.js",
+      "source": "packages/tradeloom-shell/workflow-artifact-source.js",
+      "bytes": 2510,
+      "sha256": "7d3a35c0a03a7cf456e767b9b491dbecde71adfeff815abd8a5cc99d3caddbf4"
+    },
+    {
+      "kind": "business",
+      "target": "workflow-definition-postgres.js",
+      "source": "packages/tradeloom-shell/workflow-definition-postgres.js",
+      "bytes": 10234,
+      "sha256": "adc82b8fe79457530c371b0591caf907704313c32f048495498ded48c2810bb9"
+    },
+    {
+      "kind": "business",
+      "target": "workflow-definition.js",
+      "source": "packages/tradeloom-shell/workflow-definition.js",
+      "bytes": 1534,
+      "sha256": "93488f40fec5e30b77e3fcd4b3c10212f0bb30ec724f65b773bfb39ae583d28d"
+    },
+    {
+      "kind": "business",
+      "target": "workflow-engine.js",
+      "source": "packages/tradeloom-shell/workflow-engine.js",
+      "bytes": 8069,
+      "sha256": "f75b774274178fd91928d699de55a680d7452808743768a2617107a0931c542f"
+    },
+    {
+      "kind": "business",
+      "target": "workflow-local-nodes.js",
+      "source": "packages/tradeloom-shell/workflow-local-nodes.js",
+      "bytes": 9036,
+      "sha256": "f78b996e263534d4f6b81775eddf098af5903caa2276fcbd8233392db25df6d8"
+    },
+    {
+      "kind": "business",
+      "target": "workflow-native-artifact-http.js",
+      "source": "packages/tradeloom-shell/workflow-native-artifact-http.js",
+      "bytes": 19128,
+      "sha256": "ddaa238692f98e5db54da7974dc83963ef9b163013e75d61ba6c086e2cccc00a"
+    },
+    {
+      "kind": "business",
+      "target": "workflow-native-binding.js",
+      "source": "packages/tradeloom-shell/workflow-native-binding.js",
+      "bytes": 11270,
+      "sha256": "1a928c8a7e6a33ba5701f00f7f581bfb81b533f952b2f2290c794d5439e7fa16"
+    },
+    {
+      "kind": "business",
+      "target": "workflow-native-command-attribution.js",
+      "source": "packages/tradeloom-shell/workflow-native-command-attribution.js",
+      "bytes": 15714,
+      "sha256": "d4919c1770058e79324b28a35eac80f7c29c34e135b28c69d4fcb8081a7e5e2e"
+    },
+    {
+      "kind": "business",
+      "target": "workflow-native-executor.js",
+      "source": "packages/tradeloom-shell/workflow-native-executor.js",
+      "bytes": 25627,
+      "sha256": "c8c97a2f31b891d81c9968209babcc5c0529a5bdd585fc7d6234dfe9c0875421"
+    },
+    {
+      "kind": "business",
+      "target": "workflow-native-graph.js",
+      "source": "packages/tradeloom-shell/workflow-native-graph.js",
+      "bytes": 1423,
+      "sha256": "adda5456aa445e70275abb96164739e3da645967d4f8335ee07ac1d2bea278a9"
+    },
+    {
+      "kind": "business",
+      "target": "workflow-native-readiness.js",
+      "source": "packages/tradeloom-shell/workflow-native-readiness.js",
+      "bytes": 3194,
+      "sha256": "603e6203873e86d564854bf44114c45f3b9ea20d5a26eda8babafa08fde0c312"
+    },
+    {
+      "kind": "business",
+      "target": "workflow-native-service.js",
+      "source": "packages/tradeloom-shell/workflow-native-service.js",
+      "bytes": 44114,
+      "sha256": "26b8fab2de71f9a8ffe6c7d801ffea05d65aed26266ed97f99a46b0e5acc3f91"
+    },
+    {
+      "kind": "business",
+      "target": "workflow-native-task-authority.js",
+      "source": "packages/tradeloom-shell/workflow-native-task-authority.js",
+      "bytes": 2785,
+      "sha256": "e6fab4458622f351bc7f9312356e9c1baa8da8749c5e5916c88bfd0202728d85"
+    },
+    {
+      "kind": "business",
+      "target": "workflow-native-tools.js",
+      "source": "packages/tradeloom-shell/workflow-native-tools.js",
+      "bytes": 13701,
+      "sha256": "ed4ec29a818dc35e27cfdeb425709ee404964669cc664b637925be114030872e"
+    },
+    {
+      "kind": "business",
+      "target": "workflow-native-ui-gate.js",
+      "source": "packages/tradeloom-shell/workflow-native-ui-gate.js",
+      "bytes": 3307,
+      "sha256": "e4cdda6e4d50ec80c639c71a78c7135e36ab569ee4f3ea633dc0fa8b81d52b7e"
+    },
+    {
+      "kind": "business",
+      "target": "workflow-native-ui.js",
+      "source": "packages/tradeloom-shell/workflow-native-ui.js",
+      "bytes": 30536,
+      "sha256": "59085a8eef1f792775748419bbd29e90243da5519f4f5707f61e1d4741569224"
+    },
+    {
+      "kind": "business",
+      "target": "workflow-postgres.js",
+      "source": "packages/tradeloom-shell/workflow-postgres.js",
+      "bytes": 17182,
+      "sha256": "7a93b9b88457df37e5f207e56b8b19eff5789828ca617db458a7f88a5f23840a"
+    },
+    {
+      "kind": "business",
+      "target": "workflow-review.js",
+      "source": "packages/tradeloom-shell/workflow-review.js",
+      "bytes": 10673,
+      "sha256": "87d283877424090d6f47c97226de2051c1cfb17bf4568d3bb56d9a4445f6d6f6"
+    },
+    {
+      "kind": "business",
+      "target": "workflow-run-journal.js",
+      "source": "packages/tradeloom-shell/workflow-run-journal.js",
+      "bytes": 53734,
+      "sha256": "9d16a7ad1327edc24516830f13c519738ca36169aa4e9434202d9e1f6e2a3e5b"
+    },
+    {
+      "kind": "business",
+      "target": "workflow-schema.js",
+      "source": "packages/tradeloom-shell/workflow-schema.js",
+      "bytes": 8959,
+      "sha256": "c1d6c993d2d76f76b0e607d8b0c3781d36e5a3b0f50a0b6746ca1d4c9a3dd07e"
+    },
+    {
+      "kind": "business",
+      "target": "workflow-tools.js",
+      "source": "packages/tradeloom-shell/workflow-tools.js",
+      "bytes": 10681,
+      "sha256": "e279172f4e053cb0247a446e8209ce6fe22c76f40d17b7f903cc76416fbb7d4d"
+    },
+    {
+      "kind": "backend",
+      "target": "config/__init__.py",
+      "source": "config/__init__.py",
+      "bytes": 32,
+      "sha256": "89e49c2e55a46b2162540f5185cdeccf8bd522340f7678ac0fbf3ba19561bb4a"
+    },
+    {
+      "kind": "backend",
+      "target": "config/asgi.py",
+      "source": "config/asgi.py",
+      "bytes": 203,
+      "sha256": "3746306695f40d558181d7e0ec20253f63cbd546a97007d67b3c1ff490dc6579"
+    },
+    {
+      "kind": "backend",
+      "target": "config/business_embed.py",
+      "source": "config/business_embed.py",
+      "bytes": 505,
+      "sha256": "cdf70c5a29a96da28ccbebb4bb811e598d2baeaa30ad1106587ebfdf015df591"
+    },
+    {
+      "kind": "backend",
+      "target": "config/settings.py",
+      "source": "config/settings.py",
+      "bytes": 4418,
+      "sha256": "29936333d23f9a456fec74f412055a126cdd5bb7af57405c6b2626fbca419dc1"
+    },
+    {
+      "kind": "backend",
+      "target": "config/urls.py",
+      "source": "config/urls.py",
+      "bytes": 312,
+      "sha256": "ef87e2f678a3f0c8d776386ff2d935d91cc42f06b4a419595e2c10a3dd6cc0b5"
+    },
+    {
+      "kind": "backend",
+      "target": "config/wsgi.py",
+      "source": "config/wsgi.py",
+      "bytes": 203,
+      "sha256": "dab7872b3518394af30d939ca3bf01bbe24a1b79df3f79a635a713121fd8702a"
+    },
+    {
+      "kind": "backend",
+      "target": "data/samples/images/DEMO-001.svg",
+      "source": "data/samples/images/DEMO-001.svg",
+      "bytes": 543,
+      "sha256": "bd8e72b245cf4ce393ffee598da61500ffb2fdf735950a21fe0cb6f87cd167be"
+    },
+    {
+      "kind": "backend",
+      "target": "data/samples/images/DEMO-002.svg",
+      "source": "data/samples/images/DEMO-002.svg",
+      "bytes": 696,
+      "sha256": "c34f69b54e9e6456809681a9166e5f5f68b44fe1b4b0fe7ceee726e22e61e956"
+    },
+    {
+      "kind": "backend",
+      "target": "data/samples/products.csv",
+      "source": "data/samples/products.csv",
+      "bytes": 209,
+      "sha256": "1ee312b8c1d6b90b154d6ffd0a5cf01a0569859a28124f72bf9a4a9abccf1b28"
+    },
+    {
+      "kind": "backend",
+      "target": "manage.py",
+      "source": "manage.py",
+      "bytes": 318,
+      "sha256": "3bf7f95cc622093dee3e0c0e7a757f979b0598147863ca2b444383edbb676b2a"
+    },
+    {
+      "kind": "backend",
+      "target": "packages/tradeloom-shell/roles.js",
+      "source": "packages/tradeloom-shell/roles.js",
+      "bytes": 1824,
+      "sha256": "d1f67e79c5aca73e3d82e4a71b083aa830d87a6d98815deef128a5971abf05bb"
+    },
+    {
+      "kind": "backend",
+      "target": "packages/tradeloom-shell/workflow-definition.js",
+      "source": "packages/tradeloom-shell/workflow-definition.js",
+      "bytes": 1534,
+      "sha256": "93488f40fec5e30b77e3fcd4b3c10212f0bb30ec724f65b773bfb39ae583d28d"
+    },
+    {
+      "kind": "backend",
+      "target": "packages/tradeloom-shell/workflow-schema.js",
+      "source": "packages/tradeloom-shell/workflow-schema.js",
+      "bytes": 8959,
+      "sha256": "c1d6c993d2d76f76b0e607d8b0c3781d36e5a3b0f50a0b6746ca1d4c9a3dd07e"
+    },
+    {
+      "kind": "backend",
+      "target": "requirements-workbench.txt",
+      "source": "requirements-workbench.txt",
+      "bytes": 93,
+      "sha256": "181ac4be83822a5e2627059fb67ccfd1bdc669bdd29ac790f4a403e3779c9df4"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/__init__.py",
+      "source": "workbench/__init__.py",
+      "bytes": 38,
+      "sha256": "84c77cd67036f1a774556cec5eda07046e01762919f88fc66c25e5e54fe66fc3"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/agents/__init__.py",
+      "source": "workbench/agents/__init__.py",
+      "bytes": 51,
+      "sha256": "0a37450a6aa3813468861feee7f61e523cb8fafdea599deaed7eb91bb0ec26fb"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/agents/adapters.py",
+      "source": "workbench/agents/adapters.py",
+      "bytes": 2045,
+      "sha256": "50791b67f93fe5b196c6c664f4b62f44678da690a3db1927fd345b260b58ae26"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/agents/agentarts.py",
+      "source": "workbench/agents/agentarts.py",
+      "bytes": 6756,
+      "sha256": "223a74d6d201633eb54b147db895db29ad84234ca02ee8e3b157f51ab232aa09"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/agents/center.py",
+      "source": "workbench/agents/center.py",
+      "bytes": 9707,
+      "sha256": "b5dad360b84020f84a70f33f29f10e83527c8f1bf45009d89ecc4858d77e5de2"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/agents/collaboration.py",
+      "source": "workbench/agents/collaboration.py",
+      "bytes": 2763,
+      "sha256": "965db91d9ec81a8bb616644cb34f2111ee14e1e0435df00ae9950a5d07f4bd44"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/agents/context.py",
+      "source": "workbench/agents/context.py",
+      "bytes": 32928,
+      "sha256": "84f9e75b7d9484f40fc2377f9dd1d5e303db893b79f08fc231844eb6873423e8"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/agents/contracts.py",
+      "source": "workbench/agents/contracts.py",
+      "bytes": 1105,
+      "sha256": "5811ac2ed0ef50f48e6f59718fb5631e3a3976f92d120bea5c2e599a57e01a71"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/agents/customer_agent.py",
+      "source": "workbench/agents/customer_agent.py",
+      "bytes": 4344,
+      "sha256": "f944c67da021095cad7192aad7f419ee6b285a0bc8eb4b90fa6bf48f4fbb3165"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/agents/delivery_agent.py",
+      "source": "workbench/agents/delivery_agent.py",
+      "bytes": 6217,
+      "sha256": "5428be3dce54582a36c8dd3f52b1b5bb981ffd9f14004f7f795b0f28e35c3013"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/agents/local.py",
+      "source": "workbench/agents/local.py",
+      "bytes": 954,
+      "sha256": "99098b41aca431bc3ce2f443d03857f8d11702349b9294fa79f283365f70eb6a"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/agents/mock_runtime.py",
+      "source": "workbench/agents/mock_runtime.py",
+      "bytes": 4580,
+      "sha256": "47581eae15bee0815674d9fd8b45ec044dfbce06c10f6e96a5f08b9c2c0d8262"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/agents/placeholders.py",
+      "source": "workbench/agents/placeholders.py",
+      "bytes": 1465,
+      "sha256": "0ff80b7bd0c66b7c6a9ff7f061d7b7380fbd70273f693703e301b7bd834f85a2"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/agents/product_agent.py",
+      "source": "workbench/agents/product_agent.py",
+      "bytes": 4612,
+      "sha256": "1288a3e34880a478c9938d805b6d44c63144d49a53f4a4ed87824b3ca99a0152"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/agents/registry.py",
+      "source": "workbench/agents/registry.py",
+      "bytes": 3628,
+      "sha256": "25ad0d418a341b89aa58a268b6e92135ca5f5d18526019e66a42fcdaeaa80a67"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/agents/result_contracts.py",
+      "source": "workbench/agents/result_contracts.py",
+      "bytes": 1636,
+      "sha256": "0044ff405146ee71f8ab8abf985e58ac94135adb4143bb799200e694dcd5db1d"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/agents/runtime.py",
+      "source": "workbench/agents/runtime.py",
+      "bytes": 1699,
+      "sha256": "2b5b7d8a2ada1ced96f8783d16fb0a3e8eb358ae0403466e60e61a19056519a0"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/agents/schema_validation.py",
+      "source": "workbench/agents/schema_validation.py",
+      "bytes": 517,
+      "sha256": "586c853bc6124bdba90bf78ed2505c576c93c921fd5461c0ff6f624e246249b5"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/agents/tool_contracts.py",
+      "source": "workbench/agents/tool_contracts.py",
+      "bytes": 12575,
+      "sha256": "7e95fd55bbeb0fee1e4ff4abbc6d12ca0ed89ba114d82bbcad810a81da043bec"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/agents/workflow_contracts.py",
+      "source": "workbench/agents/workflow_contracts.py",
+      "bytes": 4632,
+      "sha256": "5795ba1d5d4c1804a6d01b849743bc934ca9b1cfe5ef1fbedeba3699a17b3c87"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/api.py",
+      "source": "workbench/api.py",
+      "bytes": 50430,
+      "sha256": "8ac1086d2308d541117caeb7fc82c3a4f5cf5ccffaf0c079f908e182b90b0a10"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/apps.py",
+      "source": "workbench/apps.py",
+      "bytes": 150,
+      "sha256": "073697315dc594ede922ad2d66f7975f0aab92e7b88cec4c986de660c31f074a"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/business_urls.py",
+      "source": "workbench/business_urls.py",
+      "bytes": 1259,
+      "sha256": "3cd96eec76cf5ce9118290ea78ae0e16bbdf76536abb3c1791efdbaf85c571a4"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/canvas_workflow_api.py",
+      "source": "workbench/canvas_workflow_api.py",
+      "bytes": 6311,
+      "sha256": "74ef94ba1516337d2ed3529642697c93925669d4605b3118fd662b9817fa8879"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/canvas_workflow_definition_api.py",
+      "source": "workbench/canvas_workflow_definition_api.py",
+      "bytes": 7217,
+      "sha256": "856daca35dee1b03f8173df712cb7ce6bd0f7c5883f837c08bab15f59a0a42d6"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/canvas_workflow_ownership.py",
+      "source": "workbench/canvas_workflow_ownership.py",
+      "bytes": 25736,
+      "sha256": "349a06a522b6c260375756b55f08499b51df96ebdb262f3cf24880d01350f601"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/customers/__init__.py",
+      "source": "workbench/customers/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/customers/api.py",
+      "source": "workbench/customers/api.py",
+      "bytes": 8236,
+      "sha256": "2d62a844da97759311144824ad1ded0c760842a792d6589bfc5dea78c17f4a7b"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/customers/service.py",
+      "source": "workbench/customers/service.py",
+      "bytes": 35162,
+      "sha256": "55800df2dbc00ccc407e9a3608684419fc96aafe64982bebff46db021b3259fb"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/customers/views.py",
+      "source": "workbench/customers/views.py",
+      "bytes": 8842,
+      "sha256": "67c025f1bbec14815b09d81559393f50fcab3dd41affddff4343146717366b90"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/delivery/__init__.py",
+      "source": "workbench/delivery/__init__.py",
+      "bytes": 79,
+      "sha256": "0fa919fa71d268251979e427df9a3da855fe959ca0cdb7796bc0e8cf0ab61f78"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/delivery/catalog.py",
+      "source": "workbench/delivery/catalog.py",
+      "bytes": 5477,
+      "sha256": "c8e4b030e87e763db347ad4e684d4e950152e1d1632059a97b84ff83b14f198e"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/delivery/checklist.py",
+      "source": "workbench/delivery/checklist.py",
+      "bytes": 1720,
+      "sha256": "eb516757fcec81e22be83fe4c1d75291033e0c14a48ded1001511a997034960d"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/delivery/quality.py",
+      "source": "workbench/delivery/quality.py",
+      "bytes": 5089,
+      "sha256": "b431209a98ebf470b3b299901ff0e208e7eafb0389baf83306caf3d26f7b43ab"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/delivery/service.py",
+      "source": "workbench/delivery/service.py",
+      "bytes": 56922,
+      "sha256": "4369f20b66d6742843bf11b0c5b0bbe2c0d60d751fc2185b4a24feb5a2c2a177"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/delivery/storage.py",
+      "source": "workbench/delivery/storage.py",
+      "bytes": 7708,
+      "sha256": "836266f609bbec3dcd12a8b7f3e3221b70f4b66cfe2fb18a08175306630c49ff"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/diagnostics.py",
+      "source": "workbench/diagnostics.py",
+      "bytes": 3419,
+      "sha256": "4f58e463d2e4629b2bc6c803fdbc2df45bcc3556a420685e89b10f6f6c22a657"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/dispatch_api.py",
+      "source": "workbench/dispatch_api.py",
+      "bytes": 13539,
+      "sha256": "effdf6463ccf24826f54852a44de6a957df3912e9fc05f3abd941bc7cf3c19a2"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/erpnext/__init__.py",
+      "source": "workbench/erpnext/__init__.py",
+      "bytes": 350,
+      "sha256": "abfbcb98a9be06df34a50c829dc236f68e0daf42bea59e2ffcca174dd1fe8f84"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/erpnext/api.py",
+      "source": "workbench/erpnext/api.py",
+      "bytes": 11754,
+      "sha256": "a354b491399dc0823732f37b23a32f47f1c5c34f801417bc600c1bbab3d2070e"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/erpnext/client.py",
+      "source": "workbench/erpnext/client.py",
+      "bytes": 17638,
+      "sha256": "74de2c455aa6b8950779b7795495b9d0f7edb25ec68b710a0f6270349fb49aab"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/erpnext/drafts.py",
+      "source": "workbench/erpnext/drafts.py",
+      "bytes": 23738,
+      "sha256": "2ae27804bb7cb21ebe3418bc53165917fa3dc8ca2297809dd0d204dbf5039a3b"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/erpnext/dto.py",
+      "source": "workbench/erpnext/dto.py",
+      "bytes": 344,
+      "sha256": "916161582a79d6bfd58c3e606a4348d278d808d39db727c0f23bc9bf13e481fa"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/erpnext/service.py",
+      "source": "workbench/erpnext/service.py",
+      "bytes": 14234,
+      "sha256": "6916cb1cce2d577ce79b10c27f76fe16006fb5e0b61df29aa934f846e796a1dd"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/execution_plans/api.py",
+      "source": "workbench/execution_plans/api.py",
+      "bytes": 8077,
+      "sha256": "00f60bb7f6801650a4d4424949af30bdff5361b85f4bf0df2b280ed703b78bb1"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/execution_plans/schemas.py",
+      "source": "workbench/execution_plans/schemas.py",
+      "bytes": 8308,
+      "sha256": "550b06d88ba105e329063453c2aa98ff59c717e149fa231f733e61b588ec7099"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/execution_plans/service.py",
+      "source": "workbench/execution_plans/service.py",
+      "bytes": 8206,
+      "sha256": "6738be72be714fed69825ecbade1f7dad06b8c7a3d13e54f04ec6b6d91ee5b36"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/intake/__init__.py",
+      "source": "workbench/intake/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/intake/api.py",
+      "source": "workbench/intake/api.py",
+      "bytes": 56911,
+      "sha256": "e2e4c35c3129fb7abba7ccf9c8fa7fafa6dc5965c2cbe177980f7335cb03e079"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/intake/limits.py",
+      "source": "workbench/intake/limits.py",
+      "bytes": 269,
+      "sha256": "ec7ccff1f38d900a73bc1b559ea881a87631ac7e22651127a38bd06d1de52e2e"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/intake/mapping.py",
+      "source": "workbench/intake/mapping.py",
+      "bytes": 5706,
+      "sha256": "9ec8a4a05a3a56db2ed13485b9ae1d3c325020c8f1de95c6e9405bc71801e20a"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/intake/narrative_annotations.py",
+      "source": "workbench/intake/narrative_annotations.py",
+      "bytes": 3420,
+      "sha256": "f6a1f013979b85e34bc8889ee001e0b0bf23a244fe9204c7ac018c330c3235d2"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/intake/narrative_storage.py",
+      "source": "workbench/intake/narrative_storage.py",
+      "bytes": 7046,
+      "sha256": "d8eecdcccfd27496daaca196c17336de8c046c4dfc01098ddbf9ddfbaa893046"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/intake/ooxml_richdata.py",
+      "source": "workbench/intake/ooxml_richdata.py",
+      "bytes": 16393,
+      "sha256": "612d29ee0fd21cba4d9d6c763b4f259719ad09ca2d76e37abd9c7f766390718c"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/intake/parser.py",
+      "source": "workbench/intake/parser.py",
+      "bytes": 12424,
+      "sha256": "068a3e13f00cd263d341c5d0a47986f7727f1103c1306b4b6a014e51692aec02"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/intake/product_application.py",
+      "source": "workbench/intake/product_application.py",
+      "bytes": 17599,
+      "sha256": "a257ec5e4b9f4f990428e9c1ce7f362bd66b01abc9f8d03376a7fb29948da7cc"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/intake/schemas.py",
+      "source": "workbench/intake/schemas.py",
+      "bytes": 3823,
+      "sha256": "052f4777bbc0b9920a7fee76adda5b865d8e9f8029770aa91b8c77159c46bd72"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/intake/snapshots.py",
+      "source": "workbench/intake/snapshots.py",
+      "bytes": 4216,
+      "sha256": "c450b5ee5462b35d02b30a0ea58bb5a980a591a8d854cc2b9ed36a5f3dcc06d7"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/intake/storage.py",
+      "source": "workbench/intake/storage.py",
+      "bytes": 10545,
+      "sha256": "f08f7eb149e0f6f292dddd43d364879dfa67b2aa60964e1aad90924671f5334a"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/intent/__init__.py",
+      "source": "workbench/intent/__init__.py",
+      "bytes": 78,
+      "sha256": "9ea02190f084ec913bbcbee44096607b64b0449c81caa7b86346205d1409f175"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/intent/parser.py",
+      "source": "workbench/intent/parser.py",
+      "bytes": 15294,
+      "sha256": "47f0675da5f57959ca24ced48005856b31cc6e7d795b20723668c7148e8f4af9"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/intent/prompt.md",
+      "source": "workbench/intent/prompt.md",
+      "bytes": 637,
+      "sha256": "8d622fb7b377093118f990211ed8177c74ac018076320a429ea10a23e8be012e"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/intent/rules.json",
+      "source": "workbench/intent/rules.json",
+      "bytes": 1239,
+      "sha256": "0d31e42d9e539dc2cb0eb55a4bdcf1d70b64d27fefc55987a9b5a9d198c21352"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/management/__init__.py",
+      "source": "workbench/management/__init__.py",
+      "bytes": 1,
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/management/commands/__init__.py",
+      "source": "workbench/management/commands/__init__.py",
+      "bytes": 1,
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/management/commands/backfill_product_revisions.py",
+      "source": "workbench/management/commands/backfill_product_revisions.py",
+      "bytes": 947,
+      "sha256": "9768551cf62c5c5b4885f6bbf5c7e25f3e7a4484d7627f0a52ae15dac9506e05"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/management/commands/migrate_legacy_sqlite.py",
+      "source": "workbench/management/commands/migrate_legacy_sqlite.py",
+      "bytes": 5226,
+      "sha256": "9eeaad9d8edc50a1934a9cc811902b66aea28c46dd1b464cd0b7de1eb1888290"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/migrations/0001_initial.py",
+      "source": "workbench/migrations/0001_initial.py",
+      "bytes": 4902,
+      "sha256": "6a4374c57c04d59a1b7b5e738775c7d5522ca1f7cae9a7e5e2d1bd7a3dc592a9"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/migrations/0002_workflow_domain.py",
+      "source": "workbench/migrations/0002_workflow_domain.py",
+      "bytes": 10024,
+      "sha256": "45d0e6171c0acd4f0c30d9ea2eade6c8f1486f8ed85fd476bea91e0367931a00"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/migrations/0003_workflow_create_idempotency.py",
+      "source": "workbench/migrations/0003_workflow_create_idempotency.py",
+      "bytes": 850,
+      "sha256": "eb44f45507274322f9e6bbb078c211a220488910df5c4649d7aa6dd1783a4f3e"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/migrations/0004_erpnext_draft_operation.py",
+      "source": "workbench/migrations/0004_erpnext_draft_operation.py",
+      "bytes": 2955,
+      "sha256": "753ca376b9e500c8103d4d10b1279d704255869c32c691a8ef801d7a56c952cf"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/migrations/0005_intake_sources.py",
+      "source": "workbench/migrations/0005_intake_sources.py",
+      "bytes": 6468,
+      "sha256": "c8ea0fd38d368be88d443267cc1c20e0e6811c595cb11d7e73efac622537e169"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/migrations/0006_intake_staging.py",
+      "source": "workbench/migrations/0006_intake_staging.py",
+      "bytes": 6371,
+      "sha256": "4dd0a9a046d05f0ff75f09928d04ed8fdebe841b9fefd37511df493554fafd6c"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/migrations/0007_narrative_evidence_sources.py",
+      "source": "workbench/migrations/0007_narrative_evidence_sources.py",
+      "bytes": 4009,
+      "sha256": "9bf0f80b8c1a9bff964d83e5026d398d0ffa7d927bfdcd6e0049eea4dfb758f2"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/migrations/0008_production_requirement_drafts.py",
+      "source": "workbench/migrations/0008_production_requirement_drafts.py",
+      "bytes": 4617,
+      "sha256": "6ac74d6b1e1ee8cd85fe3535eb6707b5f89ee251ceece4d960607e024ff24c20"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/migrations/0009_execution_plan_revision.py",
+      "source": "workbench/migrations/0009_execution_plan_revision.py",
+      "bytes": 2034,
+      "sha256": "a61d1b985ecb3a58058f8860d49fef7fb4dd3f03cc894b2a99add58d5bd0f207"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/migrations/0010_intake_candidate_link_history.py",
+      "source": "workbench/migrations/0010_intake_candidate_link_history.py",
+      "bytes": 377,
+      "sha256": "562fc381cc88771caa45b01297569c191c175a6c918dbef52e10719b9ad14c28"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/migrations/0011_narrative_annotation_revision.py",
+      "source": "workbench/migrations/0011_narrative_annotation_revision.py",
+      "bytes": 2316,
+      "sha256": "503918a12568b1f83ed22418d2a0e694d764cabe74dae62b7ec78bc6c66acb4a"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/migrations/0012_canvas_workflow_run.py",
+      "source": "workbench/migrations/0012_canvas_workflow_run.py",
+      "bytes": 1240,
+      "sha256": "3484014c1f7f34b1be4bf2f8e04a8c4f38fc1f0e8744f1f44426ab20059abf13"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/migrations/0012_customer_customeralias_customerevent_and_more.py",
+      "source": "workbench/migrations/0012_customer_customeralias_customerevent_and_more.py",
+      "bytes": 9132,
+      "sha256": "963a52e84beca147b225029a65290e38606dd6e92fd5e2991c1aca1140a10f3e"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/migrations/0013_customeraliasdecision_customermerge_and_more.py",
+      "source": "workbench/migrations/0013_customeraliasdecision_customermerge_and_more.py",
+      "bytes": 4195,
+      "sha256": "ba87f47efcc1055445614d34d96514f0ae2e3e168f68b5c5599c7651e4c8f85f"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/migrations/0013_native_artifact_version.py",
+      "source": "workbench/migrations/0013_native_artifact_version.py",
+      "bytes": 1705,
+      "sha256": "740e7ce666430211bd53ffc388ea4b64ba2aaddede0a6b9522c6d9b1474f9ae6"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/migrations/0014_business_dispatch.py",
+      "source": "workbench/migrations/0014_business_dispatch.py",
+      "bytes": 2737,
+      "sha256": "0c283aec8c53a7458f084850644d3e41f2186052a5de675d19ad734575928764"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/migrations/0014_merge_canvas_native_artifact_and_customer.py",
+      "source": "workbench/migrations/0014_merge_canvas_native_artifact_and_customer.py",
+      "bytes": 263,
+      "sha256": "641ebc3e3d917b58daa22d101fc1f1ca97b1d44a15a64b0aa94cb1ed34db33fa"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/migrations/0015_canvas_workflow_definition.py",
+      "source": "workbench/migrations/0015_canvas_workflow_definition.py",
+      "bytes": 1057,
+      "sha256": "e6576522c1a4504cbb7f1ce61ee6e7f8773327adf070b13ea842e4e4cf4a2f4f"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/migrations/0015_merge_business_dispatch_and_customer.py",
+      "source": "workbench/migrations/0015_merge_business_dispatch_and_customer.py",
+      "bytes": 252,
+      "sha256": "fd054b4157264c210b427d6ac635b214a60e91395c62e433ded04e02e096babe"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/migrations/0016_merge_canvas_workflow_definition.py",
+      "source": "workbench/migrations/0016_merge_canvas_workflow_definition.py",
+      "bytes": 247,
+      "sha256": "c156b3e7da70ae77db589dc225f403828756edc8c73170e1e9dbccf3a2564764"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/migrations/0017_canvas_workflow_run_ownership.py",
+      "source": "workbench/migrations/0017_canvas_workflow_run_ownership.py",
+      "bytes": 2870,
+      "sha256": "417dcf653bdb60c2f3a4901e2af0dd12c4416a5d5936000b630dc02812d10a70"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/migrations/__init__.py",
+      "source": "workbench/migrations/__init__.py",
+      "bytes": 1,
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/models.py",
+      "source": "workbench/models.py",
+      "bytes": 55801,
+      "sha256": "78e5589803123b6884102b42e03a545cca7a4010ed0f786c67a1d0c93173d72f"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/native_artifact_api.py",
+      "source": "workbench/native_artifact_api.py",
+      "bytes": 7603,
+      "sha256": "260d1e48e52fe3e3598dc3d37b7104b7ad1d67c27cba5ec69cec105b50de2bd3"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/native_artifact_service.py",
+      "source": "workbench/native_artifact_service.py",
+      "bytes": 4662,
+      "sha256": "297b0274f2e4f9256262557b5db4aafce4e7ccae758984837c2e63517ac8a272"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/native_artifact_validator.mjs",
+      "source": "workbench/native_artifact_validator.mjs",
+      "bytes": 2177,
+      "sha256": "110e1e6b1c30e2677d762578f59dec473812e4707b58858f164a9945bfb30d16"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/native_artifact_validator.py",
+      "source": "workbench/native_artifact_validator.py",
+      "bytes": 4261,
+      "sha256": "bdf13af7ac72c64b54b8af4bc4bc62d3e375f61c3deb7548d71bea20e7a232d3"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/product_fact_restore_api.py",
+      "source": "workbench/product_fact_restore_api.py",
+      "bytes": 3088,
+      "sha256": "e44ceb2b60ca715dac90aa5ff47a39a3853538d1bd7abe6884199afff35e132f"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/products/__init__.py",
+      "source": "workbench/products/__init__.py",
+      "bytes": 289,
+      "sha256": "f1b6375dfc4962ec14ba8139aeba07dff41ffe8f8f088f040efef4b00ba51a00"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/products/query.py",
+      "source": "workbench/products/query.py",
+      "bytes": 3439,
+      "sha256": "53036417fc7c6680096ed2e5524ec6f4048543078345b06c50bd72cff23f3ae0"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/products/restoration.py",
+      "source": "workbench/products/restoration.py",
+      "bytes": 12408,
+      "sha256": "ebf786b72287c6f91b9e8a248241998ae21228c0e5276f4e49837953e0b30a05"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/products/versions.py",
+      "source": "workbench/products/versions.py",
+      "bytes": 9246,
+      "sha256": "8b4057dd2703bf1645ab0605c58250510572e68e00b815e712192725b1df0cea"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/requirements/__init__.py",
+      "source": "workbench/requirements/__init__.py",
+      "bytes": 58,
+      "sha256": "c323632b45aa841d0feb3912bbe975aebb9e2e6bc9cdd70dbc4e26eb7401dd61"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/requirements/api.py",
+      "source": "workbench/requirements/api.py",
+      "bytes": 25496,
+      "sha256": "8beecf5bf946c18d1ece93f8759c18d79be6399220ed261d72e2c7f97345001f"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/requirements/calculations.py",
+      "source": "workbench/requirements/calculations.py",
+      "bytes": 2137,
+      "sha256": "e78af072838aed290554dcd828f07cda957d9bae918c50d1840e9c9ed421cf37"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/requirements/schemas.py",
+      "source": "workbench/requirements/schemas.py",
+      "bytes": 3375,
+      "sha256": "f875e420ab36c9488e9247e2fe0a4f0b60b3e27bcfccf89c067400038830c102"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/requirements/service.py",
+      "source": "workbench/requirements/service.py",
+      "bytes": 9273,
+      "sha256": "17630fdb30cb8cf20e2aa6743ef054b6be54e6757dcd6fee1ec83689fc3167d6"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/services.py",
+      "source": "workbench/services.py",
+      "bytes": 20722,
+      "sha256": "89892d248b7df67e64ed550c28c0009474b24574ebaae9c7d5647b5373e37c11"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/static/workbench/agent-run-receipts.js",
+      "source": "workbench/static/workbench/agent-run-receipts.js",
+      "bytes": 3160,
+      "sha256": "554f127a2dc0e007ab01ad56b36d3bc4ad8907732ca99d99ca74c975a3194116"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/static/workbench/app.js",
+      "source": "workbench/static/workbench/app.js",
+      "bytes": 49263,
+      "sha256": "ab4ac277655e1b7da91aa283b95538e892747a7658dd7e8348fbebac665dbc69"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/static/workbench/artifact-browser.js",
+      "source": "workbench/static/workbench/artifact-browser.js",
+      "bytes": 42137,
+      "sha256": "3b2a11908d3ca9f8d7e5c0219ac22f099313804c13eb3a40eef90e69575a7c16"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/static/workbench/business-url.js",
+      "source": "workbench/static/workbench/business-url.js",
+      "bytes": 3644,
+      "sha256": "b306096449ba4d135926b017eb45b8999b6d94ea951fa51a0c9d1d8f94845b0a"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/static/workbench/customers.js",
+      "source": "workbench/static/workbench/customers.js",
+      "bytes": 8573,
+      "sha256": "b23d82da924fba0f183213792daddca1a190d5c2a99735d537df6eb76a93d24d"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/static/workbench/execution-plans.js",
+      "source": "workbench/static/workbench/execution-plans.js",
+      "bytes": 32959,
+      "sha256": "94aa0203bb0fd8810aba86af57a535cee586a62b7efdcd1b57a858cdd89ab0f1"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/static/workbench/intake-links.js",
+      "source": "workbench/static/workbench/intake-links.js",
+      "bytes": 15262,
+      "sha256": "c787e8fc684667a794ebd688fbcd3bc6e02f52624a6102335c0e9306ff387a87"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/static/workbench/intake-product-application.js",
+      "source": "workbench/static/workbench/intake-product-application.js",
+      "bytes": 17025,
+      "sha256": "f6e0fe83b1ba6aff972fed6f9bc7fecebbaa5f73ec75e6ab10e89d3bb24259a4"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/static/workbench/intake.js",
+      "source": "workbench/static/workbench/intake.js",
+      "bytes": 86564,
+      "sha256": "38527823b3b7c2e81ab89bed6cb55d359fdbb0e34e697b7017bd0d9f0b8fcb6b"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/static/workbench/run-filters.js",
+      "source": "workbench/static/workbench/run-filters.js",
+      "bytes": 2182,
+      "sha256": "2695f8f16edb726513da3b62e51e237cea2b6b0bbadc09f911c4091d02e7758c"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/static/workbench/runs-health.css",
+      "source": "workbench/static/workbench/runs-health.css",
+      "bytes": 11063,
+      "sha256": "427171e66c8557bab48828395ae2bf548b69870043d2e2898b312444bdbe7778"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/static/workbench/styles.css",
+      "source": "workbench/static/workbench/styles.css",
+      "bytes": 122202,
+      "sha256": "fe7ae6e042a25e2a1acebdb55aa523d2ae44557e2a0413eadc7a923c342944db"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/static/workbench/workflow-graph.css",
+      "source": "workbench/static/workbench/workflow-graph.css",
+      "bytes": 30352,
+      "sha256": "6a7ccc927f57586fa6a36b2d091b4524a1849f4e00ab1731a0c307d376fe5904"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/static/workbench/workflow-graph.js",
+      "source": "workbench/static/workbench/workflow-graph.js",
+      "bytes": 49825,
+      "sha256": "f2db6446910fd73efdf8999f95b10b4b68dd9847204e872c4f61889ea7fa1b2a"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/templates/workbench/agent_center.html",
+      "source": "workbench/templates/workbench/agent_center.html",
+      "bytes": 10781,
+      "sha256": "a7aa288442910404689e6c2bd37c677c9560fb2dd02b92cd5cb731c85b301742"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/templates/workbench/agents.html",
+      "source": "workbench/templates/workbench/agents.html",
+      "bytes": 4104,
+      "sha256": "19ddddae2967b49df39151296b816af4f28efb7d9e5a8e22b4d8c2dcd61b5463"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/templates/workbench/artifacts.html",
+      "source": "workbench/templates/workbench/artifacts.html",
+      "bytes": 25964,
+      "sha256": "863c26422206cec61a91ca24d49844f89670b1bcca2af1d4fbda570f2b2e6613"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/templates/workbench/base.html",
+      "source": "workbench/templates/workbench/base.html",
+      "bytes": 5413,
+      "sha256": "ac2e20fd2bed9f09a8c1048c76b3681ae9ed72bd6d5a6065d517e1194c23ca63"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/templates/workbench/customer_detail.html",
+      "source": "workbench/templates/workbench/customer_detail.html",
+      "bytes": 13443,
+      "sha256": "f47ef6b536822e2cf0b87ee7a2110b6197c08e3b3ef6b873ac4682a29f217a17"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/templates/workbench/customers.html",
+      "source": "workbench/templates/workbench/customers.html",
+      "bytes": 6354,
+      "sha256": "fd2ae71a53a0bb850598770b6805b36f63066eeabd65622d7ec107ed10361372"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/templates/workbench/home.html",
+      "source": "workbench/templates/workbench/home.html",
+      "bytes": 6185,
+      "sha256": "5b21ff4d6e2569f8459a71a62a6c19404e02902c1490aab59621148cfba4310f"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/templates/workbench/new_task.html",
+      "source": "workbench/templates/workbench/new_task.html",
+      "bytes": 1766,
+      "sha256": "752e7b79164375307127f78ddb66bf904aec73ff834c6c60eb159201c905974b"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/templates/workbench/products.html",
+      "source": "workbench/templates/workbench/products.html",
+      "bytes": 6331,
+      "sha256": "4452c9773f9340eac0d27ceaa21a866bce4e0eb327801226331673a0bf6c17ad"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/templates/workbench/runs.html",
+      "source": "workbench/templates/workbench/runs.html",
+      "bytes": 12472,
+      "sha256": "27459ccacdaced26e0d968bc1dc799863ccc60c15a10224003af31df4b686690"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/templates/workbench/sample_checklist_preview.html",
+      "source": "workbench/templates/workbench/sample_checklist_preview.html",
+      "bytes": 2141,
+      "sha256": "766cc7f676f740cd653360485137b248a9307db4e7589dea8cf611af783ff80f"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/templates/workbench/task_detail.html",
+      "source": "workbench/templates/workbench/task_detail.html",
+      "bytes": 4578,
+      "sha256": "6efe9562b2b891d766bfcc8d7da3626ea1eefabf8d655f81c792d9dd39b078ce"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/templates/workbench/task_list.html",
+      "source": "workbench/templates/workbench/task_list.html",
+      "bytes": 1630,
+      "sha256": "0425d1759ef90cfb995781bf7c44002eb2dac09fbd380a9c6b6ea417f5bd5436"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/templates/workbench/workflow_detail.html",
+      "source": "workbench/templates/workbench/workflow_detail.html",
+      "bytes": 42041,
+      "sha256": "da6cdc0438cda0fd29d7465cd6d5ad2cc8c96f61b2b950ba5cc765cf1fb73c34"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/templates/workbench/workflow_reference_rows.html",
+      "source": "workbench/templates/workbench/workflow_reference_rows.html",
+      "bytes": 142,
+      "sha256": "54f221deb5ea52d85e355ac90803e2c3c1cbc6a97dd1ff2f37bd7f9c07c74a2a"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/templates/workbench/workflow_review_image_uploads.html",
+      "source": "workbench/templates/workbench/workflow_review_image_uploads.html",
+      "bytes": 2030,
+      "sha256": "5833819ad7a3be50ff57af39678268bd168bf4fe11b8d93472b94bc4db263185"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/templatetags/__init__.py",
+      "source": "workbench/templatetags/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/templatetags/business_urls.py",
+      "source": "workbench/templatetags/business_urls.py",
+      "bytes": 291,
+      "sha256": "e91398c69e18630d0f8b8a155d26f8c15cfa7cc7ebce88cd776f882741d2d8a6"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/testing.py",
+      "source": "workbench/testing.py",
+      "bytes": 1399,
+      "sha256": "326c0d90c382f2342aa8aa6abd2cde1eb2a7fe39debc3db3440dd274de2dd5c8"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/urls.py",
+      "source": "workbench/urls.py",
+      "bytes": 8404,
+      "sha256": "ea875e0d90218fc3275bbb191f3ad123e8d242ca2d02c4aff12dc0590555f52e"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/views.py",
+      "source": "workbench/views.py",
+      "bytes": 18795,
+      "sha256": "374930713af0b805591834ae8dde97f8b79084525ae62c440eaabed6ee9f1359"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/workflow_definition_validator.mjs",
+      "source": "workbench/workflow_definition_validator.mjs",
+      "bytes": 2282,
+      "sha256": "6d08920787f2804c4c5d5950ec410567c7cf9dcab0d1408938b42e3f1d0d589b"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/workflow_definition_validator.py",
+      "source": "workbench/workflow_definition_validator.py",
+      "bytes": 4257,
+      "sha256": "751645c751fd62ff353f9b2a7684a0826f9e881c1caf967deb5ef7dc43d41420"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/workflow_views.py",
+      "source": "workbench/workflow_views.py",
+      "bytes": 41553,
+      "sha256": "3fdb78180f7e32bcf5dfa79dad8f4e572224af037586bd8077e2dd44501e54de"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/workflows/__init__.py",
+      "source": "workbench/workflows/__init__.py",
+      "bytes": 115,
+      "sha256": "432d8818c4445b8610b0e58cc588ac4cb19b5d8ac9254067bf3d279698a277fa"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/workflows/dispatch_target.py",
+      "source": "workbench/workflows/dispatch_target.py",
+      "bytes": 3632,
+      "sha256": "dd1b1f5469bdb9ac163ec03b2ef79254434efb1d943bfad82a7268a5d32c6b7e"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/workflows/events.py",
+      "source": "workbench/workflows/events.py",
+      "bytes": 964,
+      "sha256": "60ad26da3367c409bbad3aab35429249ca8b1bf0bf76d06ba830b245cc33426c"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/workflows/execution.py",
+      "source": "workbench/workflows/execution.py",
+      "bytes": 4881,
+      "sha256": "6407b177bd835eedf1fc62bee9631200996bbea64920b45930828883e82704dd"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/workflows/fact_application.py",
+      "source": "workbench/workflows/fact_application.py",
+      "bytes": 40502,
+      "sha256": "da3e0141d94b3e6021da1d4daea9e87e2a991e07f53f278b5b8066522a1ecd80"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/workflows/orchestrator.py",
+      "source": "workbench/workflows/orchestrator.py",
+      "bytes": 81664,
+      "sha256": "9a0e75bb97e31ace17adbb638fcb4666fae321f914034b335014735749084801"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/workflows/prepare.py",
+      "source": "workbench/workflows/prepare.py",
+      "bytes": 11164,
+      "sha256": "66eaec2915170c9b3e2cdff4ddc41e07013d693c5e978b1038ceec7e971e1f3a"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/workflows/review_images.py",
+      "source": "workbench/workflows/review_images.py",
+      "bytes": 20014,
+      "sha256": "0f71f89e956b5072572d9a99cbbfbc8c0ac27d36e4e845dc45891a67882c8aa7"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/workflows/reviews.py",
+      "source": "workbench/workflows/reviews.py",
+      "bytes": 19868,
+      "sha256": "a356ba162021480cd5664ee67744900c452a7f90ffb6a525c6e0b00f2929bfc8"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/workflows/states.py",
+      "source": "workbench/workflows/states.py",
+      "bytes": 2219,
+      "sha256": "b440c7f45103d341a03ab4c44df89013542c888a4b657cb515f89d8682182c0c"
+    },
+    {
+      "kind": "backend",
+      "target": "workbench/workflows/validation.py",
+      "source": "workbench/workflows/validation.py",
+      "bytes": 32338,
+      "sha256": "c9efa2d8e52e90edd9471ecbdc6fa0827560805f51237af538077d30bf214a39"
+    },
+    {
+      "kind": "asar",
+      "target": "lib/main.js",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/main.js",
+      "bytes": 1109475,
+      "sha256": "5e693ea051e58121d9b917067f8737ff4cf674d4e2bd13c581e840f0e8692638"
+    },
+    {
+      "kind": "asar",
+      "target": "lib/operation-report-worker.js",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/operation-report-worker.js",
+      "bytes": 185600,
+      "sha256": "bce69b578f7f9f66788517a4b03c27634d6be25ec3ebebca0a8f9f33cd916d00"
+    },
+    {
+      "kind": "asar",
+      "target": "lib/preload-app.cjs",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/preload-app.cjs",
+      "bytes": 148006,
+      "sha256": "cddbedc8eaadb35e394f81af904155ee69ef54db5431fa39205680ceeb0ad46d"
+    },
+    {
+      "kind": "asar",
+      "target": "lib/preload-mandatory.cjs",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/preload-mandatory.cjs",
+      "bytes": 1033,
+      "sha256": "1d1df2edd1b50e051cae606019081731a5939ab7b4313567029fdaa97ee59273"
+    },
+    {
+      "kind": "asar",
+      "target": "lib/preload-platform-account.cjs",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/preload-platform-account.cjs",
+      "bytes": 2083,
+      "sha256": "bf997c17dfc71885e8fa01e75c75a527c0863877ca995c6f7e943a288ea90f3c"
+    },
+    {
+      "kind": "asar",
+      "target": "lib/preload-update-dialog.cjs",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/preload-update-dialog.cjs",
+      "bytes": 1108,
+      "sha256": "65856af44fbd11bca80df7ac065ac118611c6d060d745d39efa7d18544648483"
+    },
+    {
+      "kind": "asar",
+      "target": "lib/preload-welcome.cjs",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/preload-welcome.cjs",
+      "bytes": 119229,
+      "sha256": "95ed9f11f2ff8dae9772f6b1b683ab65e762435f0b7ecb104e2aad5daf180dc0"
+    },
+    {
+      "kind": "asar",
+      "target": "lib/welcome/Montserrat-OFL.txt",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/welcome/Montserrat-OFL.txt",
+      "bytes": 4400,
+      "sha256": "861d64229728cd65a98d119612c12769582574d1a092f0b63c8b0fd474e7065f"
+    },
+    {
+      "kind": "asar",
+      "target": "lib/welcome/brand-font.css",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/welcome/brand-font.css",
+      "bytes": 554,
+      "sha256": "d0733ee69620e686561800ac788e54fc0bb9e02af5294c8b6f74c109132210cf"
+    },
+    {
+      "kind": "asar",
+      "target": "lib/welcome/design-platform.css",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/welcome/design-platform.css",
+      "bytes": 29861,
+      "sha256": "3234f318769ea5065013793d58d98b235948486789d69ea16e850bd3713babcc"
+    },
+    {
+      "kind": "asar",
+      "target": "lib/welcome/montserrat-light.woff2",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/welcome/montserrat-light.woff2",
+      "bytes": 61548,
+      "sha256": "da25f1327eb1dcc70c193897b5d7e00d31821d9518c0a49e073ff50d97a3f10a"
+    },
+    {
+      "kind": "asar",
+      "target": "lib/welcome/montserrat-medium.woff2",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/welcome/montserrat-medium.woff2",
+      "bytes": 62148,
+      "sha256": "8a81ca6f05cb6831d5487e4b287ce5a625a718c39226b736f155900adc394166"
+    },
+    {
+      "kind": "asar",
+      "target": "lib/welcome/montserrat-regular.woff2",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/welcome/montserrat-regular.woff2",
+      "bytes": 62008,
+      "sha256": "0f4a15e29a9535af580a64db967929a8d6b202fad9a467be390619a591d2c4c5"
+    },
+    {
+      "kind": "asar",
+      "target": "lib/welcome/welcome.css",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/welcome/welcome.css",
+      "bytes": 43121,
+      "sha256": "fdbd0027db58c83b5118da31e76d28c0ab44db0302287efaf8da915de1a40ca0"
+    },
+    {
+      "kind": "asar",
+      "target": "lib/welcome/welcome.js",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/welcome/welcome.js",
+      "bytes": 231260,
+      "sha256": "a61a373d845e6c8d0db17cb707b86608d76f7c6fc21e9adc535fd44aa11896ed"
+    },
+    {
+      "kind": "asar",
+      "target": "lib/deepseek-account-bootstrap.mjs",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/deepseek-account-bootstrap.mjs",
+      "bytes": 40004,
+      "sha256": "d35815eaf7b411133963dd7ad96edb2b1e12c39bb43441d876fa7c8d49ed7a03"
+    },
+    {
+      "kind": "asar",
+      "target": "lib/doubao-account-bootstrap.mjs",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/doubao-account-bootstrap.mjs",
+      "bytes": 27032,
+      "sha256": "4f5a4a467408c199b7bc2acbf404d277368540cf8207d1869e6d96b883464d56"
+    },
+    {
+      "kind": "asar",
+      "target": "lib/fixed-account-entry-probe-r2.mjs",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/fixed-account-entry-probe-r2.mjs",
+      "bytes": 14971,
+      "sha256": "0913ca57be60240892bc1969591fccf39d8f7443c3fb2b0cfc782f8d016c0f22"
+    },
+    {
+      "kind": "asar",
+      "target": "lib/main-location-validator.mjs",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/main-location-validator.mjs",
+      "bytes": 333571,
+      "sha256": "7c44601ef31709571c913e03f463ed5caca49454c039b033be6ac5337bf14fb5"
+    },
+    {
+      "kind": "asar",
+      "target": "lib/tradeloom-source-shell/source-core-controller.mjs",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/tradeloom-source-shell/source-core-controller.mjs",
+      "bytes": 89501,
+      "sha256": "0636255c17e62f1bf30211b34d8663f316c543adbec4edc7643883a849e4dd6b"
+    },
+    {
+      "kind": "asar",
+      "target": "lib/tradeloom-source-shell/source-preload.cjs",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/tradeloom-source-shell/source-preload.cjs",
+      "bytes": 9422,
+      "sha256": "323a15d1afe7d3aee6da538a4f577db420dea4dbc79a2ed10e11113fbf220299"
+    },
+    {
+      "kind": "asar",
+      "target": "lib/tradeloom-source-shell/source-shell-controller.mjs",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/tradeloom-source-shell/source-shell-controller.mjs",
+      "bytes": 146796,
+      "sha256": "549658641751a0e0f3c280af8a73e5588df97434b39cb427a06c0ce8afff8764"
+    },
+    {
+      "kind": "asar",
+      "target": "lib/tradeloom-source-shell/surface-owner.mjs",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/tradeloom-source-shell/surface-owner.mjs",
+      "bytes": 4927,
+      "sha256": "f59a854677872d4b8919e1c47a468cb85d59e212b311fcd368e2bcfc092fa6a8"
+    },
+    {
+      "kind": "asar",
+      "target": "lib/tradeloom/bootstrap-core.mjs",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/tradeloom/bootstrap-core.mjs",
+      "bytes": 17168,
+      "sha256": "cd0c614c967e1fff9b28b513eab90e021f7984beca0fd38376a723219eff57df"
+    },
+    {
+      "kind": "asar",
+      "target": "lib/tradeloom/bootstrap-entry.mjs",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/tradeloom/bootstrap-entry.mjs",
+      "bytes": 7487,
+      "sha256": "3033d5308626946ae2999dd65ca5dda1c69704fd80c41e6d1b1ac77b979acfa4"
+    },
+    {
+      "kind": "asar",
+      "target": "lib/tradeloom/core.mjs",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/tradeloom/core.mjs",
+      "bytes": 15170,
+      "sha256": "5177d356626b1659a0a4e3306dc025609b8b95d7014f20077895127e0a5be194"
+    },
+    {
+      "kind": "asar",
+      "target": "lib/tradeloom/desktop-receipt.mjs",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/tradeloom/desktop-receipt.mjs",
+      "bytes": 8896,
+      "sha256": "9560e2f94fa32c7aaa243b1393edb019bf977a70ca6b2bbfcfc9d7783711ab59"
+    },
+    {
+      "kind": "asar",
+      "target": "lib/tradeloom/installed-bootstrap.mjs",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/tradeloom/installed-bootstrap.mjs",
+      "bytes": 51844,
+      "sha256": "eddaa4b6607ddefb333a3abeb36c2aaae911f33e9e36db48dd799ec509cd8ded"
+    },
+    {
+      "kind": "asar",
+      "target": "lib/tradeloom/plugin-seed.mjs",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/tradeloom/plugin-seed.mjs",
+      "bytes": 14648,
+      "sha256": "8da0430e96e07a552dc4919e3956962c3b904585306a5bea211138e11b2e5dbc"
+    },
+    {
+      "kind": "asar",
+      "target": "lib/tradeloom/prepare-profile.mjs",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/tradeloom/prepare-profile.mjs",
+      "bytes": 10752,
+      "sha256": "0e6592a1738234b2c76fca6cdcfc805ef155a65e434df2674d17ad2c97ff29dd"
+    },
+    {
+      "kind": "asar",
+      "target": "lib/tradeloom/receipt-writer.mjs",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/tradeloom/receipt-writer.mjs",
+      "bytes": 3439,
+      "sha256": "958035500235b0e764e905842f320fa14224302d5cea0421f1ed11c16bd2a90d"
+    },
+    {
+      "kind": "asar",
+      "target": "lib/webai-account-trigger-main-r2.mjs",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/webai-account-trigger-main-r2.mjs",
+      "bytes": 4725,
+      "sha256": "4d2f7954073aef0466cd2b4e59ca5c74380a865c7232b385d193cb6b170b3766"
+    },
+    {
+      "kind": "asar",
+      "target": "lib/webai-account-trigger-probe-r2.mjs",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/webai-account-trigger-probe-r2.mjs",
+      "bytes": 21601,
+      "sha256": "db97d21c222739a452451451654fa5a12276fe42e91d7cb75542938a02d15b26"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/account-window.css",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/account-window.css",
+      "bytes": 3007,
+      "sha256": "80e933dafb77ef4519e169e3c891d9a864f5661f8d1b2f3f92e6a13a5eafafb9"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/account-window.html",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/account-window.html",
+      "bytes": 1513,
+      "sha256": "5b66ec1d4802a4e65d90bb61c94465c44a4ec24d0bb77cef1f703e4d06c8ff37"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/account-window.js",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/account-window.js",
+      "bytes": 11545,
+      "sha256": "aa7c369e237027ae951bd6047ca74071633e935101f6992d00e1ce585b52584c"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/assets/bilibili-icon.ico",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/assets/bilibili-icon.ico",
+      "bytes": 4286,
+      "sha256": "2681561eb24e7435fea1acf26f3af95e4efc9f7d451587b58bef62f030f337e9"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/assets/bilibili-icon.png",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/assets/bilibili-icon.png",
+      "bytes": 2833,
+      "sha256": "9a931e013b9e049e92f2f6ed8f0da8c1c1110241c95267eb268c3741f7497b91"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/assets/bilibili-icon.svg",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/assets/bilibili-icon.svg",
+      "bytes": 1923,
+      "sha256": "dbbdb511357980f234e65f71301713d64c65a4b8fb1e65b611fad817e705e945"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/assets/blender-icon.png",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/assets/blender-icon.png",
+      "bytes": 1311,
+      "sha256": "5643979402711bb06b48a53449f6cb26ddb10e022bcbaf8b89c439b25b77c872"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/assets/boot-video-720p.mp4",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/assets/boot-video-720p.mp4",
+      "bytes": 2594993,
+      "sha256": "1d6b3b618008bc4f6bcb8708d55dc51c33316e2ab69203a6de57bca61ed2a801"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/assets/boot-video.mp4",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/assets/boot-video.mp4",
+      "bytes": 13364807,
+      "sha256": "fc9555880082904a1ad1b5f5168cf37d4620b1a75a15c8c80a720d93eac78693"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/assets/danghui.png",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/assets/danghui.png",
+      "bytes": 13975,
+      "sha256": "8c3f5efbf62fcadfa9bfb57acd7a358bf1560fd30a42c2bf2376e9a519924865"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/assets/deepseek-whale.png",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/assets/deepseek-whale.png",
+      "bytes": 6370,
+      "sha256": "cba0168e484cf74016847e09aff47c839f4198000a52f19e76f44a73dafe24e4"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/assets/douyin-icon.png",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/assets/douyin-icon.png",
+      "bytes": 821,
+      "sha256": "65eeadaba260aae870a0a8402e02be52090c1edc23ba48006e0f7904adc9bc2f"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/assets/hithink-icon.png",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/assets/hithink-icon.png",
+      "bytes": 961,
+      "sha256": "9dfae1ba3f7dd6b387ec042bd3204306c41505091f04692b47c3076ae299904d"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/assets/ideal-emblem.png",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/assets/ideal-emblem.png",
+      "bytes": 17044,
+      "sha256": "b91aa6c37c045eff07917c9528e996b839ce22e109d700fe11d247e023781857"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/assets/stock-icon-96.png",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/assets/stock-icon-96.png",
+      "bytes": 9599,
+      "sha256": "4d7415976befd652033f01ae1ef8c5efa7e319e14d439fe1a0efde794a183fa2"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/assets/webai/chatglm.png",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/assets/webai/chatglm.png",
+      "bytes": 2217,
+      "sha256": "94e48956654f0b02d7a113628cdea50819579c6bccecec8888928f321c0f997d"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/assets/webai/deepseek.png",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/assets/webai/deepseek.png",
+      "bytes": 7384,
+      "sha256": "547ead56dcb71424315ba53bf8f4c35e745efeaece106b9fb7e4dcdfa19c1a7a"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/assets/webai/doubao.png",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/assets/webai/doubao.png",
+      "bytes": 8216,
+      "sha256": "f4467b1b14a9588a40ccf2f312c2a2c9d285d69d9f7ab8c20eea375a547d5ea5"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/assets/webai/kimi.png",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/assets/webai/kimi.png",
+      "bytes": 21645,
+      "sha256": "6c14f9c3062e953b3ed57ae3e19db931c1c1bba38d4d8d55550544f31d55e469"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/assets/webai/tongyi.png",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/assets/webai/tongyi.png",
+      "bytes": 1658,
+      "sha256": "cd9390bc4209c319121d111f3a1f535b3c7dd909b8f860d41acc9744138d58df"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/customer-start.js",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/customer-start.js",
+      "bytes": 1894,
+      "sha256": "52d21812adeda9472b0adfef4d83e69680b4d8d278e030f5e2a62f247e9c5c16"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/index.html",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/index.html",
+      "bytes": 9227,
+      "sha256": "c22a7e00ee608e7ff2195c974b315e55590a4c9078145d80dd4bfc3e3350a186"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/mcp-panel.js",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/mcp-panel.js",
+      "bytes": 29850,
+      "sha256": "842bdb3c4cd3ef3ddc2e473ed1e6da4158cf5a98b1981a426fadc41d835cde69"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/public-clean.js",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/public-clean.js",
+      "bytes": 1347,
+      "sha256": "77788918a1ebf2ddce4dbf3f32b3b1aae9c51655073481dc79d80bcec3717955"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/public-links.js",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/public-links.js",
+      "bytes": 1234,
+      "sha256": "2995eb621aec5511fae18f7e0ab87157d93095237c4752d19cfbf1f46dcdfc13"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/renderer.js",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/renderer.js",
+      "bytes": 74299,
+      "sha256": "7e7beb5a8aa57b5e850e91b7b2be2d3b1bb8a0e6459e27964f4d9c695c1978a6"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/renderers.js",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/renderers.js",
+      "bytes": 1097913,
+      "sha256": "bd998b648beda22b279d68823b9b8c284098fc9202b7bd16e333801f1a425679"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/replica-ui/assets/deepseek.svg",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/assets/deepseek.svg",
+      "bytes": 3642,
+      "sha256": "90d7e400ca261d28dfb7982bfade335912b3a27a620faee9a787f8a52164fd43"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/replica-ui/assets/doubao.png",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/assets/doubao.png",
+      "bytes": 6520,
+      "sha256": "967f66980a35f2187841193d625693d233d7c451774ecffaebfa19e8884c3257"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/replica-ui/assets/tradeloom-mark.svg",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/assets/tradeloom-mark.svg",
+      "bytes": 961,
+      "sha256": "7e2cdb6592de4456295d455056a1d5ca500cf8ef3c759aef90ceba66c76b5849"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/replica-ui/business-bridge.css",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/business-bridge.css",
+      "bytes": 1296,
+      "sha256": "1499740df594f510ac8398090481fceecd386c2332522a2a647f49012784d05a"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/replica-ui/business-bridge.js",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/business-bridge.js",
+      "bytes": 76315,
+      "sha256": "1948ded822eed425c722dcee0a5c2fda5b078ee3edea8daedb8ada0f9e42a16d"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/replica-ui/business-file-bridge.js",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/business-file-bridge.js",
+      "bytes": 13570,
+      "sha256": "05157d2f2d231306f4c80a8a013e626925e66d5821b753c07971365c15c38435"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/replica-ui/index.html",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/index.html",
+      "bytes": 3238,
+      "sha256": "51265fd9d01f87950eadeafe7d2e2dfa5f5f37831b47ac2d43cec144c38b05f5"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/replica-ui/native-account-controls.css",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/native-account-controls.css",
+      "bytes": 2180,
+      "sha256": "33d43ca494dabc88143c085a5429e17365fd7c901e7e67a896bcc15c5a1cabc4"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/replica-ui/native-account-controls.js",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/native-account-controls.js",
+      "bytes": 9310,
+      "sha256": "6d4001ed9fee59af5a209eedd25f035136431e866557fcb41cf1d2390e8e6c45"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/replica-ui/palette-tokens.css",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/palette-tokens.css",
+      "bytes": 13570,
+      "sha256": "2f9de244fe9347040227e444e51b8ab7f3d25f6796dd9d2dc37fe0660d2ba240"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/replica-ui/palette.css",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/palette.css",
+      "bytes": 7541,
+      "sha256": "79c8eb54adcbaea1022084a2273d16e88bf22e7f9c1885211fcc25537c7b3c88"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/replica-ui/panel-interactions.css",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/panel-interactions.css",
+      "bytes": 4638,
+      "sha256": "1d2ae8186b2e5e0e497d581560be31229d229a69a1df94d56deba5d3b541881a"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/replica-ui/panel-interactions.js",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/panel-interactions.js",
+      "bytes": 94725,
+      "sha256": "c579a13391947503a0a2dcf7616e07be73e22c32271e19474a2e37178794b5fd"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/replica-ui/renderer.js",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/renderer.js",
+      "bytes": 122576,
+      "sha256": "119a33a8225843fe8a7e3611b005739776040c00f807f4ea53e0a70885c6a02a"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/replica-ui/replica-adapter.js",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/replica-adapter.js",
+      "bytes": 111663,
+      "sha256": "a8af143109690c507ba01080711df3dad41692e040de090ee631bcc4b0bc58b0"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/replica-ui/scenes-data.js",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/scenes-data.js",
+      "bytes": 6216,
+      "sha256": "5e2316df3993fb38a89191e04849651ee760b5210ed85b2e47924c7a2cf53faf"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/replica-ui/scenes.json",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/scenes.json",
+      "bytes": 5894,
+      "sha256": "1855228680120c458bfa0695bb47f92f8d6f31c1bd776cb55f5b48866334c34f"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/replica-ui/style.css",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/style.css",
+      "bytes": 38335,
+      "sha256": "2638cb0c6861b514d324a4d563b7b44da4c2f96c307d2d9b54b28cd1cb541210"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/replica-ui/tradeloom-mark.svg",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/tradeloom-mark.svg",
+      "bytes": 961,
+      "sha256": "7e2cdb6592de4456295d455056a1d5ca500cf8ef3c759aef90ceba66c76b5849"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/sector-data.js",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/sector-data.js",
+      "bytes": 172346,
+      "sha256": "914b1832a5d6ea00fdc09e81ff588e89e7a3b163ee8b1b4470e5ffb10246730e"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/source-entry.html",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/source-entry.html",
+      "bytes": 8360,
+      "sha256": "7493b3bd601c0cc13574871aaf8b2f2de3d508ed39b605685481f9bf67e2bbf4"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/styles.css",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/styles.css",
+      "bytes": 294106,
+      "sha256": "de711a5f76a66e58b0d0cb77b564ebeea9e9187622c03ad9d19197b5b72dfc42"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/topbar-status.js",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/topbar-status.js",
+      "bytes": 100041,
+      "sha256": "021cacc2b2051ad0ed0f262071d6bb477ab962d906b50ef7117e3389e2142199"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/us-sector-data.js",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/us-sector-data.js",
+      "bytes": 139888,
+      "sha256": "f3f5f43b5ff5e462b0386eac60b123d9c02c54b89e5dddaf10814b124a2cf9e9"
+    },
+    {
+      "kind": "asar",
+      "target": "renderer/source-shell/webai-bridge.js",
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/webai-bridge.js",
+      "bytes": 129678,
+      "sha256": "3a26fa7e41ae13718a2a12b4ea03a83bdb1383a491811f8e556aa93b6fb02f7f"
+    },
+    {
+      "kind": "program",
+      "target": "app/resources/tradeloom/engine-recovery-tools/apps/tradeloom-launcher/core.mjs",
+      "source": "apps/tradeloom-launcher/stage5-source06/program/00-core.mjs",
+      "bytes": 15170,
+      "sha256": "5177d356626b1659a0a4e3306dc025609b8b95d7014f20077895127e0a5be194"
+    },
+    {
+      "kind": "program",
+      "target": "app/resources/tradeloom/engine-recovery-tools/apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.2/recipe.json",
+      "source": "apps/tradeloom-launcher/stage5-source06/program/01-recipe.json",
+      "bytes": 14393,
+      "sha256": "f7225c8ea7cdff765002cba9794eddf12333c08af4fde15cfb516969ac7012b6"
+    },
+    {
+      "kind": "program",
+      "target": "app/resources/tradeloom/engine-recovery-tools/apps/tradeloom-launcher/engine-recovery-worker.cjs",
+      "source": "apps/tradeloom-launcher/stage5-source06/program/02-engine-recovery-worker.cjs",
+      "bytes": 11319,
+      "sha256": "f448dda44d57f99f38dc6db7d95afed81b90691791793980f6432fc5971faef1"
+    },
+    {
+      "kind": "program",
+      "target": "app/resources/tradeloom/engine-recovery-tools/apps/tradeloom-launcher/installed-bootstrap.mjs",
+      "source": "apps/tradeloom-launcher/stage5-source06/program/03-installed-bootstrap.mjs",
+      "bytes": 51844,
+      "sha256": "eddaa4b6607ddefb333a3abeb36c2aaae911f33e9e36db48dd799ec509cd8ded"
+    },
+    {
+      "kind": "program",
+      "target": "app/resources/tradeloom/engine-recovery-tools/apps/tradeloom-launcher/plugin-seed.mjs",
+      "source": "apps/tradeloom-launcher/stage5-source06/program/04-plugin-seed.mjs",
+      "bytes": 14648,
+      "sha256": "5d8a0bb701171d2a097a4feb934882adb51a2941f97b35816e88db3f544e889c"
+    },
+    {
+      "kind": "program",
+      "target": "app/resources/tradeloom/engine-recovery-tools/apps/tradeloom-launcher/scripts/write-candidate-program-zip.py",
+      "source": "apps/tradeloom-launcher/stage5-source06/program/05-write-candidate-program-zip.py",
+      "bytes": 16210,
+      "sha256": "a7e58d69e4691f6a419d3da18bf7840b292c7214da827e8e7b6715669d20f93f"
+    },
+    {
+      "kind": "program",
+      "target": "app/resources/tradeloom/engine-recovery-tools/dsh-base.manifest.json",
+      "source": "apps/tradeloom-launcher/stage5-source06/program/06-dsh-base.manifest.json",
+      "bytes": 7106,
+      "sha256": "7508abd6d6a3e4b10fb1fd0a7ece055b4a40d33b544ab3788c8f9de033db58f7"
+    },
+    {
+      "kind": "program",
+      "target": "app/resources/tradeloom/engine-recovery-tools/packages/tradeloom-shell/engine-generation-owner.js",
+      "source": "apps/tradeloom-launcher/stage5-source06/program/07-engine-generation-owner.js",
+      "bytes": 18222,
+      "sha256": "a451ed54e9e5c1189f7fad0babc1dad3757a32644b47a3980bcb7462d8c78cb1"
+    },
+    {
+      "kind": "program",
+      "target": "app/resources/tradeloom/engine-recovery-tools/packages/tradeloom-shell/engine-generation-snapshots.js",
+      "source": "apps/tradeloom-launcher/stage5-source06/program/08-engine-generation-snapshots.js",
+      "bytes": 31955,
+      "sha256": "651244997e383613c3500c9e247468e417d197d1e4581bc2d605065e04bc09a2"
+    },
+    {
+      "kind": "program",
+      "target": "app/resources/tradeloom/engine-recovery-tools/packages/tradeloom-shell/package.json",
+      "source": "apps/tradeloom-launcher/stage5-source06/program/09-package.json",
+      "bytes": 5355,
+      "sha256": "1811b29ffbe2c917dfea5ebd8c268cad6c4ac49d0d50db90ff00885d4a36a186"
+    },
+    {
+      "kind": "program",
+      "target": "app/resources/tradeloom/engine-recovery-tools/packages/tradeloom-shell/roles.js",
+      "source": "apps/tradeloom-launcher/stage5-source06/program/10-roles.js",
+      "bytes": 1824,
+      "sha256": "d1f67e79c5aca73e3d82e4a71b083aa830d87a6d98815deef128a5971abf05bb"
+    },
+    {
+      "kind": "program",
+      "target": "app/resources/tradeloom/engine-recovery-tools/packages/tradeloom-shell/state.js",
+      "source": "apps/tradeloom-launcher/stage5-source06/program/11-state.js",
+      "bytes": 14358,
+      "sha256": "1a18e47338c1af76663c436966df99443885b3c17228d77aab87b81f1d1b886d"
+    },
+    {
+      "kind": "program",
+      "target": "app/resources/tradeloom/engine-recovery-tools/runtime-inputs.json",
+      "source": "apps/tradeloom-launcher/stage5-source06/program/12-runtime-inputs.json",
+      "bytes": 270472,
+      "sha256": "432d1a82d2f38a92cf85aae4e2812d41eb88392901b70d22d982960d8a369f1d"
+    },
+    {
+      "kind": "program",
+      "target": "app/resources/tradeloom/engine-recovery-tools/scripts/apply-dsh-candidate.py",
+      "source": "apps/tradeloom-launcher/stage5-source06/program/13-apply-dsh-candidate.py",
+      "bytes": 33524,
+      "sha256": "c9a8de128da5daf0985952a71ed483d854c426751aa4d251d7571f412dd42c9d"
+    },
+    {
+      "kind": "program",
+      "target": "app/resources/tradeloom/engine-recovery-tools/scripts/build-dsh-candidate.py",
+      "source": "apps/tradeloom-launcher/stage5-source06/program/14-build-dsh-candidate.py",
+      "bytes": 36304,
+      "sha256": "394fdf531c1ad56b425cd6c06edf1d3515da0063fd7d5a4c4f7f03c19f593328"
+    },
+    {
+      "kind": "program",
+      "target": "app/resources/tradeloom/engine-recovery-tools/scripts/replay-dsh-candidate.py",
+      "source": "apps/tradeloom-launcher/stage5-source06/program/15-replay-dsh-candidate.py",
+      "bytes": 18226,
+      "sha256": "c337a056784640c7b1de33b96b130116e59554c05143b42594df4f6f5644d11b"
+    },
+    {
+      "kind": "program",
+      "target": "app/resources/tradeloom/plugin-seed/p/197/lib/index.js",
+      "source": "apps/tradeloom-launcher/stage5-source06/program/16-index.js",
+      "bytes": 430593,
+      "sha256": "308e52580e4eb595e0c11b83961344719d77b6588c1bf68c1fd1b6180d2704ce"
+    },
+    {
+      "kind": "program",
+      "target": "app/resources/tradeloom/plugin-seed/seed-manifest.json",
+      "source": "apps/tradeloom-launcher/stage5-source06/program/17-seed-manifest.json",
+      "bytes": 6108491,
+      "sha256": "ce6f03e89a87c60b79f611392e82822a8e7a57113559b359579233d90fd4703e"
+    }
+  ],
+  "retiredBusiness": [
+    "client.webai-files.js",
+    "webai-directory-host.js",
+    "webai-directory-policy.js",
+    "webai-native-site-adapter.js",
+    "webai-site-transport.js",
+    "webai-file-tools.js",
+    "webai-local-directory.js",
+    "webai-tool-envelope.js",
+    "webai-runtime-files.js"
+  ],
+  "legacyBusinessInputRoot": "apps/tradeloom-launcher/stage5-source06/legacy-business-inputs",
+  "legacyAutomaticTests": [
+    "tests/composer-native-ui.test.mjs",
+    "tests/scene-lifecycle.test.mjs",
+    "tests/source-native-extension-register.test.mjs",
+    "tests/webai-directory-policy.test.mjs",
+    "tests/webai-mounted-runtime-sdk.test.mjs",
+    "tests/webai-site-transport.test.mjs"
+  ],
+  "deployment": {
+    "source": "apps/tradeloom-launcher/stage5-source06/deployment.json",
+    "bytes": 42013,
+    "sha256": "9438894b376f64df4e946da3030a22b81498555ef4047ef0dbea7d1a582b27cb"
+  },
+  "launcher": {
+    "source": "apps/tradeloom-launcher/stage5-source06/derived/Program.cs",
+    "bytes": 9925,
+    "sha256": "e56b1baa2f32f42e3056a320cb5c4250dda10e4b3c94cb2fc270942f4e9b8717"
+  },
+  "sequence": [
+    "Existing fixed official base and versioned replay/program recipes are intermediate inputs.",
+    "Use exact source06 ASAR/business/backend/program postimages in records as the final accepted-source stage.",
+    "Retire the nine business modules; final deployment inventory is authoritative."
+  ],
+  "boundary": "Editable exact JS/assets and existing recipes; not a claim every official dependency rebuilds from TypeScript. Exact accepted voice lib wins over historical TS. Legacy intermediate automatic modules and tests are source history, not final product entries."
+}
