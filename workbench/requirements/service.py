@@ -25,10 +25,9 @@ def _candidate_field_value(field_type: str, value: object):
     if field_type == "decimal":
         return value if isinstance(value, str) else None
     if field_type == "date":
-        if isinstance(value, dict) and value.get("type") in {"date", "datetime"}:
-            candidate = value.get("iso")
-            if isinstance(candidate, str):
-                return candidate[:10]
+        # 候选单元格取出的 value 已是 ISO 串（如 "2026-12-20T00:00:00"），取日期部分。
+        if isinstance(value, str) and len(value) >= 10:
+            return value[:10]
         if isinstance(value, (date, datetime)):
             return value.date().isoformat() if isinstance(value, datetime) else value.isoformat()
     return None
