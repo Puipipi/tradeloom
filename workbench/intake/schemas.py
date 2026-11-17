@@ -38,6 +38,15 @@ FIELD_SCHEMAS = {
     "production_instruction_line": {
         "material": "text", "quantity": "decimal", "unit": "text",
     },
+    "purchase_plan_line": {
+        "material": "text", "quantity": "decimal", "unit": "text",
+    },
+    "stock_receipt_line": {
+        "material": "text", "quantity": "decimal", "unit": "text",
+    },
+    "shipment_payment_line": {
+        "reference": "text", "amount": "decimal", "currency": "text",
+    },
 }
 
 

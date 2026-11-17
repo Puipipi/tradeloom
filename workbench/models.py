@@ -470,6 +470,86 @@ class ProductionRequirementLine(models.Model):
         ]
 
 
+class PurchasePlan(models.Model):
+    """采购计划：按物料×数量×期望日期安排，确认前需物料核对通过。"""
+
+    id = models.CharField(primary_key=True, max_length=32, default=hex_uuid, editable=False)
+    requirement_draft = models.ForeignKey(
+        ProductionRequirementDraft, null=True, blank=True, on_delete=models.PROTECT, related_name="purchase_plans"
+    )
+    source_candidate = models.ForeignKey(
+        IntakeCandidate, null=True, blank=True, on_delete=models.PROTECT, related_name="purchase_plans"
+    )
+    position = models.PositiveIntegerField(default=1)
+    material = models.CharField(max_length=500)
+    item_ref = models.JSONField(null=True, blank=True)
+    item_status = models.CharField(max_length=24, default="unresolved")
+    quantity = models.CharField(max_length=40, blank=True, default="")
+    unit = models.CharField(max_length=64, blank=True, default="")
+    expected_on = models.DateField(null=True, blank=True)
+    issues = models.JSONField(default=list)
+    status = models.CharField(max_length=16, default="draft")
+    source = models.CharField(max_length=64, default="manual")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at", "id"]
+
+
+class StockReceipt(models.Model):
+    """入库记录：仓管手动录入物料到货；只记录，不推算库存成本。"""
+
+    id = models.CharField(primary_key=True, max_length=32, default=hex_uuid, editable=False)
+    purchase_plan = models.ForeignKey(
+        PurchasePlan, null=True, blank=True, on_delete=models.PROTECT, related_name="receipts"
+    )
+    source_candidate = models.ForeignKey(
+        IntakeCandidate, null=True, blank=True, on_delete=models.PROTECT, related_name="stock_receipts"
+    )
+    position = models.PositiveIntegerField(default=1)
+    material = models.CharField(max_length=500)
+    item_ref = models.JSONField(null=True, blank=True)
+    item_status = models.CharField(max_length=24, default="unresolved")
+    quantity = models.CharField(max_length=40, blank=True, default="")
+    unit = models.CharField(max_length=64, blank=True, default="")
+    received_on = models.DateField(null=True, blank=True)
+    issues = models.JSONField(default=list)
+    status = models.CharField(max_length=16, default="draft")
+    source = models.CharField(max_length=64, default="manual")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at", "id"]
+
+
+class ShipmentPayment(models.Model):
+    """出货/回款记录：财务手动录入；仅记录事实，不做财务判断。"""
+
+    class Kind(models.TextChoices):
+        SHIPMENT = "shipment", "出货"
+        PAYMENT = "payment", "回款"
+
+    id = models.CharField(primary_key=True, max_length=32, default=hex_uuid, editable=False)
+    source_candidate = models.ForeignKey(
+        IntakeCandidate, null=True, blank=True, on_delete=models.PROTECT, related_name="shipment_payments"
+    )
+    position = models.PositiveIntegerField(default=1)
+    kind = models.CharField(max_length=16, choices=Kind.choices, default=Kind.SHIPMENT)
+    reference = models.CharField(max_length=200, blank=True, default="")
+    amount = models.CharField(max_length=40)
+    currency = models.CharField(max_length=8)
+    occurred_on = models.DateField(null=True, blank=True)
+    status = models.CharField(max_length=16, default="draft")
+    source = models.CharField(max_length=64, default="manual")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at", "id"]
+
+
 class ExecutionPlanRevision(AppendOnlyModel):
     class Status(models.TextChoices):
         DRAFT = "draft", "Draft"
