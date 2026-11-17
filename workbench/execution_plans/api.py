@@ -16,6 +16,7 @@ from workbench.models import (
 )
 
 from .schemas import MAX_REQUEST_BYTES, validate_plan_body
+from .resolve import PlanResolveError, resolve_plan_materials
 from .service import create_plan_payload, latest_revision, plan_payload
 
 
@@ -27,6 +28,7 @@ _ERROR_STATUS = {
     "stale_execution_plan": 409,
     "execution_plan_idempotency_conflict": 409,
     "invalid_execution_evidence": 422,
+    "nothing_resolved": 422,
     "unavailable": 503,
 }
 
@@ -137,6 +139,30 @@ def plan_revision_collection(request: HttpRequest, requirement_id: str) -> JsonR
         return _safe_error("unavailable", 503)
     except IntegrityError:
         return _safe_error("stale_execution_plan")
+    except Exception:
+        return _safe_error("unavailable", 503)
+
+
+@require_http_methods(["POST"])
+def resolve_execution_plan_materials(request: HttpRequest, plan_revision_id: str) -> JsonResponse:
+    if not re.fullmatch(r"[a-f0-9]{32}", plan_revision_id):
+        return _safe_error("execution_plan_requirement_not_found")
+    try:
+        key = _key(request)
+        _json_object(request, MAX_REQUEST_BYTES)
+        payload, created = resolve_plan_materials(plan_revision_id, key)
+        return JsonResponse({"ok": True, **payload}, status=201 if created else 200)
+    except PlanResolveError as exc:
+        return _safe_error(exc.code)
+    except MappingError as exc:
+        if exc.code == "idempotency_conflict":
+            return _safe_error("execution_plan_idempotency_conflict")
+        return _safe_error(exc.code)
+    except ValueError as exc:
+        code = str(exc)
+        if code in {"invalid_json", "invalid_idempotency_key"}:
+            return _safe_error(code)
+        return _safe_error("unavailable", 503)
     except Exception:
         return _safe_error("unavailable", 503)
 

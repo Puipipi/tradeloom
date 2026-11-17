@@ -67,6 +67,7 @@ urlpatterns = [
     path("api/production-requirements/<str:requirement_id>/confirm", requirement_api.confirm_requirement),
     path("api/production-requirements/<str:requirement_id>/execution-plan-revisions", execution_plan_api.plan_revision_collection),
     path("api/execution-plans/<str:plan_revision_id>", execution_plan_api.execution_plan_detail),
+    path("api/execution-plans/<str:plan_revision_id>/resolve-materials", execution_plan_api.resolve_execution_plan_materials),
     path("api/agents", api.list_agents),
     path("api/customers", customer_api.customer_collection),
     path("api/customers/<str:customer_id>", customer_api.customer_detail),

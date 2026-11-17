@@ -501,3 +501,60 @@ class ExecutionPlanApiTests(TransactionTestCase):
     def test_makemigrations_check_has_no_drift_in_managed_postgres_context(self):
         call_command("makemigrations", "workbench", check=True, dry_run=True,
                      interactive=False, verbosity=0)
+
+    def test_resolve_materials_appends_resolved_revision(self):
+        from workbench.models import MaterialItem
+        # TransactionTestCase 前置测试会 flush 库，显式保证演示物料存在。
+        MaterialItem.objects.get_or_create(item_code="MAT-LED-001", defaults={
+            "item_name": "彩灯带", "item_group": "照明", "stock_uom": "米", "source": "demo_fixture"})
+        draft, requirement = self.confirmed_requirement()
+        body = {"requirement_revision_id": requirement.pk, "expected_revision": 0,
+                "requirement_refs": [],
+                "materials": [
+                    {"item_ref": None, "resolution": "unresolved",
+                     "proposal": {"description": "彩灯带", "quantity": "12", "unit": "米", "expected_date": None},
+                     "supporting_requirement_inputs": []},
+                    {"item_ref": None, "resolution": "unresolved",
+                     "proposal": {"description": "外星材料", "quantity": "1", "unit": "个", "expected_date": None},
+                     "supporting_requirement_inputs": []},
+                ],
+                "operations": []}
+        created = self.post_plan(draft.pk, body, "resolve-plan-create")
+        self.assertEqual(created.status_code, 201, created.content)
+        plan_id = created.json()["plan"]["id"]
+
+        response = self.client.post(
+            f"/api/execution-plans/{plan_id}/resolve-materials", data="{}",
+            content_type="application/json", HTTP_IDEMPOTENCY_KEY="resolve-plan-1")
+        self.assertEqual(response.status_code, 201, response.content)
+        payload = response.json()
+        self.assertTrue(payload["applied"])
+        self.assertEqual(payload["resolved_materials"], 1)
+        new_plan = payload["plan"]
+        self.assertEqual(new_plan["revision"], 2)
+        self.assertEqual(new_plan["materials"][0]["resolution"], "resolved")
+        self.assertEqual(new_plan["materials"][0]["item_ref"], {"doctype": "Item", "name": "MAT-LED-001"})
+        self.assertEqual(new_plan["materials"][1]["resolution"], "unresolved")
+        self.assertTrue(new_plan["is_latest"])
+
+        replay = self.client.post(
+            f"/api/execution-plans/{plan_id}/resolve-materials", data="{}",
+            content_type="application/json", HTTP_IDEMPOTENCY_KEY="resolve-plan-1")
+        self.assertEqual(replay.status_code, 200, replay.content)
+        self.assertFalse(replay.json()["applied"])
+
+        detail = self.client.get(f"/api/execution-plans/{new_plan['id']}")
+        self.assertEqual(detail.status_code, 200)
+        self.assertTrue(detail.json()["is_latest"])
+
+        again = self.client.post(
+            f"/api/execution-plans/{new_plan['id']}/resolve-materials", data="{}",
+            content_type="application/json", HTTP_IDEMPOTENCY_KEY="resolve-plan-2")
+        self.assertEqual(again.status_code, 422, again.content)
+        self.assertEqual(again.json()["error_code"], "nothing_resolved")
+
+        stale = self.client.post(
+            f"/api/execution-plans/{plan_id}/resolve-materials", data="{}",
+            content_type="application/json", HTTP_IDEMPOTENCY_KEY="resolve-plan-3")
+        self.assertEqual(stale.status_code, 409, stale.content)
+        self.assertEqual(stale.json()["error_code"], "stale_execution_plan")
