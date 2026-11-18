@@ -1,0 +1,146 @@
+{
+  "schemaVersion": 1,
+  "purpose": "声明 TradeLoom 仓库内哪些内容属于 DSH 基座（禁止业务阶段改动）、哪些属于 TradeLoom 自有代码、哪些是生成物，以及 DSH 插件的可导入契约。任何阶段开始前必须先读 docs/DSH-基座边界.md。",
+  "base": {
+    "product": "@deepseek-ai/dsh-desktop-runtime",
+    "version": "0.2.1-rc.3",
+    "upstream": {
+      "repository": "https://github.com/deepseek-ai/deepseek-harness",
+      "commit": "1f81c047fc48fa190a683e469daa699857e9afe8"
+    },
+    "installedAt": "app/resources/app.asar:dsh/",
+    "fileCount": 17171,
+    "approxBytes": 430591666,
+    "ownedPaths": [
+      "app/resources/app.asar:dsh/**"
+    ],
+    "forbiddenChanges": [
+      "改动 app.asar 内 dsh/** 的任何文件（基座运行时、@deepseek-ai/dsh-* 插件本体、内置 cordis、内置 MCP/OpenAI/OTel 依赖）",
+      "在仓库源码里直接 import 基座内部深层路径（例如 dsh/node_modules/@deepseek-ai/*/lib/...）；只能用已声明的插槽、服务与 peer 依赖",
+      "新增未登记的基座补丁"
+    ],
+    "sanctionedPatches": [
+      "apps/tradeloom-launcher/accepted-sdk-overrides/@deepseek-ai/dsh-client-ui-attachment/lib/client.js",
+      "apps/tradeloom-launcher/accepted-sdk-overrides/@deepseek-ai/dsh-client-ui-conversation/lib/client.js",
+      "apps/tradeloom-launcher/accepted-sdk-overrides/@deepseek-ai/dsh-client-ui-layout/lib/client.js",
+      "apps/tradeloom-launcher/accepted-sdk-overrides/production-execution-origin.patch",
+      "apps/tradeloom-launcher/accepted-sdk-overrides/session-list-failure-phase.patch",
+      "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.1/production-execution-origin.patch",
+      "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.1/session-list-failure-phase.patch",
+      "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.2/production-execution-origin.patch",
+      "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.2/session-list-failure-phase.patch",
+      "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.2/settings-layout-compat.patch",
+      "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.2/desktop-own.patch",
+      "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.2/business-shell.patch",
+      "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.2/launcher-external-data.patch"
+    ],
+    "enginePins": {
+      "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/renderers.js": "ADAPTED_ENGINE",
+      "apps/tradeloom-launcher/accepted-runtime/lib/main.js": "desktopClientVersion",
+      "packages/tradeloom-shell/package.json": "peerDependencies.@deepseek-ai/dsh-scope"
+    },
+    "sanctionedDocs": [
+      "apps/tradeloom-launcher/accepted-sdk-overrides/READ-ME-基座补丁.md"
+    ],
+    "upgrade": {
+      "recipes": {
+        "0.2.2-rc.1": "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.1/recipe.json",
+        "0.2.2-rc.2": "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.2/recipe.json"
+      },
+      "tool": "scripts/upgrade-dsh-base.mjs",
+      "command": "node scripts/upgrade-dsh-base.mjs --source <新版 app.asar> --version 0.2.2-rc.1 --dry-run",
+      "measuredAgainst": "0.2.2-rc.1（本机 DSH 桌面应用 app.asar）",
+      "autoApplied": {
+        "hunks": 18,
+        "files": 5,
+        "note": "session-list-failure-phase.patch 全部 3 hunk + production 补丁中 desktop-host/client-connection/dsh-agent/dsh-tools 全部命中"
+      },
+      "needsReauthoring": [
+        {
+          "file": "dsh/node_modules/@deepseek-ai/dsh-agent-loop/lib/index.js",
+          "hunks": 8,
+          "reason": "上游未采用 operationOrigin 传播，需在新版本上重新植入"
+        },
+        {
+          "file": "dsh/node_modules/@deepseek-ai/dsh-web-frontend/dist/assets/<hash>.js",
+          "hunks": 1,
+          "reason": "前端产物文件名带内容哈希（0.2.1 为 index-D4iGkJJO.js，0.2.2 为 index-BgUyXZcc.js），需重定向后再打"
+        },
+        {
+          "file": "dsh/node_modules/@deepseek-ai/dsh-web-frontend/dist/assets/native-operation-origin-adapter.mjs",
+          "hunks": 0,
+          "reason": "该文件由补丁新建，新基座不存在，随前端 hunk 一起处理"
+        }
+      ],
+      "clientPluginOverrides": {
+        "verdict": "0.2.2-rc.1 的三个 client.js 本身完好（无 > 前缀、sourceMappingURL 完整），升级后这 3 个覆盖文件应删除，不得再把旧文件盖回去",
+        "detectedBy": "truncation 探针（intact 即无需覆盖）"
+      },
+      "threeWayMerge": {
+        "measured": "见 D:/TL-S5-A20261110/evidence/dsh-base-upgrade-merge.json",
+        "conflictBlocks": 4,
+        "architectureDrift": [
+          "工具执行 0.2.1 内联 executeToolCalls → 0.2.2 loopCtx.tools.execute",
+          "启动路径 setupAndPublish(3) → initializeAgent(4)"
+        ],
+        "decision": "在 0.2.2 新架构上重做 operationOrigin 传播后才可升级；禁止部分合并（会丢失阶段5 origin 权威保证）"
+      }
+    }
+  },
+  "pluginImportContract": {
+    "profileBundles": [
+      "@deepseek-ai/dsh-base",
+      "@deepseek-ai/dsh-web-app",
+      "@tradeloom/dsh-business-shell"
+    ],
+    "declaredIn": "apps/tradeloom-launcher/installed-bootstrap.mjs:INSTALLED_PROFILE_BUNDLES",
+    "tradeLoomPlugin": {
+      "name": "@tradeloom/dsh-business-shell",
+      "manifest": "packages/tradeloom-shell/package.json",
+      "hostEntry": "packages/tradeloom-shell/host.js",
+      "clientEntry": "packages/tradeloom-shell/client.js",
+      "exportKeys": [
+        ".",
+        "./client",
+        "./listener-identity",
+        "./policy",
+        "./profile",
+        "./business-tools",
+        "./tool-schemas",
+        "./skills-open",
+        "./step-policy",
+        "./state",
+        "./execution-origin-authority",
+        "./scene-memory-store",
+        "./diagnostics-store"
+      ],
+      "rule": "插件必须保持可被 profile 直接导入：exports 键、host/client 入口与 INSTALLED_PROFILE_BUNDLES 顺序三者同时成立，缺一即视为破坏导入"
+    }
+  },
+  "tradeLoomOwned": {
+    "paths": [
+      "packages/tradeloom-shell/**",
+      "apps/tradeloom-launcher/accepted-runtime/**",
+      "apps/tradeloom-launcher/installed-bootstrap.mjs",
+      "apps/tradeloom-launcher/app-bootstrap.mjs",
+      "workbench/**",
+      "config/**",
+      "docs/**",
+      "scripts/**"
+    ],
+    "note": "这些是可以自由修改的业务代码；其中 accepted-runtime 会以 asar 条目形式打进包内，但不属于 DSH 基座。"
+  },
+  "generated": {
+    "paths": [
+      "app/resources/tradeloom/business-shell/**",
+      "app/resources/tradeloom/deployment.json",
+      "dist/**",
+      "build/**"
+    ],
+    "note": "生成物由打包配方产出，禁止手工编辑；改动请改源文件后重新打包。"
+  },
+  "guards": {
+    "script": "scripts/check-dsh-base-boundary.mjs",
+    "test": "packages/tradeloom-shell/tests/dsh-base-boundary.test.js"
+  }
+}

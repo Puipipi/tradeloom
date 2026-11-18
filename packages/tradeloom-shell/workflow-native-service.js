@@ -4,6 +4,7 @@ import { createConfirmedWorkflowDefinition } from './workflow-definition.js'
 import { createWorkflowRunJournal } from './workflow-run-journal.js'
 import { createWorkflowNativeBindingResolver, readAuthorizedCenterBinding } from './workflow-native-binding.js'
 import { createWorkflowNativeExecutor } from './workflow-native-executor.js'
+import { executeNativeTool } from './workflow-native-command-attribution.js'
 import { planReadyNodes } from './workflow-native-graph.js'
 import { validateNativeWorkflowGraph } from './workflow-local-nodes.js'
 import { createWorkflowReviewDecisionChannel, createWorkflowReviewRequest } from './workflow-review.js'
@@ -306,7 +307,7 @@ export function createWorkflowNativeService({ ctx, readState, definitionStore, r
       task.signal.addEventListener('abort', abortTask, { once: true })
       if (task.signal.aborted) abortTask()
     }
-    const owned = { controller, error: null, task: null, leaseRef }
+    const owned = { controller, error: null, task: null, leaseRef, parent: auth.parent }
     // Cordis effect registers a disposer returned by its immediate setup.
     const releaseParent = auth.parent.ctx.effect(() => () => controller.abort(fail('parent_disposed')))
     runs.set(handle.getSnapshot().id, owned)
@@ -395,12 +396,16 @@ export function createWorkflowNativeService({ ctx, readState, definitionStore, r
           bindingRevision: snapshot.bindingRevision, definitionRevision: snapshot.definitionRevision }, async attempt => {
           // Local executor dependency only; original SDK schema/get and registry
           // retain their receivers. No global ToolRuntime/provider replacement.
-          const executorContext = task ? {
-            agents: ctx.agents, subagents: ctx.subagents,
-            tools: { get: (...args) => ctx.tools.get(...args),
-              execute: input => taskAuthority.executeTask(task, input) },
-          } : ctx
+          const subagents = auth.parent.ctx.get('agentPresets')?.serviceFor(auth.parent, 'tradeloomWorkflowNativeLifecycle')
+          if (!subagents || typeof subagents.createLifecycleScope !== 'function'
+            || typeof subagents.resolveName !== 'function' || typeof subagents.interrupt !== 'function') throw fail('native_bridge_unavailable')
+          const executorContext = {
+            agents: ctx.agents, subagents,
+            tools: ctx.tools,
+          }
           const executor = createWorkflowNativeExecutor(executorContext, { timeoutMs,
+            createLifecycleScope: parent => subagents.createLifecycleScope(parent),
+            executeTool: input => task ? taskAuthority.executeTask(task, input) : executeNativeTool(ctx.tools, input),
             resolveBinding: async (input, trustedExec) => {
               const currentDefinition = await definition(snapshot.workflowId)
               if (currentDefinition.definitionRevision !== snapshot.definitionRevision) throw fail('definition_revision_mismatch')
@@ -700,6 +705,11 @@ export function createWorkflowNativeService({ ctx, readState, definitionStore, r
       }
     },
     recover: () => ownershipEnabled ? startRecovery() : journal.recoverInterruptedRuns(),
+    async releaseAgent(agent) {
+      const selected = [...runs.values()].filter(owned => owned.parent === agent)
+      for (const owned of selected) owned.controller.abort(fail('parent_disposed'))
+      await Promise.allSettled(selected.map(owned => owned.task))
+    },
     dispose: stop,
     // Host-only observation for shutdown/acceptance; cleanup above never awaits it.
     async drain() {

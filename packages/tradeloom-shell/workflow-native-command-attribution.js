@@ -1,3 +1,5 @@
+import { getTraceable } from '@deepseek-ai/cordis'
+import { scopeOf } from '@deepseek-ai/dsh-scope'
 import { ROLE_PRESETS } from './roles.js'
 import { AsyncLocalStorage } from 'node:async_hooks'
 const rejected = () => { throw Object.assign(new Error('native_task_origin_required'), { code: 'native_task_origin_required' }) }
@@ -10,6 +12,20 @@ const canonical = value => {
 }
 const fingerprint = value => JSON.stringify(canonical(value))
 const COMMAND = 'tradeloom_native_task'
+// rc2 delegates batches to its real executor; the caller still owns provenance.
+export async function executeNativeTool(tools, input) {
+  const batchExecution = typeof tools.selectExecutor === 'function'
+  const singleExecution = typeof tools.prepareExecution === 'function' && typeof tools.completeScheduledExecution === 'function'
+  if (batchExecution === singleExecution) throw new Error('native task tool executor contract is unsupported or ambiguous')
+  if (singleExecution) return tools.execute(input)
+  const batch = await tools.execute({ ...input,
+    calls: [{ type: 'tool-call', id: input.callId, name: input.name, arguments: JSON.stringify(canonical(input.arguments)) }],
+  })
+  if (!Array.isArray(batch?.results) || batch.results.length !== 1) throw new Error('native task tool result did not match its call')
+  const [entry] = batch.results
+  if (entry?.callId !== input.callId || typeof entry.result?.isError !== 'boolean' || !Array.isArray(entry.result?.content)) throw new Error('native task tool result did not match its call')
+  return entry.result
+}
 // Native-only composition. UI provenance comes from the shared gate; neither
 // a command id, source:user nor a serializable scope string is authority.
 export function createWorkflowNativeCommandAttribution(ctx, { uiGate, createStateStore, toolModes = { tradeloom_wf_native_submit: 'submit', tradeloom_wf_native_resume: 'resume', tradeloom_wf_native_review: 'review' } }) {
@@ -21,24 +37,31 @@ export function createWorkflowNativeCommandAttribution(ctx, { uiGate, createStat
   const singleExecution = typeof tools.prepareExecution === 'function' && typeof tools.completeScheduledExecution === 'function'
   if (batchExecution === singleExecution) throw new Error('native task tool executor contract is unsupported or ambiguous')
   const frames = new AsyncLocalStorage(), intents = new WeakMap(), leases = new WeakMap(), owned = new Set(), observed = new WeakSet(), children = new WeakMap()
+  const createdChildren = new WeakMap(), liveChildren = new Set()
   let disposed = false
   const exact = agent => agent?.session && agents.get(agent.id) === agent && agent.session.id === agent.id
   const current = item => !disposed && !item.closed && exact(item.agent) && item.agent.session === item.session && item.isCurrent() === true
-  async function executeOne(input) {
-    const argumentsJson = JSON.stringify(canonical(input.arguments))
-    if (singleExecution) return tools.execute(input)
-    const batch = await tools.execute({
-      agent: input.agent, signal: input.signal,
-      ...(input.toolSet === undefined ? {} : { toolSet: input.toolSet }),
-      calls: [{ type: 'tool-call', id: input.callId, name: input.name, arguments: argumentsJson }],
-    })
-    if (!Array.isArray(batch?.results) || batch.results.length !== 1) throw new Error('native task tool result did not match its call')
-    const [entry] = batch.results
-    if (entry?.callId !== input.callId || typeof entry.result?.isError !== 'boolean' || !Array.isArray(entry.result?.content)) throw new Error('native task tool result did not match its call')
-    return entry.result
-  }
+  const executeOne = input => executeNativeTool(tools, input)
   const matching = (f, exec) => exact(exec?.agent) && exec.agent === f.agent && exec.agent.session === f.session
     && exec.name === f.name && exec.callId === f.callId && exec.signal === f.signal && fingerprint(exec.arguments) === f.args
+  // Private prototype: receipt writers own the genuine factory call, never a supplied handle/callback.
+  const factoryFrame = ownerCtx => {
+    const f = frames.getStore()
+    return f?.kind === 'task' && f.bodyLive && f.exec && observed.has(f.exec)
+      && matching(f, f.exec) && current(f.info) && !f.signal.aborted
+      && ownerCtx.fiber === f.agent.ctx.fiber && scopeOf(ownerCtx) === f.agent ? f : undefined
+  }
+  const retireChild = receipt => {
+    if (receipt.closed) return
+    receipt.closed = true
+    receipt.lifetime.removeEventListener('abort', receipt.retire)
+    createdChildren.delete(receipt.child)
+    children.delete(receipt.child)
+    liveChildren.delete(receipt)
+  }
+  const retireTaskChildren = info => {
+    for (const receipt of [...liveChildren]) if (receipt.info === info) retireChild(receipt)
+  }
   const stopEvent = ctx.on('session/event', (session, event) => {
     const f = frames.getStore()
     if (!f || f.kind !== 'command' || f.entered || f.event || session !== f.session || event.type !== 'command/run') return
@@ -83,6 +106,41 @@ export function createWorkflowNativeCommandAttribution(ctx, { uiGate, createStat
     return [...row.scopes]
   }
   const api = {
+    canCaptureChildFactory(ownerCtx) { return factoryFrame(ownerCtx) !== undefined },
+    async createChildThroughFactory(ownerCtx, options) {
+      const f = factoryFrame(ownerCtx)
+      if (!f) rejected()
+      const capture = { parent: f.agent, session: f.session, info: f.info, exec: f.exec, ownerCtx }
+      // Exact existing Registry producer sequence. No caller-selected factory or fabricated callback.
+      const { target } = agents.requireFactory()
+      const receiver = getTraceable(ownerCtx, target)
+      if (options?.operationOrigin !== void 0) throw new Error("operation origin is Host-owned")
+      const originAuthority = ownerCtx.get?.("sceneMemoryOriginAuthority")
+      const parentExecution = originAuthority?.currentToolExecution?.()
+      let hostCapturedOrigin
+      if (options?.parentAgent !== void 0 && parentExecution?.agent === options.parentAgent && parentExecution.operationOrigin !== void 0) {
+        hostCapturedOrigin = originAuthority.inheritFromParentExecution(parentExecution)
+      } else if (options?.parentAgent === void 0) {
+        hostCapturedOrigin = originAuthority?.captureAtEnqueue?.()
+      }
+      const handle = await Reflect.apply(target.createAgent, receiver, [ownerCtx, options, hostCapturedOrigin])
+      const child = handle.agent
+      if (factoryFrame(ownerCtx) !== f || !exact(child) || child.session.header.parentSession !== f.agent.id) {
+        await handle.dispose()
+        rejected()
+      }
+      const lifetime = child.lifetimeSignal
+      if (!(lifetime instanceof AbortSignal) || lifetime.aborted) {
+        await handle.dispose()
+        rejected()
+      }
+      const receipt = { ...capture, child, childSession: child.session, lifetime, closed: false }
+      receipt.retire = () => retireChild(receipt)
+      createdChildren.set(child, receipt)
+      liveChildren.add(receipt)
+      lifetime.addEventListener('abort', receipt.retire, { once: true })
+      return handle
+    },
     prepareTask(input) {
       if (disposed || !exact(input?.agent) || input.agent.session.header.agentPreset !== ROLE_PRESETS.center
         || input.agent.session.header.parentSession !== undefined || (input.agent.session.header.delegationDepth ?? 0) > 1 || typeof input.runId !== 'string' || !input.runId
@@ -167,8 +225,13 @@ export function createWorkflowNativeCommandAttribution(ctx, { uiGate, createStat
     scopesForChild(parent, childId) {
       const f = frames.getStore(), child = agents.get(childId)
       if (!f || f.kind !== 'task') return undefined
+      const receipt = createdChildren.get(child)
       if (!f.bodyLive || f.agent !== parent || !current(f.info)
-        || !exact(child) || child.session.header.parentSession !== parent.id || !agents.isOwnedBy(child.id, parent)) return []
+        || !exact(child) || child.session.header.parentSession !== parent.id
+        || !f.exec || !observed.has(f.exec) || !matching(f, f.exec)
+        || !receipt || receipt.closed || receipt.lifetime.aborted
+        || receipt.parent !== parent || receipt.session !== parent.session || receipt.childSession !== child.session
+        || receipt.info !== f.info || !observed.has(receipt.exec) || receipt.ownerCtx.fiber !== parent.ctx.fiber || scopeOf(receipt.ownerCtx) !== parent) return []
       children.set(child, { info: f.info, scopes: [...f.scopes] })
       return [...f.scopes]
     },
@@ -176,11 +239,12 @@ export function createWorkflowNativeCommandAttribution(ctx, { uiGate, createStat
       const info = leases.get(lease)
       if (!info || info.closed) return false
       info.closed = true
+      retireTaskChildren(info)
       if (lease) owned.delete(lease)
       info.abortTask()
       return true
     },
-    release(lease) { const info = leases.get(lease); if (!info) return false; info.closed = true; owned.delete(lease); return true },
+    release(lease) { const info = leases.get(lease); if (!info) return false; info.closed = true; retireTaskChildren(info); owned.delete(lease); return true },
     dispose() { if (disposed) return; disposed = true; for (const lease of [...owned]) api.revoke(lease); unregister(); stopEvent(); stopPre(); stopAround() },
   }
   return Object.freeze(api)

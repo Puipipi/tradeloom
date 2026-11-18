@@ -4,9 +4,50 @@ import { resolveOwnedHome, createStateStore } from './state.js'
 import { createWorkflowStore } from './workflow-engine.js'
 import { createPostgresWorkflowRunStore } from './workflow-postgres.js'
 import { createWorkflowNativeService } from './workflow-native-service.js'
+import { NATIVE_WORKFLOW_READINESS, runWhenNativeWorkflowReady } from './workflow-native-readiness.js'
+import { createScope, scopeOf, scopeParentOf } from '@deepseek-ai/dsh-scope'
+
+export const NATIVE_LIFECYCLE_CAPABILITY = 'tradeloomWorkflowNativeLifecycle'
+
+/** Host-only plain capability: Cordis must not rebind its closure's namespace. */
+export function createNativeLifecycleCapability(ctx, service) {
+  const generation = scopeOf(ctx)
+  if (!generation || typeof ctx.subagents?.resolveName !== 'function' || typeof ctx.subagents?.interrupt !== 'function') throw new Error('native_workflow_unavailable')
+  const parents = new Set()
+  const scopes = new Set()
+  let closed = false
+  let disposing
+  const requireParent = (parent, admission = false) => {
+    if (!parent || (closed && (admission || !parents.has(parent))) || ctx.agents.get(parent.id) !== parent || scopeOf(parent.ctx) !== parent || scopeParentOf(parent) !== generation) throw new Error('native_workflow_unavailable')
+    parents.add(parent)
+  }
+  const capability = Object.freeze({
+    createLifecycleScope(parent) {
+      requireParent(parent, true)
+      const scope = createScope(ctx, parent), settled = Promise.withResolvers()
+      scopes.add(settled.promise)
+      let disposingScope
+      return Object.freeze({ ctx: scope.ctx, dispose() {
+        return disposingScope ??= Promise.resolve().then(() => scope.dispose()).finally(() => {
+          scopes.delete(settled.promise); settled.resolve()
+        })
+      } })
+    },
+    resolveName(parent, name) { requireParent(parent); return ctx.subagents.resolveName(parent, name) },
+    interrupt(id, authority) { requireParent(authority?.agent); return ctx.subagents.interrupt(id, authority) },
+  })
+  return { capability, dispose() {
+    if (disposing) return disposing
+    closed = true
+    return disposing = Promise.all([
+      ...[...parents].map(parent => service.releaseAgent(parent)),
+      ...scopes,
+    ]).then(() => { parents.clear() })
+  } }
+}
 
 export const name = '@tradeloom/dsh-business-shell/workflow-native-tools'
-export const inject = ['tools', 'agents', 'workspaceRegistry', 'sessionQuery', 'subagents', 'webServer', 'nativeTaskAuthority']
+export const inject = ['tools', 'agents', 'workspaceRegistry', 'sessionQuery', 'subagents', 'webServer', 'nativeTaskAuthority', 'nativeWorkflowRuntime']
 
 const WORKFLOW_ID = /^[a-z0-9][a-z0-9_-]{0,47}$/
 const RUN_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
@@ -75,6 +116,7 @@ export function registerWorkflowNativeTools(ctx, service, config = {}) {
     throw new TypeError('Native workflow tools require a ToolRuntime and native service')
   }
   const disposers = []
+  const callers = new Set()
   try {
     for (const [method, allowed, required, description] of operations) {
       disposers.push(ctx.tools.register({
@@ -83,7 +125,13 @@ export function registerWorkflowNativeTools(ctx, service, config = {}) {
         output: OUTPUT,
         async execute(args, exec) {
           if (!validArguments(args, allowed, required)) return fail('invalid_native_workflow_arguments')
-          try { return { ok: true, data: JSON.stringify(await service[method](args, exec)), error_code: '' } }
+          try {
+            callers.add(exec.agent)
+            return { ok: true, data: JSON.stringify(await runWhenNativeWorkflowReady(ctx, exec.signal, () => {
+              ctx.get('nativeWorkflowRuntime').assertService(service)
+              return service[method](args, exec)
+            })), error_code: '' }
+          }
           catch (error) { return fail(PUBLIC_ERRORS.has(error?.code) ? error.code : 'native_workflow_unavailable') }
         },
       }))
@@ -93,10 +141,12 @@ export function registerWorkflowNativeTools(ctx, service, config = {}) {
     throw error
   }
   let disposed = false
-  return () => {
+  return async () => {
     if (disposed) return
     disposed = true
     for (const dispose of disposers.reverse()) dispose()
+    await Promise.all([...callers].map(agent => service.releaseAgent(agent)))
+    callers.clear()
   }
 }
 
@@ -110,12 +160,10 @@ function djangoPort(config, env) {
   return Number(value)
 }
 
-/** One preset-generation composition; identities remain per-call service checks.
- * Factories are injectable for isolated composition tests, never tool arguments.
- * Initialization deliberately performs no recovery or filesystem reads.
- */
-export function createWorkflowNativeToolComposition(ctx, config = {}, dependencies = {}) {
-  if (config.preset !== ROLE_PRESETS.center) return () => {}
+/** One Host-lifetime recovery/activation owner, shared by scoped preset tools.
+ * Lazy start preserves the former first-center composition readiness point; an
+ * Agent replacement neither races startup PG nor owns/disposes this service. */
+export function createWorkflowNativeHostComposition(ctx, config = {}, dependencies = {}) {
   const env = dependencies.env ?? process.env
   const port = djangoPort(config, env)
   const ownedHome = dependencies.resolveOwnedHome ?? resolveOwnedHome
@@ -139,19 +187,43 @@ export function createWorkflowNativeToolComposition(ctx, config = {}, dependenci
   const pairedHost = config.pairedHost === undefined
     ? { host: ctx.webServer.host, port: ctx.webServer.port }
     : { ...config.pairedHost }
-  const runStore = runFactory({ webServer: ctx.webServer, port, pairedHost })
-  const service = serviceFactory({ ctx, readState, definitionStore, runStore, taskAuthority: ctx.nativeTaskAuthority,
-    ...(config.timeoutMs === undefined ? {} : { timeoutMs: config.timeoutMs }),
+  let service, detach, disposed = false
+  return Object.freeze({
+    getService() {
+      if (disposed) throw Object.assign(Error('native_workflow_unavailable'), { code: 'native_workflow_unavailable' })
+      if (service) return service
+      const readiness = ctx.get(NATIVE_WORKFLOW_READINESS)
+      if (typeof readiness?.attach !== 'function') throw new Error('native_workflow_unavailable')
+      const runStore = runFactory({ webServer: ctx.webServer, port, pairedHost })
+      const created = serviceFactory({ ctx, readState, definitionStore, runStore, taskAuthority: ctx.nativeTaskAuthority,
+        ...(config.timeoutMs === undefined ? {} : { timeoutMs: config.timeoutMs }) })
+      try { detach = readiness.attach(created); service = created; return service }
+      catch (error) { created.dispose(); throw error }
+    },
+    assertService(value) { if (disposed || value !== service) throw Object.assign(Error('native_workflow_unavailable'), { code: 'native_workflow_unavailable' }) },
+    get currentService() { return service },
+    async dispose() { if (disposed) return; disposed = true; detach?.(); if (service) { await service.dispose(); await service.drain() } },
   })
-  let unregister
-  try { unregister = registerWorkflowNativeTools(ctx, service, config) }
-  catch (error) { service.dispose?.(); throw error }
+}
+
+/** Only registration belongs to a preset's fiber. */
+export function createWorkflowNativeToolComposition(ctx, config = {}) {
+  if (config.preset !== ROLE_PRESETS.center) return () => {}
+  const runtime = ctx.get('nativeWorkflowRuntime')
+  if (typeof runtime?.getService !== 'function') throw new Error('native_workflow_unavailable')
+  const service = runtime.getService()
+  const owner = createNativeLifecycleCapability(ctx, service)
+  const provision = createScope(ctx.isolate(NATIVE_LIFECYCLE_CAPABILITY), scopeOf(ctx))
+  provision.ctx.provide(NATIVE_LIFECYCLE_CAPABILITY, owner.capability)
+  let disposeTools
+  try { disposeTools = registerWorkflowNativeTools(ctx, service, config) }
+  catch (error) { void provision.dispose(); throw error }
   let disposed = false
   return async () => {
     if (disposed) return
     disposed = true
-    unregister()
-    await service.dispose()
+    try { await owner.dispose(); await disposeTools() }
+    finally { await provision.dispose() }
   }
 }
 

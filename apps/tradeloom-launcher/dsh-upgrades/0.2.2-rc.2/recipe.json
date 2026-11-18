@@ -1,11 +1,14 @@
 {
   "schemaVersion": 1,
   "version": "0.2.2-rc.2",
-  "status": "fixed rc2 candidate; Settings/role/theme slice accepted, not full product acceptance",
+  "status": "seven-feature isolated candidate derived and independently read back; strict replay pending; O07 real-site consumer and GUI not accepted",
   "patches": [
     "production-execution-origin.patch",
     "session-list-failure-phase.patch",
-    "settings-layout-compat.patch"
+    "settings-layout-compat.patch",
+    "conversation-draft-checked.patch",
+    "voice-native-binding.patch",
+    "root-identity-diagnostic.patch"
   ],
   "preimages": {
     "dsh/node_modules/@deepseek-ai/dsh-agent-loop/lib/index.js": {
@@ -55,6 +58,18 @@
     "dsh/node_modules/@deepseek-ai/dsh-client-ui-settings-general/lib/client.js": {
       "bytes": 89937,
       "sha256": "39ef115bb0422dd1abc6cb1025eb58860cba6fe71bf089cf6d76c94ee627c273"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-client-ui-conversation/lib/client.js": {
+      "bytes": 704147,
+      "sha256": "2c3c39fddb37df9ee1168c279259aebb7cf484651a7e978ce9baaaf24d142a60"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-experimental-client-ui-voice-input/lib/client.js": {
+      "bytes": 137993,
+      "sha256": "e286192475f0912767d9f7c136ecaa22c55276ec874f9945fbe07878e17553a9"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-app-boot/lib/index.js": {
+      "bytes": 227100,
+      "sha256": "a8d2138bb274bd982079df14a615f6c0d5d7589c9faeae81973128a72293b6de"
     }
   },
   "postimages": {
@@ -109,6 +124,18 @@
     "dsh/node_modules/@deepseek-ai/dsh-client-ui-settings-general/lib/client.js": {
       "bytes": 91281,
       "sha256": "bf23680faf702bf5eb84834767808559d4624ed4cb291124b01caa5e4c978731"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-client-ui-conversation/lib/client.js": {
+      "bytes": 706033,
+      "sha256": "445b05906cb8a1d60502b585eea8f950c80b4ded17e8b492f090a02f422f8ed1"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-experimental-client-ui-voice-input/lib/client.js": {
+      "bytes": 140449,
+      "sha256": "a348bc40ab44827475abd9f02477364b377d69f5f897e54ae6db997b26963995"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-app-boot/lib/index.js": {
+      "bytes": 228870,
+      "sha256": "7761143d3da0741cb19ccfeb6b033685407b8171478ed7d084910a1a9fa273bb"
     }
   },
   "browserBootstrap": {
@@ -138,65 +165,78 @@
     "unpackedFiles": 1678
   },
   "expectedAsar": {
-    "bytes": 227853744,
-    "sha256": "584f924fa77da9ce8cc77f905f053a904da1bae662da8455a460ff66e2b0e420",
+    "bytes": 227901735,
+    "sha256": "1125a6e8603c7379534825b5ee6032f29a09d8ad9a12bcd7e94e83885d113db2",
     "logicalEntries": 21753,
     "unpackedFiles": 1678
   },
   "desktopRecipe": "desktop-recipe.json",
   "programRecipe": "program-recipe.json",
   "businessShell": {
-    "sourceRoot": "packages/tradeloom-shell",
+    "sourceRoot": "apps/tradeloom-launcher/stage5-source06/legacy-business-inputs",
     "sourcePackage": {
-      "bytes": 3842,
-      "sha256": "06ba7a10e7c6b1789b834f40b938279826567374a056ef5f3d9810e0535805e6"
+      "bytes": 5355,
+      "sha256": "1811b29ffbe2c917dfea5ebd8c268cad6c4ac49d0d50db90ff00885d4a36a186"
     },
     "patch": "business-shell.patch",
     "packageSource": "business-shell-package.json",
     "preimages": {
       "client.js": {
-        "bytes": 239145,
-        "sha256": "0ddcbc4a90cc22a298f9d59d362d2debf01dafebf50d1b1797882031614d46fc"
+        "bytes": 242288,
+        "sha256": "0c4f181045a247e51a170e689a50a519076cbae7cde3a5ca1a2de876ce4527b8"
       },
       "client.source-native.js": {
-        "bytes": 29616,
-        "sha256": "de463680fc7c5f922b4048cde9d1a1b56ed912e8ba4f9bb8682ce38acf898269"
+        "bytes": 33617,
+        "sha256": "69097eb952fe74be9a36ba679f3dfc5cf530ce1d395c77b13898c1f136bd2a3e"
       },
       "workflow-native-command-attribution.js": {
-        "bytes": 11987,
-        "sha256": "7706e3a8985893569cf25ed125398a84a1f340dc7d4b894d19cc9abd88b2e9c4"
+        "bytes": 12300,
+        "sha256": "54fe20e739802310af50abd65de424e6dfd95b446a73dd691823b5f0b76e301c"
       },
       "client.replica-palette.js": {
         "bytes": 7434,
         "sha256": "ba85fdfa59ead0ddf2b69049ae87d4963dab3a06e17e78f11fd3fae33d530f22"
+      },
+      "agent-configuration.js": {
+        "bytes": 55004,
+        "sha256": "957726de523b6cce3a5e0b35b8ee7feac99f704048b9061cedbc1c942320c939"
       }
     },
     "postimages": {
       "client.js": {
-        "bytes": 240523,
-        "sha256": "adb7de1ecd007ebc55153c2edb59bc19f3caaff6c403fc02573da32d540ae974"
+        "bytes": 243666,
+        "sha256": "ddf323c928ed53b5cb0ce44969e9ae198706c4a4a4135005cddf8c390d7d134a"
       },
       "client.source-native.js": {
-        "bytes": 29618,
-        "sha256": "a5b8979234fb9fefc1c7d6ede11b2f2cdb91bc829ce33cd4429969e74c805978"
+        "bytes": 33619,
+        "sha256": "5d96bc6ea4009961fe7fd98d4d818ae4a05bba0db13304391b9be68184563b36"
       },
       "workflow-native-command-attribution.js": {
-        "bytes": 15401,
-        "sha256": "20b2846f847053651ddddef13fded6b625069cb72b26da73f1c0690791fa54bb"
+        "bytes": 15714,
+        "sha256": "d4919c1770058e79324b28a35eac80f7c29c34e135b28c69d4fcb8081a7e5e2e"
       },
       "client.replica-palette.js": {
         "bytes": 7434,
         "sha256": "ba85fdfa59ead0ddf2b69049ae87d4963dab3a06e17e78f11fd3fae33d530f22"
       },
       "package.json": {
-        "bytes": 4306,
-        "sha256": "75c055fa7bda84d08280d20c0be90666eab4bc7825bc72a16a61784e02b271e1"
+        "bytes": 5391,
+        "sha256": "69725ed1af6b64e96812dfd2657444bf3d43ab0ac559bbb137effda5d1a11403"
+      },
+      "agent-configuration.js": {
+        "bytes": 55012,
+        "sha256": "c86e10ac218c149c47b5eec5b72a22ecbd28a6a7296e395bfad31c6fa892b84b"
       }
     },
     "inventory": {
-      "fileCount": 68,
-      "bytes": 2894624,
-      "sha256": "0dcfe20c27371a5c29e37a64ec8549f27185e160c2364ad216a8a0cb1e4d8105"
+      "fileCount": 86,
+      "bytes": 3096528,
+      "sha256": "deb2e616a7f30abb417fca009f9d4ce71ca77bf72b06a9950dcba33591f4db7c"
+    },
+    "validatorInput": {
+      "source": "apps/tradeloom-launcher/installed-bootstrap.mjs",
+      "bytes": 51844,
+      "sha256": "eddaa4b6607ddefb333a3abeb36c2aaae911f33e9e36db48dd799ec509cd8ded"
     }
   }
 }

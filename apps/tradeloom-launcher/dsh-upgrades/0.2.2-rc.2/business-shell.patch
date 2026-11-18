@@ -48,14 +48,14 @@ diff --git a/client.source-native.js b/client.source-native.js
 +++ b/client.source-native.js
 @@ -117,6 +117,7 @@
      }
-     function register(ctx, initial, bridge) {
+     async function register(ctx, initial, bridge) {
        if (!valid(initial) || typeof bridge?.nativeSurfaceMounted !== 'function' || typeof bridge?.onNativeSurfaceChanged !== 'function') throw Error('invalid native surface contract')
 +      const factoryHost = ctx.slots.hostFace()
-       function SourceNative({ SessionProvider, renderFactorySlot }) {
-         const [descriptor,setDescriptor] = React.useState(initial), [state,setState] = React.useState({phase:'loading'}), [notice,setNotice] = React.useState('')
-         const latest = React.useRef(descriptor), request = React.useRef(0)
+       const extensions = []
+       if (initial.kind === 'role' && initial.surface === 'chat') {
+         extensions.push(await require.async('./client.scene-memory.js'))
 @@ -250,10 +251,10 @@
-         }, [descriptor.sessionId])
+         }, [descriptor])
          let slot=null
          const factoryName=descriptor.surface==='chat'?'conversation.content':'sidebar.surface'
 -        const subscribeFactory=React.useCallback(listener=>ctx.slots.subscribeFactory(factoryName,listener),[factoryName])
@@ -86,7 +86,7 @@ diff --git a/workflow-native-command-attribution.js b/workflow-native-command-at
    const exact = agent => agent?.session && agents.get(agent.id) === agent && agent.session.id === agent.id
    const current = item => !disposed && !item.closed && exact(item.agent) && item.agent.session === item.session && item.isCurrent() === true
 @@ -39,6 +42,24 @@
-   }
+   const executeOne = input => executeNativeTool(tools, input)
    const matching = (f, exec) => exact(exec?.agent) && exec.agent === f.agent && exec.agent.session === f.session
      && exec.name === f.name && exec.callId === f.callId && exec.signal === f.signal && fingerprint(exec.arguments) === f.args
 +  // Private prototype: receipt writers own the genuine factory call, never a supplied handle/callback.
@@ -181,3 +181,15 @@ diff --git a/workflow-native-command-attribution.js b/workflow-native-command-at
      dispose() { if (disposed) return; disposed = true; for (const lease of [...owned]) api.revoke(lease); unregister(); stopEvent(); stopPre(); stopAround() },
    }
    return Object.freeze(api)
+diff --git a/agent-configuration.js b/agent-configuration.js
+--- a/agent-configuration.js
++++ b/agent-configuration.js
+@@ -8,7 +8,7 @@
+ const PRESET_MODULE = '@deepseek-ai/dsh-agent-preset'
+ const MCP_MODULE = '@deepseek-ai/dsh-mcp-client'
+ const MCP_RUNTIME_MODULE = '@tradeloom/dsh-business-shell/mcp-runtime'
+-const MCP_WRITE_MODULE = MCP_MODULE
++const MCP_WRITE_MODULE = MCP_RUNTIME_MODULE
+ const SKILL_MODULE = '@deepseek-ai/dsh-skill-filesystem'
+ const POLICY_MODULE = '@tradeloom/dsh-business-shell/tool-policy'
+ const MCP_ID_PREFIX = 'tradeloom-mcp-'

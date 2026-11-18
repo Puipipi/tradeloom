@@ -29,7 +29,16 @@
     "./webai-file-tools": "./webai-file-tools.js",
     "./webai-local-directory": "./webai-local-directory.js",
     "./webai-tool-envelope": "./webai-tool-envelope.js",
-    "./webai-runtime-files": "./webai-runtime-files.js"
+    "./webai-runtime-files": "./webai-runtime-files.js",
+    "./mcp-runtime": "./mcp-runtime.js",
+    "./scene-memory": "./scene-memory.js",
+    "./engine-generation-owner": "./engine-generation-owner.js",
+    "./engine-generation-snapshots": "./engine-generation-snapshots.js",
+    "./webai-directory-policy": "./webai-directory-policy.js",
+    "./workflow-native-readiness": "./workflow-native-readiness.js",
+    "./session-speech": "./session-speech.js",
+    "./webai-directory-host": "./webai-directory-host.js",
+    "./webai-native-site-adapter": "./webai-native-site-adapter.js"
   },
   "files": [
     "host.js",
@@ -98,7 +107,25 @@
     "webai-runtime-files.js",
     "workflow-native-ui-gate.js",
     "workflow-native-command-attribution.js",
-    "workflow-native-task-authority.js"
+    "workflow-native-task-authority.js",
+    "workflow-native-readiness.js",
+    "scene-memory.js",
+    "scene-memory-graph.js",
+    "client.scene-memory.js",
+    "client.scene-drafts.js",
+    "session-speech.js",
+    "windows-speech-provider.js",
+    "windows-speech-provider.ps1",
+    "client.session-audio.js",
+    "mcp-runtime.js",
+    "client.mcp-runtime.js",
+    "engine-generation-owner.js",
+    "engine-generation-snapshots.js",
+    "webai-directory-policy.js",
+    "webai-directory-host.js",
+    "webai-native-site-adapter.js",
+    "webai-site-transport.js",
+    "client.webai-files.js"
   ],
   "dsh": {
     "bundle": {

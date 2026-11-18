@@ -1,0 +1,326 @@
+{
+  "schemaVersion": 1,
+  "version": "0.2.2-rc.2",
+  "status": "seven-feature isolated candidate derived and independently read back; strict replay pending; O07 real-site consumer and GUI not accepted",
+  "patches": [
+    "production-execution-origin.patch",
+    "session-list-failure-phase.patch",
+    "settings-layout-compat.patch",
+    "conversation-draft-checked.patch",
+    "voice-native-binding.patch",
+    "root-identity-diagnostic.patch",
+    "plugin-addressability-diagnostic.patch",
+    "speech-readiness-recovery.patch",
+    "voice-readiness-compiled-bindings.patch",
+    "speech-readiness-ending-recovery.patch"
+  ],
+  "preimages": {
+    "dsh/node_modules/@deepseek-ai/dsh-agent-loop/lib/index.js": {
+      "bytes": 67548,
+      "sha256": "f09f60814d4e96a880f41b9fc3832f33c56a28f954f48810d8439ce83ad6ffa8"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-agent/lib/index.js": {
+      "bytes": 30914,
+      "sha256": "bc2a39dea1174c2b2dc0641f08094f840d3a1e414bef42ac93c945f7235d7ead"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-api-gateway/lib/client.browser.js": {
+      "bytes": 53119,
+      "sha256": "3b505de5bca1cd96de580895ce752384e572eb4ffefbe1684f0c65b1c6ade7c8"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-client-connection/lib/index.js": {
+      "bytes": 44434,
+      "sha256": "0ebcca7583e082716f79b0b55bc1749d48269cc8db2989b043b321b57abd3684"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/index.js": {
+      "bytes": 20252,
+      "sha256": "a0615d7ff792eda4dbd576dd4d0996ee150dd875d9dead8d72f1e9f1cd02fdb0"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-tools/lib/index.js": {
+      "bytes": 27559,
+      "sha256": "bf71a6ce1e95c5dfba06be7f69827bab19c5d2d9cf272875d92013ba2a8dadb0"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-tools/lib/pipeline.js": {
+      "bytes": 35733,
+      "sha256": "679072e59502fc211ac2336f5b3146a96c98636b30846ec70433db42d82a7abb"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-tools/lib/types/batch.js": {
+      "bytes": 11188,
+      "sha256": "fc31ae28425535a39eb2fa0b17d14294b186cea0e3a7951333cccbc6e6f07c3b"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-tools/lib/types/pipeline.js": {
+      "bytes": 33229,
+      "sha256": "7124b0e658b0719d84dde773883fbb44675c11f39176936f0c75c3ecf66e8301"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-web-frontend/dist/assets/index-ghOpC9uV.js": {
+      "bytes": 1093231,
+      "sha256": "061de8cefa15e1fbb87d301463ad4ebb79259b197ca08e83406f6997c1af8bb8"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-client-ui-layout/lib/client.js": {
+      "bytes": 25883,
+      "sha256": "814486863a32f73e7184a66312ec2d7f5884766000af21f60891a0c01b592630"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-client-ui-settings-general/lib/client.js": {
+      "bytes": 89937,
+      "sha256": "39ef115bb0422dd1abc6cb1025eb58860cba6fe71bf089cf6d76c94ee627c273"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-client-ui-conversation/lib/client.js": {
+      "bytes": 704147,
+      "sha256": "2c3c39fddb37df9ee1168c279259aebb7cf484651a7e978ce9baaaf24d142a60"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-experimental-client-ui-voice-input/lib/client.js": {
+      "bytes": 137993,
+      "sha256": "e286192475f0912767d9f7c136ecaa22c55276ec874f9945fbe07878e17553a9"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-app-boot/lib/index.js": {
+      "bytes": 227100,
+      "sha256": "a8d2138bb274bd982079df14a615f6c0d5d7589c9faeae81973128a72293b6de"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-plugin-manager/src/index.ts": {
+      "bytes": 85974,
+      "sha256": "102b58878f76ccdfaaf762f1cdf5091bf0b21000147f11f83c5e6db7edecdd33"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-plugin-manager/src/types.ts": {
+      "bytes": 22554,
+      "sha256": "1b0dfafa2c4a6fde736eec45e3a484401526b1eed2f5c514e544725dc7abf68b"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-plugin-manager/lib/index.js": {
+      "bytes": 147456,
+      "sha256": "33cbad2bdce9679a9f4fbebe072db87ecbb162e0ceb93237f6a627de07d3ab74"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-plugin-manager/lib/typert.host.js": {
+      "bytes": 144692,
+      "sha256": "7e10ba8c4320185f638e80b4c152159d9e99ab43567ade3a77e2514788ffac30"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-plugin-manager/lib/typert.remote-client.js": {
+      "bytes": 115836,
+      "sha256": "6c26d24addac16bf3259de35c1150cb3ec465b785c5cc23c9609ef93304d77bc"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-client-ui-plugin-manager/src/client/manager-store.ts": {
+      "bytes": 78429,
+      "sha256": "de7bf2a3318eb523dc3709bd55ef8b91448d44013da3cc5d4290dc4bf349a27e"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-client-ui-plugin-manager/src/client/PluginManagerPage.tsx": {
+      "bytes": 94051,
+      "sha256": "7251fcb37613c27114e4c60aa4256b2e1bd8da73e30b5b6d35fd8c23c571c853"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-client-ui-plugin-manager/lib/client.js": {
+      "bytes": 357159,
+      "sha256": "da499b0a3826295c4ea5445cd17b890490c9479f35aa4494ae752a5cf9f944c9"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-client-ui-plugin-manager/src/client/locales.ts": {
+      "bytes": 173664,
+      "sha256": "92fb58326cc32e249e7925352d45008fd7d9e3536ed1a03fdabf6152cc8f2c63"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-experimental-client-ui-voice-input/src/client/readiness.ts": {
+      "bytes": 1976,
+      "sha256": "d48196cd76e59e5e739aaa839458ec6a697c2b8499cb5d87a855571d3f9450ac"
+    }
+  },
+  "postimages": {
+    "dsh/node_modules/@deepseek-ai/dsh-agent-loop/lib/index.js": {
+      "bytes": 77994,
+      "sha256": "b3f229a88981df04f1101939c86c40b84f0cc830bfee9c2845d6bb7eb92d26aa"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-agent/lib/index.js": {
+      "bytes": 31734,
+      "sha256": "cb6781c4e5c6f991525a1962ea57e72bcf5cfaa4475ad80fa2221f070f58fd20"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-api-gateway/lib/client.browser.js": {
+      "bytes": 54030,
+      "sha256": "5662abb1c82aaba4859332bb3cd37f06725baddecbad590695ab7a046c919b55"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-client-connection/lib/index.js": {
+      "bytes": 49384,
+      "sha256": "e62b702876a6c4875afd6cb65d75f2200bcf68c28824205b2d67e77fcddca0ec"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/index.js": {
+      "bytes": 22962,
+      "sha256": "84df896a1debcd3f3d2204810309a3291cfb476add1abf20999119435a238b4f"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-tools/lib/index.js": {
+      "bytes": 27559,
+      "sha256": "bf71a6ce1e95c5dfba06be7f69827bab19c5d2d9cf272875d92013ba2a8dadb0"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-tools/lib/pipeline.js": {
+      "bytes": 37019,
+      "sha256": "9b6aa390e2b64e1d58df320d6f3971ce9ce65984809e2b0a01946f459b848840"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-tools/lib/types/batch.js": {
+      "bytes": 11940,
+      "sha256": "fd7affd0f5068df25b05b017a7033786b9e26a55c922912d14a94a7828944b0c"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-tools/lib/types/pipeline.js": {
+      "bytes": 34398,
+      "sha256": "9a7538a5435f372e245b644477a8e8745848d8e278b8d62b82ff726aa64dbf4b"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-web-frontend/dist/assets/index-ghOpC9uV.js": {
+      "bytes": 1093371,
+      "sha256": "f1887a794d25ab538e2c34ceaa2dbabdb26de30f0401b48b3027bcc107b14707"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-web-frontend/dist/assets/native-operation-origin-adapter.mjs": {
+      "bytes": 6270,
+      "sha256": "e8846e4a897a807d786b7705671b80d25c08d3e5eca6de5f7ff54642ba9f0623"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-client-ui-layout/lib/client.js": {
+      "bytes": 30679,
+      "sha256": "c322fb319ae65aee470425944e7b31cbeb96d80ee4291dc8a75b05cf60811e3a"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-client-ui-settings-general/lib/client.js": {
+      "bytes": 91281,
+      "sha256": "bf23680faf702bf5eb84834767808559d4624ed4cb291124b01caa5e4c978731"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-client-ui-conversation/lib/client.js": {
+      "bytes": 706033,
+      "sha256": "445b05906cb8a1d60502b585eea8f950c80b4ded17e8b492f090a02f422f8ed1"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-experimental-client-ui-voice-input/lib/client.js": {
+      "bytes": 143004,
+      "sha256": "c88a793d53db56bae310210149d5387269867fbae3046a7006a4dab1c456f908"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-app-boot/lib/index.js": {
+      "bytes": 228870,
+      "sha256": "7761143d3da0741cb19ccfeb6b033685407b8171478ed7d084910a1a9fa273bb"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-plugin-manager/src/index.ts": {
+      "bytes": 86463,
+      "sha256": "4b7e34a2682000059a1aa22b5ad0d28fec1a400b992c182db379c99401c756bb"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-plugin-manager/src/types.ts": {
+      "bytes": 22968,
+      "sha256": "4f2e42e791db8ad191809780a65c2e8d7cb10d4ac29c34194d52accb6c9adc84"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-plugin-manager/lib/index.js": {
+      "bytes": 147941,
+      "sha256": "42637ef643c7a660b6fc3f1ae432e6073ff49bd2f6f62d54f0f9493f20c49748"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-plugin-manager/lib/typert.host.js": {
+      "bytes": 144915,
+      "sha256": "6e078115f4619f7aef8b88d000598596718e4b5588a3b9028ccb9008e59cc733"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-plugin-manager/lib/typert.remote-client.js": {
+      "bytes": 116059,
+      "sha256": "f71b94fc22d6c81f4976a063328e952cc31c844f1b538decfc42a8cc592d6d99"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-client-ui-plugin-manager/src/client/manager-store.ts": {
+      "bytes": 78657,
+      "sha256": "0d3cdf57be3b425017c624b1036506dc84f60904f6572c97c1c27324f5bb7c79"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-client-ui-plugin-manager/src/client/PluginManagerPage.tsx": {
+      "bytes": 95686,
+      "sha256": "ced43f59b4ff07d8cdb1b7c673df7336b303cf44cd78f3517596e9ec6bcc1df6"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-client-ui-plugin-manager/lib/client.js": {
+      "bytes": 359865,
+      "sha256": "37e9ac4342a1ac5f7011e88f1a7142c15d765a58f9011cba9614ab0c54c63890"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-client-ui-plugin-manager/src/client/locales.ts": {
+      "bytes": 174631,
+      "sha256": "63d105a13a6398e69bf0303e69148d4e4560d103376ee83252a18f323b70df00"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-experimental-client-ui-voice-input/src/client/readiness.ts": {
+      "bytes": 4177,
+      "sha256": "a5d1417e4fda5ef8387dd2da9b0c5e5d76746d981e3f6b07d0735c2b6389ab6e"
+    }
+  },
+  "browserBootstrap": {
+    "html": "dsh/node_modules/@deepseek-ai/dsh-web-frontend/dist/index.html",
+    "entry": "dsh/node_modules/@deepseek-ai/dsh-web-frontend/dist/assets/index-ghOpC9uV.js",
+    "needle": "const i=globalThis.__DSH_TRANSPORT__;this.modules=",
+    "replacement": "const i=globalThis.__DSH_TRANSPORT__;if(i?.ownsHost===!0){const{installBrowserTransportAdapter:install}=await import(\"/assets/native-operation-origin-adapter.mjs\");install(i,t)}this.modules="
+  },
+  "copies": [
+    {
+      "source": "apps/tradeloom-launcher/production-origin/browser-transport-adapter.mjs",
+      "destination": "dsh/node_modules/@deepseek-ai/dsh-web-frontend/dist/assets/native-operation-origin-adapter.mjs",
+      "sha256": "e8846e4a897a807d786b7705671b80d25c08d3e5eca6de5f7ff54642ba9f0623"
+    }
+  ],
+  "notes": [
+    "rc2 official input; retain lifetime/cancel-finally/guard-info/HarnessError vendor behavior.",
+    "Combined native-owner producer invokes original factory with independently Host-captured third origin argument.",
+    "Do not install official NSIS over this custom product; local fixed-version assembly only."
+  ],
+  "officialInput": {
+    "version": "0.2.2-rc.2",
+    "appAsar": {
+      "bytes": 208137981,
+      "sha256": "49fd1b087190d594b15c44fe6394c6ffd591200aba76e209b5769498f83076ae"
+    },
+    "unpackedFiles": 1678
+  },
+  "expectedAsar": {
+    "bytes": 227922307,
+    "sha256": "6da6e2861e23ef75d86577b45dc8727212047534c3c72943d35e5ee728cbc9fa",
+    "logicalEntries": 21753,
+    "unpackedFiles": 1678
+  },
+  "desktopRecipe": "desktop-recipe.json",
+  "programRecipe": "program-recipe.json",
+  "businessShell": {
+    "sourceRoot": "packages/tradeloom-shell",
+    "sourcePackage": {
+      "bytes": 5355,
+      "sha256": "1811b29ffbe2c917dfea5ebd8c268cad6c4ac49d0d50db90ff00885d4a36a186"
+    },
+    "patch": "business-shell.patch",
+    "packageSource": "business-shell-package.json",
+    "preimages": {
+      "client.js": {
+        "bytes": 239250,
+        "sha256": "ee625979590d25232f80ea4780694388e30719284cf610bd5de3676a9bf7b511"
+      },
+      "client.source-native.js": {
+        "bytes": 38303,
+        "sha256": "e3fcedb74ee6d26172a0238a85a75281f373150cd306396e1dec1a9a6b1ed140"
+      },
+      "workflow-native-command-attribution.js": {
+        "bytes": 12300,
+        "sha256": "54fe20e739802310af50abd65de424e6dfd95b446a73dd691823b5f0b76e301c"
+      },
+      "client.replica-palette.js": {
+        "bytes": 7434,
+        "sha256": "ba85fdfa59ead0ddf2b69049ae87d4963dab3a06e17e78f11fd3fae33d530f22"
+      },
+      "agent-configuration.js": {
+        "bytes": 55004,
+        "sha256": "957726de523b6cce3a5e0b35b8ee7feac99f704048b9061cedbc1c942320c939"
+      }
+    },
+    "postimages": {
+      "client.js": {
+        "bytes": 240628,
+        "sha256": "3da213b70e700a393078389775fb8c89549f605444bbfaf6bc9001d78af9354b"
+      },
+      "client.source-native.js": {
+        "bytes": 38305,
+        "sha256": "14318cf99f4ae7e86ab70f77e5e75f750d34b91d0d05df3d3e1e22e454299e39"
+      },
+      "workflow-native-command-attribution.js": {
+        "bytes": 15714,
+        "sha256": "d4919c1770058e79324b28a35eac80f7c29c34e135b28c69d4fcb8081a7e5e2e"
+      },
+      "client.replica-palette.js": {
+        "bytes": 7434,
+        "sha256": "ba85fdfa59ead0ddf2b69049ae87d4963dab3a06e17e78f11fd3fae33d530f22"
+      },
+      "package.json": {
+        "bytes": 5391,
+        "sha256": "69725ed1af6b64e96812dfd2657444bf3d43ab0ac559bbb137effda5d1a11403"
+      },
+      "agent-configuration.js": {
+        "bytes": 55012,
+        "sha256": "c86e10ac218c149c47b5eec5b72a22ecbd28a6a7296e395bfad31c6fa892b84b"
+      }
+    },
+    "inventory": {
+      "fileCount": 86,
+      "bytes": 3102149,
+      "sha256": "46b7ab5c1f7df24665a0c6c9e66ea47f034071e9c098f0a15e4b15244e6bb4dc"
+    },
+    "validatorInput": {
+      "source": "apps/tradeloom-launcher/installed-bootstrap.mjs",
+      "bytes": 51844,
+      "sha256": "eddaa4b6607ddefb333a3abeb36c2aaae911f33e9e36db48dd799ec509cd8ded"
+    }
+  }
+}
