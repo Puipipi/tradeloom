@@ -2472,8 +2472,8 @@
   },
   "launcher": {
     "source": "apps/tradeloom-launcher/stage5-source06/derived/Program.cs",
-    "bytes": 9925,
-    "sha256": "e56b1baa2f32f42e3056a320cb5c4250dda10e4b3c94cb2fc270942f4e9b8717"
+    "bytes": 10041,
+    "sha256": "a6593ba850768356a03e7f58945997b1870f0fe1ee1cec62d946c5781f937f69"
   },
   "sequence": [
     "Existing fixed official base and versioned replay/program recipes are intermediate inputs.",

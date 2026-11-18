@@ -204,6 +204,7 @@ internal static class Program
         try
         {
             string logPath = Path.Combine(launcherDirectory, "启动工作台.log");
+            Directory.CreateDirectory(launcherDirectory);
             File.AppendAllText(logPath,
                 DateTimeOffset.Now.ToString("yyyy-MM-dd HH:mm:ss zzz", CultureInfo.InvariantCulture)
                     + " event=" + eventName + " pid=" + processId.ToString(CultureInfo.InvariantCulture)
@@ -220,6 +221,7 @@ internal static class Program
         try
         {
             string logPath = Path.Combine(launcherDirectory, "启动工作台.log");
+            Directory.CreateDirectory(launcherDirectory);
             File.AppendAllText(logPath,
                 DateTimeOffset.Now.ToString("yyyy-MM-dd HH:mm:ss zzz", CultureInfo.InvariantCulture)
                     + " event=launch-failed code=" + code
