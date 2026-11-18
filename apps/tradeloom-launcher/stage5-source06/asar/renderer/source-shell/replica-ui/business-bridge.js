@@ -557,9 +557,11 @@
         // Invalidate the cached state before awaiting bounds/visibility IPC. An
         // overlay that opens while setVisible(true) is pending must enqueue false.
         record.visible = undefined
-        await app.harnessSurface.setBounds(record.target.sceneId, record.target.panelId, bounds)
+        const applied = await app.harnessSurface.setBounds(record.target.sceneId, record.target.panelId, bounds)
         if (state.sceneTransitionPending || !isCurrentRole(record) || revision !== record.syncRevision || record.status !== 'context-mounted') return
-        await app.harnessSurface.setVisible(record.target.sceneId, record.target.panelId, true)
+        if (applied?.alreadyVisible !== true) {
+          await app.harnessSurface.setVisible(record.target.sceneId, record.target.panelId, true)
+        }
         if (isCurrentRole(record) && revision === record.syncRevision) record.visible = true
       } catch {
         if (isCurrentRole(record) && revision === record.syncRevision) {
@@ -739,6 +741,13 @@
     finally { record.placementPending = false }
   }
 
+  function insertRoleControl(panel, button) {
+    const controls = panel?.querySelector(':scope > .panel-header > .panel-controls')
+    if (!controls) return
+    const fullscreen = controls.querySelector(':scope > .pi-fullscreen')
+    controls.insertBefore(button, fullscreen)
+  }
+
   function installRoleSkillsControl(record) {
     const button = document.createElement('button')
     button.type = 'button'
@@ -764,7 +773,7 @@
       if (!isCurrentRole(record) || record.disposed) return
       await requestNativeUtility(record.panel, 'session-skills')
     })
-    record.panel?.querySelector?.('.panel-controls')?.append(button)
+    insertRoleControl(record.panel, button)
     record.skillsButton = button
     return button
   }
@@ -788,7 +797,7 @@
     placementButton.type = 'button'
     placementButton.hidden = true
     placementButton.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); void requestPlacement(record) })
-    panel?.querySelector('.panel-controls')?.append(placementButton)
+    insertRoleControl(panel, placementButton)
     record.placementButton = placementButton
     const previous = state.roleRecord
     state.roleRecord = record
