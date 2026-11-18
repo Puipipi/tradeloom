@@ -1295,7 +1295,10 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
         catch(error) { try { w.contentView.removeChildView(item.view) } catch {} oldParent.contentView.addChildView(item.view); updateOwnership(item.view.webContents,oldParent); throw error }
         item.parent=w; views.delete(oldKey); item.sceneId=s; item.panelId=p; Object.assign(item,capturedBinding); item.surface=panel.type==='native-chat'?'chat':'files'; item.status=item.loaded?'document-loaded':'loading'; views.set(key(s,p),item); notifyGuest(item); return {status:item.status}
       })
-      bind('bounds',(event,s,p,rect)=>{ const w=assertWindow(event);owner(w,s,p);const item=views.get(key(s,p));if(!rect||!['x','y','width','height'].every(k=>Number.isFinite(rect[k]))||rect.width<0||rect.height<0)throw Error('invalid bounds');item.rect=rect;return applyBounds(item) })
+      bind('bounds',(event,s,p,rect)=>{ const w=assertWindow(event);owner(w,s,p);const item=views.get(key(s,p));if(!rect||!['x','y','width','height'].every(k=>Number.isFinite(rect[k]))||rect.width<0||rect.height<0)throw Error('invalid bounds');item.rect=rect;const result=applyBounds(item);
+        // The original Rectangle stays usable by older callers.
+        return item.visible===true && item.view.getVisible?.()===true ? {...result,alreadyVisible:true} : result
+      })
       bind('visible',(event,s,p,visible)=>{ const w=assertWindow(event); owner(w,s,p); if(typeof visible!=='boolean') throw new Error('invalid visibility'); const item=views.get(key(s,p));item.view.setVisible(visible);item.visible=visible })
       bind('status',(event,s,p)=>{
         const w=assertWindow(event),id=key(s,p),item=views.get(id),dockWindow=windows.get(s)??main

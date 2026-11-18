@@ -1874,8 +1874,8 @@
       "kind": "asar",
       "target": "lib/tradeloom-source-shell/source-shell-controller.mjs",
       "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/tradeloom-source-shell/source-shell-controller.mjs",
-      "bytes": 146796,
-      "sha256": "549658641751a0e0f3c280af8a73e5588df97434b39cb427a06c0ce8afff8764"
+      "bytes": 146990,
+      "sha256": "867f9a012a377a7532360ae0d3647f88b79df61770e47435f7af7c884979e3fb"
     },
     {
       "kind": "asar",
@@ -2175,8 +2175,8 @@
       "kind": "asar",
       "target": "renderer/source-shell/replica-ui/business-bridge.js",
       "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/business-bridge.js",
-      "bytes": 76315,
-      "sha256": "1948ded822eed425c722dcee0a5c2fda5b078ee3edea8daedb8ada0f9e42a16d"
+      "bytes": 76625,
+      "sha256": "bf203ead6cd2690c7bdb1b96850f0dfa6bc822e1964b3849540dcbfd4f0800e3"
     },
     {
       "kind": "asar",
