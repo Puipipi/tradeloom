@@ -1977,6 +1977,38 @@ textarea.intake-requirement-input {
   font-size: var(--wb-font-compact);
 }
 
+/* 业务单据（采购 / 入库 / 出货回款）标签区块 */
+.documents-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--wb-space-4);
+}
+.documents-block {
+  display: grid;
+  gap: var(--wb-space-2);
+  padding: var(--wb-space-3);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  align-content: start;
+}
+.documents-block h4 { margin: 0; font-size: var(--wb-font-body); }
+.documents-list { display: grid; gap: var(--wb-space-2); }
+.documents-item {
+  display: grid;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: var(--wb-font-compact);
+}
+.documents-item.is-blocked { border-left: 4px solid var(--warning); }
+.documents-item-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.documents-item-fields { display: flex; flex-wrap: wrap; gap: 2px 14px; color: var(--muted); }
+.documents-item-fields .documents-field strong { color: var(--ink); font-weight: 600; }
+.documents-blocked-note { margin: 0; color: var(--warning); }
+.documents-actions { display: flex; gap: var(--wb-space-2); }
+
 .intake-material-line-list {
   margin: 0;
   padding: 0;
