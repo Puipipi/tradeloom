@@ -28,7 +28,7 @@ const NATIVE_BRIDGE_TOOLS = new Set([
 ])
 const KNOWN_PRESETS = new Set(Object.values(ROLE_PRESETS))
 const DISPATCH_PRESETS = new Set([ROLE_PRESETS.center, ROLE_PRESETS.product, ROLE_PRESETS.delivery])
-const ERP_DOCTYPES = Object.freeze(['Item', 'Customer', 'Supplier', 'Warehouse', 'Bin', 'Sales Order', 'Purchase Order'])
+const ERP_DOCTYPES = Object.freeze(['Item', 'Customer', 'Supplier', 'Warehouse', 'Bin', 'Sales Order', 'Purchase Order', 'Stock Entry'])
 const INTAKE_CANDIDATE_TYPES = Object.freeze(['product_identity', 'commercial_source', 'production_instruction', 'labor_analysis'])
 const INTAKE_FIELDS = Object.freeze({
   product_identity: Object.freeze({

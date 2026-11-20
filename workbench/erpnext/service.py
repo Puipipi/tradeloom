@@ -38,6 +38,10 @@ SCALAR_FIELDS: dict[str, frozenset[str]] = {
         "supplier", "supplier_name", "company", "transaction_date", "schedule_date",
         "status", "total_qty", "grand_total", "currency",
     }),
+    "Stock Entry": frozenset({
+        "purpose", "company", "posting_date", "stock_entry_type",
+        "from_warehouse", "to_warehouse", "total_amount", "remarks",
+    }),
 }
 
 DEFAULT_LIST_FIELDS: dict[str, tuple[str, ...]] = {
@@ -48,12 +52,15 @@ DEFAULT_LIST_FIELDS: dict[str, tuple[str, ...]] = {
     "Bin": ("item_code", "warehouse", "actual_qty", "reserved_qty", "projected_qty", "stock_uom"),
     "Sales Order": ("customer", "customer_name", "company", "transaction_date", "status", "grand_total", "currency"),
     "Purchase Order": ("supplier", "supplier_name", "company", "transaction_date", "status", "grand_total", "currency"),
+    "Stock Entry": ("purpose", "company", "posting_date", "stock_entry_type", "from_warehouse", "to_warehouse", "total_amount"),
 }
 
 CHILD_FIELDS: dict[str, dict[str, frozenset[str]]] = {
     "Item": {"barcodes": frozenset({"barcode", "barcode_type", "uom"})},
     "Sales Order": {"items": frozenset({"item_code", "item_name", "qty", "uom", "delivery_date", "rate", "amount"})},
     "Purchase Order": {"items": frozenset({"item_code", "item_name", "qty", "uom", "schedule_date", "rate", "amount"})},
+    "Stock Entry": {"items": frozenset({"item_code", "item_name", "qty", "transfer_qty", "uom",
+                                        "s_warehouse", "t_warehouse", "amount"})},
 }
 
 SYSTEM_FIELDS = frozenset({"name", "modified"})
@@ -66,6 +73,7 @@ FILTER_FIELDS: dict[str, frozenset[str]] = {
     "Bin": frozenset({"item_code", "warehouse", "company", "stock_uom"}),
     "Sales Order": frozenset({"customer", "company", "transaction_date", "status", "delivery_status", "billing_status"}),
     "Purchase Order": frozenset({"supplier", "company", "transaction_date", "status"}),
+    "Stock Entry": frozenset({"purpose", "company", "posting_date", "stock_entry_type"}),
 }
 SUPPORTED_DOCTYPES = tuple(SCALAR_FIELDS)
 MAX_PAGE_SIZE = 100
