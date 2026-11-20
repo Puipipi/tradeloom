@@ -1,7 +1,7 @@
-"""Content classification for registered native artifacts.
+"""Classify and register native artifacts from the paired Host entry point.
 
-Paired Host-only registration and retrieval are exposed internally. The actual
-Host grant and browser integration have not yet been implemented or verified.
+Registration checks the Host grant against the locked run and its source record
+before writing bytes. A failed row write triggers an attempt to remove the version directory.
 """
 from io import BytesIO
 import json

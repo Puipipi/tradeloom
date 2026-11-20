@@ -28,10 +28,10 @@ def file_pin(path):
             if not chunk: break
             h.update(chunk); total += len(chunk)
     return total, h.hexdigest()
-def tree(rows):
+def tree(rows, node="node"):
     ordered = sorted(rows, key=lambda x: x["path"])
-    script = f"import {{ digestInventory }} from {json.dumps(INSTALLED_BOOTSTRAP.as_uri())}; let s=''; for await (const c of process.stdin) s+=c; console.log(digestInventory(JSON.parse(s)))"
-    run = subprocess.run(["node", "--input-type=module", "-e", script], input=json.dumps(ordered), text=True, capture_output=True)
+    script = "import{pathToFileURL}from'node:url';const{digestInventory}=await import(pathToFileURL(process.argv[1]).href);let s='';for await(const c of process.stdin)s+=c;console.log(digestInventory(JSON.parse(s)))"
+    run = subprocess.run([node, "--input-type=module", "-e", script, str(INSTALLED_BOOTSTRAP)], input=json.dumps(ordered), text=True, capture_output=True)
     if run.returncode != 0: raise RuntimeError("installed-bootstrap digestInventory failed: " + run.stderr.strip())
     return {"files": len(rows), "bytes": sum(x["bytes"] for x in rows), "sha256": run.stdout.strip()}
 def checked_source(relative):

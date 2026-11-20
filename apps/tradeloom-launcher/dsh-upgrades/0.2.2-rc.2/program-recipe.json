@@ -388,6 +388,28 @@
     "nodeSha256": "ba4e6d110e8c1592a1ecd390f6b05f3da124b13871a5be62b341a07a853c6c32",
     "scope": "reused identity of byte-identical Node binary only; not a new upstream/source build receipt"
   },
+  "engineRecovery": {
+    "root": "resources/tradeloom/engine-recovery-tools",
+    "sources": [
+      "scripts/apply-dsh-candidate.py",
+      "scripts/build-dsh-candidate.py",
+      "scripts/replay-dsh-candidate.py",
+      "apps/tradeloom-launcher/scripts/write-candidate-program-zip.py",
+      "apps/tradeloom-launcher/installed-bootstrap.mjs",
+      "apps/tradeloom-launcher/core.mjs",
+      "apps/tradeloom-launcher/plugin-seed.mjs",
+      "apps/tradeloom-launcher/engine-recovery-worker.cjs",
+      "packages/tradeloom-shell/engine-generation-owner.js",
+      "packages/tradeloom-shell/engine-generation-snapshots.js",
+      "packages/tradeloom-shell/state.js",
+      "packages/tradeloom-shell/roles.js",
+      "packages/tradeloom-shell/package.json",
+      "dsh-base.manifest.json",
+      "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.2/recipe.json"
+    ],
+    "runtimePython": "runtime/python/python.exe",
+    "runtimeNode": "runtime/node/node.exe"
+  },
   "launcher": {
     "source": "apps/tradeloom-launcher/portable/Program.cs",
     "preimage": {
@@ -419,5 +441,29 @@
       "启动工作台.exe"
     ],
     "dataPolicy": "explicit external local data root; never read, create, copy or migrate it during assembly"
+  },
+  "windowsBranding": {
+    "productName": "织贸助手",
+    "fileDescription": "织贸助手",
+    "icon": {
+      "source": "apps/tradeloom-launcher/branding/tradeloom.ico",
+      "bytes": 13033,
+      "sha256": "0290c96bf75f950b974a712bc2a2ac7b2e3ceb882bc44cf43ceedbf23bcab35d"
+    },
+    "iconProvenance": {
+      "source": "integrations/dsh/patches/desktop-branding.patch",
+      "bytes": 603781,
+      "sha256": "0e5c221375c98f48052fde5720d3d8e685ac374adb8d0b32f570d0c2e2eaad9f",
+      "entry": "apps/desktop/resources/tray-windows.ico",
+      "gitBlob": "94f7bf00077715a273e06c85573e01bc5c2b53d5"
+    },
+    "editor": {
+      "version": "2.0.0",
+      "url": "https://github.com/electron/rcedit/releases/download/v2.0.0/rcedit-x64.exe",
+      "sourceCommit": "28a13190599ed35f472fbaea1179116a29ff8f10",
+      "bytes": 1360384,
+      "sha256": "3e7801db1a5edbec91b49a24a094aad776cb4515488ea5a4ca2289c400eade2a"
+    },
+    "scope": "Only app executable version strings/icon, tray.ico and launcher branding; official inputs stay unchanged. Numeric upstream versions and execution manifest are preserved; transformed binaries are not claimed to retain upstream signatures."
   }
 }

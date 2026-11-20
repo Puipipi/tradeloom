@@ -111,6 +111,31 @@ export function createSceneMemoryStore({ stateStore, isSessionLive, isSessionDur
   }
 
   return Object.freeze({
+    async snapshot(origin, sceneId) {
+      return await transact(origin, sceneId, 'read', state => {
+        const record = currentSceneRecord(state, sceneId)
+        return deepFreeze(cloneJson({ value: record?.value ?? null, revision: record?.writeRevision ?? 0 }))
+      })
+    },
+    /** Graph edits share the already-authorized memory record. The expected
+     * revision is compared inside the owned transaction, never after a read. */
+    async update(origin, sceneId, expectedRevision, transform) {
+      if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0 || typeof transform !== 'function') throw new SceneMemoryOriginError('invalid_arguments')
+      return await transact(origin, sceneId, 'write', state => {
+        const previous = currentSceneRecord(state, sceneId)
+        const revision = previous?.writeRevision ?? 0
+        if (revision !== expectedRevision || revision === Number.MAX_SAFE_INTEGER) throw new SceneMemoryOriginError('scene_memory_revision_conflict')
+        // Legacy domain migration continues to belong to write(), including
+        // its immutable backup. Do not silently reinterpret an old record.
+        if (state.sceneMemoryMigration?.version !== 1 && (Object.hasOwn(state, 'sceneMemory') || Object.hasOwn(state, 'sceneMemoryLineage'))) throw new SceneMemoryOriginError('legacy_migration_required')
+        const value = cloneJson(transform(cloneJson(previous?.value ?? null)))
+        state.sceneMemories = { ...(isRecord(state.sceneMemories) ? state.sceneMemories : {}), [sceneId]: {
+          ...previous, value, writeRevision: revision + 1,
+          lineage: previous?.lineage ?? { operationId: origin.operationId, roleId: origin.roleId, sessionId: origin.sessionId, bindingRevision: origin.bindingRevision },
+        } }
+        return deepFreeze(cloneJson({ value, revision: revision + 1 }))
+      })
+    },
     async read(origin, sceneId) {
       return await transact(origin, sceneId, 'read', state => {
         const record = currentSceneRecord(state, sceneId)

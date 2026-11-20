@@ -16,8 +16,6 @@ window.__dshWhaleWidget = true
 function dshwIsChatRoot(r) {
   if (!r || !r.querySelector) return false
   return !!(
-    r.querySelector('textarea') ||
-    r.querySelector('[contenteditable="true"]') ||
     // DSH 0.1.6-alpha.1 起的新版 composer：data-composer-input 在整个 DSH 前端产物里
     // **只出现在对话组件**（v742 时实测：1515 个前端文件里仅 dsh-client-ui-conversation 命中），
     // 所以它是最精确的判据。
@@ -28,7 +26,11 @@ function dshwIsChatRoot(r) {
     // 通用兜底：多行 textbox。注意**不要**用裸的 [role="textbox"] —— pdf.js 的批注编辑器
     // （dsh-client-ui-sidebar-documentpreview）也会设 role=textbox，用它会把判定放宽到
     // 非输入框的元素；加上 aria-multiline 至少排除掉单行输入框。
-    r.querySelector('[role="textbox"][aria-multiline="true"]')
+    r.querySelector('[role="textbox"][aria-multiline="true"]') ||
+    // 旧版 composer 兼容。工作流节点编辑器本身也有原生 textarea。
+    Array.prototype.some.call(r.querySelectorAll('textarea,[contenteditable="true"]'), function (input) {
+      return !input.closest('.tl-wf')
+    })
   )
 }
 var dshwStarted = false
@@ -50,8 +52,8 @@ function dshwTryStart(force) {
   } catch (err) {}
   return false
 }
-try {
-  if (!dshwIsChatRoot(document.getElementById('root'))) {
+function dshwWatchChatRoot() {
+  if (!dshwTryStart(true)) {
     // 尚未渲染：MutationObserver 无限等待（v739 去掉原来的「5 秒死线」）。
     // 原来 500ms × 10 次就永久放弃，而 window.__dshWhaleWidget 是一次性闸门 ——
     // 慢启动机器、或页面最小化时定时器被浏览器节流，都会让"第一次没赶上"变成
@@ -73,6 +75,17 @@ try {
         try { if (dshwObserver) dshwObserver.disconnect() } catch (err) {}
       }
     }, 2000)
+  }
+}
+try {
+  var desktop = window.dshDesktop
+  if (typeof desktop?.nativeSurfaceDescriptor === 'function') {
+    Promise.resolve().then(function () { return desktop.nativeSurfaceDescriptor() }).then(function (surface) {
+      if (surface?.kind === 'scene-component') return
+      dshwWatchChatRoot()
+    }, dshwWatchChatRoot).catch(function () {})
+  } else {
+    dshwWatchChatRoot()
   }
 } catch (err) {}
 function dshwInit() {
@@ -22341,6 +22354,4 @@ function pollLastTurn() {
 }
 setInterval(function () { pollLastTurn(); pollWaitState() }, 1000)
 }
-// 主界面检测通过（或稍后由 MutationObserver 检测到）后执行挂件初始化；非主界面不启动
-try { dshwTryStart(true) } catch (err) {}
 })()

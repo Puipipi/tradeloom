@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>织贸助手 · 原生工作区</title>
+<link rel="stylesheet" href="account-window.css">
+</head>
+<body>
+  <header id="titlebar">
+    <div class="titlebar-drag">
+      <span class="brand">
+        <span class="brand-dot"></span>
+        <span class="brand-name">织贸助手 · 原生工作区</span>
+      </span>
+    </div>
+    <div class="titlebar-controls">
+      <button class="tb-btn" id="btn-app" type="button" title="应用菜单">应用</button>
+      <button class="tb-btn" id="btn-edit" type="button" title="编辑菜单">编辑</button>
+      <span class="tb-sep"></span>
+      <button class="tb-btn account-return" id="btn-return" type="button" title="收回到主窗口">↙ 主窗</button>
+      <div id="titlebar-window-controls" class="titlebar-window-controls">
+        <span class="tb-sep"></span>
+        <button class="tb-btn" id="btn-min" type="button" title="最小化">─</button>
+        <button class="tb-btn" id="btn-max" type="button" title="最大化">□</button>
+        <button class="tb-btn tb-close" id="btn-close" type="button" title="关闭">✕</button>
+      </div>
+    </div>
+  </header>
+  <main id="account-viewport" aria-label="原生账号工作区">
+    <div id="account-status" role="status" aria-live="polite">等待主窗口切换账号工作区…</div>
+  </main>
+  <script src="account-window.js"></script>
+</body>
+</html>

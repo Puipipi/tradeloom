@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DSH 引擎 · 淋雨家的工作台</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- 自定义标题栏（无边框窗口，结构照搬 12-源码照搬/外壳/renderer/index.html） -->
+  <header id="titlebar">
+    <div class="titlebar-drag">
+      <span class="brand">
+        <span class="brand-dot" id="brand-dot"></span>
+        <span class="brand-name">DSH 引擎 · 淋雨家的工作台</span>
+        <!-- 悬停左上角小圆点显示版本卡 -->
+        <span class="brand-tip" id="brand-tip" role="tooltip">
+          <span class="brand-tip-line brand-tip-title">DSH 引擎 <b>界面复刻</b></span>
+          <span class="brand-tip-line">工作台 GUI <b>v0 · 临摹版</b></span>
+          <span class="brand-tip-line">运行时 Electron（模拟）</span>
+          <span class="brand-tip-line brand-tip-dim">无后端 · 仅 UI 与交互行为</span>
+        </span>
+      </span>
+    </div>
+    <div class="titlebar-controls">
+      <button class="tb-btn" id="btn-theme" title="外观：深色 / 浅色 / 跟随系统" aria-label="切换外观" data-theme-icon="dark" data-theme-effective="dark">
+        <svg class="theme-icon theme-icon-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20.3 15.4A8.5 8.5 0 0 1 8.6 3.7 8.6 8.6 0 1 0 20.3 15.4Z"/></svg>
+        <svg class="theme-icon theme-icon-light" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg>
+        <span class="theme-auto-badge" aria-hidden="true">A</span>
+      </button>
+      <span class="tb-sep"></span>
+      <button class="tb-btn" id="btn-refresh" title="刷新当前场景（热更新渲染器）" aria-label="刷新当前场景"><svg class="replica-line-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 11a8 8 0 1 0-2 6M20 4v7h-7"/></svg></button>
+      <button class="tb-btn" id="btn-tools" title="工作台工具" aria-label="工作台工具"><svg class="replica-line-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 7h16v13H4zM8 7V4h8v3M4 11h16M10 11v2h4v-2"/></svg></button>
+      <button class="tb-btn" id="btn-market" title="DSH 集市">🛍</button>
+      <button class="tb-btn" id="btn-donate" title="赞助小鱼干">🐟</button>
+      <span class="tb-sep"></span>
+      <button class="tb-btn" id="btn-min" title="最小化">─</button>
+      <button class="tb-btn" id="btn-max" title="最大化">□</button>
+      <button class="tb-btn tb-close" id="btn-close" title="关闭">✕</button>
+    </div>
+  </header>
+
+  <!-- 场景切换栏（独立组件） -->
+  <header id="scenebar">
+    <div class="scenebar-inner">
+      <span class="scenebar-label">工作台</span>
+      <div class="scenebar-sep"></div>
+      <nav id="scenario-tabs"></nav>
+      <div class="scenebar-right">
+        <button id="balance-chip" class="balance-chip" title="DeepSeek 余额 · 点击打开用量页">¥ …</button>
+        <span id="status-dot" class="status-dot"></span>
+        <span id="status-text">连接中…</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- 本地渲染场景 -->
+  <section id="scenario-view" class="view active">
+    <div id="grid"></div>
+  </section>
+
+  <!-- 插件 / 模型 弹窗 -->
+  <div id="modal-mask" class="modal-mask" style="display:none">
+    <div class="modal">
+      <div class="modal-head">
+        <span id="modal-title" class="modal-title"></span>
+        <button class="modal-close" id="modal-close" title="关闭">✕</button>
+      </div>
+      <div id="modal-body" class="modal-body"></div>
+    </div>
+  </div>
+
+  <script src="scenes-data.js"></script>
+  <script src="renderer.js"></script>
+</body>
+</html>

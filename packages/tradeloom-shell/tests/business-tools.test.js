@@ -111,7 +111,7 @@ test('registers bounded business tools with native ToolRuntime definitions and n
   const ctx = { webServer: TRUSTED_WEB_SERVER, tools: { register(definition) { tools.set(definition.name, definition); return () => tools.delete(definition.name) } } }
   registerBusinessTools(ctx, { preset: 'tradeloom-center' })
   assert.deepEqual([...tools.keys()], [
-    'tradeloom_scene_memory_read', 'tradeloom_scene_memory_write',
+    'tradeloom_workflow_files', 'tradeloom_scene_memory_read', 'tradeloom_scene_memory_write',
     'tradeloom_read_products', 'tradeloom_read_workflow_task', 'tradeloom_read_deliverables',
     'tradeloom_preview_workflow_intent', 'tradeloom_dispatch_workflow_subtask',
     'tradeloom_begin_native_workflow_assignment', 'tradeloom_bind_native_workflow_expert',
@@ -129,7 +129,7 @@ test('registers bounded business tools with native ToolRuntime definitions and n
   }
   const module = await import('../business-tools.js')
   assert.equal('default' in module, false)
-  assert.deepEqual(module.inject, ['tools', 'webServer', 'agents', 'sceneMemoryOriginAuthority'])
+  assert.deepEqual(module.inject, ['tools', 'webServer', 'agents', 'sceneMemoryOriginAuthority', 'workflowFileAuthority'])
   assert.equal(typeof module.apply, 'function')
   const toolsLibrary = process.env.TRADELOOM_DSH_TOOLS_LIBRARY
   if (toolsLibrary) {
@@ -138,20 +138,20 @@ test('registers bounded business tools with native ToolRuntime definitions and n
     const runtime = { ctx: {}, layers: { effect(_ctx, install) { return install({ tools: { insert(name, definition) { registrations.push({ name, definition }); return () => {} } } }) } } }
     for (const definition of tools.values()) {
       assertSupportedJsonSchema(definition.output.schema)
-      if (definition.name.startsWith('tradeloom_erpnext_') || definition.name.startsWith('tradeloom_intake_') || definition.name.startsWith('tradeloom_narrative_') || definition.name === 'tradeloom_read_execution_plan') {
+      if (definition.name.startsWith('tradeloom_erpnext_') || definition.name.startsWith('tradeloom_intake_') || definition.name.startsWith('tradeloom_narrative_') || ['tradeloom_read_execution_plan', 'tradeloom_workflow_files'].includes(definition.name)) {
         assertSupportedJsonSchema(definition.parameters)
         assert.equal(definition.parameters.type, 'object', `${definition.name} wire parameters must have an object root`)
       }
       assert.equal(typeof ToolRuntime.prototype.register.call(runtime, definition), 'function')
     }
-    assert.equal(registrations.length, 25)
+    assert.equal(registrations.length, 26)
   }
 })
 
 test('preset configuration limits registered tools to the center, product, and delivery sets', () => {
   const expected = {
     'tradeloom-center': [
-      'tradeloom_scene_memory_read', 'tradeloom_scene_memory_write',
+      'tradeloom_workflow_files', 'tradeloom_scene_memory_read', 'tradeloom_scene_memory_write',
       'tradeloom_read_products', 'tradeloom_read_workflow_task', 'tradeloom_read_deliverables',
       'tradeloom_preview_workflow_intent', 'tradeloom_dispatch_workflow_subtask',
       'tradeloom_begin_native_workflow_assignment', 'tradeloom_bind_native_workflow_expert',

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <rect x="32" y="32" width="960" height="960" rx="256" fill="#F7FAFA" stroke="#D9E5E5" stroke-width="24"/>
+  <g id="tray-glyph">
+  <path d="M224 384h150c82 0 82 128 164 128s82 128 164 128h98" fill="none" stroke="#F7FAFA" stroke-width="204" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M384 224v150c0 82 128 82 128 164s128 82 128 164v98" fill="none" stroke="#F7FAFA" stroke-width="204" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M224 384h150c82 0 82 128 164 128s82 128 164 128h98" fill="none" stroke="#263D70" stroke-width="160" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M384 224v150c0 82 128 82 128 164s128 82 128 164v98" fill="none" stroke="#0B6B67" stroke-width="160" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M512 434v156" stroke="#F7FAFA" stroke-width="30" stroke-linecap="round"/>
+  </g>
+</svg>

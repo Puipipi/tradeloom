@@ -7,6 +7,8 @@ import { createStateStore, HOME_MARKER_VALUE, resolveOwnedHome, roleWorkspacePat
 export const AGENT_CONFIGURATION_ROUTE = '/tradeloom/agent-configuration'
 const PRESET_MODULE = '@deepseek-ai/dsh-agent-preset'
 const MCP_MODULE = '@deepseek-ai/dsh-mcp-client'
+const MCP_RUNTIME_MODULE = '@tradeloom/dsh-business-shell/mcp-runtime'
+const MCP_WRITE_MODULE = MCP_RUNTIME_MODULE
 const SKILL_MODULE = '@deepseek-ai/dsh-skill-filesystem'
 const POLICY_MODULE = '@tradeloom/dsh-business-shell/tool-policy'
 const MCP_ID_PREFIX = 'tradeloom-mcp-'
@@ -214,7 +216,7 @@ function safeServerStub(row) {
 function projectMcpRow(row, env) {
   const config = row.config
   const common = ['transport', 'serverName', 'toolCallTimeoutMs', 'failOnStartupError']
-  let editable = hasOnlyKeys(row, ['id', 'name', 'config']) && row.name === MCP_MODULE
+  let editable = hasOnlyKeys(row, ['id', 'name', 'config']) && [MCP_MODULE, MCP_RUNTIME_MODULE].includes(row.name)
     && typeof row.id === 'string' && MCP_ROW_ID.test(row.id)
     && typeof config.serverName === 'string' && SERVER_NAME.test(config.serverName)
     && Number.isInteger(config.toolCallTimeoutMs) && config.toolCallTimeoutMs >= 1 && config.toolCallTimeoutMs <= 600_000
@@ -314,7 +316,7 @@ function pluginRows(nextValue, current, inherited, role) {
   const oldRows = Array.isArray(current?.plugins) ? current.plugins
     : Array.isArray(inherited?.plugins) ? inherited.plugins : []
   const newRows = [
-    ...nextValue.mcpServers.map(({ id, config }) => ({ id, name: MCP_MODULE, config })),
+    ...nextValue.mcpServers.map(({ id, config }) => ({ id, name: MCP_WRITE_MODULE, config })),
     { id: SKILL_ROW_ID, name: SKILL_MODULE, config: {
       providerName: `tradeloom-${role}-skills`,
       includeDefaultRoots: nextValue.skill.includeDefaultRoots,
@@ -618,7 +620,7 @@ function validateMcpServerCollisions(currentConfig, servers) {
       throw new ConfigurationError('invalid-configuration')
     }
     if (isManagedRow(row) && row.id.startsWith(MCP_ID_PREFIX)) continue
-    if (row?.name !== MCP_MODULE) continue
+    if (![MCP_MODULE, MCP_RUNTIME_MODULE].includes(row?.name)) continue
     const serverName = row?.config?.serverName
     if (typeof serverName !== 'string' || !SERVER_NAME.test(serverName)) {
       if (servers.length) throw new ConfigurationError('server-name-conflict', 409)

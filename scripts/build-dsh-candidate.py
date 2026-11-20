@@ -6,7 +6,7 @@ data directory is written into the new launcher config, never opened or copied.
 See docs/DSH-基座升级-runbook.md for the required program-only inputs.
 """
 from pathlib import Path
-import argparse,hashlib,importlib.util,json,os,shutil,stat,subprocess,sys,zipfile
+import argparse,base64,hashlib,importlib.util,json,os,shutil,stat,subprocess,sys,zipfile
 sys.dont_write_bytecode=True
 R=Path(__file__).resolve().parents[1]
 
@@ -17,10 +17,17 @@ replay=module('fixed_dsh_replay',R/'scripts/replay-dsh-candidate.py')
 writer=module('existing_program_inventory',R/'apps/tradeloom-launcher/scripts/write-candidate-program-zip.py')
 sha=lambda data:hashlib.sha256(data).hexdigest()
 
+def io_path(path):
+    # An equivalent Win32 file representation, only at filesystem calls. Never
+    # use it for target identity, ownership, overlap or journal comparisons.
+    value=os.path.abspath(path)
+    return Path('\\\\?\\'+value) if os.name=='nt' and not value.startswith('\\\\') else Path(value)
+
 def file_pin(path):
-    size,digest=writer.file_pin(path);return {'bytes':size,'sha256':digest}
+    size,digest=writer.file_pin(io_path(path));return {'bytes':size,'sha256':digest}
 
 def inventory(root):
+    root=io_path(root)
     replay.ordinary(root);rows=[]
     def visit(directory):
         for item in sorted(directory.iterdir()):
@@ -46,8 +53,39 @@ def overlaps(a,b):
 
 def deployment_metadata(program,recipe,desktop,resources,head,dirty,source_digest,patches):
     validator={key:program['nativeArtifactValidator'][key] for key in ['receiptSha256','nodeRelativePath','nodeSha256']}
-    source={'shellMode':'source','appMainSha256':desktop['postimages']['lib/main.js']['sha256'],'lock':{'upstream':{**program['upstream'],'appAsar':recipe['officialInput']['appAsar']},'patches':patches,'nativeArtifactValidator':validator},'assemblyKind':'complete official binary program plus current repository recipes and own resources; not upstream source compilation','vendorVersion':recipe['version'],'vendorCommit':program['upstream']['commit'],'ownSourceHead':head,'ownSourceDirty':dirty,'ownSourceFilesSha256':source_digest}
+    main_postimage={**desktop['postimages'],**desktop.get('additions',{}),**desktop.get('finalOverlay',{}).get('postimages',{})}['lib/main.js']
+    source={'shellMode':'source','appMainSha256':main_postimage['sha256'],'lock':{'upstream':{**program['upstream'],'appAsar':recipe['officialInput']['appAsar']},'patches':patches,'nativeArtifactValidator':validator},'assemblyKind':'complete official binary program plus current repository recipes and own resources; not upstream source compilation','vendorVersion':recipe['version'],'vendorCommit':program['upstream']['commit'],'ownSourceHead':head,'ownSourceDirty':dirty,'ownSourceFilesSha256':source_digest}
     return {'schemaVersion':2,'deploymentMode':'packaged','runtime':program['runtime'],'resources':resources,'sourceBuild':source,'candidate':{'status':'isolated full candidate; not installed or accepted','dataRootSelectedExplicitly':True,'dataReadCreatedOrMigrated':False,'installerExecuted':False}}
+
+def validate_windows_branding(spec,editor):
+    if editor is None:raise ValueError('this recipe requires explicit --resource-editor (pinned electron/rcedit)')
+    editor=Path(editor).absolute();replay.ordinary(editor)
+    if file_pin(editor)!={k:spec['editor'][k] for k in ['bytes','sha256']}:raise ValueError('resource editor input drift')
+    icon=replay.safe(R,spec['icon']['source']);replay.ordinary(icon)
+    if file_pin(icon)!={k:spec['icon'][k] for k in ['bytes','sha256']}:raise ValueError('brand icon input drift')
+    provenance=replay.safe(R,spec['iconProvenance']['source']);replay.ordinary(provenance)
+    if file_pin(provenance)!={k:spec['iconProvenance'][k] for k in ['bytes','sha256']}:raise ValueError('brand icon provenance drift')
+    return editor,icon
+
+def brand_windows_executable(path,spec,editor,icon,run,label,set_icon=True):
+    # Only new, owned output copies reach this function. No upstream cache or
+    # installed executable is edited; exact transformed bytes enter inventory.
+    def metadata(stage):
+        # rcedit's ANSI console getters lose Chinese characters on Windows.
+        # Use the OS FileVersionInfo reader, with explicit UTF-8 pipe output.
+        literal=str(path).replace("'","''")
+        script="[Console]::OutputEncoding=New-Object System.Text.UTF8Encoding($false);$v=[Diagnostics.FileVersionInfo]::GetVersionInfo('"+literal+"');[ordered]@{ProductName=$v.ProductName;FileDescription=$v.FileDescription;FileVersion=$v.FileVersion;ProductVersion=$v.ProductVersion}|ConvertTo-Json -Compress"
+        encoded=base64.b64encode(script.encode('utf-16le')).decode('ascii')
+        return json.loads(run(label+'-'+stage,['powershell.exe','-NoProfile','-NonInteractive','-EncodedCommand',encoded]).stdout.decode('utf-8-sig'))
+    before=metadata('before')
+    command=[editor,path,'--set-version-string','ProductName',spec['productName'],'--set-version-string','FileDescription',spec['fileDescription']]
+    if set_icon:command += ['--set-icon',icon]
+    run(label,command);after=metadata('after')
+    for key in ['FileVersion','ProductVersion']:
+        if after[key]!=before[key]:raise ValueError('branding changed upstream version: '+key)
+    for key in ['ProductName','FileDescription']:
+        if after[key]!=spec['productName' if key=='ProductName' else 'fileDescription']:raise ValueError('PE brand readback mismatch: '+key)
+    return file_pin(path)
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
@@ -60,6 +98,7 @@ def main():
     parser.add_argument('--output-root',type=Path,required=True)
     parser.add_argument('--node',default='node')
     parser.add_argument('--compiler',type=Path,default=Path(os.environ.get('WINDIR','C:/Windows'))/'Microsoft.NET/Framework64/v4.0.30319/csc.exe')
+    parser.add_argument('--resource-editor',type=Path,help='exact pinned electron/rcedit executable; build-only input')
     args=parser.parse_args()
     if os.name!='nt':raise ValueError('this fixed program recipe targets Windows x64')
     if '/' in args.version or '\\' in args.version or args.version in ['.','..']:raise ValueError('invalid version')
@@ -67,6 +106,7 @@ def main():
     if not (K/'program-recipe.json').is_file():raise ValueError('unsupported complete-program recipe; review the upstream difference first')
     recipe=replay.load(K/'recipe.json');program_recipe=replay.load(replay.safe(K,recipe['programRecipe']))
     if program_recipe['schemaVersion']!=1 or recipe['version']!=args.version or program_recipe['version']!=args.version:raise ValueError('recipe version mismatch')
+    branding=program_recipe['windowsBranding'];editor,brand_icon=validate_windows_branding(branding,args.resource_editor)
     vendor=args.vendor_root.absolute();py=args.python_packages.absolute();pg=args.postgresql.absolute();seed=args.plugin_seed.absolute()
     out=args.output_root.absolute();data_root=local_data_path(args.data_root)
     if out.exists():raise ValueError('output root must not exist; no installed program is overwritten')
@@ -117,8 +157,9 @@ def main():
         return result
     def copy(source,target,origin,expected=None):
         destination=replay.safe(product,target)
-        if destination.exists():raise ValueError(f'overlapping program source: {target}')
-        replay.ordinary(source);destination.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(source,destination)
+        physical=io_path(destination)
+        if physical.exists():raise ValueError(f'overlapping program source: {target}')
+        replay.ordinary(io_path(source));physical.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(io_path(source),physical)
         actual=file_pin(destination)
         if expected is not None and actual!=expected:raise ValueError(f'program copy drift: {target}')
         origins[target]=origin;return actual
@@ -126,16 +167,20 @@ def main():
         read_source(path.relative_to(R).as_posix())
     # The complete source archive includes the reviewed outer acquisition path.
     # Its execution is proven by update-receipt.json, not by mere inclusion here.
-    for name in ['entry','signatureScript','applyScript']:read_source(program_recipe['acquisition'][name])
+    for name in ['entry','applyScript']:read_source(program_recipe['acquisition'][name])
+    for key in ['icon','iconProvenance']:read_source(branding[key]['source'])
     replay_root=out/'replay'
-    run('fixed-replay',[sys.executable,'-B',R/'scripts/replay-dsh-candidate.py','--source',vendor/'resources/app.asar','--unpacked',vendor/'resources/app.asar.unpacked','--output-root',replay_root,'--node',args.node])
+    run('fixed-replay',[sys.executable,'-B',R/'scripts/replay-dsh-candidate.py','--version',args.version,'--source',vendor/'resources/app.asar','--unpacked',vendor/'resources/app.asar.unpacked','--output-root',replay_root,'--node',args.node])
     for row in replay.load(replay_root/'source-manifest.json')['sourceFiles']:
         if replay.pin(read_source(row['sourcePath'],row.get('target')))!={key:row[key] for key in ['bytes','sha256']}:raise ValueError('replay source drift')
     for row in vendor_rows:
         relative=row['path']
-        if relative=='resources/app.asar':continue
+        if relative in ['resources/app.asar','resources/tray.ico']:continue
         target='app/'+('织贸助手.exe' if relative==executable else relative)
         copy(replay.safe(vendor,relative),target,{'kind':'official-unchanged','inputRelativePath':relative},{key:row[key] for key in ['bytes','sha256']})
+    app_brand=brand_windows_executable(product/'app/织贸助手.exe',branding,editor,brand_icon,run,'app-brand')
+    origins['app/织贸助手.exe']={'kind':'official-plus-pinned-windows-branding','inputRelativePath':executable,'preimage':program_recipe['vendor']['executablePin'],'editor':branding['editor'],'iconSource':branding['icon']['source'],'postimage':app_brand}
+    copy(brand_icon,'app/resources/tray.ico',{'kind':'repository-brand-icon','sourcePath':branding['icon']['source']},{k:branding['icon'][k] for k in ['bytes','sha256']})
     copy(out/'replay/app.asar','app/resources/app.asar',{'kind':'official-plus-versioned-recipes'},{key:recipe['expectedAsar'][key] for key in ['bytes','sha256']})
     for key,folder in [('pythonDependencies','python-packages'),('postgresql','postgresql')]:
         root,rows=payloads[key]
@@ -148,17 +193,49 @@ def main():
     shell_root=out/'replay/business-shell';shell_rows=inventory(shell_root)
     for row in shell_rows:copy(replay.safe(shell_root,row['path']),'app/resources/tradeloom/business-shell/'+row['path'],{'kind':'current-business-recipe','sourcePath':recipe['businessShell']['sourceRoot']+'/'+row['path']},{key:row[key] for key in ['bytes','sha256']})
     launcher=program_recipe['launcher'];launcher_root=out/'launcher-source';launcher_root.mkdir()
-    original=read_source(launcher['source'],'启动工作台.exe');patch=read_source((K/launcher['patch']).relative_to(R).as_posix(),'启动工作台.exe')
-    if replay.pin(original)!=launcher['preimage']:raise ValueError('launcher source preimage drift')
-    (launcher_root/'Program.cs').write_bytes(original)
-    run('launcher-patch',['git','-c','core.autocrlf=false','-c','core.eol=lf','apply','--whitespace=nowarn',K/launcher['patch']],launcher_root)
+    if not replay.uses_exact_source(launcher,('patch','preimage')):
+        original=read_source(launcher['source'],'启动工作台.exe');read_source((K/launcher['patch']).relative_to(R).as_posix(),'启动工作台.exe')
+        if replay.pin(original)!=launcher['preimage']:raise ValueError('launcher source preimage drift')
+        (launcher_root/'Program.cs').write_bytes(original)
+        run('launcher-patch',['git','-c','core.autocrlf=false','-c','core.eol=lf','apply','--whitespace=nowarn',K/launcher['patch']],launcher_root)
+    else:
+        (launcher_root/'Program.cs').write_bytes(read_source(launcher['source'],'启动工作台.exe'))
     if file_pin(launcher_root/'Program.cs')!=launcher['postimage']:raise ValueError('launcher derived source drift')
     compiler_pin=file_pin(args.compiler)
-    run('launcher-compile',[args.compiler,'/nologo','/target:winexe','/platform:x64','/optimize+','/utf8output','/codepage:65001','/reference:System.Web.Extensions.dll','/reference:System.Windows.Forms.dll','/out:'+str(product/'启动工作台.exe'),launcher_root/'Program.cs'])
-    origins['启动工作台.exe']={'kind':'compiled-repository-source','sourcePath':launcher['source'],'patch':launcher['patch'],'compiler':compiler_pin}
+    run('launcher-compile',[args.compiler,'/win32icon:'+str(brand_icon),'/nologo','/target:winexe','/platform:x64','/optimize+','/utf8output','/codepage:65001','/reference:System.Web.Extensions.dll','/reference:System.Windows.Forms.dll','/out:'+str(product/'启动工作台.exe'),launcher_root/'Program.cs'])
+    origins['启动工作台.exe']={'kind':'compiled-repository-source','sourcePath':launcher['source'],'patch':launcher.get('patch'),'compiler':compiler_pin}
+    launcher_brand=brand_windows_executable(product/'启动工作台.exe',branding,editor,brand_icon,run,'launcher-brand',set_icon=False)
+    origins['启动工作台.exe'].update(branding={'editor':branding['editor'],'iconSource':branding['icon']['source'],'postimage':launcher_brand})
     config=json.loads(read_source(launcher['configSource'],'launcher.json'));config.update(schemaVersion=2,dataDirectory=str(data_root))
     replay.write_json(product/'launcher.json',config);origins['launcher.json']={'kind':'derived-launcher-config','sourcePath':launcher['configSource'],'dataSelection':'explicit external root, not read or created'}
     marker=product/'app/resources/tradeloom/.tradeloom-bootstrap-owned';marker.write_bytes(b'tradeloom-bootstrap-v1\n');origins[marker.relative_to(product).as_posix()]={'kind':'bootstrap-owned-marker'}
+    recovery=program_recipe.get('engineRecovery');recovery_tree=None
+    if recovery:
+        recovery_rows=[];runtime_files=[]
+        for relative in recovery['sources']:
+            target='app/'+recovery['root']+'/'+relative;data=read_source(relative,target)
+            copy(replay.safe(R,relative),target,{'kind':'current-engine-recovery-source','sourcePath':relative},replay.pin(data))
+            recovery_rows.append({'source':target,'path':'tools/'+relative,**replay.pin(data)})
+        # Only the existing official standalone Node and Python standard runtime
+        # are copied out for a recovery worker. No site-packages, account home,
+        # plugin seed or program/data tree becomes the worker runtime.
+        python_prefix='resources/runtime/primary-runtime/dependencies/python/'
+        for row in vendor_rows:
+            name=row['path']
+            if name==program_recipe['runtime']['node']:
+                runtime_files.append({'source':'app/'+name,'path':recovery['runtimeNode'],**{key:row[key] for key in ['bytes','sha256']}})
+            elif name.startswith(python_prefix):
+                part=name[len(python_prefix):];lower=part.lower()
+                if lower in ['python.exe','python3.dll','python312.dll','vcruntime140.dll','vcruntime140_1.dll','license.txt'] or lower.startswith('dlls/') or lower.startswith('lib/') and not lower.startswith('lib/site-packages/'):
+                    runtime_files.append({'source':'app/'+name,'path':'runtime/python/'+part,**{key:row[key] for key in ['bytes','sha256']}})
+        required=[recovery['runtimeNode'],recovery['runtimePython'],'runtime/python/python312.dll','runtime/python/Lib/encodings/__init__.py']
+        if any(name not in {row['path'] for row in runtime_files} for name in required):raise ValueError('official minimal recovery runtime incomplete')
+        inputs={'schemaVersion':1,'files':recovery_rows+runtime_files,'node':recovery['runtimeNode'],'python':recovery['runtimePython'],
+            'worker':'tools/apps/tradeloom-launcher/engine-recovery-worker.cjs','owner':'tools/packages/tradeloom-shell/engine-generation-owner.js',
+            'validator':'tools/apps/tradeloom-launcher/installed-bootstrap.mjs','cli':'tools/scripts/apply-dsh-candidate.py'}
+        inputs_path=product/'app'/recovery['root']/'runtime-inputs.json';replay.write_json(inputs_path,inputs)
+        origins[inputs_path.relative_to(product).as_posix()]={'kind':'derived-exact-recovery-runtime-inputs','sourceRecipe':str((K/'program-recipe.json').relative_to(R))}
+        recovery_tree=writer.tree(inventory(product/'app'/recovery['root']))
     node=replay.safe(product,'app/'+program_recipe['runtime']['node'])
     if file_pin(node)['sha256']!=program_recipe['runtime']['nodeSha256']:raise ValueError('official runtime Node identity mismatch')
     source_rows=[]
@@ -169,6 +246,7 @@ def main():
     business=recipe['businessShell']['inventory']
     if shell_tree!={'files':business['fileCount'],'bytes':business['bytes'],'sha256':business['sha256']}:raise ValueError('final business tree mismatch')
     resources={'business':{'root':'resources/tradeloom/backend','fileCount':len(backend),'bytes':backend_tree['bytes'],'sha256':backend_tree['sha256'],'files':backend},'businessShell':{'root':'resources/tradeloom/business-shell','name':'@tradeloom/dsh-business-shell','version':replay.load(shell_root/'package.json')['version'],**business},'primaryRuntime':{key:program_recipe['runtime'][key] for key in ['root','python','version','providedBy']},**program_recipe['programResources']}
+    if recovery_tree:resources['engineRecovery']={'root':recovery['root'],'fileCount':recovery_tree['files'],'bytes':recovery_tree['bytes'],'sha256':recovery_tree['sha256']}
     metadata=deployment_metadata(program_recipe,recipe,replay.load(K/'desktop-recipe.json'),resources,head,bool(subprocess.check_output(['git','status','--porcelain'],cwd=R)),source_digest,{p.name:sha(p.read_bytes()) for p in sorted(K.iterdir()) if p.is_file()})
     replay.write_json(product/'app/resources/tradeloom/deployment.json',metadata);origins['app/resources/tradeloom/deployment.json']={'kind':'fresh-complete-deployment-metadata','sourceFilesSha256':source_digest}
     manifest_check="import {validateInstalledManifest} from "+json.dumps((R/'apps/tradeloom-launcher/installed-bootstrap.mjs').as_uri())+";import {readFile} from 'node:fs/promises';validateInstalledManifest(JSON.parse(await readFile(process.argv[1],'utf8')));console.log(JSON.stringify({actualInstalledManifestValid:true,bootstrapStarted:false}));"
@@ -199,7 +277,7 @@ def main():
     replay.write_json(out/'program-entry-manifest.json',{'schemaVersion':1,'zipRoot':program_recipe['output']['zipRoot'],'files':entries,'tree':writer.tree(rows)})
     archive=out/(program_recipe['output']['zipRoot']+'.zip')
     with zipfile.ZipFile(archive,'x',zipfile.ZIP_DEFLATED,allowZip64=True) as z:
-        for row in rows:z.write(replay.safe(product,row['path']),program_recipe['output']['zipRoot']+'/'+row['path'])
+        for row in rows:z.write(io_path(replay.safe(product,row['path'])),program_recipe['output']['zipRoot']+'/'+row['path'])
     with zipfile.ZipFile(archive) as z:
         if len(z.infolist())!=len(rows):raise ValueError('program ZIP entry count mismatch')
         for row in rows:
@@ -214,7 +292,7 @@ def main():
         for row in source_rows:
             if replay.pin(z.read(row['sourcePath']))!={key:row[key] for key in ['bytes','sha256']}:raise ValueError('source ZIP readback mismatch')
         if replay.pin(z.read('derived/Program.cs'))!=launcher['postimage'] or z.read('source-manifest.json')!=(out/'source-manifest.json').read_bytes():raise ValueError('derived source ZIP readback mismatch')
-    receipt={'schemaVersion':1,'status':'complete isolated program assembled and byte-read-back; not launched or installed','version':args.version,'programRoot':str(product),'programZip':file_pin(archive),'sourceZip':file_pin(out/'current-source.zip'),'sourceFilesSha256':source_digest,'sourceFiles':len(source_rows),'programEntries':len(rows),'programTree':writer.tree(rows),'appAsar':file_pin(product/'app/resources/app.asar'),'businessShell':business,'compiler':compiler_pin,'dataRootSelection':str(data_root),'dataReadCreatedOrMigrated':False,'installerExecuted':False,'applicationStarted':False,'channelDiscoveryOrDownloadExecuted':False,'acquisitionEntry':program_recipe['acquisition']['entry'],'unsupportedVersionPolicy':'stop before assembly; require a reviewed version recipe; never drop own overlays or run official installer'}
+    receipt={'schemaVersion':1,'status':'complete isolated program assembled and byte-read-back; not launched or installed','version':args.version,'programRoot':str(product),'programZip':file_pin(archive),'sourceZip':file_pin(out/'current-source.zip'),'sourceFilesSha256':source_digest,'sourceFiles':len(source_rows),'programEntries':len(rows),'programTree':writer.tree(rows),'appAsar':file_pin(product/'app/resources/app.asar'),'businessShell':business,'compiler':compiler_pin,'windowsBranding':{'editor':file_pin(editor),'icon':file_pin(brand_icon),'app':app_brand,'launcher':launcher_brand,'originalInputsUnchanged':True},'dataRootSelection':str(data_root),'dataReadCreatedOrMigrated':False,'installerExecuted':False,'applicationStarted':False,'channelDiscoveryOrDownloadExecuted':False,'acquisitionEntry':program_recipe['acquisition']['entry'],'unsupportedVersionPolicy':'stop before assembly; require a reviewed version recipe; never drop own overlays or run official installer'}
     replay.write_json(out/'build-receipt.json',receipt);print(json.dumps(receipt))
 
 if __name__=='__main__':main()

@@ -4,6 +4,7 @@ import { createConfirmedWorkflowDefinition } from './workflow-definition.js'
 import { createWorkflowRunJournal } from './workflow-run-journal.js'
 import { createWorkflowNativeBindingResolver, readAuthorizedCenterBinding } from './workflow-native-binding.js'
 import { createWorkflowNativeExecutor } from './workflow-native-executor.js'
+import { executeNativeTool } from './workflow-native-command-attribution.js'
 import { planReadyNodes } from './workflow-native-graph.js'
 import { validateNativeWorkflowGraph } from './workflow-local-nodes.js'
 import { createWorkflowReviewDecisionChannel, createWorkflowReviewRequest } from './workflow-review.js'
@@ -37,6 +38,10 @@ function nativeNodes(document) {
     if (typeof node.instruction !== 'string' || !node.instruction.trim()) throw fail('run_node_prompt_unavailable')
   }
   return nodes
+}
+function projectPreparedNode(node) {
+  if (node.kind === 'agent') return { id: node.id, roleId: node.agent, agentPreset: ROLE_PRESETS[node.agent] }
+  return { id: node.id, kind: node.kind, executionMode: node.kind === 'review' ? 'user-questions' : 'local' }
 }
 function requireReviewProvider(ctx, nodes) {
   if (nodes.some(node => node.kind === 'review') && typeof ctx.userQuestions?.ask !== 'function') throw fail('review_unavailable')
@@ -215,7 +220,7 @@ export function createWorkflowNativeService({ ctx, readState, definitionStore, r
     if (closed) throw fail('service_closed')
   }
 
-  const runs = new Map()
+  const activeRunExecutions = new Map()
   let closed = false
   const stop = () => {
     closed = true
@@ -224,7 +229,7 @@ export function createWorkflowNativeService({ ctx, readState, definitionStore, r
       if (entry.renewalTimer) clearTimeout(entry.renewalTimer)
       entry.renewalTimer = null
     }
-    for (const owned of runs.values()) owned.controller.abort(fail('host_unloaded'))
+    for (const owned of activeRunExecutions.values()) owned.controller.abort(fail('host_unloaded'))
     // Never await an owned task from its own disposal path.
   }
   ctx.effect(() => stop)
@@ -298,7 +303,7 @@ export function createWorkflowNativeService({ ctx, readState, definitionStore, r
     arm()
     return entry
   }
-  function schedule(handle, auth, callId, submissionAborted, resumeOperationId = null, task = null, leaseRef = null) {
+  function scheduleRunExecution(handle, auth, callId, submissionAborted, resumeOperationId = null, task = null, leaseRef = null) {
     const controller = new AbortController()
     if (submissionAborted) controller.abort(fail('submission_aborted_during_create'))
     const abortTask = () => controller.abort(task.signal.reason)
@@ -306,10 +311,10 @@ export function createWorkflowNativeService({ ctx, readState, definitionStore, r
       task.signal.addEventListener('abort', abortTask, { once: true })
       if (task.signal.aborted) abortTask()
     }
-    const owned = { controller, error: null, task: null, leaseRef }
+    const owned = { controller, error: null, task: null, leaseRef, parent: auth.parent }
     // Cordis effect registers a disposer returned by its immediate setup.
     const releaseParent = auth.parent.ctx.effect(() => () => controller.abort(fail('parent_disposed')))
-    runs.set(handle.getSnapshot().id, owned)
+    activeRunExecutions.set(handle.getSnapshot().id, owned)
     if (closed) controller.abort(fail('host_unloaded'))
     const leaseEntry = startRenewal(handle.getSnapshot().id, leaseRef, owned)
     owned.task = new Promise(resolve => setImmediate(resolve)).then(async () => {
@@ -395,12 +400,16 @@ export function createWorkflowNativeService({ ctx, readState, definitionStore, r
           bindingRevision: snapshot.bindingRevision, definitionRevision: snapshot.definitionRevision }, async attempt => {
           // Local executor dependency only; original SDK schema/get and registry
           // retain their receivers. No global ToolRuntime/provider replacement.
-          const executorContext = task ? {
-            agents: ctx.agents, subagents: ctx.subagents,
-            tools: { get: (...args) => ctx.tools.get(...args),
-              execute: input => taskAuthority.executeTask(task, input) },
-          } : ctx
+          const subagents = auth.parent.ctx.get('agentPresets')?.serviceFor(auth.parent, 'tradeloomWorkflowNativeLifecycle')
+          if (!subagents || typeof subagents.createLifecycleScope !== 'function'
+            || typeof subagents.resolveName !== 'function' || typeof subagents.interrupt !== 'function') throw fail('native_bridge_unavailable')
+          const executorContext = {
+            agents: ctx.agents, subagents,
+            tools: ctx.tools,
+          }
           const executor = createWorkflowNativeExecutor(executorContext, { timeoutMs,
+            createLifecycleScope: parent => subagents.createLifecycleScope(parent),
+            executeTool: input => task ? taskAuthority.executeTask(task, input) : executeNativeTool(ctx.tools, input),
             resolveBinding: async (input, trustedExec) => {
               const currentDefinition = await definition(snapshot.workflowId)
               if (currentDefinition.definitionRevision !== snapshot.definitionRevision) throw fail('definition_revision_mismatch')
@@ -427,7 +436,7 @@ export function createWorkflowNativeService({ ctx, readState, definitionStore, r
       if (leaseEntry?.renewalTimer) clearTimeout(leaseEntry.renewalTimer)
       if (leaseEntry) leaseEntry.renewalTimer = null
       if (leaseEntry?.renewalPromise) await leaseEntry.renewalPromise.catch(() => {})
-      runs.delete(handle.getSnapshot().id)
+      activeRunExecutions.delete(handle.getSnapshot().id)
       if (ownershipEnabled && leaseEntry && !leaseEntry.lost && leaseRef?.capability
         && ['done', 'failed', 'cancelled', 'interrupted', 'waiting'].includes(handle.getSnapshot().status)) {
         try {
@@ -445,7 +454,7 @@ export function createWorkflowNativeService({ ctx, readState, definitionStore, r
   async function resumePreparation(runId, exec) {
     if (closed) throw fail('service_closed')
     const auth = await authorize(exec)
-    const activeRun = runs.get(runId)
+    const activeRun = activeRunExecutions.get(runId)
     const leaseRef = activeRun?.leaseRef ?? createLeaseRef(runId).leaseRef
     const { journal: runJournal } = journalForRun(runId, leaseRef)
     const handle = await runJournal.open(runId)
@@ -469,7 +478,7 @@ export function createWorkflowNativeService({ ctx, readState, definitionStore, r
     if (!owns(stored, final)) throw fail('run_parent_mismatch')
     if (stored.bindingRevision !== final.bindingRevision) throw fail('binding_revision_mismatch')
     if (stored.definitionRevision !== latest.definitionRevision) throw fail('definition_revision_mismatch')
-    if (runs.has(runId)) { plan.eligible = false; plan.blocked.push({ nodeId: null, reason: 'run_active_in_service' }) }
+    if (activeRunExecutions.has(runId)) { plan.eligible = false; plan.blocked.push({ nodeId: null, reason: 'run_active_in_service' }) }
     const resumePlanHash = `sha256:${fingerprint([stored.id, stored.revision, stored.parentAgentId, stored.sessionId,
       stored.bindingRevision, stored.definitionRevision, stored.status, stored.cancelRequested === true, stored.nodes, plan])}`
     return { auth: final, handle, plan, snapshot: stored, resumePlanHash, leaseRef }
@@ -524,7 +533,7 @@ export function createWorkflowNativeService({ ctx, readState, definitionStore, r
           await prepared.handle.requestCancel({ operationId: `aborted:${operationId}`, fingerprint: bodyFingerprint })
           throw fail('operation_aborted')
         }
-        schedule(prepared.handle, prepared.auth, exec.callId, false, operationId, task, prepared.leaseRef)
+        scheduleRunExecution(prepared.handle, prepared.auth, exec.callId, false, operationId, task, prepared.leaseRef)
         scheduled = true
         return { runId: input.runId, status: 'queued', reused: false, scheduled: true }
       } finally {
@@ -561,19 +570,8 @@ export function createWorkflowNativeService({ ctx, readState, definitionStore, r
         center: { roleId: 'center', sessionId: final.sessionId, workspaceId: final.workspaceId, archiveState: 'unarchived' },
         graph: { nodeCount: nodes.length, edgeCount: confirmed.document.edges.length, maxConcurrent: 1,
           roleIds: [...new Set(nodes.filter(node => node.kind === 'agent').map(node => node.agent))],
-          nodes: nodes.map(node => node.kind === 'agent'
-            ? { id: node.id, roleId: node.agent, agentPreset: ROLE_PRESETS[node.agent] }
-            : node.kind === 'review' ? { id: node.id, kind: node.kind, executionMode: 'user-questions' }
-              : { id: node.id, kind: node.kind, executionMode: 'local' }) },
-        ...(nodes.length === 1
-          ? { node: nodes[0].kind === 'agent'
-            ? { id: nodes[0].id, roleId: nodes[0].agent, agentPreset: ROLE_PRESETS[nodes[0].agent] }
-            : nodes[0].kind === 'review' ? { id: nodes[0].id, kind: nodes[0].kind, executionMode: 'user-questions' }
-              : { id: nodes[0].id, kind: nodes[0].kind, executionMode: 'local' } }
-          : { nodes: nodes.map(node => node.kind === 'agent'
-            ? { id: node.id, roleId: node.agent, agentPreset: ROLE_PRESETS[node.agent] }
-            : node.kind === 'review' ? { id: node.id, kind: node.kind, executionMode: 'user-questions' }
-              : { id: node.id, kind: node.kind, executionMode: 'local' }) }) }
+          nodes: nodes.map(projectPreparedNode) },
+        ...(nodes.length === 1 ? { node: projectPreparedNode(nodes[0]) } : { nodes: nodes.map(projectPreparedNode) }) }
     },
     async submit(input, exec) {
       const workflowId = submitInput(input)
@@ -613,7 +611,7 @@ export function createWorkflowNativeService({ ctx, readState, definitionStore, r
         if (prior) return existing(prior, expected)
         const { journal: submitJournal, leaseRef } = createLeaseRef(identity.runId)
         const handle = await submitJournal.create(expected)
-        schedule(handle, auth, exec.callId, exec?.signal?.aborted === true, null, task, leaseRef)
+        scheduleRunExecution(handle, auth, exec.callId, exec?.signal?.aborted === true, null, task, leaseRef)
         scheduled = true
         return { runId: identity.runId, status: 'queued', queued: true, scheduled: true, reused: false }
       } finally { if (!scheduled) releaseTask(task) }
@@ -638,7 +636,7 @@ export function createWorkflowNativeService({ ctx, readState, definitionStore, r
     async cancel(input, exec) {
       const id = only(input, 'runId', RUN_ID)
       const auth = await authorize(exec)
-      const ownedRun = runs.get(id)
+      const ownedRun = activeRunExecutions.get(id)
       const activeLeaseRef = ownedRun?.leaseRef
       if (ownershipEnabled && activeLeaseRef?.lost) throw fail('owner_fenced')
       const leaseRef = activeLeaseRef?.capability ? activeLeaseRef : null
@@ -665,7 +663,7 @@ export function createWorkflowNativeService({ ctx, readState, definitionStore, r
           if (!mutationHandle) throw fail('run_not_found')
           const cancelled = await mutationHandle.requestCancel({ operationId: operationKey('cancel', auth, exec), fingerprint: fingerprint(['cancel', id]) })
           if (cancelled.alreadyTerminal) return { runId: id, status: cancelled.snapshot.status, aborted: false, reason: 'already_terminal' }
-          const owned = runs.get(id)
+          const owned = activeRunExecutions.get(id)
           if (cancelled.reused) {
             const abort = cancelled.snapshot.cancelRequested === true && owned && !owned.controller.signal.aborted
             if (abort) owned.controller.abort(fail('run_cancel_requested'))
@@ -679,7 +677,7 @@ export function createWorkflowNativeService({ ctx, readState, definitionStore, r
         }
         const cancelled = await handle.requestCancel({ operationId: operationKey('cancel', auth, exec), fingerprint: fingerprint(['cancel', id]) })
         if (cancelled.alreadyTerminal) return { runId: id, status: cancelled.snapshot.status, aborted: false, reason: 'already_terminal' }
-        const owned = runs.get(id)
+        const owned = activeRunExecutions.get(id)
         if (cancelled.reused) {
           const abort = cancelled.snapshot.cancelRequested === true && owned && !owned.controller.signal.aborted
           if (abort) owned.controller.abort(fail('run_cancel_requested'))
@@ -700,10 +698,15 @@ export function createWorkflowNativeService({ ctx, readState, definitionStore, r
       }
     },
     recover: () => ownershipEnabled ? startRecovery() : journal.recoverInterruptedRuns(),
+    async releaseAgent(agent) {
+      const selected = [...activeRunExecutions.values()].filter(owned => owned.parent === agent)
+      for (const owned of selected) owned.controller.abort(fail('parent_disposed'))
+      await Promise.allSettled(selected.map(owned => owned.task))
+    },
     dispose: stop,
     // Host-only observation for shutdown/acceptance; cleanup above never awaits it.
     async drain() {
-      const pending = [...runs.entries()]
+      const pending = [...activeRunExecutions.entries()]
       await Promise.allSettled([recoveryPromise, ...pending.map(([, owned]) => owned.task)])
       return pending.map(([runId, owned]) => ({ runId, error: owned.error?.code ?? null }))
     },

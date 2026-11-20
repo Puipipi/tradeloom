@@ -1,0 +1,704 @@
+{
+  "version": 1,
+  "grid": {
+    "cols": 4,
+    "rows": 4
+  },
+  "businessRoutes": {
+    "/home": {
+      "sceneId": "center",
+      "panelId": "business-main"
+    },
+    "/products": {
+      "sceneId": "products",
+      "panelId": "business-main"
+    },
+    "/agent-center": {
+      "sceneId": "agent-center",
+      "panelId": "business-main"
+    },
+    "/artifacts": {
+      "sceneId": "deliverables",
+      "panelId": "business-main"
+    },
+    "/runs": {
+      "sceneId": "runs",
+      "panelId": "business-main"
+    }
+  },
+  "scenes": [
+    {
+      "id": "center",
+      "layoutProfile": {
+        "kind": "collaboration_grid",
+        "minimumWidth": 960,
+        "minimumHeight": 560
+      },
+      "label": "工作总览",
+      "icon": "⌂",
+      "roleId": "center",
+      "defaultBusinessRoute": "/home",
+      "navigationGroup": "business",
+      "panels": [
+        {
+          "id": "business-main",
+          "type": "business-iframe",
+          "title": "总览",
+          "path": "/home",
+          "col": 1,
+          "row": 1,
+          "w": 3,
+          "h": 2,
+          "category": "business"
+        },
+        {
+          "id": "files",
+          "type": "business-iframe",
+          "title": "文件",
+          "path": "/artifacts#files",
+          "col": 4,
+          "row": 1,
+          "w": 1,
+          "h": 2,
+          "category": "resources"
+        },
+        {
+          "id": "preview",
+          "type": "business-iframe",
+          "title": "预览",
+          "path": "/artifacts#preview",
+          "col": 1,
+          "row": 3,
+          "w": 1,
+          "h": 2,
+          "category": "resources"
+        },
+        {
+          "id": "native-chat",
+          "type": "native-chat",
+          "title": "中心助手",
+          "col": 2,
+          "row": 3,
+          "w": 3,
+          "h": 2,
+          "category": "assistant"
+        },
+        {
+          "id": "assistant-product",
+          "type": "native-chat",
+          "title": "商品助手",
+          "roleId": "product",
+          "optional": true,
+          "col": 1,
+          "row": 3,
+          "w": 1,
+          "h": 2,
+          "category": "assistant"
+        },
+        {
+          "id": "assistant-delivery",
+          "type": "native-chat",
+          "title": "交付助手",
+          "roleId": "delivery",
+          "optional": true,
+          "col": 1,
+          "row": 3,
+          "w": 1,
+          "h": 2,
+          "category": "assistant"
+        },
+        {
+          "id": "assistant-user-profile",
+          "type": "native-chat",
+          "title": "资料助手",
+          "roleId": "user-profile",
+          "optional": true,
+          "col": 1,
+          "row": 3,
+          "w": 1,
+          "h": 2,
+          "category": "assistant"
+        },
+        {
+          "id": "native-workspace",
+          "type": "native-workspace",
+          "title": "项目文件",
+          "category": "resources",
+          "optional": true,
+          "col": 1,
+          "row": 1,
+          "w": 2,
+          "h": 2
+        }
+      ]
+    },
+    {
+      "id": "products",
+      "layoutProfile": {
+        "kind": "collaboration_grid",
+        "minimumWidth": 960,
+        "minimumHeight": 560
+      },
+      "label": "商品",
+      "icon": "▦",
+      "roleId": "product",
+      "defaultBusinessRoute": "/products",
+      "navigationGroup": "business",
+      "panels": [
+        {
+          "id": "business-main",
+          "type": "business-iframe",
+          "title": "商品",
+          "path": "/products",
+          "col": 1,
+          "row": 1,
+          "w": 3,
+          "h": 2,
+          "category": "business"
+        },
+        {
+          "id": "files",
+          "type": "business-iframe",
+          "title": "文件",
+          "path": "/artifacts#files",
+          "col": 4,
+          "row": 1,
+          "w": 1,
+          "h": 2,
+          "category": "resources"
+        },
+        {
+          "id": "preview",
+          "type": "business-iframe",
+          "title": "预览",
+          "path": "/artifacts#preview",
+          "col": 1,
+          "row": 3,
+          "w": 1,
+          "h": 2,
+          "category": "resources"
+        },
+        {
+          "id": "native-chat",
+          "type": "native-chat",
+          "title": "商品助手",
+          "col": 2,
+          "row": 3,
+          "w": 3,
+          "h": 2,
+          "category": "assistant"
+        },
+        {
+          "id": "assistant-center",
+          "type": "native-chat",
+          "title": "中心助手",
+          "roleId": "center",
+          "optional": true,
+          "col": 1,
+          "row": 3,
+          "w": 1,
+          "h": 2,
+          "category": "assistant"
+        },
+        {
+          "id": "assistant-delivery",
+          "type": "native-chat",
+          "title": "交付助手",
+          "roleId": "delivery",
+          "optional": true,
+          "col": 1,
+          "row": 3,
+          "w": 1,
+          "h": 2,
+          "category": "assistant"
+        },
+        {
+          "id": "assistant-user-profile",
+          "type": "native-chat",
+          "title": "资料助手",
+          "roleId": "user-profile",
+          "optional": true,
+          "col": 1,
+          "row": 3,
+          "w": 1,
+          "h": 2,
+          "category": "assistant"
+        },
+        {
+          "id": "native-workspace",
+          "type": "native-workspace",
+          "title": "项目文件",
+          "category": "resources",
+          "optional": true,
+          "col": 1,
+          "row": 1,
+          "w": 2,
+          "h": 2
+        }
+      ]
+    },
+    {
+      "id": "agent-center",
+      "layoutProfile": {
+        "kind": "collaboration_grid",
+        "minimumWidth": 960,
+        "minimumHeight": 560
+      },
+      "label": "工作流",
+      "icon": "◉",
+      "roleId": "center",
+      "defaultBusinessRoute": "/agent-center",
+      "navigationGroup": "business",
+      "panels": [
+        {
+          "id": "business-main",
+          "type": "business-iframe",
+          "title": "工作流画布",
+          "path": "/agent-center",
+          "col": 2,
+          "row": 1,
+          "w": 2,
+          "h": 2,
+          "category": "business"
+        },
+        {
+          "id": "business-plan",
+          "type": "business-iframe",
+          "title": "业务计划",
+          "path": "/agent-center",
+          "col": 1,
+          "row": 1,
+          "w": 1,
+          "h": 2,
+          "category": "business"
+        },
+        {
+          "id": "files",
+          "type": "business-iframe",
+          "title": "文件",
+          "path": "/artifacts#files",
+          "col": 4,
+          "row": 1,
+          "w": 1,
+          "h": 2,
+          "category": "resources"
+        },
+        {
+          "id": "preview",
+          "type": "business-iframe",
+          "title": "预览",
+          "path": "/artifacts#preview",
+          "col": 1,
+          "row": 3,
+          "w": 1,
+          "h": 2,
+          "category": "resources"
+        },
+        {
+          "id": "native-chat",
+          "type": "native-chat",
+          "title": "中心助手",
+          "col": 2,
+          "row": 3,
+          "w": 3,
+          "h": 2,
+          "category": "assistant"
+        },
+        {
+          "id": "assistant-product",
+          "type": "native-chat",
+          "title": "商品助手",
+          "roleId": "product",
+          "optional": true,
+          "col": 1,
+          "row": 3,
+          "w": 1,
+          "h": 2,
+          "category": "assistant"
+        },
+        {
+          "id": "assistant-delivery",
+          "type": "native-chat",
+          "title": "交付助手",
+          "roleId": "delivery",
+          "optional": true,
+          "col": 1,
+          "row": 3,
+          "w": 1,
+          "h": 2,
+          "category": "assistant"
+        },
+        {
+          "id": "assistant-user-profile",
+          "type": "native-chat",
+          "title": "资料助手",
+          "roleId": "user-profile",
+          "optional": true,
+          "col": 1,
+          "row": 3,
+          "w": 1,
+          "h": 2,
+          "category": "assistant"
+        },
+        {
+          "id": "native-workspace",
+          "type": "native-workspace",
+          "title": "项目文件",
+          "category": "resources",
+          "optional": true,
+          "col": 1,
+          "row": 1,
+          "w": 2,
+          "h": 2
+        }
+      ]
+    },
+    {
+      "id": "deliverables",
+      "layoutProfile": {
+        "kind": "collaboration_grid",
+        "minimumWidth": 960,
+        "minimumHeight": 560
+      },
+      "label": "交付物",
+      "icon": "⇩",
+      "roleId": "delivery",
+      "defaultBusinessRoute": "/artifacts",
+      "defaultBusinessPath": "/artifacts#deliverables",
+      "navigationGroup": "business",
+      "panels": [
+        {
+          "id": "business-main",
+          "type": "business-iframe",
+          "title": "交付物",
+          "path": "/artifacts#deliverables",
+          "col": 1,
+          "row": 1,
+          "w": 3,
+          "h": 2,
+          "category": "business"
+        },
+        {
+          "id": "files",
+          "type": "business-iframe",
+          "title": "文件",
+          "path": "/artifacts#files",
+          "col": 4,
+          "row": 1,
+          "w": 1,
+          "h": 2,
+          "category": "resources"
+        },
+        {
+          "id": "preview",
+          "type": "business-iframe",
+          "title": "预览",
+          "path": "/artifacts#preview",
+          "col": 1,
+          "row": 3,
+          "w": 1,
+          "h": 2,
+          "category": "resources"
+        },
+        {
+          "id": "native-chat",
+          "type": "native-chat",
+          "title": "交付助手",
+          "col": 2,
+          "row": 3,
+          "w": 3,
+          "h": 2,
+          "category": "assistant"
+        },
+        {
+          "id": "assistant-center",
+          "type": "native-chat",
+          "title": "中心助手",
+          "roleId": "center",
+          "optional": true,
+          "col": 1,
+          "row": 3,
+          "w": 1,
+          "h": 2,
+          "category": "assistant"
+        },
+        {
+          "id": "assistant-product",
+          "type": "native-chat",
+          "title": "商品助手",
+          "roleId": "product",
+          "optional": true,
+          "col": 1,
+          "row": 3,
+          "w": 1,
+          "h": 2,
+          "category": "assistant"
+        },
+        {
+          "id": "assistant-user-profile",
+          "type": "native-chat",
+          "title": "资料助手",
+          "roleId": "user-profile",
+          "optional": true,
+          "col": 1,
+          "row": 3,
+          "w": 1,
+          "h": 2,
+          "category": "assistant"
+        },
+        {
+          "id": "native-workspace",
+          "type": "native-workspace",
+          "title": "项目文件",
+          "category": "resources",
+          "optional": true,
+          "col": 1,
+          "row": 1,
+          "w": 2,
+          "h": 2
+        }
+      ]
+    },
+    {
+      "id": "runs",
+      "layoutProfile": {
+        "kind": "business_lead",
+        "minimumWidth": 1143,
+        "minimumHeight": 360
+      },
+      "label": "运行记录",
+      "icon": "≋",
+      "roleId": "center",
+      "defaultBusinessRoute": "/runs",
+      "navigationGroup": "tools",
+      "panels": [
+        {
+          "id": "business-main",
+          "type": "business-iframe",
+          "title": "运行记录",
+          "path": "/runs",
+          "col": 1,
+          "row": 1,
+          "w": 3,
+          "h": 2,
+          "category": "business"
+        },
+        {
+          "id": "auxiliary",
+          "type": "business-iframe",
+          "title": "任务",
+          "path": "/agent-center",
+          "col": 4,
+          "row": 1,
+          "w": 1,
+          "h": 2,
+          "category": "business"
+        },
+        {
+          "id": "reference",
+          "type": "business-iframe",
+          "title": "资料",
+          "path": "/artifacts",
+          "col": 1,
+          "row": 3,
+          "w": 1,
+          "h": 2,
+          "category": "resources"
+        },
+        {
+          "id": "native-chat",
+          "type": "native-chat",
+          "title": "中心助手",
+          "col": 2,
+          "row": 3,
+          "w": 3,
+          "h": 2,
+          "category": "assistant"
+        },
+        {
+          "id": "native-workspace",
+          "type": "native-workspace",
+          "title": "项目文件",
+          "category": "resources",
+          "optional": true,
+          "col": 1,
+          "row": 1,
+          "w": 2,
+          "h": 2
+        }
+      ]
+    },
+    {
+      "id": "user-profile",
+      "layoutProfile": {
+        "kind": "collaboration_grid",
+        "minimumWidth": 960,
+        "minimumHeight": 560
+      },
+      "label": "资料整理",
+      "icon": "◈",
+      "roleId": "user-profile",
+      "defaultBusinessPath": "/artifacts#sources",
+      "navigationGroup": "business",
+      "panels": [
+        {
+          "id": "business-main",
+          "type": "business-iframe",
+          "title": "资料与交付物",
+          "path": "/artifacts#sources",
+          "col": 1,
+          "row": 1,
+          "w": 3,
+          "h": 2,
+          "category": "business"
+        },
+        {
+          "id": "files",
+          "type": "business-iframe",
+          "title": "文件",
+          "path": "/artifacts#files",
+          "col": 4,
+          "row": 1,
+          "w": 1,
+          "h": 2,
+          "category": "resources"
+        },
+        {
+          "id": "preview",
+          "type": "business-iframe",
+          "title": "预览",
+          "path": "/artifacts#preview",
+          "col": 1,
+          "row": 3,
+          "w": 1,
+          "h": 2,
+          "category": "resources"
+        },
+        {
+          "id": "native-chat",
+          "type": "native-chat",
+          "title": "资料助手",
+          "col": 2,
+          "row": 3,
+          "w": 3,
+          "h": 2,
+          "category": "assistant"
+        },
+        {
+          "id": "assistant-center",
+          "type": "native-chat",
+          "title": "中心助手",
+          "roleId": "center",
+          "optional": true,
+          "col": 1,
+          "row": 3,
+          "w": 1,
+          "h": 2,
+          "category": "assistant"
+        },
+        {
+          "id": "assistant-product",
+          "type": "native-chat",
+          "title": "商品助手",
+          "roleId": "product",
+          "optional": true,
+          "col": 1,
+          "row": 3,
+          "w": 1,
+          "h": 2,
+          "category": "assistant"
+        },
+        {
+          "id": "assistant-delivery",
+          "type": "native-chat",
+          "title": "交付助手",
+          "roleId": "delivery",
+          "optional": true,
+          "col": 1,
+          "row": 3,
+          "w": 1,
+          "h": 2,
+          "category": "assistant"
+        },
+        {
+          "id": "native-workspace",
+          "type": "native-workspace",
+          "title": "项目文件",
+          "category": "resources",
+          "optional": true,
+          "col": 1,
+          "row": 1,
+          "w": 2,
+          "h": 2
+        }
+      ]
+    },
+    {
+      "id": "erpnext",
+      "layoutProfile": {
+        "kind": "business_lead",
+        "minimumWidth": 1143,
+        "minimumHeight": 360
+      },
+      "label": "ERPNext",
+      "icon": "▤",
+      "roleId": "center",
+      "navigationGroup": "tools",
+      "panels": [
+        {
+          "id": "business-main",
+          "type": "erpnext-status",
+          "title": "ERPNext 服务",
+          "col": 1,
+          "row": 1,
+          "w": 3,
+          "h": 2,
+          "category": "business"
+        },
+        {
+          "id": "auxiliary",
+          "type": "placeholder",
+          "title": "辅助资料与任务",
+          "text": "在此添加与当前业务相关的资料与任务。",
+          "col": 4,
+          "row": 1,
+          "w": 1,
+          "h": 2,
+          "category": "business"
+        },
+        {
+          "id": "reference",
+          "type": "placeholder",
+          "title": "参考资料",
+          "text": "在此配置当前业务的参考资料来源。",
+          "col": 1,
+          "row": 3,
+          "w": 1,
+          "h": 2,
+          "category": "resources"
+        },
+        {
+          "id": "native-chat",
+          "type": "native-chat",
+          "title": "中心助手",
+          "col": 2,
+          "row": 3,
+          "w": 3,
+          "h": 2,
+          "category": "assistant"
+        },
+        {
+          "id": "native-workspace",
+          "type": "native-workspace",
+          "title": "项目文件",
+          "category": "resources",
+          "optional": true,
+          "col": 1,
+          "row": 1,
+          "w": 2,
+          "h": 2
+        }
+      ]
+    }
+  ]
+}

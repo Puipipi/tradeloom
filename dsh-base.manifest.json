@@ -32,7 +32,19 @@
       "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.2/settings-layout-compat.patch",
       "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.2/desktop-own.patch",
       "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.2/business-shell.patch",
-      "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.2/launcher-external-data.patch"
+      "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.2/launcher-external-data.patch",
+      "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.3/conversation-draft-checked.patch",
+      "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.3/desktop-identity.patch",
+      "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.3/host-bridge-rc3.patch",
+      "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.3/production-execution-origin.patch",
+      "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.3/root-identity-diagnostic.patch",
+      "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.3/session-list-failure-phase.patch",
+      "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.3/settings-layout-compat.patch",
+      "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.3/voice-native-binding.patch",
+      "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.2/conversation-draft-checked.patch",
+      "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.2/voice-native-binding.patch",
+      "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.2/root-identity-diagnostic.patch",
+      "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.2/seven-features-desktop.patch"
     ],
     "enginePins": {
       "apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/renderers.js": "ADAPTED_ENGINE",
@@ -40,12 +52,15 @@
       "packages/tradeloom-shell/package.json": "peerDependencies.@deepseek-ai/dsh-scope"
     },
     "sanctionedDocs": [
-      "apps/tradeloom-launcher/accepted-sdk-overrides/READ-ME-基座补丁.md"
+      "apps/tradeloom-launcher/accepted-sdk-overrides/READ-ME-基座补丁.md",
+      "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.2/conversation-draft-checked.contract.json",
+      "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.2/voice-native-binding.contract.json"
     ],
     "upgrade": {
       "recipes": {
         "0.2.2-rc.1": "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.1/recipe.json",
-        "0.2.2-rc.2": "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.2/recipe.json"
+        "0.2.2-rc.2": "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.2/recipe.json",
+        "0.2.2-rc.3": "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.3/recipe.json"
       },
       "tool": "scripts/upgrade-dsh-base.mjs",
       "command": "node scripts/upgrade-dsh-base.mjs --source <新版 app.asar> --version 0.2.2-rc.1 --dry-run",
@@ -99,22 +114,41 @@
       "manifest": "packages/tradeloom-shell/package.json",
       "hostEntry": "packages/tradeloom-shell/host.js",
       "clientEntry": "packages/tradeloom-shell/client.js",
-      "exportKeys": [
-        ".",
-        "./client",
-        "./listener-identity",
-        "./policy",
-        "./profile",
-        "./business-tools",
-        "./tool-schemas",
-        "./skills-open",
-        "./step-policy",
-        "./state",
-        "./execution-origin-authority",
-        "./scene-memory-store",
-        "./diagnostics-store"
-      ],
-      "rule": "插件必须保持可被 profile 直接导入：exports 键、host/client 入口与 INSTALLED_PROFILE_BUNDLES 顺序三者同时成立，缺一即视为破坏导入"
+      "rule": "插件必须保持可被 profile 直接导入：exports 键、host/client 入口与 INSTALLED_PROFILE_BUNDLES 顺序三者同时成立，缺一即视为破坏导入",
+      "exportTargets": {
+        ".": "./host.js",
+        "./listener-identity": "./listener-identity.js",
+        "./client": "./client.js",
+        "./policy": "./policy.js",
+        "./profile": "./profile-tool.js",
+        "./business-tools": "./business-tools.js",
+        "./tool-schemas": "./tool-schemas.js",
+        "./skills-open": "./skills-open.js",
+        "./step-policy": "./step-policy.js",
+        "./state": "./state.js",
+        "./execution-origin-authority": "./execution-origin-authority.js",
+        "./scene-memory-store": "./scene-memory-store.js",
+        "./diagnostics-store": "./diagnostics-store.js",
+        "./diagnostics-http": "./diagnostics-http.js",
+        "./proxy": "./proxy.js",
+        "./tool-policy": "./tool-policy.js",
+        "./workflow-tools": "./workflow-tools.js",
+        "./workflow-schema": "./workflow-schema.js",
+        "./workflow-engine": "./workflow-engine.js",
+        "./workflow-native-tools": "./workflow-native-tools.js",
+        "./workflow-definition-postgres": "./workflow-definition-postgres.js",
+        "./native-task-authority": "./workflow-native-task-authority.js",
+        "./mcp-runtime": "./mcp-runtime.js",
+        "./scene-memory": "./scene-memory.js",
+        "./engine-generation-owner": "./engine-generation-owner.js",
+        "./engine-generation-snapshots": "./engine-generation-snapshots.js",
+        "./workflow-native-readiness": "./workflow-native-readiness.js",
+        "./session-speech": "./session-speech.js"
+      },
+      "peerScopeVersions": [
+        "0.2.2-rc.2",
+        "0.2.2-rc.3"
+      ]
     }
   },
   "tradeLoomOwned": {

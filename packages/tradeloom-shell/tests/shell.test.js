@@ -320,7 +320,7 @@ test('pinned Cordis Loader unwrap keeps all business plugin namespaces and injec
     ['../proxy.js', '@tradeloom/dsh-business-shell/proxy', ['connection', 'webServer']],
     ['../policy.js', '@tradeloom/dsh-business-shell/policy', ['tools', 'agents']],
     ['../profile-tool.js', '@tradeloom/dsh-business-shell/profile', ['tools']],
-    ['../business-tools.js', '@tradeloom/dsh-business-shell/business-tools', ['tools', 'webServer', 'agents', 'sceneMemoryOriginAuthority']],
+    ['../business-tools.js', '@tradeloom/dsh-business-shell/business-tools', ['tools', 'webServer', 'agents', 'sceneMemoryOriginAuthority', 'workflowFileAuthority']],
     ['../step-policy.js', '@tradeloom/dsh-business-shell/step-policy', []],
   ]
   for (const [specifier, expectedName, expectedInject] of plugins) {
