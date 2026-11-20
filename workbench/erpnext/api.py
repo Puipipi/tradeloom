@@ -14,8 +14,11 @@ from .dto import ErpNextPage, ErpNextRecord
 from .service import SUPPORTED_DOCTYPES
 from .drafts import (
     DraftOperationError,
+    create_purchase_order_draft,
     create_quotation_draft,
+    get_purchase_order_draft_operation,
     get_quotation_draft_operation,
+    update_purchase_order_draft,
     update_quotation_draft,
 )
 
@@ -209,7 +212,7 @@ def _draft_operation_payload(result) -> dict[str, Any]:
         "ok": operation.status != ErpNextDraftOperation.Status.CONFLICT,
         "operation_id": operation.id,
         "action": operation.action,
-        "doctype": "Quotation",
+        "doctype": operation.doctype,
         "status": operation.status,
         "source": operation.source,
         "workflow_id": operation.workflow_id,
@@ -318,6 +321,82 @@ def quotation_draft_operation(request: HttpRequest, operation_id: str) -> JsonRe
         client = None
     try:
         result = get_quotation_draft_operation(client, operation_id)
+        return JsonResponse(_draft_operation_payload(result))
+    except DraftOperationError as exc:
+        return _error(exc.code, str(exc), exc.status)
+
+
+@require_POST
+def po_drafts(request: HttpRequest) -> JsonResponse:
+    try:
+        body = _strict_json_object(request)
+        if set(body) - {"idempotency_key", "payload", "workflow_id"}:
+            raise ValueError("请求字段无效")
+        if "idempotency_key" not in body or "payload" not in body:
+            raise ValueError("请求字段缺失")
+    except ValueError:
+        return _error("invalid_arguments", "采购订单草稿请求无效", 422)
+
+    try:
+        client = _client_from_settings()
+        if client is None:
+            raise ErpNextError("not_configured", "ERPNext 尚未配置")
+        result = create_purchase_order_draft(
+            client,
+            idempotency_key=body["idempotency_key"],
+            payload=body["payload"],
+            workflow_id=body.get("workflow_id"),
+        )
+        if result.operation.status == ErpNextDraftOperation.Status.SUCCEEDED:
+            status_code = 201 if result.created else 200
+        else:
+            status_code = 202
+        return JsonResponse(_draft_operation_payload(result), status=status_code)
+    except DraftOperationError as exc:
+        return _error(exc.code, str(exc), exc.status)
+    except ErpNextError as exc:
+        return _error(exc.code, str(exc))
+
+
+@require_http_methods(["GET", "PUT"])
+def po_draft_operation(request: HttpRequest, operation_id: str) -> JsonResponse:
+    if request.method == "PUT":
+        try:
+            body = _strict_json_object(request)
+            if set(body) - {"idempotency_key", "expected_modified", "payload", "workflow_id"}:
+                raise ValueError("请求字段无效")
+            if not {"idempotency_key", "expected_modified", "payload"} <= set(body):
+                raise ValueError("请求字段缺失")
+        except ValueError:
+            return _error("invalid_arguments", "采购订单草稿更新请求无效", 422)
+        try:
+            client = _client_from_settings()
+            if client is None:
+                raise ErpNextError("not_configured", "ERPNext 尚未配置")
+            result = update_purchase_order_draft(
+                client,
+                target_operation_id=operation_id,
+                idempotency_key=body["idempotency_key"],
+                expected_modified=body["expected_modified"],
+                payload=body["payload"],
+                workflow_id=body.get("workflow_id"),
+            )
+            status_code = {
+                ErpNextDraftOperation.Status.SUCCEEDED: 200,
+                ErpNextDraftOperation.Status.CONFLICT: 409,
+            }.get(result.operation.status, 202)
+            return JsonResponse(_draft_operation_payload(result), status=status_code)
+        except DraftOperationError as exc:
+            return _error(exc.code, str(exc), exc.status)
+        except ErpNextError as exc:
+            return _error(exc.code, str(exc))
+
+    try:
+        client = _client_from_settings()
+    except ErpNextError:
+        client = None
+    try:
+        result = get_purchase_order_draft_operation(client, operation_id)
         return JsonResponse(_draft_operation_payload(result))
     except DraftOperationError as exc:
         return _error(exc.code, str(exc), exc.status)

@@ -18,9 +18,11 @@ from .service import (
     external_reference,
     normalize_fields,
     normalize_filters,
-    normalize_record_data,
+    normalize_purchase_order_payload,
+    normalize_purchase_order_record,
     normalize_quotation_payload,
     normalize_quotation_record,
+    normalize_record_data,
     validate_doctype,
 )
 
@@ -261,6 +263,85 @@ class ErpNextClient:
             raise ErpNextError("invalid_response", "ERPNext 报价状态或标识无效")
         return record
 
+    def create_purchase_order_draft(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if self._config is None:
+            raise ErpNextError("not_configured", "ERPNext 尚未配置")
+        try:
+            normalized = normalize_purchase_order_payload(payload)
+        except ValueError:
+            raise ErpNextError("invalid_arguments", "采购订单草稿内容无效") from None
+        response = self._request_json(
+            "POST", self._purchase_order_url(), body=json.dumps(
+                normalized, ensure_ascii=False, separators=(",", ":"), allow_nan=False,
+            ).encode("utf-8"),
+        )
+        try:
+            record = normalize_purchase_order_record(response, self._config.instance_id)
+        except ValueError:
+            candidate = response.get("data") if isinstance(response, dict) else None
+            candidate_name = candidate.get("name", "") if isinstance(candidate, dict) else ""
+            safe_name = candidate_name if isinstance(candidate_name, str) and candidate_name and len(candidate_name) <= 255 and not any(ord(ch) < 32 for ch in candidate_name) else ""
+            raise ErpNextError("invalid_response", "ERPNext 采购订单创建响应无效", remote_name=safe_name) from None
+        if record["data"].get("docstatus") != 0:
+            raise ErpNextError(
+                "invalid_response", "ERPNext 采购订单未保持草稿状态",
+                remote_name=record["data"].get("name", ""),
+            )
+        return record
+
+    def get_purchase_order_draft(self, name: str) -> dict[str, Any]:
+        if self._config is None:
+            raise ErpNextError("not_configured", "ERPNext 尚未配置")
+        if not isinstance(name, str) or not name or len(name) > 255 or any(ord(ch) < 32 for ch in name):
+            raise ValueError("ERPNext purchase order name 无效")
+        encoded_name = urllib.parse.quote(name, safe="")
+        response = self._request_json("GET", self._purchase_order_url(encoded_name))
+        try:
+            record = normalize_purchase_order_record(response, self._config.instance_id)
+        except ValueError:
+            raise ErpNextError("invalid_response", "ERPNext 采购订单响应无效") from None
+        if record["data"].get("docstatus") != 0 or record["data"].get("name") != name:
+            raise ErpNextError("invalid_response", "ERPNext 采购订单状态或标识无效")
+        return record
+
+    def update_purchase_order_draft(
+        self, name: str, payload: dict[str, Any], *, expected_modified: str,
+    ) -> dict[str, Any]:
+        """Use Frappe's transactional modified check, never a GET-then-write CAS.
+
+        Same mechanism as the Quotation draft update: Frappe v16.52.0 update_doc
+        locks the document and Document.check_if_latest compares the locked
+        modified value with the incoming ``modified``.
+        """
+        if self._config is None:
+            raise ErpNextError("not_configured", "ERPNext 尚未配置")
+        if not isinstance(name, str) or not name or len(name) > 255 or any(ord(ch) < 32 for ch in name):
+            raise ValueError("ERPNext purchase order name 无效")
+        if not isinstance(expected_modified, str) or not expected_modified or len(expected_modified) > 64:
+            raise ValueError("ERPNext 预期版本无效")
+        try:
+            normalized = normalize_purchase_order_payload(payload)
+        except ValueError:
+            raise ErpNextError("invalid_arguments", "采购订单草稿内容无效") from None
+        encoded_name = urllib.parse.quote(name, safe="")
+        remote_payload = {
+            "docstatus": 0,
+            "modified": expected_modified,
+            **normalized,
+        }
+        response = self._request_json(
+            "PUT", self._purchase_order_url(encoded_name), body=json.dumps(
+                remote_payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False,
+            ).encode("utf-8"),
+        )
+        try:
+            record = normalize_purchase_order_record(response, self._config.instance_id)
+        except ValueError:
+            raise ErpNextError("invalid_response", "ERPNext 采购订单更新响应无效") from None
+        if record["data"].get("docstatus") != 0 or record["data"].get("name") != name:
+            raise ErpNextError("invalid_response", "ERPNext 采购订单状态或标识无效")
+        return record
+
     def check_connection(self) -> bool:
         if self._config is None:
             raise ErpNextError("not_configured", "ERPNext 尚未配置")
@@ -299,6 +380,13 @@ class ErpNextClient:
         if self._config is None:
             raise ErpNextError("not_configured", "ERPNext 尚未配置")
         path = f"{self._config.base_url.rstrip('/')}/api/resource/Quotation"
+        return f"{path}/{encoded_name}" if encoded_name is not None else path
+
+    def _purchase_order_url(self, encoded_name: str | None = None) -> str:
+        if self._config is None:
+            raise ErpNextError("not_configured", "ERPNext 尚未配置")
+        encoded_doctype = urllib.parse.quote("Purchase Order", safe="")
+        path = f"{self._config.base_url.rstrip('/')}/api/resource/{encoded_doctype}"
         return f"{path}/{encoded_name}" if encoded_name is not None else path
 
     def _request_json(
@@ -378,6 +466,18 @@ class ErpNextClient:
                     exception_type = errors[0].get("type")
             if exception_type == "TimestampMismatchError":
                 raise ErpNextError("conflict", "ERPNext 记录与预期状态冲突")
+            # Frappe 用 417 承载业务校验失败（MandatoryError/ValidationError 等）；
+            # 提取首条服务端消息，让上层能诊断而不只得到未映射状态。
+            server_message = ""
+            raw_messages = error_payload.get("_server_messages") if isinstance(error_payload, dict) else None
+            if isinstance(raw_messages, str):
+                try:
+                    decoded = json.loads(raw_messages)
+                    if isinstance(decoded, list) and decoded and isinstance(decoded[0], dict):
+                        server_message = str(decoded[0].get("message", ""))[:200]
+                except json.JSONDecodeError:
+                    server_message = ""
+            raise ErpNextError("invalid_arguments", f"ERPNext 校验未通过：{server_message or exception_type or '未知校验错误'}")
         if status < 200 or status >= 300:
             raise ErpNextError("http_error", "ERPNext 返回了未映射的 HTTP 状态")
 

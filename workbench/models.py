@@ -1100,8 +1100,8 @@ class ErpNextDraftOperation(models.Model):
                 name="uniq_erp_draft_instance_key",
             ),
             models.CheckConstraint(
-                condition=models.Q(doctype="Quotation"),
-                name="erp_draft_fixed_quotation",
+                condition=models.Q(doctype="Quotation") | models.Q(doctype="Purchase Order"),
+                name="erp_draft_doctype_allowlist",
             ),
         ]
 

@@ -84,6 +84,9 @@ const TOOL_ACCESS = Object.freeze({
   tradeloom_erpnext_create_quotation_draft: new Set([ROLE_PRESETS.center]),
   tradeloom_erpnext_update_quotation_draft: new Set([ROLE_PRESETS.center]),
   tradeloom_erpnext_read_quotation_draft_operation: new Set([ROLE_PRESETS.center]),
+  tradeloom_erpnext_create_po_draft: new Set([ROLE_PRESETS.center]),
+  tradeloom_erpnext_update_po_draft: new Set([ROLE_PRESETS.center]),
+  tradeloom_erpnext_read_po_draft_operation: new Set([ROLE_PRESETS.center]),
   tradeloom_intake_sources: new Set([ROLE_PRESETS.center, ROLE_PRESETS.product, ROLE_PRESETS.delivery]),
   tradeloom_narrative_sources: new Set([ROLE_PRESETS.center]),
   tradeloom_workflow_files: new Set([ROLE_PRESETS.center]),
@@ -1091,6 +1094,15 @@ const QUOTATION_FIELDS = Object.freeze([
   'transaction_date', 'valid_till', 'currency', 'total_qty', 'total', 'grand_total', 'items',
 ])
 const QUOTATION_ITEM_FIELDS = Object.freeze(['item_code', 'item_name', 'qty', 'uom', 'rate', 'amount', 'description'])
+const PURCHASE_ORDER_FIELDS = Object.freeze([
+  'name', 'modified', 'docstatus', 'supplier', 'supplier_name', 'company',
+  'transaction_date', 'schedule_date', 'currency', 'total_qty', 'total', 'grand_total', 'items',
+])
+const PURCHASE_ORDER_ITEM_FIELDS = Object.freeze(['item_code', 'item_name', 'qty', 'uom', 'schedule_date', 'rate', 'amount', 'description'])
+const DRAFT_RECORD_FIELDS = Object.freeze({
+  Quotation: { fields: QUOTATION_FIELDS, itemFields: QUOTATION_ITEM_FIELDS },
+  'Purchase Order': { fields: PURCHASE_ORDER_FIELDS, itemFields: PURCHASE_ORDER_ITEM_FIELDS },
+})
 const DRAFT_STATUSES = new Set(['reserved', 'outcome_unknown', 'succeeded', 'conflict'])
 const SAFE_DRAFT_ERRORS = new Set([
   'not_configured', 'invalid_configuration', 'unavailable', 'rate_limited', 'unauthorized',
@@ -1098,43 +1110,44 @@ const SAFE_DRAFT_ERRORS = new Set([
   'idempotency_conflict', 'operation_outcome_unknown',
 ])
 
-function projectQuotationRecord(value) {
-  if (!value || typeof value !== 'object' || value.doctype !== 'Quotation'
+function projectDraftRecord(value, doctype) {
+  const allowed = DRAFT_RECORD_FIELDS[doctype]
+  if (!allowed || !value || typeof value !== 'object' || value.doctype !== doctype
     || !value.data || typeof value.data !== 'object' || Array.isArray(value.data)) return null
-  const data = Object.fromEntries(QUOTATION_FIELDS.filter(key => Object.hasOwn(value.data, key)).map(key => [key, value.data[key]]))
+  const data = Object.fromEntries(allowed.fields.filter(key => Object.hasOwn(value.data, key)).map(key => [key, value.data[key]]))
   const ref = value.external_ref
   if (typeof data.name !== 'string' || !data.name || typeof data.modified !== 'string' || !data.modified
     || !Number.isInteger(data.docstatus) || data.docstatus < 0 || data.docstatus > 2
-    || !ref || ref.system !== 'erpnext' || ref.doctype !== 'Quotation' || ref.name !== data.name
+    || !ref || ref.system !== 'erpnext' || ref.doctype !== doctype || ref.name !== data.name
     || typeof ref.instance_id !== 'string' || !ref.instance_id
     || !(ref.modified === null || typeof ref.modified === 'string')) return null
   if (data.items !== undefined) {
     if (!Array.isArray(data.items) || data.items.length > 100) return null
     data.items = data.items.map(item => {
       if (!item || typeof item !== 'object' || Array.isArray(item)) return null
-      return Object.fromEntries(QUOTATION_ITEM_FIELDS.filter(key => Object.hasOwn(item, key)).map(key => [key, item[key]]))
+      return Object.fromEntries(allowed.itemFields.filter(key => Object.hasOwn(item, key)).map(key => [key, item[key]]))
     })
     if (data.items.some(item => !item)) return null
   }
   return {
-    doctype: 'Quotation', data,
+    doctype, data,
     truncated_children: Array.isArray(value.truncated_children) ? value.truncated_children.filter(key => key === 'items') : [],
     external_ref: {
-      system: 'erpnext', instance_id: boundedString(ref.instance_id, 128), doctype: 'Quotation',
+      system: 'erpnext', instance_id: boundedString(ref.instance_id, 128), doctype,
       name: boundedString(ref.name, 256), modified: ref.modified === null ? null : boundedString(ref.modified, 80),
     },
   }
 }
 
-function projectDraftOperation(value) {
+function projectDraftOperation(value, doctype = 'Quotation') {
   if (!value || typeof value !== 'object' || Array.isArray(value)
     || !/^[0-9a-f]{32}$/.test(value.operation_id ?? '')
-    || !['create', 'update'].includes(value.action) || value.doctype !== 'Quotation'
+    || !['create', 'update'].includes(value.action) || value.doctype !== doctype
     || !DRAFT_STATUSES.has(value.status) || !['local_workbench', 'dsh_center'].includes(value.source)
     || (value.remote_modified !== null && value.remote_modified !== '' && typeof value.remote_modified !== 'string')
     || !/^[0-9a-f]{64}$/.test(value.payload_sha256 ?? '')) return null
-  const receipt = value.receipt === null ? null : projectQuotationRecord(value.receipt)
-  const remoteCurrent = value.remote_current === null ? null : projectQuotationRecord(value.remote_current)
+  const receipt = value.receipt === null ? null : projectDraftRecord(value.receipt, doctype)
+  const remoteCurrent = value.remote_current === null ? null : projectDraftRecord(value.remote_current, doctype)
   if ((value.receipt !== null && !receipt) || (value.remote_current !== null && !remoteCurrent)) return null
   if (value.target_operation_id !== null && value.target_operation_id !== ''
     && !/^[0-9a-f]{32}$/.test(value.target_operation_id)) return null
@@ -1148,7 +1161,7 @@ function projectDraftOperation(value) {
   return {
     operation_id: value.operation_id,
     action: value.action,
-    doctype: 'Quotation',
+    doctype,
     status: value.status,
     source: value.source === 'dsh_center' ? 'dsh_center' : 'local_workbench',
     workflow_id: typeof value.workflow_id === 'string' ? boundedString(value.workflow_id, 80) : null,
@@ -1163,13 +1176,13 @@ function projectDraftOperation(value) {
   }
 }
 
-function draftToolResult(value) {
+function draftToolResult(value, doctype = 'Quotation') {
   if (value?.ok === false && !value.operation_id) {
     const code = typeof value.error_code === 'string' && /^[a-z0-9_]{1,64}$/.test(value.error_code) ? value.error_code : 'draft_request_failed'
     return failure(code)
   }
-  const data = projectDraftOperation(value)
-  if (!data) return failure('invalid_quotation_draft_dto')
+  const data = projectDraftOperation(value, doctype)
+  if (!data) return failure(doctype === 'Quotation' ? 'invalid_quotation_draft_dto' : 'invalid_purchase_order_draft_dto')
   const succeeded = data.status === 'succeeded'
   return {
     ok: succeeded,
@@ -1224,6 +1237,54 @@ const quotationPayloadSchema = {
     valid_till: quotationText('可选有效日期，YYYY-MM-DD。', 10),
     currency: quotationText('三位币种代码。', 3),
     items: { type: 'array', items: quotationItemSchema },
+  },
+}
+
+const PURCHASE_ORDER_TEXT_LIMITS = Object.freeze({
+  supplier: 140, company: 140, transaction_date: 10, schedule_date: 10, currency: 3,
+  item_code: 140, qty: 32, rate: 32, uom: 140, item_schedule_date: 10,
+})
+
+function validPurchaseOrderPayload(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const allowed = ['supplier', 'company', 'transaction_date', 'schedule_date', 'currency', 'items']
+  const required = ['supplier', 'company', 'items']
+  if (Object.keys(value).some(key => !allowed.includes(key)) || required.some(key => !Object.hasOwn(value, key))) return false
+  for (const key of ['supplier', 'company']) {
+    if (typeof value[key] !== 'string' || !value[key] || value[key].length > PURCHASE_ORDER_TEXT_LIMITS[key]) return false
+  }
+  for (const key of ['transaction_date', 'schedule_date', 'currency']) {
+    if (value[key] === undefined) continue
+    if (typeof value[key] !== 'string' || !value[key] || value[key].length > PURCHASE_ORDER_TEXT_LIMITS[key]) return false
+  }
+  return Array.isArray(value.items) && value.items.length >= 1 && value.items.length <= 100
+    && value.items.every(item => item && typeof item === 'object' && !Array.isArray(item)
+      && Object.keys(item).every(key => ['item_code', 'qty', 'uom', 'rate', 'schedule_date'].includes(key))
+      && ['item_code', 'qty'].every(key => typeof item[key] === 'string' && item[key] && item[key].length <= PURCHASE_ORDER_TEXT_LIMITS[key])
+      && ['uom', 'rate'].every(key => item[key] === undefined || (typeof item[key] === 'string' && item[key] && item[key].length <= PURCHASE_ORDER_TEXT_LIMITS[key]))
+      && (item.schedule_date === undefined || (typeof item.schedule_date === 'string' && item.schedule_date && item.schedule_date.length <= PURCHASE_ORDER_TEXT_LIMITS.item_schedule_date)))
+}
+
+const purchaseOrderItemSchema = {
+  type: 'object', additionalProperties: false, required: ['item_code', 'qty'],
+  properties: {
+    item_code: quotationText('ERPNext 商品编码。', 140),
+    qty: quotationText('正数量，十进制文本。', 32),
+    rate: quotationText('可选单价，十进制文本。', 32),
+    uom: quotationText('可选 ERPNext 单位。', 140),
+    schedule_date: quotationText('可选明细需求日期，YYYY-MM-DD。', 10),
+  },
+}
+const purchaseOrderPayloadSchema = {
+  type: 'object', additionalProperties: false,
+  required: ['supplier', 'company', 'items'],
+  properties: {
+    supplier: quotationText('ERPNext Supplier 名称。', 140),
+    company: quotationText('ERPNext 公司名称。', 140),
+    transaction_date: quotationText('可选交易日期，YYYY-MM-DD。', 10),
+    schedule_date: quotationText('可选整体需求日期，YYYY-MM-DD。', 10),
+    currency: quotationText('可选三位币种代码。', 3),
+    items: { type: 'array', items: purchaseOrderItemSchema },
   },
 }
 
@@ -1931,6 +1992,68 @@ export function registerBusinessTools(ctx, config = {}, dependencies = {}) {
         const result = await djangoRequest(ctx, 'tradeloom_erpnext_read_quotation_draft_operation', exec,
           `/api/erpnext/quotation-drafts/${encodeURIComponent(args.operation_id)}`, 'GET', undefined, dependencies)
         return draftToolResult(result)
+      },
+    },
+    {
+      name: 'tradeloom_erpnext_create_po_draft',
+      description: 'Create one fixed ERPNext Purchase Order draft (docstatus 0) using the supplied idempotency key. A non-succeeded result is not success; inspect the same operation and never retry with a new key unless starting a distinct, explicit operation.',
+      parameters: schema({
+        idempotency_key: wireString('Caller-stable key; reuse this exact value if a response is lost.'),
+        payload: purchaseOrderPayloadSchema,
+        workflow_id: wireString('Optional existing TradeLoom workflow ID.'),
+      }, ['idempotency_key', 'payload']),
+      async execute(args, exec) {
+        if (!args || typeof args !== 'object' || Array.isArray(args)
+          || Object.keys(args).some(key => !['idempotency_key', 'payload', 'workflow_id'].includes(key))
+          || typeof args.idempotency_key !== 'string' || !args.idempotency_key || args.idempotency_key.length > 200
+          || !validPurchaseOrderPayload(args.payload)
+          || (args.workflow_id !== undefined && (typeof args.workflow_id !== 'string' || !args.workflow_id))) return failure('invalid_arguments')
+        const body = { idempotency_key: args.idempotency_key, payload: args.payload }
+        if (args.workflow_id !== undefined) body.workflow_id = args.workflow_id
+        const result = await djangoRequest(ctx, 'tradeloom_erpnext_create_po_draft', exec,
+          '/api/erpnext/po-drafts', 'POST', body, dependencies)
+        return draftToolResult(result, 'Purchase Order')
+      },
+    },
+    {
+      name: 'tradeloom_erpnext_update_po_draft',
+      description: 'Create a separate update operation for one previously confirmed Purchase Order draft. Requires a new idempotency key and the exact current modified value. On conflict, read the operation and current ERPNext version before forming a new intent.',
+      parameters: schema({
+        target_operation_id: wireString('Previously succeeded operation for the same Purchase Order.'),
+        idempotency_key: wireString('New stable key for this distinct update operation.'),
+        expected_modified: wireString('Exact ERPNext modified value from the latest readback.'),
+        payload: purchaseOrderPayloadSchema,
+        workflow_id: wireString('Optional existing TradeLoom workflow ID.'),
+      }, ['target_operation_id', 'idempotency_key', 'expected_modified', 'payload']),
+      async execute(args, exec) {
+        if (!args || typeof args !== 'object' || Array.isArray(args)
+          || Object.keys(args).some(key => !['target_operation_id', 'idempotency_key', 'expected_modified', 'payload', 'workflow_id'].includes(key))
+          || typeof args.target_operation_id !== 'string' || !/^[0-9a-f]{32}$/.test(args.target_operation_id)
+          || typeof args.idempotency_key !== 'string' || !args.idempotency_key || args.idempotency_key.length > 200
+          || typeof args.expected_modified !== 'string' || !args.expected_modified
+          || !validPurchaseOrderPayload(args.payload)
+          || (args.workflow_id !== undefined && (typeof args.workflow_id !== 'string' || !args.workflow_id))) return failure('invalid_arguments')
+        const body = {
+          idempotency_key: args.idempotency_key,
+          expected_modified: args.expected_modified,
+          payload: args.payload,
+        }
+        if (args.workflow_id !== undefined) body.workflow_id = args.workflow_id
+        const result = await djangoRequest(ctx, 'tradeloom_erpnext_update_po_draft', exec,
+          `/api/erpnext/po-drafts/${encodeURIComponent(args.target_operation_id)}`,
+          'PUT', body, dependencies, [409])
+        return draftToolResult(result, 'Purchase Order')
+      },
+    },
+    {
+      name: 'tradeloom_erpnext_read_po_draft_operation',
+      description: 'Read and reconcile one existing Purchase Order operation by its server-issued operation ID. This is the only action for checking an outcome_unknown result; it does not create or update a draft.',
+      parameters: schema({ operation_id: wireString('Server-issued Purchase Order operation ID.') }),
+      async execute(args, exec) {
+        if (!exactArgs(args, ['operation_id'], ['operation_id']) || !/^[0-9a-f]{32}$/.test(args.operation_id)) return failure('invalid_arguments')
+        const result = await djangoRequest(ctx, 'tradeloom_erpnext_read_po_draft_operation', exec,
+          `/api/erpnext/po-drafts/${encodeURIComponent(args.operation_id)}`, 'GET', undefined, dependencies)
+        return draftToolResult(result, 'Purchase Order')
       },
     },
     {

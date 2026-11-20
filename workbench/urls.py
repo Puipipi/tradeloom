@@ -41,6 +41,8 @@ urlpatterns = [
     path("api/erpnext/record", erpnext_api.record),
     path("api/erpnext/quotation-drafts", erpnext_api.quotation_drafts),
     path("api/erpnext/quotation-drafts/<str:operation_id>", erpnext_api.quotation_draft_operation),
+    path("api/erpnext/po-drafts", erpnext_api.po_drafts),
+    path("api/erpnext/po-drafts/<str:operation_id>", erpnext_api.po_draft_operation),
     path("api/materials/status", material_api.status),
     path("api/materials/items", material_api.items),
     path("api/materials/items/<str:item_code>/update", material_api.item_update),
