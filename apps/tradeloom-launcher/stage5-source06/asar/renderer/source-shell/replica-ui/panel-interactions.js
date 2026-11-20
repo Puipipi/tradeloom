@@ -465,18 +465,26 @@
       ? { ...node, first: swapLeaves(node.first), second: swapLeaves(node.second) }
       : { ...node, id: node.id === ids[0] ? ids[1] : node.id === ids[1] ? ids[0] : node.id }
     const full = resizeTrees.get(info.sceneId)
+    let geometryHandled = false
     if (full?.panelRefs?.every((panel, index) => panel === info.panels[index])) {
       const tree = swapLeaves(full.tree)
       const next = { ...full, tree, topology: treeTopology(tree), geometry: info.geometry, geometrySignature: info.signature }
       resizeTrees.set(info.sceneId, next)
+      positionTreePanels(grid, tree)
+      geometryHandled = true
     }
     const projection = closedPanelProjection
-    if (!projection || info.panels.some((panel, index) => panel !== projection.panels[index])) return
-    const visible = treeLeafIds(projection.tree)
-    if (!ids.every(id => visible.includes(id))) return
-    projection.tree = swapLeaves(projection.tree)
-    projection.key = JSON.stringify([info.sceneId, info.geometry, [...activePanelSlots(info).keys()]])
-    updateResizeHandles()
+    if (projection && !info.panels.some((panel, index) => panel !== projection.panels[index])) {
+      const visible = treeLeafIds(projection.tree)
+      if (ids.every(id => visible.includes(id))) {
+        projection.tree = swapLeaves(projection.tree)
+        projection.key = JSON.stringify([info.sceneId, info.geometry, [...activePanelSlots(info).keys()]])
+        applyClosedPanelReflow(grid, info, projection.tree)
+        geometryHandled = true
+      }
+    }
+    if (geometryHandled) event.preventDefault()
+    if (geometryHandled || projection) updateResizeHandles()
   }
 
   function updateClosedProjectionHandles(grid, info) {

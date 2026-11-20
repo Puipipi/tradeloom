@@ -2784,21 +2784,27 @@ window.__ModuleLoader__.load({
             try { if (node.matches(':popover-open')) node.hidePopover() } catch { /* Anchor is outside the pane. */ }
             continue
           }
-          const above = Math.max(0, anchorTop - 12)
-          const below = Math.max(0, viewport.innerHeight - anchorBottom - 12)
+          // The provider's cap is measured against the outer window frame.
+          // In a docked guest that can reserve the same chrome twice and leave
+          // only a title plus a sliver of the first row. The owned pane bounds
+          // are the safe viewport here; keep the menu inside them directly.
+          const paneTop = Math.max(8, rootRect.top)
+          const paneBottom = Math.min(viewport.innerHeight - 8, rootRect.bottom)
+          const above = Math.max(0, anchorTop - paneTop - 12)
+          const below = Math.max(0, paneBottom - anchorBottom - 12)
           const placeAbove = above >= Math.min(160, Math.max(40, node.scrollHeight)) || above >= below
           const available = placeAbove ? above : below
-          // React owns the native cap; retain its latest value while applying the owner viewport ceiling.
+          // Track React's latest cap so release restores its value, but use the
+          // pane-local ceiling because the provider measured against outer chrome.
           const currentMax = node.style.getPropertyValue('max-height')
           if (currentMax !== entry.appliedMax) entry.original['max-height'] = [currentMax, node.style.getPropertyPriority('max-height')]
-          const nativeMax = Number.parseFloat(entry.original['max-height'][0])
-          const cap = Math.min(available, Number.isFinite(nativeMax) && nativeMax > 0 ? nativeMax : 400)
+          const cap = Math.min(available, 400)
           const width = Math.min(cardRect.width, Math.max(0, viewport.innerWidth - 16))
           Object.assign(node.style, { position: 'fixed', top: 'auto', right: 'auto', bottom: 'auto', left: `${Math.max(8, Math.min(viewport.innerWidth - width - 8, cardRect.left))}px`, width: `${width}px`, margin: '0', maxHeight: `${cap}px` })
           entry.appliedMax = node.style.getPropertyValue('max-height')
           try { if (!node.matches(':popover-open')) node.showPopover() } catch { continue }
           const height = node.getBoundingClientRect().height
-          node.style.top = `${Math.max(8, Math.min(viewport.innerHeight - height - 8, placeAbove ? anchorTop - height - 4 : anchorBottom + 4))}px`
+          node.style.top = `${Math.max(paneTop, Math.min(paneBottom - height, placeAbove ? anchorTop - height - 4 : anchorBottom + 4))}px`
         }
       }
       function schedule() {
@@ -3369,7 +3375,7 @@ window.__ModuleLoader__.load({
           onClick: runWithoutActivatingGroup(() => context.toggleFloat?.(panel.id)) }, actionIcon('M4 4h16v16H4zM4 10h16M10 10v10'), floatingPanel ? '收回' : '悬浮') : null,
         canFloat && !floatingPanel ? h('button', { type: 'button', 'data-pane-action':'popout', title:`独立窗口${label}`,
           'aria-label':`独立窗口${label}`, onPointerDown:stopGroupActivation, onMouseDown:stopGroupActivation,
-          onClick:runWithoutActivatingGroup(() => context.togglePopout?.(panel.id)) }, actionIcon('M13 4h7v7M20 4l-9 9M10 4H4v16h16v-6'), '独立窗口') : null,
+          onClick:runWithoutActivatingGroup(() => context.togglePopout?.(panel.id)) }, h('span', { className:'tl-dock-popout-arrow', 'aria-hidden':'true' }, '↗'), '独立窗口') : null,
         typeof context.closePanel === 'function' ? h('button', { type:'button', 'data-pane-action':'capabilities',
           title:'助手能力与已保存配置', 'aria-label':'助手能力与已保存配置',
           onPointerDown: stopGroupActivation, onMouseDown: stopGroupActivation,
@@ -5366,6 +5372,9 @@ window.__ModuleLoader__.load({
             .tl-dock-group-actions .tl-dock-overflow-trigger { display:inline-flex; align-items:center; justify-content:center; }
           }
           .tl-dock-group-actions button:hover { background:var(--tl-surface-hover); border-color:var(--tl-border); color:var(--tl-ink); }
+          .tl-dock-inline-actions [data-pane-action="popout"] { border-color:transparent; }
+          .tl-dock-inline-actions [data-pane-action="popout"]:hover { border-color:transparent; }
+          .tl-dock-inline-actions [data-pane-action="popout"] .tl-dock-popout-arrow { display:block; font-size:var(--tl-icon-size); font-weight:400; line-height:1; }
           .tl-dock-group-actions button:focus-visible { outline:2px solid var(--tl-accent); outline-offset:1px; }
           .tl-dock-binding-status { display:inline-flex; flex:0 1 auto; align-items:center; min-width:0; max-width:100%; padding-inline:calc(3px * var(--tl-ui-scale, 1)); overflow:hidden; color:var(--tl-muted); font-size:var(--tl-font-compact); line-height:1.2; white-space:nowrap; text-overflow:ellipsis; }
           .tl-dock-layout-error { color:var(--tl-muted); font-size: var(--tl-font-compact); }

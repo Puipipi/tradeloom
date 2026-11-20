@@ -47,14 +47,19 @@
   background: var(--bg-panel-hover);
 }
 .business-native-placement {
+  box-sizing: border-box;
   width: 24px;
   height: 22px;
   margin-left: 4px;
-  border: 1px solid var(--border);
-  border-radius: 5px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
   color: var(--text-2);
   background: transparent;
 }
+.business-native-placement:hover { background: var(--control-hover); color: var(--text); }
+.business-native-placement:focus-visible { outline: 2px solid var(--focus-edge); outline-offset: 1px; }
+.business-native-placement svg { display: block; width: 14px; height: 14px; }
 .business-native-placement[hidden] { display: none; }
 
 /* Local workflow directories share the existing workbench file and preview panels. */

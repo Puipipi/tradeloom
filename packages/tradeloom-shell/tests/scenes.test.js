@@ -830,6 +830,8 @@ test('scene chat renders the pinned conversation factory inside its retained rol
   let groupTree = groupActions()
   let toolbarRefresh = find(groupTree, node => node.type === 'button' && node.props?.['aria-label'] === '刷新当前中心助手')
   let toolbarMaximize = find(groupTree, node => node.type === 'button' && node.props?.['aria-label'] === '展开当前中心助手')
+  assert.match(dockThemeCss, /\[data-pane-action="popout"\]:hover\s*\{\s*border-color:transparent;/,
+    'the independent-window icon does not gain a border on hover')
   assert.ok(toolbarRefresh, 'the active Dockview group header owns refresh')
   assert.ok(toolbarMaximize, 'the active Dockview group header owns maximize')
   const inactiveGroupTree = resolve(dockRenderProps.rightHeaderActionsComponent({

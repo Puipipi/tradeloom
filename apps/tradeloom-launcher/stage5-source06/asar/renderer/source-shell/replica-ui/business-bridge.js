@@ -540,6 +540,17 @@
       && record.content.isConnected && state.roleRecord === record
   }
 
+  function panelExpansionCovers(expandedRect, panelRect) {
+    return expandedRect.right > panelRect.left && expandedRect.left < panelRect.right
+  }
+
+  function panelExpansionBlocksNativePane(expandedPanels, panel, panelRect) {
+    const panelIndex = expandedPanels.indexOf(panel)
+    const blockers = panelIndex < 0 ? expandedPanels : expandedPanels.slice(0, panelIndex)
+    return blockers.some(expanded => expanded.classList.contains('pi-maximized')
+      || panelExpansionCovers(expanded.getBoundingClientRect(), panelRect))
+  }
+
   function nativePaneVisible(panel) {
     if (!panel?.isConnected || panel.hidden || panel.classList.contains('pi-tab-inactive') || getComputedStyle(panel).display === 'none') return false
     // The native account sidebar is a topmost overlay. It covers the left
@@ -550,19 +561,15 @@
     const mask = byId('modal-mask')
     if (mask && getComputedStyle(mask).display !== 'none' && !mask.hidden) return false
     if (document.querySelector('body > .theme-menu, body > .mobile-link-popover') || document.querySelector('.pi-menu')) return false
-    const expanded = [...document.querySelectorAll('#grid .panel-expanded, #grid .pi-maximized')]
+    const expandedPanels = [...document.querySelectorAll('#grid .panel-expanded, #grid .pi-maximized')]
       .filter(candidate => !candidate.hidden && getComputedStyle(candidate).display !== 'none')
       .sort((a, b) => {
         const aZ = Number.parseFloat(getComputedStyle(a).zIndex) || Number.parseFloat(a.style.zIndex) || 0
         const bZ = Number.parseFloat(getComputedStyle(b).zIndex) || Number.parseFloat(b.style.zIndex) || 0
         return bZ - aZ
-      })[0]
-    if (!expanded || expanded === panel) return true
-    if (expanded.classList.contains('pi-maximized')) return false
-    // Vertical expansion occupies its column; other columns remain uncovered.
-    const expandedRect = expanded.getBoundingClientRect()
+      })
     const panelRect = panel.getBoundingClientRect()
-    return expandedRect.right <= panelRect.left || expandedRect.left >= panelRect.right
+    return !panelExpansionBlocksNativePane(expandedPanels, panel, panelRect)
   }
 
   function waitForRoleGeometryResponse(request, timeoutMs) {
@@ -713,7 +720,20 @@
   function updatePlacementButton(record) {
     const button = record.placementButton
     if (!button) return
-    button.textContent = record.placement === 'popped-out' ? '↙' : '↗'
+    const returning = record.placement === 'popped-out'
+    const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+    icon.setAttribute('viewBox', '0 0 24 24')
+    icon.setAttribute('aria-hidden', 'true')
+    icon.setAttribute('focusable', 'false')
+    icon.setAttribute('fill', 'none')
+    icon.setAttribute('stroke', 'currentColor')
+    icon.setAttribute('stroke-width', '1.8')
+    icon.setAttribute('stroke-linecap', 'round')
+    icon.setAttribute('stroke-linejoin', 'round')
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+    path.setAttribute('d', returning ? 'M18 6 6 18M6 10v8h8' : 'M6 18 18 6M10 6h8v8')
+    icon.append(path)
+    button.replaceChildren(icon)
     button.title = record.placement === 'popped-out' ? '返回主工作台' : '在独立窗口打开助手'
     button.setAttribute('aria-label', button.title)
     button.hidden = !record.created || record.status === 'unbound' || record.status === 'owned-elsewhere'

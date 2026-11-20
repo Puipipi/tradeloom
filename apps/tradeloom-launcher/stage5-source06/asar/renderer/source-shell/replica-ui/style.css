@@ -342,6 +342,13 @@ html[data-theme="light"] .tab.active{color:var(--accent)}
   transition:color .15s,border-color .15s,background .15s;
 }
 .panel-expand:hover,.panel-expand[aria-pressed="true"]{color:var(--text);background:var(--bg-panel-hover)}
+.panel-expand svg{display:block;width:20px;height:18px;overflow:visible}
+.panel-expand svg g{transform-box:fill-box;transform-origin:center;transition:opacity .16s ease,transform .16s ease}
+.panel-expand-icon-normal{opacity:1;transform:scale(1)}
+.panel-expand-icon-extended{opacity:0;transform:scale(.88)}
+.panel-expand[data-extended="true"] .panel-expand-icon-normal{opacity:0;transform:scale(.88)}
+.panel-expand[data-extended="true"] .panel-expand-icon-extended{opacity:1;transform:scale(1)}
+@media(prefers-reduced-motion:reduce){.panel-expand svg g{transition:none}}
 @container (max-width:180px){
   .panel-header{gap:3px;padding-right:5px}
   .panel-badge{display:none}

@@ -183,8 +183,8 @@
         "sha256": "7e2cdb6592de4456295d455056a1d5ca500cf8ef3c759aef90ceba66c76b5849"
       },
       "business-tools.js": {
-        "bytes": 126610,
-        "sha256": "e0b2f787b8a0b27b182cf3393f1bcf3ee5d004c27a56d9d38b9f7a4f0bfa213e"
+        "bytes": 127121,
+        "sha256": "4816a05799771b5fae90bf0e4ad7efec002f0b772de12558791383469d07ecc5"
       },
       "capabilities.js": {
         "bytes": 6874,
@@ -219,8 +219,8 @@
         "sha256": "2294738a581baadf60682b86f1d76792486d57265d2ca14776a18d9e51a27ac1"
       },
       "client.scenes.js": {
-        "bytes": 410764,
-        "sha256": "7897ce478639b1d02b87b31264369e3af320b4b975ba392d02a1ad9ecd349631"
+        "bytes": 411506,
+        "sha256": "40083af8dee4d14ae96b3c39e5ac8e66620671ab0a9b72610669333566768c63"
       },
       "client.session-audio.js": {
         "bytes": 8815,
@@ -501,8 +501,8 @@
         "sha256": "7e2cdb6592de4456295d455056a1d5ca500cf8ef3c759aef90ceba66c76b5849"
       },
       "business-tools.js": {
-        "bytes": 126610,
-        "sha256": "e0b2f787b8a0b27b182cf3393f1bcf3ee5d004c27a56d9d38b9f7a4f0bfa213e"
+        "bytes": 127121,
+        "sha256": "4816a05799771b5fae90bf0e4ad7efec002f0b772de12558791383469d07ecc5"
       },
       "capabilities.js": {
         "bytes": 6874,
@@ -537,8 +537,8 @@
         "sha256": "2294738a581baadf60682b86f1d76792486d57265d2ca14776a18d9e51a27ac1"
       },
       "client.scenes.js": {
-        "bytes": 410764,
-        "sha256": "7897ce478639b1d02b87b31264369e3af320b4b975ba392d02a1ad9ecd349631"
+        "bytes": 411506,
+        "sha256": "40083af8dee4d14ae96b3c39e5ac8e66620671ab0a9b72610669333566768c63"
       },
       "client.session-audio.js": {
         "bytes": 8815,
@@ -807,8 +807,8 @@
     },
     "inventory": {
       "fileCount": 79,
-      "bytes": 3072360,
-      "sha256": "f8b50ebaa354e3400370374c593f174b5538f220f5bcfb98b2ff27c8c51e227e"
+      "bytes": 3073613,
+      "sha256": "acd90d08207017beedf0f48d3983b8c0f91ae2bb1da0e4b1be41f7c005cdf155"
     },
     "validatorInput": {
       "source": "apps/tradeloom-launcher/installed-bootstrap.mjs",
@@ -819,7 +819,7 @@
   "expectedAsar": {
     "logicalEntries": 21789,
     "unpackedFiles": 1666,
-    "bytes": 228909644,
-    "sha256": "08991a8f346c1ca35d3a7f0c4dd7c5174afedee892afa90793763e15894d1d5b"
+    "bytes": 228914407,
+    "sha256": "ef42daa39ec9ad7b4dc90a0a1dbbd59e3f2398cd9a33655d6e8e3b9360bffd4f"
   }
 }

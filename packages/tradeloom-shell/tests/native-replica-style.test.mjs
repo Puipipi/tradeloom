@@ -10,6 +10,7 @@ import { spawnSync } from 'node:child_process'
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const paletteSource = fs.readFileSync(path.join(root, 'client.replica-palette.js'), 'utf8')
 const nativeSource = fs.readFileSync(path.join(root, 'client.source-native.js'), 'utf8')
+const sceneSource = fs.readFileSync(path.join(root, 'client.scenes.js'), 'utf8')
 const replicaRoot = path.resolve(root, '../../apps/tradeloom-launcher/accepted-runtime/renderer/source-shell/replica-ui')
 const tokens = fs.readFileSync(path.join(replicaRoot, 'palette-tokens.css'), 'utf8')
 const accepted = fs.readFileSync(path.join(replicaRoot, 'style.css'), 'utf8')
@@ -201,6 +202,119 @@ test('actual rc2 input CSS bounds empty, image and multi-image drafts in small o
     assert.ok(row.inputHeight <= Number.parseFloat(row.inputMaxHeight) + 1, JSON.stringify(row))
     if (row.images === 4 || row.images === 1 && row.height === 200) assert.ok(row.inputContentHeight > row.inputHeight, JSON.stringify(row))
   }
+})
+
+test('short pane slash menu exposes rows when the provider cap uses the outer frame', {
+  skip: !(process.env.DSH_MENU_FIXTURE_ASAR && process.env.DSH_STYLE_BROWSER && process.env.DSH_STYLE_OUTPUT),
+}, () => {
+  // The accepted isolated F8 archive pins the provider CSS; the shell adapter
+  // is read from this source tree so the test covers the real placement logic.
+  const raw = fs.readFileSync(process.env.DSH_MENU_FIXTURE_ASAR)
+  assert.equal(createHash('sha256').update(raw).digest('hex'), '08991a8f346c1ca35d3a7f0c4dd7c5174afedee892afa90793763e15894d1d5b')
+  const header = JSON.parse(raw.subarray(16, 16 + raw.readUInt32LE(12)))
+  function entry(relative) {
+    const item = relative.split('/').reduce((node, name) => node.files[name], header)
+    const start = 8 + raw.readUInt32LE(4) + Number(item.offset)
+    const payload = raw.subarray(start, start + item.size)
+    assert.equal(createHash('sha256').update(payload).digest('hex'), item.integrity.hash, relative)
+    return payload.toString('utf8')
+  }
+  function moduleMap(source, name) {
+    const prefix = 'var ' + name + '='
+    const start = source.indexOf(prefix) + prefix.length
+    const end = source.indexOf('};', start)
+    assert.ok(start >= prefix.length && end > start, name)
+    return vm.runInNewContext('(' + source.slice(start, end + 1) + ')')
+  }
+  function moduleCSS(source, packageName, name) {
+    const tag = '@deepseek-ai/' + packageName + '/' + name + '.module.css'
+    const tagAt = source.indexOf(tag)
+    assert.ok(tagAt > 0, tag)
+    const declaration = [...source.slice(0, tagAt).matchAll(/const (css(?:\$[0-9]+)?)=/g)].at(-1)
+    assert.ok(declaration, tag)
+    let start = declaration.index + declaration[0].length
+    const quote = source[start]
+    assert.equal(quote, String.fromCharCode(96))
+    let end = start + 1
+    while (end < source.length) {
+      if (source[end] === '\\') { end += 2; continue }
+      if (source[end] === quote) break
+      end++
+    }
+    return vm.runInNewContext(source.slice(start, end + 1))
+  }
+  const conversation = entry('dsh/node_modules/@deepseek-ai/dsh-client-ui-conversation/lib/client.js')
+  const trigger = entry('dsh/node_modules/@deepseek-ai/dsh-client-ui-input-trigger/lib/client.js')
+  const classes = {
+    conversation: moduleMap(conversation, 'ConversationRoot_module_css_default'),
+    input: moduleMap(conversation, 'InputBar_module_css_default'),
+    menu: moduleMap(trigger, 'MenuView_module_css_default'),
+  }
+  const css = moduleCSS(conversation, 'dsh-client-ui-conversation', 'ConversationRoot')
+    + moduleCSS(conversation, 'dsh-client-ui-conversation', 'InputBar')
+    + moduleCSS(trigger, 'dsh-client-ui-input-trigger', 'MenuView')
+  const adapterStart = sceneSource.indexOf('    function installShortPaneTriggerOverlays(root)')
+  const adapterEnd = sceneSource.indexOf('\n    function SceneChatPanel', adapterStart)
+  assert.ok(adapterStart >= 0 && adapterEnd > adapterStart, 'native menu adapter must remain extractable')
+  const adapter = sceneSource.slice(adapterStart, adapterEnd).trim()
+  const { nativeChatStyles } = chatStyleInstaller({})
+  const output = path.resolve(process.env.DSH_STYLE_OUTPUT)
+  fs.mkdirSync(output, { recursive: true })
+  const fixture = path.join(output, 'native-trigger-menu-layout.html')
+  const script = String.raw`
+    const c=__CLASSES__,css=__CSS__;
+    document.head.insertAdjacentHTML('beforeend','<style>'+css+'</style>');
+    __ADAPTER__
+    const root=document.getElementById('root');
+    root.innerHTML='<div class="'+c.conversation.body+' '+c.conversation.embeddedBody+'" data-conversation-content data-content-phase="active">'+
+      '<div class="'+c.conversation.scrollBody+'" data-conversation-scroll><div class="'+c.conversation.viewArea+'" data-slot="conversation.session"><div style="height:48px">History</div></div>'+
+      '<div class="'+c.conversation.composerSeat+'" data-composer-seat><div class="'+c.input.root+'"><div class="'+c.input.card+'" data-composer-card>'+
+      '<div class="'+c.input.overlayAnchor+'" data-composer-overlay></div><div class="'+c.input.scroll+'"><div class="'+c.input.grow+'"><div class="'+c.input.input+'" data-composer-input><p>/</p></div></div></div>'+
+      '<div class="'+c.input.row+'"><div class="'+c.input.tools+'"><button class="'+c.input.add+'">+</button></div><div class="'+c.input.trailing+'"><button class="'+c.input.primary+'">↑</button></div></div></div><div class="'+c.input.dock+'">Context</div></div></div></div>';
+    const menu=document.createElement('div');menu.className=c.menu.menu;menu.setAttribute('data-trigger-menu','');menu.style.maxHeight='71px';
+    menu.innerHTML='<div class="'+c.menu.viewport+'" role="listbox"><div class="'+c.menu.groupTitle+'">添加</div>'+
+      Array.from({length:8},(_,i)=>'<button class="'+c.menu.item+'" role="option"><span class="'+c.menu.itemName+'">Command '+i+'</span></button>').join('')+'</div>';
+    root.querySelector('[data-composer-overlay]').append(menu);
+    const dispose=installShortPaneTriggerOverlays(root);
+    setTimeout(()=>{const r=menu.getBoundingClientRect(),pane=root.getBoundingClientRect(),seat=root.querySelector('[data-composer-seat]').getBoundingClientRect(),card=root.querySelector('[data-composer-card]').getBoundingClientRect(),anchor=root.querySelector('[data-composer-input]').getBoundingClientRect(),v=menu.querySelector('[role="listbox"]'),items=[...menu.querySelectorAll('[role="option"]')],first=items[0].getBoundingClientRect();
+      const rowsVisible=items.filter(item=>{const row=item.getBoundingClientRect();return row.height>0&&row.top>=r.top&&row.bottom<=r.bottom}).length;
+      let pickedIndex=-1;
+      const onPick=index=>{pickedIndex=index};
+      items.forEach((item,index)=>item.addEventListener('mousedown',event=>{event.preventDefault();onPick(index)}));
+      const hit=document.elementFromPoint(first.left+first.width/2,first.top+first.height/2);
+      const hitOption=hit?.closest('[role="option"]');
+      const pointerOptionIndex=hitOption?items.indexOf(hitOption):-1;
+      const pointerEvent=new MouseEvent('mousedown',{bubbles:true,cancelable:true,clientX:first.left+first.width/2,clientY:first.top+first.height/2});
+      hit?.dispatchEvent(pointerEvent);
+      const pointerSelectedIndex=pickedIndex;
+      v.scrollTop=first.height;
+      document.getElementById('menu-result').textContent=JSON.stringify({viewport:innerHeight,paneTop:pane.top,paneBottom:pane.bottom,seatTop:seat.top,seatBottom:seat.bottom,cardTop:card.top,cardBottom:card.bottom,anchorTop:anchor.top,anchorBottom:anchor.bottom,menuHeight:r.height,top:r.top,bottom:r.bottom,max:menu.style.maxHeight,rowsVisible,firstRowHeight:first.height,pointerOptionIndex,pointerSelectedIndex,pointerDefaultPrevented:pointerEvent.defaultPrevented,scrollHeight:v.scrollHeight,clientHeight:v.clientHeight,scrollTop:v.scrollTop,overflow:getComputedStyle(v).overflowY,optionCount:items.length});
+    },250);
+  `.replace('__CLASSES__', JSON.stringify(classes)).replace('__CSS__', JSON.stringify(css + nativeChatStyles)).replace('__ADAPTER__', adapter)
+  fs.writeFileSync(fixture, '<!doctype html><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden}#menu-result{position:absolute;top:0;left:0}</style><pre id="menu-result"></pre><div id="root" data-source-native-root data-conversation-density="compact" style="height:100%;display:flex;flex-direction:column;container-type:size"></div><script>' + script.replaceAll('</script', '<\\/script') + '</script>')
+  const profile = fs.mkdtempSync(path.join(output, 'menu-headless-profile-'))
+  const command = ['--headless', '--disable-gpu', '--disable-background-networking', '--no-first-run', '--no-default-browser-check', '--force-device-scale-factor=1', '--user-data-dir=' + profile, '--window-size=1177,461', '--virtual-time-budget=4000', '--dump-dom', new URL('file:///' + fixture.replaceAll('\\', '/')).href]
+  const result = spawnSync(process.env.DSH_STYLE_BROWSER, command, { encoding: 'utf8', timeout: 30_000, maxBuffer: 8 * 1024 * 1024 })
+  fs.writeFileSync(path.join(output, 'native-trigger-menu.stdout.log'), result.stdout ?? '')
+  fs.writeFileSync(path.join(output, 'native-trigger-menu.stderr.log'), result.stderr ?? '')
+  assert.ifError(result.error)
+  assert.equal(result.status, 0)
+  const match = /<pre id="menu-result">([^<]+)<\/pre>/.exec(result.stdout)
+  assert.ok(match, 'real headless menu geometry must be emitted')
+  const metrics = JSON.parse(match[1])
+  fs.writeFileSync(path.join(output, 'native-trigger-menu.metrics.json'), JSON.stringify(metrics, null, 2))
+  assert.equal(metrics.viewport, 363)
+  assert.ok(metrics.top >= metrics.paneTop, JSON.stringify(metrics))
+  assert.ok(metrics.bottom <= metrics.paneBottom, JSON.stringify(metrics))
+  assert.ok(metrics.menuHeight >= 100, JSON.stringify(metrics))
+  assert.ok(metrics.rowsVisible >= 2, JSON.stringify(metrics))
+  assert.equal(metrics.pointerOptionIndex, 0, JSON.stringify(metrics))
+  assert.equal(metrics.pointerSelectedIndex, 0, JSON.stringify(metrics))
+  assert.equal(metrics.pointerDefaultPrevented, true, JSON.stringify(metrics))
+  assert.ok(metrics.scrollHeight > metrics.clientHeight, JSON.stringify(metrics))
+  assert.ok(metrics.scrollTop > 0, JSON.stringify(metrics))
+  assert.equal(metrics.overflow, 'auto')
+  assert.equal(metrics.optionCount, 8)
 })
 
 test('rc2 public conversation DOM actually consumes every native selector used by the adapter', { skip: !official }, () => {

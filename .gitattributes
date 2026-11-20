@@ -568,3 +568,11 @@ workbench/workflows/validation.py -text
 
 apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.3/workflow-files-control.patch text eol=lf
 packages/tradeloom-shell/workflow-files.js -text
+apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.3/production-execution-origin.patch text eol=lf
+apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.3/session-list-failure-phase.patch text eol=lf
+apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.3/settings-layout-compat.patch text eol=lf
+apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.3/conversation-draft-checked.patch text eol=lf
+apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.3/voice-native-binding.patch text eol=lf
+apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.3/root-identity-diagnostic.patch text eol=lf
+apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.3/desktop-identity.patch text eol=lf
+apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.3/host-bridge-rc3.patch text eol=lf

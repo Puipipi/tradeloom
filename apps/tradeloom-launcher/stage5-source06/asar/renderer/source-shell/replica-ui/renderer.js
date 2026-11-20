@@ -978,11 +978,38 @@ function panelHead(meta) {
   return { head, grip, identity }
 }
 
+function createPanelExpandIcon() {
+  const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+  icon.setAttribute('viewBox', '0 0 24 20')
+  icon.setAttribute('aria-hidden', 'true')
+  icon.setAttribute('focusable', 'false')
+  const addLayer = (className, layers) => {
+    const group = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+    group.setAttribute('class', className)
+    for (const layer of layers) {
+      const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect')
+      rect.setAttribute('x', layer.x); rect.setAttribute('y', layer.y)
+      rect.setAttribute('width', layer.width); rect.setAttribute('height', layer.height)
+      rect.setAttribute('rx', '1.1')
+      rect.setAttribute('transform', layer.transform)
+      rect.setAttribute('fill', layer.front ? 'var(--panel-header)' : 'none')
+      rect.setAttribute('stroke', layer.front ? 'currentColor' : 'var(--text-dim)')
+      rect.setAttribute('stroke-width', layer.front ? '1.35' : '1.1')
+      group.append(rect)
+    }
+    icon.append(group)
+  }
+  const horizontal = { x: 2, y: 6, width: 15, height: 8, transform: 'rotate(-4 9.5 10)', front: true }
+  const vertical = { x: 9, y: 2.5, width: 8, height: 15, transform: 'rotate(-4 13 10)', front: false }
+  addLayer('panel-expand-icon-normal', [vertical, horizontal])
+  addLayer('panel-expand-icon-extended', [{ ...horizontal, front: false }, { ...vertical, front: true }])
+  return icon
+}
+
 function setPanelExpandControl(button, expanded) {
   if (!button) return
   const label = expanded ? '还原面板高度' : '向上延长面板'
   button.dataset.extended = expanded ? 'true' : 'false'
-  button.replaceChildren(createReplicaIcon(expanded ? 'M12 5v14m-5-5 5 5 5-5' : 'M12 19V5m-5 5 5-5 5 5'))
   button.setAttribute('aria-pressed', String(Boolean(expanded)))
   button.setAttribute('aria-label', label)
   button.title = label
@@ -1007,6 +1034,7 @@ function makePanel(meta, idx) {
   const controls = make('div', 'panel-controls')
   const exp = el('button', 'panel-expand')
   exp.type = 'button'
+  exp.append(createPanelExpandIcon())
   setPanelExpandControl(exp, false)
   exp.addEventListener('click', ev => {
     ev.preventDefault(); ev.stopPropagation()
@@ -1038,32 +1066,54 @@ function applyGeom(panel, expanded) {
   ;['left', 'top', 'width', 'height', 'zIndex'].forEach(k => panel.style.removeProperty(k))
 }
 
+function createPanelExpansionSlot(wrap) {
+  const slot = make('div', 'panel-slot')
+  const gridRect = grid.getBoundingClientRect()
+  const wrapRect = wrap.getBoundingClientRect()
+  const gridStyle = getComputedStyle(grid)
+  const scaleX = gridRect.width / Math.max(1, grid.offsetWidth)
+  const scaleY = gridRect.height / Math.max(1, grid.offsetHeight)
+  const borderLeft = parseFloat(gridStyle.borderLeftWidth) || 0
+  const borderRight = parseFloat(gridStyle.borderRightWidth) || 0
+  const borderTop = parseFloat(gridStyle.borderTopWidth) || 0
+  const borderBottom = parseFloat(gridStyle.borderBottomWidth) || 0
+  const paddingLeft = parseFloat(gridStyle.paddingLeft) || 0
+  const paddingRight = parseFloat(gridStyle.paddingRight) || 0
+  const paddingTop = parseFloat(gridStyle.paddingTop) || 0
+  const paddingBottom = parseFloat(gridStyle.paddingBottom) || 0
+  const contentBoxWidth = Math.max(1, grid.offsetWidth - borderLeft - borderRight - paddingLeft - paddingRight)
+  const contentBoxHeight = Math.max(1, grid.offsetHeight - borderTop - borderBottom - paddingTop - paddingBottom)
+  const originX = gridRect.left + (borderLeft + paddingLeft) * scaleX
+  const originY = gridRect.top + (borderTop + paddingTop) * scaleY
+  const percent = (value, extent) => `${value / extent * 100}%`
+  slot.style.position = 'absolute'
+  slot.style.gridColumn = '1 / -1'
+  slot.style.gridRow = '1 / -1'
+  slot.style.left = percent((wrapRect.left - originX) / scaleX, contentBoxWidth)
+  slot.style.top = percent((wrapRect.top - originY) / scaleY, contentBoxHeight)
+  slot.style.width = percent(wrapRect.width / scaleX, contentBoxWidth)
+  slot.style.height = percent(wrapRect.height / scaleY, contentBoxHeight)
+  return slot
+}
+
+function restorePanelExpansionLayout(wrap, state) {
+  if (state.originalStyle === null) wrap.removeAttribute('style')
+  else wrap.setAttribute('style', state.originalStyle)
+  if (state.originalManaged === undefined) delete wrap.dataset.splitTreeManaged
+  else wrap.dataset.splitTreeManaged = state.originalManaged
+}
+
 /* ---- 面板展开/收起（照搬源码：占位格 + position:fixed 撑满网格高，ESC 逐层收） ---- */
 function expandedStateOf(wrap) {
   return panelExpandStates.find(s => s.wrap === wrap) || null
 }
 function expandPanel(wrap, btn) {
   const endGeometry = window.sourcePanelGeometryProof?.begin([wrap], 'extend')
+  const originalStyle = wrap.getAttribute('style')
+  const originalManaged = wrap.dataset.splitTreeManaged
+  let slot
   try {
-    const slot = make('div', 'panel-slot')
-    slot.style.gridColumn = `${wrap.dataset.col} / span ${wrap.dataset.w}`
-    slot.style.gridRow = `${wrap.dataset.row} / span ${wrap.dataset.h}`
-    if (wrap.dataset.splitTreeManaged === 'true') {
-      const gridRect = grid.getBoundingClientRect()
-      const wrapRect = wrap.getBoundingClientRect()
-      const gridStyle = getComputedStyle(grid)
-      const scaleX = gridRect.width / Math.max(1, grid.offsetWidth)
-      const scaleY = gridRect.height / Math.max(1, grid.offsetHeight)
-      const originX = gridRect.left + ((parseFloat(gridStyle.borderLeftWidth) || 0) + (parseFloat(gridStyle.paddingLeft) || 0)) * scaleX
-      const originY = gridRect.top + ((parseFloat(gridStyle.borderTopWidth) || 0) + (parseFloat(gridStyle.paddingTop) || 0)) * scaleY
-      slot.style.position = 'absolute'
-      slot.style.gridColumn = '1 / -1'
-      slot.style.gridRow = '1 / -1'
-      slot.style.left = `${(wrapRect.left - originX) / scaleX}px`
-      slot.style.top = `${(wrapRect.top - originY) / scaleY}px`
-      slot.style.width = `${wrapRect.width / scaleX}px`
-      slot.style.height = `${wrapRect.height / scaleY}px`
-    }
+    slot = createPanelExpansionSlot(wrap)
     grid.insertBefore(slot, wrap)
     const g = grid.getBoundingClientRect()
     const s = slot.getBoundingClientRect()
@@ -1106,9 +1156,13 @@ function expandPanel(wrap, btn) {
     }
     window.addEventListener('resize', onResize)
     document.addEventListener('keydown', onKey, true)
-    const st = { wrap, slot, btn, onResize, onKey }
+    const st = { wrap, slot, btn, onResize, onKey, originalStyle, originalManaged }
     panelExpandStates.push(st)
-  } catch { endGeometry?.('cancelled') /* 展开失败保持原状 */ }
+  } catch {
+    if (slot?.parentNode) slot.parentNode.removeChild(slot)
+    restorePanelExpansionLayout(wrap, { originalStyle, originalManaged })
+    endGeometry?.('cancelled') /* 展开失败保持原状 */
+  }
 }
 function collapsePanel(wrap) {
   const idx = panelExpandStates.findIndex(s => s.wrap === wrap)
@@ -1129,13 +1183,13 @@ function collapsePanel(wrap) {
     wrap.style.height = Math.round(Math.min(s.height, g.height)) + 'px'
     setTimeout(() => {
       wrap.classList.remove('panel-anim', 'panel-expanded')
-      applyGeom(wrap)
+      restorePanelExpansionLayout(wrap, st)
       if (st.slot.parentNode) st.slot.parentNode.removeChild(st.slot)
       endGeometry?.()
     }, 330)
   } catch {
     wrap.classList.remove('panel-anim', 'panel-expanded')
-    applyGeom(wrap)
+    restorePanelExpansionLayout(wrap, st)
     if (st.slot.parentNode) st.slot.parentNode.removeChild(st.slot)
     endGeometry?.('cancelled')
   }
@@ -1249,7 +1303,6 @@ function swapGeom(a, b) {
   for (const k of ['col', 'row', 'w', 'h']) {
     const t = a.dataset[k]; a.dataset[k] = b.dataset[k]; b.dataset[k] = t
   }
-  applyGeom(a); applyGeom(b)
   // 同步 meta（刷新/展开读的是 meta）
   for (const p of [a, b]) {
     if (p.__meta) {
@@ -1257,7 +1310,9 @@ function swapGeom(a, b) {
       p.__meta.w = +p.dataset.w; p.__meta.h = +p.dataset.h
     }
   }
-  window.dispatchEvent(new CustomEvent('scene-panel-slot-swap', { detail: [a, b] }))
+  const event = new CustomEvent('scene-panel-slot-swap', { detail: [a, b], cancelable: true })
+  window.dispatchEvent(event)
+  if (!event.defaultPrevented) { applyGeom(a); applyGeom(b) }
 }
 
 /* ============================================================

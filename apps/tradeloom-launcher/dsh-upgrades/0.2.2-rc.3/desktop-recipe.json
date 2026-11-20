@@ -265,12 +265,12 @@
       "sha256": "7e2cdb6592de4456295d455056a1d5ca500cf8ef3c759aef90ceba66c76b5849"
     },
     "renderer/source-shell/replica-ui/business-bridge.css": {
-      "bytes": 4171,
-      "sha256": "27d58b0546dd6bf0509c37e11b6dc3e3a6ec65de707d2e17579a0230b4987e5d"
+      "bytes": 4462,
+      "sha256": "340412b6a4ccf02c93f3f038e7aed39ce88d2c11c23674ce392d7efe011f444d"
     },
     "renderer/source-shell/replica-ui/business-bridge.js": {
-      "bytes": 93974,
-      "sha256": "4c4f54165b715fbc5650e8a4e00b3d9161efaed8defe6799680e2d9ab4d95b99"
+      "bytes": 94890,
+      "sha256": "1ac5c6eab77215dd99bb6d0512b6e9b2876bae28885a9a796bec7162a51297bc"
     },
     "renderer/source-shell/replica-ui/business-file-bridge.js": {
       "bytes": 13570,
@@ -301,12 +301,12 @@
       "sha256": "145dd57540b879c6ea3984d657a7bb3735a375cb371378e1c1a4b9ccf8508869"
     },
     "renderer/source-shell/replica-ui/panel-interactions.js": {
-      "bytes": 120239,
-      "sha256": "9a84e456de97e5e56dcd467f9bd8fb79fbf4350f4f80f71fc23528802d18b8c2"
+      "bytes": 120526,
+      "sha256": "892140a44d7f0a648a2fbcb9859cc8ba015c1fa415f2d1372cdf18d57eded744"
     },
     "renderer/source-shell/replica-ui/renderer.js": {
-      "bytes": 125789,
-      "sha256": "99cb5944992554f1d21cb20247699ec68ca57474a42af6e42cab5af3f2bdf5c4"
+      "bytes": 128488,
+      "sha256": "aea63664d08f56594d1ec0cb019524a1a273d89011fdb75dd1092df9932e7ac2"
     },
     "renderer/source-shell/replica-ui/replica-adapter.js": {
       "bytes": 111663,
@@ -321,8 +321,8 @@
       "sha256": "1855228680120c458bfa0695bb47f92f8d6f31c1bd776cb55f5b48866334c34f"
     },
     "renderer/source-shell/replica-ui/style.css": {
-      "bytes": 40013,
-      "sha256": "53b3c39ba1dc9583af3a455122bebde42b390572d2227dcedfc2dfbf3a3b9f0d"
+      "bytes": 40583,
+      "sha256": "981761142b83e5e6f7c0033b4aee689dc30ffcb48ba189a2056fcc9b880224fe"
     },
     "renderer/source-shell/replica-ui/tradeloom-mark.svg": {
       "bytes": 961,
@@ -800,15 +800,15 @@
     "renderer/source-shell/replica-ui/business-bridge.css": {
       "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/business-bridge.css",
       "preimage": {
-        "bytes": 4171,
-        "sha256": "27d58b0546dd6bf0509c37e11b6dc3e3a6ec65de707d2e17579a0230b4987e5d"
+        "bytes": 4462,
+        "sha256": "340412b6a4ccf02c93f3f038e7aed39ce88d2c11c23674ce392d7efe011f444d"
       }
     },
     "renderer/source-shell/replica-ui/business-bridge.js": {
       "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/business-bridge.js",
       "preimage": {
-        "bytes": 93974,
-        "sha256": "4c4f54165b715fbc5650e8a4e00b3d9161efaed8defe6799680e2d9ab4d95b99"
+        "bytes": 94890,
+        "sha256": "1ac5c6eab77215dd99bb6d0512b6e9b2876bae28885a9a796bec7162a51297bc"
       }
     },
     "renderer/source-shell/replica-ui/business-file-bridge.js": {
@@ -863,15 +863,15 @@
     "renderer/source-shell/replica-ui/panel-interactions.js": {
       "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/panel-interactions.js",
       "preimage": {
-        "bytes": 120239,
-        "sha256": "9a84e456de97e5e56dcd467f9bd8fb79fbf4350f4f80f71fc23528802d18b8c2"
+        "bytes": 120526,
+        "sha256": "892140a44d7f0a648a2fbcb9859cc8ba015c1fa415f2d1372cdf18d57eded744"
       }
     },
     "renderer/source-shell/replica-ui/renderer.js": {
       "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/renderer.js",
       "preimage": {
-        "bytes": 125789,
-        "sha256": "99cb5944992554f1d21cb20247699ec68ca57474a42af6e42cab5af3f2bdf5c4"
+        "bytes": 128488,
+        "sha256": "aea63664d08f56594d1ec0cb019524a1a273d89011fdb75dd1092df9932e7ac2"
       }
     },
     "renderer/source-shell/replica-ui/replica-adapter.js": {
@@ -898,8 +898,8 @@
     "renderer/source-shell/replica-ui/style.css": {
       "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/style.css",
       "preimage": {
-        "bytes": 40013,
-        "sha256": "53b3c39ba1dc9583af3a455122bebde42b390572d2227dcedfc2dfbf3a3b9f0d"
+        "bytes": 40583,
+        "sha256": "981761142b83e5e6f7c0033b4aee689dc30ffcb48ba189a2056fcc9b880224fe"
       }
     },
     "renderer/source-shell/replica-ui/tradeloom-mark.svg": {
