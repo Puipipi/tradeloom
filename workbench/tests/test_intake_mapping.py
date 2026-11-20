@@ -97,7 +97,7 @@ class IntakeMappingSchemaTests(SimpleTestCase):
 
     def test_candidate_schemas_are_closed_and_separate_unconfirmed_domains(self):
         self.assertEqual(SCHEMA_VERSION, 1)
-        self.assertEqual(set(FIELD_SCHEMAS), {"product_identity", "commercial_source", "production_instruction", "labor_analysis"})
+        self.assertEqual(set(FIELD_SCHEMAS), {"product_identity", "commercial_source", "production_instruction", "labor_analysis", "material_master", "production_instruction_line", "purchase_plan_line", "stock_receipt_line", "shipment_payment_line"})
         self.assertIn("customer_item_code", FIELD_SCHEMAS["product_identity"])
         self.assertIn("party_text", FIELD_SCHEMAS["commercial_source"])
         self.assertNotIn("party_role", FIELD_SCHEMAS["commercial_source"])
@@ -106,6 +106,7 @@ class IntakeMappingSchemaTests(SimpleTestCase):
         self.assertEqual(FIELD_SCHEMAS["production_instruction"]["pack_quantity"], "decimal")
         self.assertEqual(FIELD_SCHEMAS["production_instruction"]["pack_unit"], "text")
         self.assertNotIn("employee_actual_hours", FIELD_SCHEMAS["labor_analysis"])
+        self.assertEqual(FIELD_SCHEMAS["material_master"]["item_code"], "text")
 
     def test_mapping_schema_version_requires_json_integer_not_boolean(self):
         mapping = {

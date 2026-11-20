@@ -9,6 +9,8 @@ from .erpnext import api as erpnext_api
 from .intake import api as intake_api
 from .requirements import api as requirement_api
 from .execution_plans import api as execution_plan_api
+from .procurement import api as procurement_api
+from .materials import api as material_api
 from . import canvas_workflow_api, native_artifact_api, dispatch_api, canvas_workflow_definition_api
 
 
@@ -39,6 +41,10 @@ urlpatterns = [
     path("api/erpnext/record", erpnext_api.record),
     path("api/erpnext/quotation-drafts", erpnext_api.quotation_drafts),
     path("api/erpnext/quotation-drafts/<str:operation_id>", erpnext_api.quotation_draft_operation),
+    path("api/materials/status", material_api.status),
+    path("api/materials/items", material_api.items),
+    path("api/materials/items/<str:item_code>/update", material_api.item_update),
+    path("api/materials/check", material_api.check),
     path("api/intake/sources", intake_api.source_collection),
     path("api/intake/narratives", intake_api.narrative_collection),
     path("api/intake/narratives/<str:narrative_id>/lines", intake_api.narrative_lines),
@@ -52,6 +58,8 @@ urlpatterns = [
     path("api/intake/candidates", intake_api.candidates),
     path("api/intake/candidates/<str:candidate_id>", intake_api.candidate),
     path("api/intake/candidates/<str:candidate_id>/apply", intake_api.apply_product_candidate),
+    path("api/intake/candidates/<str:candidate_id>/apply-material", material_api.apply_material),
+    path("api/intake/candidates/<str:candidate_id>/requirement-lines", requirement_api.apply_requirement_lines_view),
     path("api/intake/candidates/<str:candidate_id>/links", intake_api.create_candidate_link),
     path("api/intake/candidates/<str:candidate_id>/evidence", intake_api.evidence_collection),
     path("api/intake/candidates/<str:candidate_id>/requirement-drafts", requirement_api.create_requirement_draft),
@@ -60,6 +68,10 @@ urlpatterns = [
     path("api/production-requirements/<str:requirement_id>/confirm", requirement_api.confirm_requirement),
     path("api/production-requirements/<str:requirement_id>/execution-plan-revisions", execution_plan_api.plan_revision_collection),
     path("api/execution-plans/<str:plan_revision_id>", execution_plan_api.execution_plan_detail),
+    path("api/execution-plans/<str:plan_revision_id>/resolve-materials", execution_plan_api.resolve_execution_plan_materials),
+    path("api/intake/candidates/<str:candidate_id>/documents", procurement_api.apply_documents_view),
+    path("api/documents/<str:doc_type>", procurement_api.list_documents_view),
+    path("api/documents/<str:doc_type>/<str:document_id>/confirm", procurement_api.confirm_document_view),
     path("api/agents", api.list_agents),
     path("api/customers", customer_api.customer_collection),
     path("api/customers/<str:customer_id>", customer_api.customer_detail),

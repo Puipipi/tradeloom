@@ -136,7 +136,10 @@
     requirement_source_value_mismatch: "修改值与原单元格不一致，请提供修改依据或保留待确认。",
     stale_requirement: "其他操作已更新此草稿。请重新读取当前版本，再核对你的修改。",
     unresolved_requirement: "仍有待确认字段，请先补充内容和出处。",
+    requirement_lines_blocked: "存在阻断的明细行（物料缺主数据或数量/单位无效），请先补齐物料主数据后重新应用明细行，再确认此版本。",
     requirement_exists: "这份候选已有草稿，正在读取已有记录。",
+    row_shape_mismatch: "明细行列的单元格数量不一致，请重新映射各列。",
+    empty_rows: "明细行映射为空，请选择物料、数量、单位列。",
     narrative_not_found: "文字资料不存在，请刷新资料列表后重试。",
     invalid_narrative: "请选择有效的 UTF-8 文本文件，大小不超过 2 MiB。",
     already_confirmed: "此版本已确认，请重新读取当前记录。",
@@ -1252,6 +1255,30 @@
     const check = activeRevision.source_arithmetic_check || (activeRevision.id === current.revision.id ? current.source_arithmetic_check : {}) || {};
     const packaging = activeRevision.packaging_check || (activeRevision.id === current.revision.id ? current.packaging_check : "needs_confirmation");
     target.append(node("p", "intake-check-note", `来源数量核算：${check.state === "calculated" ? `整包装 ${check.whole_packages}，余数 ${check.remainder}，来源箱数 ${check.source_carton_count}` : "资料不足，待确认"}。包装关系：${packaging === "passed" ? "已按人工确认的单位对核验" : "尚待人工确认"}。`));
+    const material = activeRevision.material_check || (activeRevision.id === current.revision.id ? current.material_check : null);
+    if (material && typeof material === "object" && typeof material.state === "string") {
+      const note = node("p", "intake-check-note", materialCheckText(material));
+      note.dataset.materialCheck = material.state;
+      target.append(note);
+    }
+    const materialLines = typeof current.material_lines === "object" && current.material_lines ? current.material_lines : null;
+    if (materialLines && materialLines.total > 0) {
+      const box = node("div", "intake-material-lines");
+      box.append(node("strong", "", `明细行 · 共 ${materialLines.total} 行，阻断 ${materialLines.blocked} 行`));
+      const list = node("ul", "intake-material-line-list");
+      for (const line of materialLines.lines) {
+        const item = node("li", line.blocked ? "intake-material-line blocked" : "intake-material-line");
+        item.append(node("span", "intake-material-line-main",
+          `${line.position}. ${line.material || "（空）"} × ${line.quantity || "?"}${line.unit ? " " + line.unit : ""}`));
+        if (line.blocked && Array.isArray(line.questions) && line.questions.length) {
+          item.append(node("small", "intake-material-line-issues", line.questions.join("；")));
+        }
+        list.append(item);
+      }
+      box.append(list);
+      box.append(node("p", "intake-muted", "阻断行未清零时不能确认此生产要求；补齐物料主数据后重新应用明细行即可解除。"));
+      target.append(box);
+    }
     target.append(node("p", "intake-muted", "本地确认只表示此版本已人工确认，不代表可生产、已排产或已提交 ERP。"));
     if (isCurrent) {
       const unsaved = node("p", "intake-message", "有未保存的修改。请先保存新版本，再确认你看到的内容。");
@@ -1341,6 +1368,115 @@
     }
   }
 
+  // item_ref 下拉提示：只读查询演示物料主数据，选中后把物料名称写回字段。
+  function attachMaterialSuggestions(input, row) {
+    const list = node("ul", "intake-material-options");
+    list.id = `intake-material-options-${input.name}`;
+    list.setAttribute("role", "listbox");
+    list.hidden = true;
+    const status = node("div", "intake-material-status");
+    status.hidden = true;
+    input.setAttribute("role", "combobox");
+    input.setAttribute("aria-autocomplete", "list");
+    input.setAttribute("aria-controls", list.id);
+    input.setAttribute("aria-expanded", "false");
+    row.append(list, status);
+
+    let token = 0;
+    let timer = null;
+    let active = -1;
+    const options = () => [...list.querySelectorAll(".intake-material-option")];
+
+    function close() {
+      list.hidden = true;
+      active = -1;
+      input.setAttribute("aria-expanded", "false");
+    }
+
+    function select(option) {
+      input.value = option.dataset.itemName || "";
+      close();
+      status.hidden = true;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.focus();
+    }
+
+    function highlight(index) {
+      const rows = options();
+      if (!rows.length) return;
+      active = (index + rows.length) % rows.length;
+      rows.forEach((option, position) => {
+        option.classList.toggle("intake-material-active", position === active);
+        option.setAttribute("aria-selected", position === active ? "true" : "false");
+      });
+    }
+
+    async function load(query) {
+      const current = ++token;
+      status.hidden = false;
+      status.textContent = "正在查询演示物料主数据…";
+      try {
+        const body = await request(`/api/materials/items?q=${encodeURIComponent(query)}&limit=8`);
+        if (current !== token) return;
+        const items = Array.isArray(body?.items) ? body.items : [];
+        list.replaceChildren();
+        if (!items.length) {
+          close();
+          status.textContent = "演示主数据里没有匹配项；可继续手工填写，保存后会标为待确认。";
+          return;
+        }
+        for (const item of items) {
+          const option = node("li", "intake-material-option");
+          option.dataset.itemName = item.item_name;
+          option.setAttribute("role", "option");
+          option.setAttribute("aria-selected", "false");
+          option.append(
+            node("span", "intake-material-option-name", item.item_name),
+            node("span", "intake-material-option-meta", `${item.item_code} · ${item.item_group} · ${item.stock_uom}`),
+          );
+          if (item.disabled) option.append(node("span", "intake-material-option-flag", "已停用"));
+          option.addEventListener("mousedown", event => event.preventDefault());
+          option.addEventListener("click", () => select(option));
+          list.append(option);
+        }
+        list.hidden = false;
+        input.setAttribute("aria-expanded", "true");
+        status.textContent = "来自演示物料主数据，不代表客户真实主数据。";
+      } catch (error) {
+        if (current !== token) return;
+        close();
+        status.textContent = `物料查询不可用：${error.message}`;
+      }
+    }
+
+    input.addEventListener("input", () => {
+      clearTimeout(timer);
+      const query = input.value.trim();
+      if (!query) { close(); status.hidden = true; return; }
+      timer = setTimeout(() => load(query), 200);
+    });
+    input.addEventListener("keydown", event => {
+      if (list.hidden) return;
+      if (event.key === "ArrowDown") { event.preventDefault(); highlight(active + 1); }
+      else if (event.key === "ArrowUp") { event.preventDefault(); highlight(active - 1); }
+      else if (event.key === "Enter" && active >= 0) { event.preventDefault(); select(options()[active]); }
+      else if (event.key === "Escape") close();
+    });
+    input.addEventListener("blur", () => setTimeout(close, 120));
+  }
+
+  function materialCheckText(material) {
+    const issues = Array.isArray(material.issues) ? material.issues : [];
+    if (material.state === "passed") {
+      const item = material.resolution?.item || {};
+      return `物料核对：已匹配 ${item.item_code || "物料"}（${item.item_name || ""}），来源为演示主数据。`;
+    }
+    const questions = issues.slice(0, 3).map(issue => issue.question).filter(Boolean).join("；");
+    const prefix = material.state === "blocked" ? "物料核对：存在阻断项" : "物料核对：待确认";
+    if (!questions) return `${prefix}。`;
+    return `${prefix} — ${questions}${issues.length > 3 ? `（另有 ${issues.length - 3} 项）` : ""}`;
+  }
+
   function renderRequirementFields(target, revision, { editable }) {
     const fields = revision.fields || {};
     const groups = [
@@ -1379,6 +1515,7 @@
         input.setAttribute("aria-label", requirementFieldLabels[name]);
         label.append(input);
         row.append(label);
+        if (name === "item_ref" && editable) attachMaterialSuggestions(input, row);
 
         const refs = revision.source_refs?.[name] || [];
         const sourceSummary = refs.map(ref => {

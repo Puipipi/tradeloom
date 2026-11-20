@@ -441,6 +441,115 @@ class ProductionRequirementRevision(AppendOnlyModel):
         constraints = [models.UniqueConstraint(fields=["draft", "revision"], name="uniq_req_revision_number")]
 
 
+class ProductionRequirementLine(models.Model):
+    """生产要求的明细行（物料×数量×单位），来自 production_instruction_line 打表候选。
+
+    行由候选 apply 生成并随主数据补齐重新 apply 刷新；阻断问题未清时
+    阻止生产要求确认（对应 PMC 核料闸门）。
+    """
+
+    id = models.CharField(primary_key=True, max_length=32, default=hex_uuid, editable=False)
+    draft = models.ForeignKey(ProductionRequirementDraft, on_delete=models.PROTECT, related_name="material_lines")
+    source_candidate = models.ForeignKey(IntakeCandidate, on_delete=models.PROTECT, related_name="requirement_lines")
+    position = models.PositiveIntegerField()
+    material = models.CharField(max_length=500)
+    item_ref = models.JSONField(null=True, blank=True)
+    item_status = models.CharField(max_length=24, default="unresolved")
+    quantity = models.CharField(max_length=40, blank=True, default="")
+    unit = models.CharField(max_length=64, blank=True, default="")
+    issues = models.JSONField(default=list)
+    source_refs = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["draft_id", "position", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["source_candidate", "position"], name="uniq_req_line_candidate_position"),
+            models.CheckConstraint(condition=models.Q(material__gt=""), name="req_line_material_present"),
+        ]
+
+
+class PurchasePlan(models.Model):
+    """采购计划：按物料×数量×期望日期安排，确认前需物料核对通过。"""
+
+    id = models.CharField(primary_key=True, max_length=32, default=hex_uuid, editable=False)
+    requirement_draft = models.ForeignKey(
+        ProductionRequirementDraft, null=True, blank=True, on_delete=models.PROTECT, related_name="purchase_plans"
+    )
+    source_candidate = models.ForeignKey(
+        IntakeCandidate, null=True, blank=True, on_delete=models.PROTECT, related_name="purchase_plans"
+    )
+    position = models.PositiveIntegerField(default=1)
+    material = models.CharField(max_length=500)
+    item_ref = models.JSONField(null=True, blank=True)
+    item_status = models.CharField(max_length=24, default="unresolved")
+    quantity = models.CharField(max_length=40, blank=True, default="")
+    unit = models.CharField(max_length=64, blank=True, default="")
+    expected_on = models.DateField(null=True, blank=True)
+    issues = models.JSONField(default=list)
+    status = models.CharField(max_length=16, default="draft")
+    source = models.CharField(max_length=64, default="manual")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at", "id"]
+
+
+class StockReceipt(models.Model):
+    """入库记录：仓管手动录入物料到货；只记录，不推算库存成本。"""
+
+    id = models.CharField(primary_key=True, max_length=32, default=hex_uuid, editable=False)
+    purchase_plan = models.ForeignKey(
+        PurchasePlan, null=True, blank=True, on_delete=models.PROTECT, related_name="receipts"
+    )
+    source_candidate = models.ForeignKey(
+        IntakeCandidate, null=True, blank=True, on_delete=models.PROTECT, related_name="stock_receipts"
+    )
+    position = models.PositiveIntegerField(default=1)
+    material = models.CharField(max_length=500)
+    item_ref = models.JSONField(null=True, blank=True)
+    item_status = models.CharField(max_length=24, default="unresolved")
+    quantity = models.CharField(max_length=40, blank=True, default="")
+    unit = models.CharField(max_length=64, blank=True, default="")
+    received_on = models.DateField(null=True, blank=True)
+    issues = models.JSONField(default=list)
+    status = models.CharField(max_length=16, default="draft")
+    source = models.CharField(max_length=64, default="manual")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at", "id"]
+
+
+class ShipmentPayment(models.Model):
+    """出货/回款记录：财务手动录入；仅记录事实，不做财务判断。"""
+
+    class Kind(models.TextChoices):
+        SHIPMENT = "shipment", "出货"
+        PAYMENT = "payment", "回款"
+
+    id = models.CharField(primary_key=True, max_length=32, default=hex_uuid, editable=False)
+    source_candidate = models.ForeignKey(
+        IntakeCandidate, null=True, blank=True, on_delete=models.PROTECT, related_name="shipment_payments"
+    )
+    position = models.PositiveIntegerField(default=1)
+    kind = models.CharField(max_length=16, choices=Kind.choices, default=Kind.SHIPMENT)
+    reference = models.CharField(max_length=200, blank=True, default="")
+    amount = models.CharField(max_length=40)
+    currency = models.CharField(max_length=8)
+    occurred_on = models.DateField(null=True, blank=True)
+    status = models.CharField(max_length=16, default="draft")
+    source = models.CharField(max_length=64, default="manual")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at", "id"]
+
+
 class ExecutionPlanRevision(AppendOnlyModel):
     class Status(models.TextChoices):
         DRAFT = "draft", "Draft"
@@ -1315,3 +1424,24 @@ class CustomerAction(models.Model):
         constraints = [
             models.UniqueConstraint(fields=["prediction", "action_type"], name="uniq_customer_action_prediction"),
         ]
+
+
+class MaterialItem(models.Model):
+    """物料主数据（人工维护 / 打表导入 / 演示种子），是物料核对规则的比对基准。
+
+    主数据允许人工修订（改名、停用），不属于证据追加记录；来源持续标注在 source 字段。
+    """
+
+    id = models.CharField(primary_key=True, max_length=32, default=hex_uuid, editable=False)
+    item_code = models.CharField(max_length=140, unique=True)
+    item_name = models.CharField(max_length=200)
+    item_group = models.CharField(max_length=120)
+    stock_uom = models.CharField(max_length=64)
+    aliases = models.JSONField(default=list, blank=True)
+    disabled = models.BooleanField(default=False)
+    source = models.CharField(max_length=64, default="manual")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["item_code"]

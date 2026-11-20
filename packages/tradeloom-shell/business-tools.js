@@ -824,9 +824,20 @@ function projectExecutionPlan(response, requestedId) {
       return [projected]
     })
   }
-  const materials = plan.materials.slice(0, 200).flatMap(item => item?.resolution === 'unresolved' && item?.item_ref === null
-    ? [{ resolution: 'unresolved', item_ref: null, proposal: projectMaterialProposal(item.proposal, safeText), supporting_requirement_inputs: evidenceRefs(item.supporting_requirement_inputs || [], 20), supporting_sources: supportingSources(item.supporting_sources || []) }]
-    : (truncated = true, []))
+  const materials = plan.materials.slice(0, 200).flatMap(item => {
+    if (item?.resolution === 'resolved' && item?.item_ref && item.item_ref.doctype === 'Item') {
+      return [{ resolution: 'resolved',
+        item_ref: { doctype: 'Item', name: boundedString(item.item_ref.name, 140) },
+        proposal: projectMaterialProposal(item.proposal, safeText),
+        supporting_requirement_inputs: evidenceRefs(item.supporting_requirement_inputs || [], 20),
+        supporting_sources: supportingSources(item.supporting_sources || []) }]
+    }
+    if (item?.resolution === 'unresolved' && item?.item_ref === null) {
+      return [{ resolution: 'unresolved', item_ref: null, proposal: projectMaterialProposal(item.proposal, safeText), supporting_requirement_inputs: evidenceRefs(item.supporting_requirement_inputs || [], 20), supporting_sources: supportingSources(item.supporting_sources || []) }]
+    }
+    truncated = true
+    return []
+  })
   const operations = plan.operations.slice(0, 100).flatMap(item => item?.resolution === 'unresolved' && item?.operation_ref === null
     ? [{ resolution: 'unresolved', operation_ref: null, proposal: projectOperationProposal(item.proposal, safeText), supporting_requirement_inputs: evidenceRefs(item.supporting_requirement_inputs || [], 20), supporting_sources: supportingSources(item.supporting_sources || []) }]
     : (truncated = true, []))

@@ -22,7 +22,7 @@
   --wb-theme-danger: Mark;
   --wb-theme-dangerBackground: Canvas;
   --wb-theme-dangerBorder: GrayText;
-  --wb-theme-warning: Mark;
+  --wb-theme-warning: #B45309;
   --wb-theme-warningBackground: Canvas;
   --wb-theme-warningBorder: GrayText;
   --wb-theme-success: LinkText;
@@ -1897,6 +1897,144 @@ textarea.intake-requirement-input {
 .intake-requirement-source {
   font-size: var(--wb-font-xs);
   line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.intake-material-options {
+  margin: 2px 0 0;
+  padding: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+  list-style: none;
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  box-shadow: 0 8px 18px rgba(20, 16, 10, 0.12);
+}
+
+.intake-material-options[hidden] {
+  display: none;
+}
+
+.intake-material-option {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1px 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.intake-material-option:hover,
+.intake-material-active {
+  background: var(--surface-soft);
+}
+
+.intake-material-option-name {
+  color: var(--ink);
+  font-size: var(--wb-font-compact);
+}
+
+.intake-material-option-meta {
+  grid-column: 1;
+  color: var(--muted);
+  font-size: var(--wb-font-xs);
+  overflow-wrap: anywhere;
+}
+
+.intake-material-option-flag {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  align-self: center;
+  color: var(--accent-strong);
+  font-size: var(--wb-font-xs);
+}
+
+.intake-material-status {
+  color: var(--muted);
+  font-size: var(--wb-font-xs);
+  line-height: 1.45;
+}
+
+.intake-material-status[hidden] {
+  display: none;
+}
+
+.intake-check-note[data-material-check="blocked"] {
+  border-inline-start-color: var(--accent-strong);
+}
+
+.intake-material-lines {
+  display: grid;
+  gap: 6px;
+  padding: var(--wb-nested-card-inset);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: var(--wb-font-compact);
+}
+
+/* 业务单据（采购 / 入库 / 出货回款）标签区块 */
+.documents-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--wb-space-4);
+}
+.documents-block {
+  display: grid;
+  gap: var(--wb-space-2);
+  padding: var(--wb-space-3);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  align-content: start;
+}
+.documents-block h4 { margin: 0; font-size: var(--wb-font-body); }
+.documents-list { display: grid; gap: var(--wb-space-2); }
+.documents-item {
+  display: grid;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: var(--wb-font-compact);
+}
+.documents-item.is-blocked { border-left: 4px solid var(--warning); }
+.documents-item-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.documents-item-fields { display: flex; flex-wrap: wrap; gap: 2px 14px; color: var(--muted); }
+.documents-item-fields .documents-field strong { color: var(--ink); font-weight: 600; }
+.documents-blocked-note { margin: 0; color: var(--warning); }
+.documents-actions { display: flex; gap: var(--wb-space-2); }
+
+.intake-material-line-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+}
+
+.intake-material-line {
+  display: grid;
+  gap: 1px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  background: var(--surface-soft);
+}
+
+.intake-material-line.blocked {
+  border-inline-start: 3px solid var(--accent-strong);
+}
+
+.intake-material-line-main {
+  overflow-wrap: anywhere;
+}
+
+.intake-material-line-issues {
+  color: var(--accent-strong);
   overflow-wrap: anywhere;
 }
 

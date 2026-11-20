@@ -1,6 +1,6 @@
 {% extends "workbench/base.html" %}
 {% load business_urls %}
-{% block stylesheets %}<link rel="stylesheet" href="{{ '/static/workbench/styles.css?v=business-ui-density12'|business_url }}">{% endblock %}
+{% block stylesheets %}<link rel="stylesheet" href="{{ '/static/workbench/styles.css?v=material-lines2-documents1'|business_url }}">{% endblock %}
 {% block page_eyebrow %}来源资料 / 生产要求 / 交付核验{% endblock %}
 {% block page_title %}资料与交付核验{% endblock %}
 {% block content %}
@@ -43,6 +43,7 @@
       <button type="button" role="tab" id="intake-task-tab-narratives" data-intake-task-tab="narratives" aria-controls="intake-task-panel-narratives" aria-selected="false" tabindex="-1">访谈依据</button>
       <button type="button" role="tab" id="intake-task-tab-requirements" data-intake-task-tab="requirements" aria-controls="intake-task-panel-requirements" aria-selected="false" tabindex="-1">生产要求</button>
       <button type="button" role="tab" id="intake-task-tab-plans" data-intake-task-tab="plans" aria-controls="intake-task-panel-plans" aria-selected="false" tabindex="-1">物料与工序计划</button>
+      <button type="button" role="tab" id="intake-task-tab-documents" data-intake-task-tab="documents" aria-controls="intake-task-panel-documents" aria-selected="false" tabindex="-1">业务单据</button>
     </div>
     <section class="intake-task-panel" id="intake-task-panel-sources" data-intake-task-panel="sources" role="tabpanel" aria-labelledby="intake-task-tab-sources" tabindex="0">
     <form class="intake-upload" data-testid="intake-upload">
@@ -208,6 +209,43 @@
       <div data-testid="execution-plan-content" aria-live="polite"><p class="intake-muted">选择已确认的生产需求版本。</p></div>
     </section>
     </section>
+    <section class="intake-task-panel" id="intake-task-panel-documents" data-intake-task-panel="documents" role="tabpanel" aria-labelledby="intake-task-tab-documents" tabindex="0" hidden>
+    <section class="intake-subpanel documents-workbench" data-testid="documents-workbench"
+      data-documents-url="{% business_path '/api/documents/__DOC_TYPE__' %}"
+      data-document-confirm-url="{% business_path '/api/documents/__DOC_TYPE__/__DOC__/confirm' %}">
+      <div class="intake-subheading">
+        <h3>采购 · 入库 · 出货回款</h3>
+        <span class="intake-muted">打表生成 · 人工确认</span>
+      </div>
+      <p class="intake-muted">单据由打表候选生成后在此确认；物料行存在阻断问题时不能确认。这里只做记录，不推算库存与财务。</p>
+      <div class="documents-grid">
+        <section class="documents-block" data-doc-block="purchase_plan" aria-labelledby="doc-purchase-title">
+          <div class="intake-subheading">
+            <h4 id="doc-purchase-title">采购计划</h4>
+            <button class="button secondary small" type="button" data-doc-refresh>刷新</button>
+          </div>
+          <div class="documents-list" data-doc-list aria-live="polite"><p class="intake-muted">正在读取…</p></div>
+          <p class="intake-message" role="status" aria-live="polite" data-doc-message></p>
+        </section>
+        <section class="documents-block" data-doc-block="stock_receipt" aria-labelledby="doc-stock-title">
+          <div class="intake-subheading">
+            <h4 id="doc-stock-title">入库记录</h4>
+            <button class="button secondary small" type="button" data-doc-refresh>刷新</button>
+          </div>
+          <div class="documents-list" data-doc-list aria-live="polite"><p class="intake-muted">正在读取…</p></div>
+          <p class="intake-message" role="status" aria-live="polite" data-doc-message></p>
+        </section>
+        <section class="documents-block" data-doc-block="shipment_payment" aria-labelledby="doc-shipment-title">
+          <div class="intake-subheading">
+            <h4 id="doc-shipment-title">出货回款</h4>
+            <button class="button secondary small" type="button" data-doc-refresh>刷新</button>
+          </div>
+          <div class="documents-list" data-doc-list aria-live="polite"><p class="intake-muted">正在读取…</p></div>
+          <p class="intake-message" role="status" aria-live="polite" data-doc-message></p>
+        </section>
+      </div>
+    </section>
+    </section>
     {{ intake_field_schemas|json_script:"intake-field-schemas" }}
   </section>
   {{ file_browser_rows|json_script:"file-browser-rows" }}
@@ -291,4 +329,4 @@
   </section>
 </div>
 {% endblock %}
-{% block scripts %}<script src="{{ '/static/workbench/execution-plans.js?v=source-references1'|business_url }}" defer></script><script src="{{ '/static/workbench/intake-product-application.js?v=intake-application2'|business_url }}" defer></script><script src="{{ '/static/workbench/intake.js?v=intake-panel-route11'|business_url }}" defer></script><script src="{{ '/static/workbench/intake-links.js'|business_url }}" defer></script><script src="{{ '/static/workbench/artifact-browser.js?v=files-browser16'|business_url }}" defer></script>{% endblock %}
+{% block scripts %}<script src="{{ '/static/workbench/execution-plans.js?v=source-references1'|business_url }}" defer></script><script src="{{ '/static/workbench/intake-product-application.js?v=intake-application2'|business_url }}" defer></script><script src="{{ '/static/workbench/intake.js?v=material-lines1'|business_url }}" defer></script><script src="{{ '/static/workbench/intake-links.js'|business_url }}" defer></script><script src="{{ '/static/workbench/documents.js?v=documents1'|business_url }}" defer></script><script src="{{ '/static/workbench/artifact-browser.js?v=files-browser16'|business_url }}" defer></script>{% endblock %}
