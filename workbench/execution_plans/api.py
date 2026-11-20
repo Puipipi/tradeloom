@@ -16,7 +16,7 @@ from workbench.models import (
 )
 
 from .schemas import MAX_REQUEST_BYTES, validate_plan_body
-from .service import create_plan_payload, latest_revision, plan_payload
+from .service import bind_plan_evidence, latest_revision, plan_payload
 
 
 _INTEGER = re.compile(r"(?:0|[1-9][0-9]*)\Z")
@@ -35,6 +35,17 @@ def _safe_error(code: str, status: int | None = None) -> JsonResponse:
     return _error(code, status=_ERROR_STATUS.get(code, 400) if status is None else status)
 
 
+def _plan_response_fields(plan: ExecutionPlanRevision) -> dict:
+    payload = plan_payload(plan)
+    return {
+        "plan": payload,
+        "requirement_revision": payload["requirement_revision"],
+        "latest_revision": payload["latest_revision"],
+        "is_latest": payload["is_latest"],
+        "actual": payload["actual"],
+    }
+
+
 def _result(receipt: IntakeOperationReceipt, *, replay: bool) -> JsonResponse:
     if receipt.state == IntakeOperationReceipt.State.FAILED:
         return _safe_error(receipt.error_code or "unavailable")
@@ -43,11 +54,10 @@ def _result(receipt: IntakeOperationReceipt, *, replay: bool) -> JsonResponse:
     plan = ExecutionPlanRevision.objects.select_related("requirement_revision__draft").filter(pk=receipt.result_id).first()
     if plan is None or receipt.result_type != "execution_plan_revision":
         return _safe_error("unavailable", 503)
-    payload = plan_payload(plan)
-    return JsonResponse({"ok": True, "status": "succeeded", "plan": payload,
-                         "requirement_revision": payload["requirement_revision"],
-                         "latest_revision": payload["latest_revision"], "is_latest": payload["is_latest"],
-                         "actual": {"status": "missing"}}, status=200 if replay else 201)
+    return JsonResponse(
+        {"ok": True, "status": "succeeded", **_plan_response_fields(plan)},
+        status=200 if replay else 201,
+    )
 
 
 def _history_page(request: HttpRequest, requirement_id: str) -> JsonResponse:
@@ -88,7 +98,6 @@ def _history_page(request: HttpRequest, requirement_id: str) -> JsonResponse:
 def plan_revision_collection(request: HttpRequest, requirement_id: str) -> JsonResponse:
     if request.method == "GET":
         return _history_page(request, requirement_id)
-    receipt_id = None
     try:
         key = _key(request)
         body = _json_object(request, max_bytes=MAX_REQUEST_BYTES)
@@ -104,10 +113,10 @@ def plan_revision_collection(request: HttpRequest, requirement_id: str) -> JsonR
                 return _safe_error("execution_plan_requirement_not_found")
             if requirement.status != ProductionRequirementRevision.Status.CONFIRMED:
                 return _safe_error("unconfirmed_requirement")
-            plan = create_plan_payload(requirement, plan)
+            # Freeze evidence before hashing so the receipt covers the saved source references.
+            bind_plan_evidence(requirement, plan)
             request_fingerprint = fingerprint({"action": "execution_plan_revision", "draft_id": draft.pk, **plan})
             receipt, created = _reserve(key, "execution_plan_revision", request_fingerprint)
-            receipt_id = receipt.pk
             if not created:
                 if receipt.action != "execution_plan_revision" or receipt.fingerprint != request_fingerprint:
                     raise MappingError("execution_plan_idempotency_conflict")
@@ -148,9 +157,4 @@ def execution_plan_detail(_request: HttpRequest, plan_revision_id: str) -> JsonR
     plan = ExecutionPlanRevision.objects.select_related("requirement_revision__draft").filter(pk=plan_revision_id).first()
     if plan is None:
         return _safe_error("execution_plan_requirement_not_found")
-    payload = plan_payload(plan)
-    return JsonResponse({"ok": True, "plan": payload,
-                         "requirement_revision": payload["requirement_revision"],
-                         "latest_revision": payload["latest_revision"],
-                         "is_latest": payload["is_latest"],
-                         "actual": {"status": "missing"}})
+    return JsonResponse({"ok": True, **_plan_response_fields(plan)})

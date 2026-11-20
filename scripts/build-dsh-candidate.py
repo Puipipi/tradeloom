@@ -53,7 +53,7 @@ def overlaps(a,b):
 
 def deployment_metadata(program,recipe,desktop,resources,head,dirty,source_digest,patches):
     validator={key:program['nativeArtifactValidator'][key] for key in ['receiptSha256','nodeRelativePath','nodeSha256']}
-    main_postimage={**desktop['postimages'],**desktop.get('finalOverlay',{}).get('postimages',{})}['lib/main.js']
+    main_postimage={**desktop['postimages'],**desktop.get('additions',{}),**desktop.get('finalOverlay',{}).get('postimages',{})}['lib/main.js']
     source={'shellMode':'source','appMainSha256':main_postimage['sha256'],'lock':{'upstream':{**program['upstream'],'appAsar':recipe['officialInput']['appAsar']},'patches':patches,'nativeArtifactValidator':validator},'assemblyKind':'complete official binary program plus current repository recipes and own resources; not upstream source compilation','vendorVersion':recipe['version'],'vendorCommit':program['upstream']['commit'],'ownSourceHead':head,'ownSourceDirty':dirty,'ownSourceFilesSha256':source_digest}
     return {'schemaVersion':2,'deploymentMode':'packaged','runtime':program['runtime'],'resources':resources,'sourceBuild':source,'candidate':{'status':'isolated full candidate; not installed or accepted','dataRootSelectedExplicitly':True,'dataReadCreatedOrMigrated':False,'installerExecuted':False}}
 
@@ -167,10 +167,10 @@ def main():
         read_source(path.relative_to(R).as_posix())
     # The complete source archive includes the reviewed outer acquisition path.
     # Its execution is proven by update-receipt.json, not by mere inclusion here.
-    for name in ['entry','signatureScript','applyScript']:read_source(program_recipe['acquisition'][name])
+    for name in ['entry','applyScript']:read_source(program_recipe['acquisition'][name])
     for key in ['icon','iconProvenance']:read_source(branding[key]['source'])
     replay_root=out/'replay'
-    run('fixed-replay',[sys.executable,'-B',R/'scripts/replay-dsh-candidate.py','--source',vendor/'resources/app.asar','--unpacked',vendor/'resources/app.asar.unpacked','--output-root',replay_root,'--node',args.node])
+    run('fixed-replay',[sys.executable,'-B',R/'scripts/replay-dsh-candidate.py','--version',args.version,'--source',vendor/'resources/app.asar','--unpacked',vendor/'resources/app.asar.unpacked','--output-root',replay_root,'--node',args.node])
     for row in replay.load(replay_root/'source-manifest.json')['sourceFiles']:
         if replay.pin(read_source(row['sourcePath'],row.get('target')))!={key:row[key] for key in ['bytes','sha256']}:raise ValueError('replay source drift')
     for row in vendor_rows:
@@ -193,14 +193,17 @@ def main():
     shell_root=out/'replay/business-shell';shell_rows=inventory(shell_root)
     for row in shell_rows:copy(replay.safe(shell_root,row['path']),'app/resources/tradeloom/business-shell/'+row['path'],{'kind':'current-business-recipe','sourcePath':recipe['businessShell']['sourceRoot']+'/'+row['path']},{key:row[key] for key in ['bytes','sha256']})
     launcher=program_recipe['launcher'];launcher_root=out/'launcher-source';launcher_root.mkdir()
-    original=read_source(launcher['source'],'启动工作台.exe');patch=read_source((K/launcher['patch']).relative_to(R).as_posix(),'启动工作台.exe')
-    if replay.pin(original)!=launcher['preimage']:raise ValueError('launcher source preimage drift')
-    (launcher_root/'Program.cs').write_bytes(original)
-    run('launcher-patch',['git','-c','core.autocrlf=false','-c','core.eol=lf','apply','--whitespace=nowarn',K/launcher['patch']],launcher_root)
+    if not replay.uses_exact_source(launcher,('patch','preimage')):
+        original=read_source(launcher['source'],'启动工作台.exe');read_source((K/launcher['patch']).relative_to(R).as_posix(),'启动工作台.exe')
+        if replay.pin(original)!=launcher['preimage']:raise ValueError('launcher source preimage drift')
+        (launcher_root/'Program.cs').write_bytes(original)
+        run('launcher-patch',['git','-c','core.autocrlf=false','-c','core.eol=lf','apply','--whitespace=nowarn',K/launcher['patch']],launcher_root)
+    else:
+        (launcher_root/'Program.cs').write_bytes(read_source(launcher['source'],'启动工作台.exe'))
     if file_pin(launcher_root/'Program.cs')!=launcher['postimage']:raise ValueError('launcher derived source drift')
     compiler_pin=file_pin(args.compiler)
     run('launcher-compile',[args.compiler,'/win32icon:'+str(brand_icon),'/nologo','/target:winexe','/platform:x64','/optimize+','/utf8output','/codepage:65001','/reference:System.Web.Extensions.dll','/reference:System.Windows.Forms.dll','/out:'+str(product/'启动工作台.exe'),launcher_root/'Program.cs'])
-    origins['启动工作台.exe']={'kind':'compiled-repository-source','sourcePath':launcher['source'],'patch':launcher['patch'],'compiler':compiler_pin}
+    origins['启动工作台.exe']={'kind':'compiled-repository-source','sourcePath':launcher['source'],'patch':launcher.get('patch'),'compiler':compiler_pin}
     launcher_brand=brand_windows_executable(product/'启动工作台.exe',branding,editor,brand_icon,run,'launcher-brand',set_icon=False)
     origins['启动工作台.exe'].update(branding={'editor':branding['editor'],'iconSource':branding['icon']['source'],'postimage':launcher_brand})
     config=json.loads(read_source(launcher['configSource'],'launcher.json'));config.update(schemaVersion=2,dataDirectory=str(data_root))

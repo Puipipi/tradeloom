@@ -1,0 +1,12 @@
+diff --git a/lib/main.js b/lib/main.js
+--- a/lib/main.js
++++ b/lib/main.js
+@@ -15814,7 +15814,7 @@
+ 	const runtime = runtimeRequire("./package.json");
+ 	const runIdSchema = runtimeRequire("zod").z.uuid();
+ 	if (runtime.version === "0.2.1-rc.3") return { parseRecord: void 0, isRunId: value => runIdSchema.safeParse(value).success };
+-	if (runtime.version !== "0.2.2-rc.1" && runtime.version !== "0.2.2-rc.2") throw new Error("desktop Host bridge: runtime version is not covered by this recipe");
++	if (runtime.version !== "0.2.2-rc.1" && runtime.version !== "0.2.2-rc.2" && runtime.version !== "0.2.2-rc.3") throw new Error("desktop Host bridge: runtime version is not covered by this recipe");
+ 	const manager = runtimeRequire("@deepseek-ai/dsh-plugin-manager/package.json");
+ 	if (manager.version !== runtime.version) throw new Error("desktop Host bridge: plugin manager version does not match runtime");
+ 	const parseRecord = runtimeRequire("@deepseek-ai/dsh-plugin-manager/diagnostic").parsePluginOperationRecord;

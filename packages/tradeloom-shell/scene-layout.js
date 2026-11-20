@@ -90,7 +90,7 @@ export function validateSceneConfig(config, panelTypes = PANEL_TYPES) {
   return config
 }
 
-function normalizePanel(scene, panel, saved) {
+function normalizeLegacyPanelPlacement(scene, panel, saved) {
   const value = saved ?? {}
   if (!object(value) || Object.keys(value).some(key => !['col', 'row', 'w', 'h', 'visible'].includes(key))) fail('saved panel layout contains unsupported fields')
   const normalized = {
@@ -111,17 +111,16 @@ export function normalizeSceneLayout(scene, savedLayout = {}) {
   const inputPanels = savedLayout.panels ?? {}
   if (!object(inputPanels)) fail('saved panels must be an object')
   const savedPanels = { ...inputPanels }
-  const configuredPanelIds = new Set(scene.panels.map(panel => panel.id))
+  const panelIds = new Set(scene.panels.map(panel => panel.id))
   // Keep pre-files/preview v1 layouts readable only in scenes that adopted the new IDs.
-  if (configuredPanelIds.has('files') && !Object.hasOwn(savedPanels, 'files') && Object.hasOwn(savedPanels, 'auxiliary')) {
+  if (panelIds.has('files') && !Object.hasOwn(savedPanels, 'files') && Object.hasOwn(savedPanels, 'auxiliary')) {
     savedPanels.files = savedPanels.auxiliary
     delete savedPanels.auxiliary
   }
-  if (configuredPanelIds.has('preview') && !Object.hasOwn(savedPanels, 'preview') && Object.hasOwn(savedPanels, 'reference')) {
+  if (panelIds.has('preview') && !Object.hasOwn(savedPanels, 'preview') && Object.hasOwn(savedPanels, 'reference')) {
     savedPanels.preview = savedPanels.reference
     delete savedPanels.reference
   }
-  const panelIds = configuredPanelIds
   const unknownPanels = Object.keys(savedPanels).filter(id => !panelIds.has(id))
   if (unknownPanels.length) fail(`saved layout contains an unknown panel in ${scene.id}: ${unknownPanels.join(',')}`)
   const expandedPanel = savedLayout.expandedPanel === 'auxiliary' && panelIds.has('files') ? 'files'
@@ -129,7 +128,7 @@ export function normalizeSceneLayout(scene, savedLayout = {}) {
   if (expandedPanel !== '' && !panelIds.has(expandedPanel)) fail('expanded panel is unknown')
   return {
     expandedPanel,
-    panels: Object.fromEntries(scene.panels.map(panel => [panel.id, normalizePanel(scene, panel, savedPanels[panel.id])])),
+    panels: Object.fromEntries(scene.panels.map(panel => [panel.id, normalizeLegacyPanelPlacement(scene, panel, savedPanels[panel.id])])),
   }
 }
 

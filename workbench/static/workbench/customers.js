@@ -55,6 +55,17 @@
     if (element) element.hidden = true;
   }
 
+  async function submitCustomerChangeAndReload(button, send) {
+    button.disabled = true;
+    try {
+      await send();
+      globalThis.location.reload();
+    } catch (error) {
+      showError(error);
+      button.disabled = false;
+    }
+  }
+
   function renderBacktest(backtest) {
     const container = document.getElementById("backtest-result");
     const rows = document.getElementById("backtest-rows");
@@ -129,53 +140,35 @@
             }
             body.display_name = displayName;
           }
-          button.disabled = true;
-          try {
-            await request(`/api/customer-aliases/${form.dataset.aliasId}/decision`, body);
-            globalThis.location.reload();
-          } catch (error) {
-            showError(error);
-            button.disabled = false;
-          }
+          await submitCustomerChangeAndReload(button, () =>
+            request(`/api/customer-aliases/${form.dataset.aliasId}/decision`, body));
         });
       }
     }
   }
 
-  function bindReloadForm(id, urlFor) {
+  function bindAsOfCustomerChangeForm(id, urlFor) {
     const form = document.getElementById(id);
     if (!form) return;
     form.addEventListener("submit", async event => {
       event.preventDefault();
       clearError();
       const button = form.querySelector('button[type="submit"]');
-      button.disabled = true;
-      try {
-        await request(urlFor(form), { as_of: form.elements.as_of.value });
-        globalThis.location.reload();
-      } catch (error) {
-        showError(error);
-        button.disabled = false;
-      }
+      await submitCustomerChangeAndReload(button, () =>
+        request(urlFor(form), { as_of: form.elements.as_of.value }));
     });
   }
 
-  function bindActions() {
+  function bindCustomerActionDecisions() {
     for (const form of document.querySelectorAll(".customer-action-form")) {
       for (const button of form.querySelectorAll(".customer-action-decision")) {
         button.addEventListener("click", async () => {
           clearError();
-          button.disabled = true;
-          try {
-            await request(`/api/customer-actions/${form.dataset.actionId}/decision`, {
+          await submitCustomerChangeAndReload(button, () =>
+            request(`/api/customer-actions/${form.dataset.actionId}/decision`, {
               decision: button.dataset.decision,
               note: form.elements.note.value,
-            });
-            globalThis.location.reload();
-          } catch (error) {
-            showError(error);
-            button.disabled = false;
-          }
+            }));
         });
       }
     }
@@ -214,14 +207,7 @@
         for (const name of ["customer_id", "source_customer_id", "note"]) {
           if (form.elements[name]) body[name] = form.elements[name].value;
         }
-        button.disabled = true;
-        try {
-          await request(form.dataset.url, body);
-          globalThis.location.reload();
-        } catch (error) {
-          showError(error);
-          button.disabled = false;
-        }
+        await submitCustomerChangeAndReload(button, () => request(form.dataset.url, body));
       });
     }
   }
@@ -235,9 +221,9 @@
   if (typeof document !== "undefined") {
     bindCandidateEvent();
     bindAliasDecisions();
-    bindReloadForm("customer-evaluation-form", form => `/api/customers/${form.dataset.customerId}/evaluate`);
-    bindReloadForm("customer-reconcile-form", form => `/api/customers/${form.dataset.customerId}/reconcile`);
-    bindActions();
+    bindAsOfCustomerChangeForm("customer-evaluation-form", form => `/api/customers/${form.dataset.customerId}/evaluate`);
+    bindAsOfCustomerChangeForm("customer-reconcile-form", form => `/api/customers/${form.dataset.customerId}/reconcile`);
+    bindCustomerActionDecisions();
     bindBacktest();
     bindIdentityOperations();
   }

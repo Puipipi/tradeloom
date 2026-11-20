@@ -1,4 +1,5 @@
-import { readFile, readdir, stat } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { lstat, readFile, readdir, stat } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
@@ -8,6 +9,26 @@ async function exists(path) {
 
 async function readJson(path) {
   return JSON.parse(await readFile(path, 'utf8'))
+}
+
+async function readExactSource(repoRoot, relative, pin) {
+  if (typeof relative !== 'string' || relative.includes('\\') || relative.includes(':')
+      || relative.split('/').some(part => !part || part === '.' || part === '..')) {
+    throw new Error('exact-source path must stay inside checkout')
+  }
+  if (!Number.isSafeInteger(pin?.bytes) || pin.bytes < 0 || !/^[a-f0-9]{64}$/.test(pin.sha256 ?? '')) {
+    throw new Error('exact-source pin missing or invalid')
+  }
+  let path = repoRoot
+  for (const part of relative.split('/')) {
+    path = join(path, part)
+    if ((await lstat(path)).isSymbolicLink()) throw new Error('exact-source path is a link')
+  }
+  const bytes = await readFile(path)
+  if (bytes.length !== pin.bytes || createHash('sha256').update(bytes).digest('hex') !== pin.sha256) {
+    throw new Error('exact-source bytes or SHA-256 drift')
+  }
+  return bytes
 }
 
 async function readEnginePins(repoRoot, manifest) {
@@ -27,10 +48,17 @@ export async function checkBoundary(repoRoot) {
   const checks = []
 
   const pins = await readEnginePins(repoRoot, manifest)
-  const expected = manifest.base.version
+  const shellContract = manifest.pluginImportContract.tradeLoomPlugin
+  const scopeVersions = shellContract.peerScopeVersions
+  const scopeVersionsValid = Array.isArray(scopeVersions) && scopeVersions.length > 0
+    && new Set(scopeVersions).size === scopeVersions.length
+    && scopeVersions.every(version => typeof version === 'string' && /^\d+\.\d+\.\d+-rc\.\d+$/.test(version)
+      && Object.hasOwn(manifest.base.upgrade.recipes, version))
+  if (!scopeVersionsValid) problems.push('invalid registered shell peer scope versions')
   for (const [label, value] of Object.entries(pins)) {
+    const expected = label === 'scope' ? (scopeVersionsValid ? scopeVersions.join(' || ') : undefined) : manifest.base.version
     checks.push(`engine pin ${label}=${value}`)
-    if (value !== expected) problems.push(`引擎版本钉 ${label} 是 ${value}，manifest 基座版本是 ${expected}`)
+    if (!expected || value !== expected) problems.push(`引擎版本钉 ${label} 是 ${value}，对应清单版本是 ${expected}`)
   }
 
   for (const patch of manifest.base.sanctionedPatches) {
@@ -69,8 +97,13 @@ export async function checkBoundary(repoRoot) {
       else {
         const desktop = await readJson(join(repoRoot, path))
         if (desktop.schemaVersion !== 1 || desktop.version !== version) problems.push(`desktop recipe version 不匹配：${path}`)
-        const patch = join(dirname(path), desktop.patch).replaceAll('\\', '/')
-        if (!manifest.base.sanctionedPatches.includes(patch)) problems.push(`desktop 配方引用未登记的基座补丁：${patch}`)
+        const overlay = desktop.finalOverlay
+        for (const name of [desktop.patch, ...(overlay ? [overlay.patch] : [])]) {
+          const patch = typeof name === 'string' ? join(dirname(path), name).replaceAll('\\', '/') : ''
+          if (!patch || !manifest.base.sanctionedPatches.includes(patch)) {
+            problems.push(`desktop 配方引用未登记的基座补丁：${patch}`)
+          }
+        }
       }
     }
     if (recipe.programRecipe) {
@@ -80,16 +113,48 @@ export async function checkBoundary(repoRoot) {
       else {
         const program = await readJson(join(repoRoot, path))
         if (program.schemaVersion !== 1 || program.version !== version) problems.push(`program recipe version 不匹配：${path}`)
-        const patch = join(dirname(path), program.launcher.patch).replaceAll('\\', '/')
-        if (!manifest.base.sanctionedPatches.includes(patch)) problems.push(`program 配方引用未登记的 launcher 补丁：${patch}`)
+        const launcher = program.launcher
+        if (launcher?.sourceMode === 'exact-source') {
+          try {
+            if ('patch' in launcher || 'preimage' in launcher) throw new Error('mixed launcher source mode')
+            await readExactSource(repoRoot, launcher.source, launcher.postimage)
+          } catch (error) { problems.push(`launcher exact-source: ${error.message}`) }
+        } else {
+          const patch = typeof launcher?.patch === 'string' ? join(dirname(path), launcher.patch).replaceAll('\\', '/') : ''
+          if ((launcher?.sourceMode ?? 'patch') !== 'patch' || !patch || !manifest.base.sanctionedPatches.includes(patch)) {
+            problems.push(`program 配方引用未登记的 launcher 补丁：${patch}`)
+          }
+        }
       }
     }
     if (recipe.businessShell) {
-      const packagePath = join(dirname(recipePath), recipe.businessShell.packageSource).replaceAll('\\', '/')
-      allowed.add(packagePath)
-      if (!await exists(join(repoRoot, packagePath))) problems.push(`已声明的候选 package 不存在：${packagePath}`)
-      const patch = join(dirname(recipePath), recipe.businessShell.patch).replaceAll('\\', '/')
-      if (!manifest.base.sanctionedPatches.includes(patch)) problems.push(`business 配方引用未登记的基座补丁：${patch}`)
+      const business = recipe.businessShell
+      if (business.sourceMode === 'exact-source') {
+        try {
+          if ('patch' in business || 'packageSource' in business) throw new Error('mixed business source mode')
+          const packageBytes = await readExactSource(repoRoot, `${business.sourceRoot}/package.json`, business.sourcePackage)
+          const pkg = JSON.parse(packageBytes)
+          const paths = ['package.json', ...pkg.files]
+          if (new Set(paths).size !== paths.length || Object.keys(business.preimages).length !== paths.length
+              || Object.keys(business.postimages).length !== paths.length) throw new Error('exact-source business pins must cover the complete package')
+          for (const name of paths) {
+            const before = business.preimages[name]
+            const after = business.postimages[name]
+            if (!before || !after || before.bytes !== after.bytes || before.sha256 !== after.sha256) {
+              throw new Error('exact-source business pin missing or mismatched')
+            }
+            await readExactSource(repoRoot, `${business.sourceRoot}/${name}`, before)
+          }
+        } catch (error) { problems.push(`business exact-source: ${error.message}`) }
+      } else {
+        const packagePath = typeof business.packageSource === 'string' ? join(dirname(recipePath), business.packageSource).replaceAll('\\', '/') : ''
+        if (packagePath) allowed.add(packagePath)
+        if (!packagePath || !await exists(join(repoRoot, packagePath))) problems.push(`已声明的候选 package 不存在：${packagePath}`)
+        const patch = typeof business.patch === 'string' ? join(dirname(recipePath), business.patch).replaceAll('\\', '/') : ''
+        if ((business.sourceMode ?? 'patch') !== 'patch' || !patch || !manifest.base.sanctionedPatches.includes(patch)) {
+          problems.push(`business 配方引用未登记的基座补丁：${patch}`)
+        }
+      }
     }
   }
   const upgradeRoot = join(repoRoot, 'apps/tradeloom-launcher/dsh-upgrades')
@@ -115,19 +180,23 @@ export async function checkBoundary(repoRoot) {
   if (shellPkg.name !== manifest.pluginImportContract.tradeLoomPlugin.name) {
     problems.push(`插件包名变了：${shellPkg.name}`)
   }
-  const exportKeys = Object.keys(shellPkg.exports ?? {})
-  const expectedKeys = manifest.pluginImportContract.tradeLoomPlugin.exportKeys
-  const missingKeys = expectedKeys.filter(key => !exportKeys.includes(key))
-  if (missingKeys.length) problems.push(`插件 exports 缺键：${missingKeys.join(', ')}（会破坏直接导入）`)
-  for (const key of expectedKeys) {
-    const target = shellPkg.exports?.[key]
-    const rel = typeof target === 'string' ? target : target?.default
-    if (!rel) { problems.push(`插件 exports["${key}"] 没有目标文件`); continue }
-    if (!await exists(join(repoRoot, dirname(manifest.pluginImportContract.tradeLoomPlugin.manifest), rel))) {
-      problems.push(`插件 exports["${key}"] 指向的文件不存在：${rel}`)
+  const actualExports = shellPkg.exports ?? {}
+  const expectedExports = shellContract.exportTargets
+  for (const key of Object.keys(actualExports)) {
+    if (!Object.hasOwn(expectedExports, key)) problems.push(`插件 exports 新增未登记入口：${key}`)
+  }
+  for (const [key, relative] of Object.entries(expectedExports)) {
+    const target = actualExports[key]
+    const actual = typeof target === 'string' ? target : target?.default
+    if (actual !== relative) {
+      problems.push(`插件 exports["${key}"] 目标失配：${actual} ≠ ${relative}`)
+      continue
+    }
+    if (!await exists(join(repoRoot, dirname(shellContract.manifest), relative))) {
+      problems.push(`插件 exports["${key}"] 指向的文件不存在：${relative}`)
     }
   }
-  checks.push(`plugin exports ${exportKeys.length}/${expectedKeys.length}`)
+  checks.push(`plugin exports ${Object.keys(actualExports).length}/${Object.keys(expectedExports).length}`)
 
   for (const entry of manifest.pluginImportContract.tradeLoomPlugin.hostEntry
     ? [manifest.pluginImportContract.tradeLoomPlugin.hostEntry, manifest.pluginImportContract.tradeLoomPlugin.clientEntry]

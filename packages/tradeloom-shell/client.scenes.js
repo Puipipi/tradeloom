@@ -17,7 +17,7 @@ window.__ModuleLoader__.load({
     const dockviewRenderers = new Map()
     const narrowListeners = new Map()
     const asyncRequire = typeof require.async === 'function' ? require.async.bind(require) : null
-    let dockviewRequest
+    let dockviewChunkRequest
     let workflowRequest
     let businessViewIntentRevision = 0
     let dockSaveQueue = Promise.resolve()
@@ -72,7 +72,7 @@ window.__ModuleLoader__.load({
       } catch { return '' }
     }
 
-    function comparableDockview(dockview, panelId) {
+    function serializeDockGridWithoutPanel(dockview, panelId) {
       if (!dockview?.grid?.root || !dockview.panels) return null
       const stripPanel = (node, root = false) => {
         if (node.type === 'leaf') {
@@ -97,31 +97,26 @@ window.__ModuleLoader__.load({
       return JSON.stringify({ grid, panels: Object.keys(dockview.panels).filter(id => id !== panelId).sort() })
     }
 
-    function serializedGroupForPanel(root, panelId) {
+    function findSerializedGridLeaf(root, matchesGroup) {
       if (!root) return null
-      if (root.type === 'leaf') return root.data?.views?.includes(panelId) ? root.data : null
+      if (root.type === 'leaf') return matchesGroup(root.data) ? root : null
       for (const child of root.data ?? []) {
-        const found = serializedGroupForPanel(child, panelId)
+        const found = findSerializedGridLeaf(child, matchesGroup)
         if (found) return found
       }
       return null
     }
 
-    function serializedGridHasPanel(root, panelId) {
-      if (!root) return false
-      if (root.type === 'leaf') return Boolean(root.data?.views?.includes(panelId))
-      return (root.data ?? []).some(child => serializedGridHasPanel(child, panelId))
+    function findSerializedLeafForPanel(root, panelId) {
+      return findSerializedGridLeaf(root, group => group?.views?.includes(panelId))
     }
 
-    function serializedLeafByGroup(root, groupId) {
-      if (!root) return null
-      if (root.type === 'leaf') return root.data?.id === groupId ? root : null
-      for (const child of root.data ?? []) { const found = serializedLeafByGroup(child, groupId); if (found) return found }
-      return null
+    function findSerializedLeafByGroupId(root, groupId) {
+      return findSerializedGridLeaf(root, group => group?.id === groupId)
     }
 
     // Build a storage-only grid from the current tree; the live Dockview stays untouched.
-    function projectFloatingLayout(layout, origins) {
+    function projectFloatingGroupsIntoSavedGrid(layout, origins) {
       const copy = JSON.parse(JSON.stringify(layout))
       const floating = copy.floatingGroups ?? []
       if (floating.length !== origins.size || copy.grid?.root?.type !== 'branch') return null
@@ -129,7 +124,7 @@ window.__ModuleLoader__.load({
       for (const [panelId, origin] of origins) {
         const external = floating.find(item => item.data?.views?.length === 1 && item.data.views[0] === panelId)
         if (!external || !copy.panels?.[panelId]) return null
-        const target = serializedLeafByGroup(copy.grid.root, origin.groupId)
+        const target = findSerializedLeafByGroupId(copy.grid.root, origin.groupId)
         if (target) {
           const current = target.data.views
           const at = origin.views.indexOf(panelId)
@@ -177,14 +172,15 @@ window.__ModuleLoader__.load({
       return copy
     }
 
-    function floatingReturnAnchor(grid, panelId) {
+    function captureFloatingPanelReturnAnchor(grid, panelId) {
       let found = null
       const firstLeaf = node => node?.type === 'leaf' ? node : (node?.data ?? []).map(firstLeaf).find(Boolean)
       const visit = (node, orientation) => {
         if (node?.type !== 'branch') return
         const children = node.data ?? []
         for (let i = 0; i < children.length; i++) {
-          if (serializedGridHasPanel(children[i], panelId) && children[i].type === 'leaf') {
+          const child = children[i]
+          if (child?.type === 'leaf' && child.data?.views?.includes(panelId)) {
             const siblingIndex = i ? i - 1 : i + 1
             const anchor = firstLeaf(children[siblingIndex])
             if (anchor?.data?.id) {
@@ -195,14 +191,15 @@ window.__ModuleLoader__.load({
                 slotWeight: total > 0 ? children[i].size / total : 0,
                 siblings: children.map((child, index) => ({index, id:firstLeaf(child)?.data?.id, weight:total > 0 ? child.size / total : 0})).filter(item => item.index !== i && item.id), index:i }
             }
-          } else visit(children[i], orientation === 'HORIZONTAL' ? 'VERTICAL' : 'HORIZONTAL')
+          } else visit(child, orientation === 'HORIZONTAL' ? 'VERTICAL' : 'HORIZONTAL')
         }
       }
       visit(grid?.root, grid?.orientation)
       return found
     }
 
-    function mergePopoutIntoGridSnapshot(layout, restore) {
+    // A popout can leave an empty return group in its opener; rebuild that group in the return snapshot.
+    function reconstructPopoutReturnLayout(layout, restore) {
       const targetId = restore?.returnGroupId
       const panelIds = restore?.returnPanelIds
       if (!layout?.grid?.root || !layout.panels || !targetId || !Array.isArray(panelIds)
@@ -217,7 +214,7 @@ window.__ModuleLoader__.load({
           if (node.data?.id !== targetId) return node
           const existingViews = Array.isArray(node.data.views) ? node.data.views : []
           if (existingViews.length) return node
-          const missingViews = livePanelIds.filter(id => !serializedGridHasPanel(layout.grid.root, id))
+          const missingViews = livePanelIds.filter(id => !findSerializedLeafForPanel(layout.grid.root, id))
           if (!existingViews.length && !missingViews.length) return node
           targetFound = true
           returnedCount = missingViews.length
@@ -595,20 +592,21 @@ window.__ModuleLoader__.load({
       }
     }
 
-    function requestDockview() {
+    // The generated chunk provides the Dockview adapter and CSS through the Host module loader.
+    function loadDockviewChunk() {
       if (!asyncRequire) return Promise.reject(new Error('dockview-loader-unavailable'))
-      if (!dockviewRequest) {
-        dockviewRequest = asyncRequire('./client.dockview.js').then(value => {
+      if (!dockviewChunkRequest) {
+        dockviewChunkRequest = asyncRequire('./client.dockview.js').then(value => {
           const module = value?.default ?? value
           if (!module || typeof module.DockviewReact !== 'object' && typeof module.DockviewReact !== 'function'
             || typeof module.dockviewCss !== 'string') throw new Error('dockview-asset-unavailable')
           return module
-        }).catch(error => { dockviewRequest = undefined; throw error })
+        }).catch(error => { dockviewChunkRequest = undefined; throw error })
       }
-      return dockviewRequest
+      return dockviewChunkRequest
     }
 
-    function dockRecordFor(sceneId, dockview) {
+    function buildDockLayoutRecord(sceneId, dockview) {
       const scene = snapshot.config?.scenes.find(item => item.id === sceneId)
       if (!scene || !dockview || typeof dockview !== 'object') return undefined
       const previous = snapshot.dockLayouts?.scenes?.[sceneId]
@@ -635,7 +633,7 @@ window.__ModuleLoader__.load({
     }
 
     function queueDockLayoutSave(sceneId, dockview) {
-      const record = dockRecordFor(sceneId, dockview)
+      const record = buildDockLayoutRecord(sceneId, dockview)
       if (!record) return Promise.resolve(false)
       let failureMessage = '布局保存失败（网络错误），请重试。'
       const nextScenes = { ...(snapshot.dockLayouts?.scenes ?? {}), [sceneId]: record }
@@ -961,6 +959,8 @@ window.__ModuleLoader__.load({
 
     function defaultDockRecord(scene) {
       const visiblePanels = scene.panels.filter(panel => panel.optional !== true)
+      const byId = new Map(visiblePanels.map(panel => [panel.id, panel]))
+      const hasPlan = byId.has('business-plan')
       const chat = visiblePanels.filter(panel => panel.type === 'native-chat')
       const business = visiblePanels.filter(panel => panel.type !== 'native-chat')
       const makeLeaf = (id, panels, size) => ({
@@ -970,16 +970,16 @@ window.__ModuleLoader__.load({
       let orientation = 'HORIZONTAL'
       let activeGroup = '1'
       if (chat.length > 0 && business.length > 0 && scene.layoutProfile?.kind === 'collaboration_grid'
-        && ['business-main', 'files', 'preview', 'native-chat'].every(id => visiblePanels.some(panel => panel.id === id))) {
-        const byId = new Map(visiblePanels.map(panel => [panel.id, panel]))
+        && byId.size === (hasPlan ? 5 : 4)
+        && ['business-main', 'files', 'preview', 'native-chat'].every(id => byId.has(id))) {
         const leaf = (groupId, panelId, size) => makeLeaf(groupId, [byId.get(panelId)], size)
-        const row = (id, size, leftId, leftSize, rightId, rightSize) => ({
-          type: 'branch', size,
-          data: [leaf(`${id}a`, leftId, leftSize), leaf(`${id}b`, rightId, rightSize)],
-        })
+        const row = (size, ...data) => ({ type: 'branch', size, data })
         root = { type: 'branch', size: 100, data: [
-          row('top', 60, 'business-main', 75, 'files', 25),
-          row('bottom', 40, 'preview', 40, 'native-chat', 60),
+          row(hasPlan ? 50 : 60,
+            ...(hasPlan ? [leaf('top-plan', 'business-plan', 25)] : []),
+            leaf('topa', 'business-main', hasPlan ? 50 : 75), leaf('topb', 'files', 25)),
+          row(hasPlan ? 50 : 40,
+            leaf('bottoma', 'preview', hasPlan ? 25 : 40), leaf('bottomb', 'native-chat', hasPlan ? 75 : 60)),
         ] }
         orientation = 'VERTICAL'
         activeGroup = 'topa'
@@ -3845,7 +3845,7 @@ window.__ModuleLoader__.load({
             if (neighbor && saved.flat && saved.slotWeight > 0 && saved.slotWeight < 1) {
               const dimension = saved.dimension
               const direction = dimension === 'width' ? (neighbor.index < saved.index ? 'right' : 'left') : (neighbor.index < saved.index ? 'below' : 'above')
-              const groupSize = item => serializedLeafByGroup(api.toJSON().grid?.root, item.group.id)?.size ?? 0
+              const groupSize = item => findSerializedLeafByGroupId(api.toJSON().grid?.root, item.group.id)?.size ?? 0
               const total = siblings.reduce((sum, item) => sum + groupSize(item), 0)
               const absentWeight = saved.siblings.filter(item => !groups.some(group => group.id === item.id)).reduce((sum, item) => sum + item.weight, 0)
               const effectiveWeight = saved.slotWeight / (1 - absentWeight)
@@ -3865,7 +3865,7 @@ window.__ModuleLoader__.load({
               const {dimension,weight,siblings,total} = origin.resize
               const groups = [panel.api.group, ...siblings.map(item => item.group)]
               const weights = [weight, ...siblings.map(item => (1 - weight) * item.size / total)]
-              const currentSizes = () => groups.map(item => serializedLeafByGroup(api.toJSON().grid?.root, item.id)?.size ?? NaN)
+              const currentSizes = () => groups.map(item => findSerializedLeafByGroupId(api.toJSON().grid?.root, item.id)?.size ?? NaN)
               const available = currentSizes().reduce((sum, size) => sum + size, 0)
               const targets = weights.map(weight => available * weight)
               // Splitview distributes its inter-group margins evenly across visible views.
@@ -3902,9 +3902,9 @@ window.__ModuleLoader__.load({
         if (panel.api.location?.type !== 'grid') { setError('请先收回独立窗口。'); return }
         const liveLayout = api.toJSON()
         const layout = origins.size ? origins.values().next().value.layout : liveLayout
-        const group = serializedGroupForPanel(layout.grid?.root, panel.id)
+        const group = findSerializedLeafForPanel(layout.grid?.root, panel.id)?.data
         if (!group) { setError('无法确定面板原位置。'); return }
-        const origin = {groupId:group.id, views:[...group.views], anchor:floatingReturnAnchor(layout.grid,panel.id), layout:JSON.parse(JSON.stringify(layout)), phase:'open'}
+        const origin = {groupId:group.id, views:[...group.views], anchor:captureFloatingPanelReturnAnchor(layout.grid,panel.id), layout:JSON.parse(JSON.stringify(layout)), phase:'open'}
         origins.set(panel.id, origin); floatingOriginsByScene.set(scene.id, origins)
         try { api.addFloatingGroup(panel); if (panel.api.location?.type !== 'floating') throw new Error('float incomplete'); origin.openGrid = JSON.stringify(api.toJSON().grid) }
         catch { origins.delete(panel.id); if (!origins.size) floatingOriginsByScene.delete(scene.id); setError('无法悬浮面板，请重试。') }
@@ -3927,8 +3927,8 @@ window.__ModuleLoader__.load({
         }
         if (panel.api.location?.type === 'floating') {
           const restore = snapshot.dockLayouts?.scenes?.[scene.id]?.floatingRestore
-          if (restore?.dockview && comparableDockview(currentApi.toJSON(), panel.id)
-            === comparableDockview(restore.dockview, panel.id)) {
+          if (restore?.dockview && serializeDockGridWithoutPanel(currentApi.toJSON(), panel.id)
+            === serializeDockGridWithoutPanel(restore.dockview, panel.id)) {
             try {
               currentApi.fromJSON(restore.dockview, { reuseExistingPanels: true })
               syncClosedPanels(currentApi)
@@ -3947,7 +3947,7 @@ window.__ModuleLoader__.load({
         const width = Math.round(Math.min(window.innerWidth * 0.56, window.innerWidth - 24))
         const height = Math.round(Math.min(window.innerHeight * 0.94, window.innerHeight - 16))
         const original = currentApi.toJSON()
-        const returnGroup = serializedGroupForPanel(original.grid?.root, panel.id)
+        const returnGroup = findSerializedLeafForPanel(original.grid?.root, panel.id)?.data
         pendingPopoutRestoreByScene.set(scene.id, {
           panelId: panel.id,
           dockview: JSON.parse(JSON.stringify(original)),
@@ -3976,7 +3976,7 @@ window.__ModuleLoader__.load({
         })).then(opened => {
           if (opened !== false) {
             const restore = pendingPopoutRestoreByScene.get(scene.id)
-            if (restore) restore.openLayout = comparableDockview(currentApi.toJSON(), panel.id)
+            if (restore) restore.openLayout = serializeDockGridWithoutPanel(currentApi.toJSON(), panel.id)
           }
           if (opened === false && pendingPopoutRestoreByScene.has(scene.id)) {
             pendingPopoutRestoreByScene.delete(scene.id)
@@ -3996,12 +3996,12 @@ window.__ModuleLoader__.load({
             || currentApi.getPopouts?.().length || !activeWideViewport()) return
           pendingPopoutRestoreByScene.delete(scene.id)
           try {
-            const mergedReturnLayout = mergePopoutIntoGridSnapshot(restore.returnLayout, restore)
+            const mergedReturnLayout = reconstructPopoutReturnLayout(restore.returnLayout, restore)
             // Hidden placeholder sizes are not the original split ratios: its
             // visible sibling expands while the pane is outside the window.
             // Restore the original snapshot only when the remaining layout is
             // exactly the post-open baseline (including the live panel set).
-            const unchanged = restore.openLayout && restore.openLayout === comparableDockview(restore.returnLayout, restore.panelId)
+            const unchanged = restore.openLayout && restore.openLayout === serializeDockGridWithoutPanel(restore.returnLayout, restore.panelId)
             const returnLayout = unchanged ? restore.dockview : mergedReturnLayout
             if (returnLayout && !unchanged) {
               // An empty hidden slot has a cached size while its siblings fill
@@ -4264,7 +4264,7 @@ window.__ModuleLoader__.load({
           || !activeWideViewport() || narrowRef.current || currentApi.hasMaximizedGroup?.()) return Promise.resolve(false)
         const origins = floatingOriginsByScene.get(scene.id)
         if (origins?.size) {
-          const projected = projectFloatingLayout(currentApi.toJSON(), origins)
+          const projected = projectFloatingGroupsIntoSavedGrid(currentApi.toJSON(), origins)
           if (!projected) { setError('布局已变化，无法安全保存悬浮面板；请先收回后重试。'); return Promise.resolve(false) }
           return queueDockLayoutSave(scene.id, projected)
         }
@@ -4965,7 +4965,7 @@ window.__ModuleLoader__.load({
       React.useEffect(() => {
         void loadConfig().catch(() => {})
         let live = true
-        void requestDockview().then(module => { if (live) setDockviewModule(module) })
+        void loadDockviewChunk().then(module => { if (live) setDockviewModule(module) })
           .catch(() => { if (live) setDockviewError('工作区组件暂时无法加载，请重试。') })
         return () => { live = false }
       }, [])
@@ -4974,7 +4974,7 @@ window.__ModuleLoader__.load({
         h('button', { type: 'button', onClick: () => { void loadConfig(true).catch(() => {}) } }, '重试读取场景'))
       if (!dockviewModule) return h('main', { className: 'tl-workbench-loading', 'aria-label': '工作场景' },
         h('p', { role: dockviewError ? 'alert' : 'status' }, dockviewError || '正在准备工作区组件…'),
-        dockviewError ? h('button', { type: 'button', onClick: () => { setDockviewError(''); void requestDockview().then(setDockviewModule).catch(() => setDockviewError('工作区组件暂时无法加载，请重试。')) } }, '重试加载') : null)
+        dockviewError ? h('button', { type: 'button', onClick: () => { setDockviewError(''); void loadDockviewChunk().then(setDockviewModule).catch(() => setDockviewError('工作区组件暂时无法加载，请重试。')) } }, '重试加载') : null)
       const scene = state.config.scenes.find(item => item.id === state.activeSceneId)
       const visited = new Set([...(state.visitedScenes ?? []), scene.id])
       const sceneLabel = scene.label

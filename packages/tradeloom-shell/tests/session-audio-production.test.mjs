@@ -7,10 +7,10 @@ import { Readable } from 'node:stream'
 import { randomUUID } from 'node:crypto'
 import { createSessionAudioHandler } from '../session-speech.js'
 
-test('real rc2 Agent events reach the authenticated audio consumer only after completed final; stop joins controlled synthesis', async t => {
-  assert.ok(process.env.TL_SEVEN_SDK_RUNTIME, 'explicit installed rc2 SDK is mandatory')
+test('desktop SDK Agent events reach the authenticated audio consumer only after completed final; stop joins controlled synthesis', async t => {
+  assert.ok(process.env.TL_SEVEN_SDK_RUNTIME, 'explicit installed desktop SDK is mandatory')
   const require = createRequire(pathToFileURL(join(process.env.TL_SEVEN_SDK_RUNTIME, 'package.json')))
-  assert.equal(require('./package.json').version, '0.2.2-rc.2')
+  assert.match(require('./package.json').version, /^0\.2\.2-rc\.[23]$/)
   const { Context } = require('@deepseek-ai/cordis'), { AgentLoop } = require('@deepseek-ai/dsh-agent-loop')
   const ctx = new Context()
   ctx.provide('llm', { async prepareCall() { throw Error('No model permitted in this controlled test') } })

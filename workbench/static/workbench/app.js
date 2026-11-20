@@ -93,6 +93,7 @@
       prepare_product_data: "产品资料准备",
       generate_deliverables: "生成交付文件",
     };
+    const invalidatedPreviewNotice = "Agent提案字段已变化，旧预览已失效；请重新解析目标。";
     let storageAvailable = true;
     let drafts = [];
     let activeDraft = null;
@@ -326,7 +327,7 @@
       if (activeDraft && !activeDraft.createAttempted) {
         activeDraft.preview = null;
         persistDrafts();
-        showDraftNotice("Agent提案字段已变化，旧预览已失效；请重新解析目标。");
+        showDraftNotice(invalidatedPreviewNotice);
       }
     });
     workflowCreateForm.addEventListener("change", () => {
@@ -335,7 +336,7 @@
       if (activeDraft && !activeDraft.createAttempted) {
         activeDraft.preview = null;
         persistDrafts();
-        showDraftNotice("Agent提案字段已变化，旧预览已失效；请重新解析目标。");
+        showDraftNotice(invalidatedPreviewNotice);
       }
     });
     workflowCreateForm.addEventListener("submit", async (event) => {
@@ -362,6 +363,10 @@
         persistDrafts();
         if (shownPayload) {
           renderPreview(preview);
+          if (draftNotice?.textContent === invalidatedPreviewNotice) {
+            draftNotice.textContent = "";
+            draftNotice.hidden = true;
+          }
         } else {
           hidePreview();
           error.textContent = "解析期间目标已变化。旧预览已失效，请对当前目标重新解析。";

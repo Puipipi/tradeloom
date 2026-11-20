@@ -2,7 +2,7 @@ window.__ModuleLoader__.load({
   id: '@tradeloom/dsh-business-shell', chunk: 'client.session-audio.js',
   factory(require) {
     const React = require('react'), h = React.createElement
-    const same = (a, b) => a && b && Object.keys(a).length === Object.keys(b).length && Object.keys(b).every(key => a[key] === b[key])
+    const matchesSurfaceDescriptor = (a, b) => a && b && Object.keys(a).length === Object.keys(b).length && Object.keys(b).every(key => a[key] === b[key])
     function register(ctx, descriptor, bridge, reportNotice) {
       if (descriptor.kind !== 'role' || descriptor.surface !== 'chat') return
       const expected = Object.freeze({ ...descriptor })
@@ -19,9 +19,9 @@ window.__ModuleLoader__.load({
           if (sessionId !== expected.sessionId) return
           let active = true
           const stopIntent = bridge.onNativeUtilityRequested(request => {
-            if (!active || request?.action !== 'session-speech' || !same(request.descriptor, expected)) return
+            if (!active || request?.action !== 'session-speech' || !matchesSurfaceDescriptor(request.descriptor, expected)) return
             void Promise.resolve(bridge.nativeSurfaceDescriptor()).then(current => {
-              if (!active || !same(current, expected)) return
+              if (!active || !matchesSurfaceDescriptor(current, expected)) return
               return menuAction.current?.()
             }).catch(() => { if (active) reportNotice?.('当前会话操作未完成，请重新打开菜单。') })
           })
@@ -31,15 +31,15 @@ window.__ModuleLoader__.load({
         async function request(action, lease, signal) {
           const stopping = action === 'stop'
           const before = await bridge.nativeSurfaceDescriptor()
-          if (stopping ? before?.kind !== 'role' : !live.current || sessionId !== expected.sessionId || !same(before, expected)) throw Error('session_speech_binding_changed')
+          if (stopping ? before?.kind !== 'role' : !live.current || sessionId !== expected.sessionId || !matchesSurfaceDescriptor(before, expected)) throw Error('session_speech_binding_changed')
           const body = JSON.stringify({ id: crypto.randomUUID(), action, ...(lease ? { lease } : {}) })
           const grant = await bridge.issueSceneMemoryOriginGrant({ endpoint: 'tradeloom/session-audio', httpMethod: 'POST', bodyBytes: new TextEncoder().encode(body) })
-          if (!grant?.token || !stopping && (!live.current || !same(await bridge.nativeSurfaceDescriptor(), expected))) throw Error('session_speech_binding_changed')
+          if (!grant?.token || !stopping && (!live.current || !matchesSurfaceDescriptor(await bridge.nativeSurfaceDescriptor(), expected))) throw Error('session_speech_binding_changed')
           const response = await fetch('/tradeloom/session-audio', { method: 'POST', credentials: 'same-origin', signal,
             headers: { 'content-type': 'application/json', 'x-tradeloom-origin': grant.token }, body })
           const result = await response.json()
           if (!response.ok || result.ok !== true) throw Error(result.error_code || 'session_speech_unavailable')
-          if (!stopping && (!live.current || !same(await bridge.nativeSurfaceDescriptor(), expected))) throw Error('session_speech_binding_changed')
+          if (!stopping && (!live.current || !matchesSurfaceDescriptor(await bridge.nativeSurfaceDescriptor(), expected))) throw Error('session_speech_binding_changed')
           return result.result
         }
         async function stop(notify = true) {
@@ -58,11 +58,11 @@ window.__ModuleLoader__.load({
         }
         React.useEffect(() => {
           live.current = true
-          const dispose = bridge.onNativeSurfaceChanged(next => { if (!same(next, expected)) { confirmed.current = null; setControlsOpen(false); void stop(); if (next) live.current = false } })
+          const dispose = bridge.onNativeSurfaceChanged(next => { if (!matchesSurfaceDescriptor(next, expected)) { confirmed.current = null; setControlsOpen(false); void stop(); if (next) live.current = false } })
           return () => { live.current = false; confirmed.current = null; void stop(); dispose() }
         }, [])
         async function start() {
-          if (!live.current || sessionId !== expected.sessionId || !same(confirmed.current, expected) || current.current || busy) return
+          if (!live.current || sessionId !== expected.sessionId || !matchesSurfaceDescriptor(confirmed.current, expected) || current.current || busy) return
           // Resume on the actual user gesture; later owned WAVs use this same
           // context, rather than depending on an autoplay exemption.
           const audio = new AudioContext()
@@ -85,7 +85,7 @@ window.__ModuleLoader__.load({
                 if (result.audio.mimeType !== 'audio/wav' || result.audio.bytes.length > 34 * 1024 * 1024 || active.queue.length >= 2) throw Error('session_speech_audio_limit')
                 const bytes = Uint8Array.from(atob(result.audio.bytes), char => char.charCodeAt(0))
                 const buffer = await audio.decodeAudioData(bytes.buffer)
-                if (current.current !== active || !same(await bridge.nativeSurfaceDescriptor(), expected)) return
+                if (current.current !== active || !matchesSurfaceDescriptor(await bridge.nativeSurfaceDescriptor(), expected)) return
                 active.queue.push(buffer); playNext()
               }
               if (current.current === active) active.timer = setTimeout(() => void poll(), 2_000)
@@ -99,7 +99,7 @@ window.__ModuleLoader__.load({
             // any descriptor/Host await. No autoplay override is installed.
             const resumed = audio.resume()
             await resumed
-            if (current.current !== active || !live.current || !same(confirmed.current, expected)) { await stop(false); return }
+            if (current.current !== active || !live.current || !matchesSurfaceDescriptor(confirmed.current, expected)) { await stop(false); return }
             const result = await request('start', null, active.abort.signal)
             if (current.current !== active) return
             active.lease = result.lease; setEnabled(true); void poll()

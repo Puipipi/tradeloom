@@ -797,4 +797,29 @@ test('real Dockview snapshot survives the client HTTP save and server restore co
     assert.equal(reopenedRecord.closedPanelIds.includes('files'), false, 'the saved closed-panel list is cleared after restoration')
     assert.deepEqual(validatorErrors, [], 'the restored layout passes the production validator')
     assert.equal(putValidations.at(-1), true)
+
+    const workflowTab = host.querySelector('[data-scene-tab-id="agent-center"]')
+    assert.ok(workflowTab, 'the workflow scene is available from the scene bar')
+    await act(async () => { workflowTab.click(); await settle(80) })
+    const workflowApi = sceneExports.getDockviewApi('agent-center')
+    assert.ok(workflowApi)
+    await act(async () => { workflowApi.layout(980, 650, true); await settle() })
+    const recommendedGrid = JSON.parse(JSON.stringify(workflowApi.toJSON().grid))
+    assert.deepEqual(walkLeaves(recommendedGrid.root).map(leaf => leaf.views), [
+      ['business-plan'], ['business-main'], ['files'], ['preview'], ['native-chat'],
+    ])
+
+    await act(async () => { workflowApi.getPanel('business-plan').api.close(); await settle(60) })
+    assert.equal(workflowApi.getPanel('business-plan'), undefined)
+    const beforeReset = putBodies.length
+    const resetButton = [...host.querySelectorAll('.tl-layout-menu-popover button')]
+      .find(button => button.textContent === '应用推荐布局')
+    assert.ok(resetButton, 'the workflow scene offers its local recommendation')
+    await act(async () => { resetButton.click(); await settle(80) })
+    const resetGrid = JSON.parse(JSON.stringify(workflowApi.toJSON().grid))
+    assert.deepEqual(walkLeaves(resetGrid.root), walkLeaves(recommendedGrid.root))
+    assertSizesNear(resetGrid.root.data.map(row => row.size), recommendedGrid.root.data.map(row => row.size))
+    assert.ok(putBodies.length > beforeReset, 'reset saves the workflow recommendation through the client')
+    assert.equal(putBodies.at(-1).scenes['agent-center'].closedPanelIds.includes('business-plan'), false)
+    assert.deepEqual(validatorErrors, [], 'the workflow recommendation is accepted on save')
 })

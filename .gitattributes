@@ -386,6 +386,7 @@ packages/tradeloom-shell/workflow-native-command-attribution.js -text
 packages/tradeloom-shell/workflow-native-executor.js -text
 packages/tradeloom-shell/workflow-native-graph.js -text
 packages/tradeloom-shell/workflow-native-readiness.js -text
+packages/tradeloom-shell/workflow-native-run-projection.js -text
 packages/tradeloom-shell/workflow-native-service.js -text
 packages/tradeloom-shell/workflow-native-task-authority.js -text
 packages/tradeloom-shell/workflow-native-tools.js -text

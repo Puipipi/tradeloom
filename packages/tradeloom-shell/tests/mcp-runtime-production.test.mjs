@@ -7,9 +7,9 @@ import { mkdir, mkdtemp, readFile } from 'node:fs/promises'
 import { executeNativeTool } from '../workflow-native-command-attribution.js'
 
 async function fixture(t, options = {}) {
-  assert.ok(process.env.TL_SEVEN_SDK_RUNTIME && process.env.TL_SEVEN_TEST_ROOT, 'explicit rc2 runtime/private test root required; no dependency fallback')
+  assert.ok(process.env.TL_SEVEN_SDK_RUNTIME && process.env.TL_SEVEN_TEST_ROOT, 'explicit desktop runtime/private test root required; no dependency fallback')
   const runtime = createRequire(pathToFileURL(join(process.env.TL_SEVEN_SDK_RUNTIME, 'package.json')))
-  assert.equal(runtime('./package.json').version, '0.2.2-rc.2')
+  assert.match(runtime('./package.json').version, /^0\.2\.2-rc\.[23]$/)
   let resolving = false
   const hooks = registerHooks({ resolve(specifier, context, next) {
     if (!resolving && (specifier.startsWith('@deepseek-ai/') || specifier.startsWith('@modelcontextprotocol/'))) {
@@ -53,7 +53,7 @@ async function peerState(root, name, predicate) {
   assert.fail('controlled MCP peer did not acknowledge the expected protocol phase')
 }
 
-test('actual rc2 client connects, exposes owned tools, cancels and joins before replacement', async t => {
+test('desktop SDK client connects, exposes owned tools, cancels and joins before replacement', async t => {
   const f = await fixture(t)
   const list = f.registry.list(f.first)
   assert.equal(list.length, 1); assert.equal(list[0].connected, true)
@@ -87,7 +87,7 @@ test('actual rc2 client connects, exposes owned tools, cancels and joins before 
   assert.throws(() => process.kill(child.pid, 0), 'official client disposal joined its controlled stdio child')
 })
 
-test('actual rc2 missing credential is visible waiting-credentials, never connecting', async t => {
+test('desktop SDK missing credential is visible waiting-credentials, never connecting', async t => {
   const f = await fixture(t, { credentials: { async resolve() { return undefined } }, config: {
     expandTemplates: true, failOnStartupError: false, env: { ELECTRON_RUN_AS_NODE: '1', SYNTHETIC_MCP_SECRET: '${credential:synthetic_missing}' },
   } })
@@ -96,7 +96,7 @@ test('actual rc2 missing credential is visible waiting-credentials, never connec
   assert.equal(state.statusLabel, '等待凭据，请在原生设置配置'); assert.equal(state.canRestart, false)
 })
 
-test('actual rc2 failed startup reports failed/reconnect-disabled without a false connecting fallback', async t => {
+test('desktop SDK failed startup reports failed/reconnect-disabled without a false connecting fallback', async t => {
   const f = await fixture(t, { config: { command: process.execPath, args: [fileURLToPath(new URL('./fixtures/mcp-owned-echo.mjs', import.meta.url)), 'unused', 'fail-startup'], failOnStartupError: false } })
   const state = f.registry.list(f.first)[0]
   assert.equal(state.phase, 'failed'); assert.equal(state.reason, 'reconnect-disabled')

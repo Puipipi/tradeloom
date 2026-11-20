@@ -1,11 +1,11 @@
 (() => {
   const storageKey = "tradeloom.agent-runs.pending.v1";
 
-  function scope(taskId, capabilityId) {
+  function pendingReceiptScope(taskId, capabilityId) {
     return JSON.stringify([taskId, capabilityId]);
   }
 
-  function read(storage) {
+  function readPendingReceipts(storage) {
     const raw = storage.getItem(storageKey);
     if (raw === null) return {};
     const value = JSON.parse(raw);
@@ -15,7 +15,7 @@
     return value;
   }
 
-  function write(storage, pending) {
+  function persistPendingReceipts(storage, pending) {
     const serialized = JSON.stringify(pending);
     storage.setItem(storageKey, serialized);
     if (storage.getItem(storageKey) !== serialized) {
@@ -24,8 +24,8 @@
   }
 
   function ensure(storage, taskId, capabilityId, createKey) {
-    const pending = read(storage);
-    const receiptScope = scope(taskId, capabilityId);
+    const pending = readPendingReceipts(storage);
+    const receiptScope = pendingReceiptScope(taskId, capabilityId);
     const existing = pending[receiptScope];
     if (typeof existing === "string" && existing.length > 0) return existing;
     const key = createKey();
@@ -33,17 +33,17 @@
       throw new Error("无法生成运行回执，本次请求未发送。");
     }
     pending[receiptScope] = key;
-    write(storage, pending);
+    persistPendingReceipts(storage, pending);
     return key;
   }
 
   function clear(storage, taskId, capabilityId, key) {
-    const pending = read(storage);
-    const receiptScope = scope(taskId, capabilityId);
+    const pending = readPendingReceipts(storage);
+    const receiptScope = pendingReceiptScope(taskId, capabilityId);
     if (pending[receiptScope] !== key) return;
     delete pending[receiptScope];
     if (Object.keys(pending).length === 0) storage.removeItem(storageKey);
-    else write(storage, pending);
+    else persistPendingReceipts(storage, pending);
   }
 
   function validateReceipt(result) {

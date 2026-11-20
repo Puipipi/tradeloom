@@ -31,7 +31,8 @@ function all(node){return node&&typeof node==='object'?[node,...(node.children||
 function label(node){return typeof node==='string'?node:(node?.children||[]).map(label).join('')}
 test('actual WorkflowCanvas exposes native prepare/save/history and catalog categories in top toolbar',async()=>{
  const f=loadWorkflow(),toolbar=all(f.tree).find(n=>n.props?.role==='toolbar')
- const buttons=toolbar.children.filter(n=>n.type==='button')
+ const primary=toolbar.children.find(n=>n.props.className==='tl-wf-primary')
+ const buttons=primary.children.filter(n=>n.type==='button')
  assert.deepEqual(buttons.slice(0,4).map(label),['新建','开始…','保存','历史'])
  const categories=all(toolbar).filter(n=>n.type==='details'&&n.props.className==='tl-wf-category')
  assert.equal(categories.length,f.catalog.kinds.length)
@@ -109,6 +110,79 @@ test('actual plan bridge resolves registered business-plan owner and cleanup doe
  hostScene.panelMap.delete('business-plan');const denied=element();f.c.renderBusinessPanel(meta,denied,'/agent-center');assert.equal(denied.children[0].dataset.state,'error')
 })
 const button=(tree,text)=>all(tree).find(n=>n.type==='button'&&label(n)===text)
+
+test('workflow deletion is available in the document menu and requires confirmation', async () => {
+ const f = loadWorkflow()
+ const calls = [], prompts = []
+ let confirmed = false
+ f.context.window.confirm = message => { prompts.push(message); return confirmed }
+ f.context.onFetch = async (url, options) => {
+  calls.push({ url, method: options.method, body: options.body && JSON.parse(options.body) })
+  return { ok: true, json: async () => ({ catalog: f.catalog, workflows: [] }) }
+ }
+ const menu = tree => all(tree).find(node => node.props['aria-label'] === '工作流文档操作菜单')
+ const remove = button(menu(f.tree), '删除')
+ assert.equal(remove.props.disabled, false)
+ remove.props.onClick()
+ assert.deepEqual(prompts, ['删除工作流「Test」？'])
+ assert.deepEqual(calls, [])
+ confirmed = true
+ remove.props.onClick()
+ await tick()
+ assert.deepEqual(calls, [
+  { url: '/tradeloom/workflows', method: 'POST', body: { action: 'delete', id: f.doc.id } },
+  { url: '/tradeloom/workflows', method: 'GET', body: undefined },
+ ])
+ assert.equal(button(menu(f.render()), '删除').props.disabled, true)
+})
+
+test('registered workflow artifacts expose only the native file download route', async t => {
+ const runId = 'aaaaaaaa-0000-4000-8000-000000000001'
+ const id = 'bbbbbbbb-0000-4000-8000-000000000001'
+ const route = '/tradeloom/workflows/native/artifact'
+ const query = new URLSearchParams({ runId, id, action: 'download' })
+ const downloadUrl = `${route}?${query}`
+ for (const [name, urlForReceipt, availability, expected] of [
+  ['ready file route', downloadUrl, 'ready', downloadUrl],
+  ['collection route', `${route}s?${query}`, 'ready', undefined],
+  ['external route', `//outside.invalid${downloadUrl}`, 'ready', undefined],
+  ['unavailable version', downloadUrl, 'unavailable', undefined],
+ ]) await t.test(name, async () => {
+  const f = loadWorkflow()
+  const identity = { childId: 'child', nativeRunId: 'child-run', toolCallId: 'tool-call' }
+  const source = { path: 'synthetic.txt', presentCallId: 'present', sourceSessionSeq: 2, fileIndex: 0, sourceTurn: 1 }
+  const receipt = { ...identity, workflowRunId: runId, nodeId: 'a', attempt: 1, sequence: 1,
+   source: 'subagent/end', stopReason: 'completed', status: 'completed' }
+  const run = { id: runId, workflowId: f.doc.id, executionMode: 'native_dsh', sessionId: 'center',
+   definitionRevision: 'sha256:' + 'a'.repeat(64), bindingRevision: '1',
+   status: 'done', settled: true, succeeded: true, terminalReceipt: [receipt],
+   nodes: [{ ...identity, id: 'a', roleId: 'product', attempt: 1, status: 'done', settled: true, succeeded: true,
+    terminalReceipt: receipt, artifactState: 'declared', artifactEvidence: { schema: 'tradeloom.presented-evidence/v1',
+     range: { childSessionId: identity.childId, nativeRunId: identity.nativeRunId, startInclusive: 1, endExclusive: 3 },
+     declarations: [source] } }] }
+  const calls = []
+  f.context.onFetch = async (url, options) => {
+   const body = JSON.parse(options.body)
+   calls.push({ url, method: options.method, credentials: options.credentials, body })
+   const envelope = { schemaVersion: 1, ok: true, executionMode: 'native_dsh', action: body.action }
+   const value = body.action === 'list' ? { ...envelope, runs: [run] } : body.action === 'get' ? { ...envelope, run }
+    : { ok: true, version: { id, runId, nodeId: 'a', attempt: 1, name: source.path,
+     source: { seq: source.sourceSessionSeq, index: source.fileIndex }, availability, downloadUrl: urlForReceipt } }
+   return { ok: true, status: 200, json: async () => value }
+  }
+  button(f.tree, '历史').props.onClick()
+  await tick()
+  all(f.render()).find(node => node.props['aria-label'] === '查看原生记录 1').props.onClick()
+  await tick()
+  button(f.render(), '导入产物').props.onClick()
+  await tick()
+  assert.deepEqual(calls.at(-1), { url: route + 's', method: 'POST', credentials: 'same-origin',
+   body: { runId, nodeId: 'a', attempt: 1, sourceSessionSeq: source.sourceSessionSeq, fileIndex: source.fileIndex } })
+  const tree = f.render()
+  assert.ok(button(tree, '已登记'))
+  assert.equal(all(tree).find(node => node.type === 'a' && label(node).trim() === '下载登记版本')?.props.href, expected)
+ })
+})
 function preparedFor(doc){return{workflowId:doc.id,title:doc.title,eligible:true,confirmed:true,executionMode:'native_dsh',definitionRevision:'sha256:'+'b'.repeat(64),bindingRevision:'7',center:{roleId:'center',sessionId:'synthetic-session',workspaceId:'synthetic-workspace',archiveState:'unarchived'},node:{id:'a',roleId:'product',agentPreset:'synthetic-preset'}}}
 test('actual native prepare requires explicit confirm; close aborts late response and errors remain visible',async()=>{
  const f=loadWorkflow(),calls=[];let complete,signal

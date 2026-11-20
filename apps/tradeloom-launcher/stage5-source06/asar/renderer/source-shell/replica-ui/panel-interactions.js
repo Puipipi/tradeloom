@@ -494,6 +494,8 @@
     }
     document.body.append(element)
     try { element.showPopover?.() } catch {}
+    // The body-level menu must be open before the shell can release its hidden guest.
+    states.get(panel)?.finishShellAnimation?.()
     const rect = point
       ? { bottom: point.y, right: point.x, left: point.x }
       : (anchor?.getBoundingClientRect?.() ?? { bottom: 0, right: 0, left: 0 })
@@ -1634,27 +1636,128 @@
     panel.addEventListener('transitionend', onEnd)
   }
 
-  function restore(panel) {
+  function prefersReducedMotion() {
+    return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
+  }
+
+  const panelMotions = new WeakMap()
+  const pendingPanelMotions = new WeakSet()
+
+  function preparePanelMotion(panel) {
+    let hold = panelMotions.get(panel)?.hold
+    if (!hold) {
+      const detail = { panel }
+      window.dispatchEvent(new CustomEvent('tl:panel-geometry-motion', { detail }))
+      hold = detail.hold
+    }
+    if (!hold) return undefined
+    const motion = {
+      hold,
+      finish(settled) {
+        if (panelMotions.get(panel) !== motion) return
+        panelMotions.delete(panel)
+        void hold.finish(settled).catch(() => {})
+      },
+    }
+    panelMotions.set(panel, motion)
+    return motion
+  }
+
+  // Lay out the shell once and move it visually while the native assistant is hidden.
+  function animateHeldShell(panel, state, first, target, complete) {
+    if (typeof panel.animate !== 'function' || panel.offsetParent !== null) return false
+    const style = getComputedStyle(panel)
+    if (style.transform !== 'none' || [style.translate, style.rotate, style.scale].some(value => value && value !== 'none')) return false
+    const valid = rect => [rect.left, rect.top, rect.width, rect.height].every(Number.isFinite) && rect.width > 0 && rect.height > 0
+    if (!valid(first) || !valid(target)) return false
+    const { left, top, width, height } = panel.style
+    const initial = { left, top, width, height }
+    let animation
+    try {
+      setRect(panel, target)
+      const last = panel.getBoundingClientRect()
+      if (!valid(last)) throw new Error('invalid shell layout')
+      const dx = first.left - last.left, dy = first.top - last.top
+      const sx = first.width / last.width, sy = first.height / last.height
+      const inverse = 'translate(' + dx + 'px, ' + dy + 'px) scale(' + sx + ', ' + sy + ')'
+      animation = panel.animate([
+        { transform: inverse, transformOrigin: '0 0' },
+        { transform: 'translate(0px, 0px) scale(1, 1)', transformOrigin: '0 0' },
+      ], { duration: 320, easing: 'cubic-bezier(.22, .61, .36, 1)', fill: 'both' })
+    } catch {
+      Object.assign(panel.style, initial)
+      return false
+    }
+
+    const finish = outcome => {
+      if (state.finishShellAnimation !== finish) return
+      state.finishShellAnimation = undefined
+      clearTimeout(timer)
+      animation.cancel()
+      complete(outcome)
+    }
+    state.finishShellAnimation = finish
+    const timer = setTimeout(finish, 420)
+    void animation.finished.then(() => finish(), () => finish())
+    return true
+  }
+
+  async function restore(panel) {
     const state = states.get(panel)
     if (!state || state.pending) return
     state.pending = true
-    const endGeometry = panelGeometryProof.begin([panel], 'restore')
+    if (prefersReducedMotion()) {
+      const motion = panelMotions.has(panel) ? preparePanelMotion(panel) : undefined
+      state.finishShellAnimation?.('superseded')
+      const endGeometry = panelGeometryProof.begin([panel], 'restore')
+      finishRestore(panel, state)
+      endGeometry()
+      motion?.finish(true)
+      return
+    }
+
+    const motion = preparePanelMotion(panel)
+    let endGeometry = motion ? undefined : panelGeometryProof.begin([panel], 'restore')
+    // Reverse from the current visual rectangle without revealing the shared held guest.
+    const reversed = state.finishShellAnimation ? panel.getBoundingClientRect() : undefined
+    state.finishShellAnimation?.('superseded')
+    const held = motion ? await motion.hold.ready : undefined
+    if (!panel.isConnected || states.get(panel) !== state) {
+      cleanupDetached(panel)
+      endGeometry?.('detached')
+      motion?.finish(false)
+      return
+    }
+    const target = state.slot?.getBoundingClientRect()
+    if (held && target && animateHeldShell(panel, state, reversed ?? panel.getBoundingClientRect(), target, outcome => {
+      const present = states.get(panel) === state && panel.isConnected
+      finishRestore(panel, state)
+      motion.finish(present && outcome !== 'pagehide')
+    })) return
+
+    if (reversed) setRect(panel, reversed)
+    endGeometry ??= panelGeometryProof.begin([panel], 'restore')
     panel.classList.add('pi-animating')
     // Commit the current fixed geometry before scheduling the restored grid geometry.
     panel.getBoundingClientRect()
-    const target = state.slot?.getBoundingClientRect()
     if (!target) {
       finishRestore(panel, state)
       endGeometry()
+      motion?.finish(true)
       return
     }
     requestAnimationFrame(() => {
-      if (states.get(panel) !== state || !state.pending) { endGeometry('superseded'); return }
-      if (!panel.isConnected) { cleanupDetached(panel); endGeometry('detached'); return }
+      if (states.get(panel) !== state || !state.pending) { endGeometry('superseded'); motion?.finish(false); return }
+      if (!panel.isConnected) { cleanupDetached(panel); endGeometry('detached'); motion?.finish(false); return }
       const latest = state.slot?.getBoundingClientRect()
-      if (!latest) { finishRestore(panel, state); endGeometry(); return }
+      if (!latest) { finishRestore(panel, state); endGeometry(); motion?.finish(true); return }
       setRect(panel, latest)
-      transitionDone(panel, () => { finishRestore(panel, state); endGeometry() })
+      transitionDone(panel, () => {
+        const settled = states.get(panel) === state && panel.isConnected
+        finishRestore(panel, state)
+        endGeometry()
+        motion?.finish(settled)
+      })
     })
   }
 
@@ -1667,9 +1770,13 @@
     states.delete(panel)
     setFullscreenButton(state.fullButton, false)
     updateResizeHandles()
+    if (state.expandAfterRestore) setTimeout(() => {
+      if (panel.isConnected && !states.has(panel)) state.expandAfterRestore.click()
+    }, 0)
   }
 
   async function maximize(panel, button) {
+    if (pendingPanelMotions.has(panel)) return
     const current = states.get(panel)
     if (current) {
       restore(panel)
@@ -1694,7 +1801,17 @@
     const geometry = gridRect(panel)
     if (!geometry) return
     const { grid, rect: target } = geometry
-    const endGeometry = panelGeometryProof.begin([panel], 'maximize')
+    const motion = prefersReducedMotion() ? undefined : preparePanelMotion(panel)
+    let held
+    if (motion) {
+      pendingPanelMotions.add(panel)
+      try { held = await motion.hold.ready } finally { pendingPanelMotions.delete(panel) }
+      if (!panel.isConnected || panel.closest('#grid') !== grid) {
+        motion.finish(false)
+        return
+      }
+    }
+    let endGeometry = held ? undefined : panelGeometryProof.begin([panel], 'maximize')
     const from = panel.getBoundingClientRect()
     const slot = document.createElement('div')
     slot.className = 'pi-slot'
@@ -1723,18 +1840,48 @@
     states.set(panel, state)
     panel.style.position = 'fixed'
     panel.style.zIndex = '10000'
-    setRect(panel, from)
     panel.classList.add('pi-maximized')
+    if (held && !prefersReducedMotion()) {
+      setFullscreenButton(button, true)
+      if (animateHeldShell(panel, state, from, grid.getBoundingClientRect(), outcome => {
+        if (!panel.isConnected) cleanupDetached(panel)
+        const present = states.get(panel) === state && panel.isConnected && !state.pending
+        if (present && outcome !== 'pagehide') updateResizeHandles()
+        motion.finish(present && outcome !== 'pagehide')
+      })) return
+    }
+
+    setRect(panel, from)
+    endGeometry ??= panelGeometryProof.begin([panel], 'maximize')
+    if (prefersReducedMotion()) {
+      setRect(panel, grid.getBoundingClientRect())
+      setFullscreenButton(button, true)
+      updateResizeHandles()
+      endGeometry()
+      motion?.finish(true)
+      return
+    }
     // Commit viewport start geometry before enabling left/top transitions.
     panel.getBoundingClientRect()
     setFullscreenButton(button, true)
     requestAnimationFrame(() => {
-      if (states.get(panel) !== state || state.pending) { endGeometry('superseded'); return }
-      if (!panel.isConnected) { cleanupDetached(panel); endGeometry('detached'); return }
+      if (states.get(panel) !== state || state.pending) { endGeometry('superseded'); motion?.finish(false); return }
+      if (!panel.isConnected) { cleanupDetached(panel); endGeometry('detached'); motion?.finish(false); return }
       panel.classList.add('pi-animating')
       const latest = grid.getBoundingClientRect()
       setRect(panel, latest)
-      transitionDone(panel, () => { if (states.get(panel) !== state || state.pending) { endGeometry('superseded'); return }; panel.classList.remove('pi-animating'); updateResizeHandles(); endGeometry() })
+      transitionDone(panel, () => {
+        if (states.get(panel) !== state || state.pending || !panel.isConnected) {
+          if (!panel.isConnected) cleanupDetached(panel)
+          endGeometry('superseded')
+          motion?.finish(false)
+          return
+        }
+        panel.classList.remove('pi-animating')
+        updateResizeHandles()
+        endGeometry()
+        motion?.finish(true)
+      })
     })
     requestAnimationFrame(updateResizeHandles)
   }
@@ -1742,6 +1889,7 @@
   function cleanupDetached(panel) {
     const state = states.get(panel)
     if (!state) return
+    state.finishShellAnimation?.('detached')
     finishRestore(panel, state)
   }
 
@@ -1859,20 +2007,22 @@
   function onExistingExpandClick(event) {
     const button = event.target.closest?.('.panel-expand')
     const panel = button?.closest('.panel')
-    if (!button || !panel || !states.has(panel)) return
+    const state = panel && states.get(panel)
+    if (!button || !state) return
     event.preventDefault()
     event.stopImmediatePropagation()
-    restore(panel)
-    setTimeout(() => {
-      if (panel.isConnected && !states.has(panel)) button.click()
-    }, 360)
+    state.expandAfterRestore = button
+    void restore(panel)
   }
 
   function onResize() {
     for (const [panel, state] of states) {
-      if (state.pending || !panel.isConnected) continue
-      const geometry = gridRect(panel)
-      if (geometry) setRect(panel, geometry.rect)
+      if (!panel.isConnected) continue
+      if (!state.pending) {
+        const geometry = gridRect(panel)
+        if (geometry) setRect(panel, geometry.rect)
+      }
+      state.finishShellAnimation?.()
     }
   }
 
@@ -1896,6 +2046,9 @@
     document.addEventListener('dblclick', onDoubleClick, true)
     document.addEventListener('contextmenu', onContextMenu, true)
     document.addEventListener('click', onExistingExpandClick, true)
+    window.addEventListener('pagehide', () => {
+      for (const state of states.values()) state.finishShellAnimation?.('pagehide')
+    }, { once: true })
     window.addEventListener('resize', onResize)
     window.addEventListener('resize', updateResizeHandles)
   }

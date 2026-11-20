@@ -1,6 +1,6 @@
 import path from 'node:path'
 import { createHash } from 'node:crypto'
-import { buildNativeBridgeChildEnvironment, createNativeBridgeKey, NATIVE_BRIDGE_ENV } from './core.mjs'
+import { buildNativeBridgeChildEnvironment, createNativeBridgeKey, isPrivateIPv4, NATIVE_BRIDGE_ENV } from './core.mjs'
 
 export const BOOTSTRAP_MARKER = '.tradeloom-bootstrap-owned'
 export const BOOTSTRAP_MARKER_CONTENT = 'tradeloom-bootstrap-v1\n'
@@ -27,13 +27,6 @@ export function installDeferredQuitCleanup(app, stopOwnedServices, reportError =
         app.quit()
       })
   })
-}
-
-function isPrivateIPv4(value) {
-  const parts = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(value ?? '')
-  if (!parts || parts.slice(1).some(part => Number(part) > 255)) return false
-  const [a, b] = parts.slice(1).map(Number)
-  return a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)
 }
 
 export function lockName(home, platform = process.platform) {
@@ -103,7 +96,7 @@ async function assertAppMain(appPath, expectedHash, fs) {
   if (actual !== expectedHash) throw new Error('实际 appPath/lib/main.js 与受控部署 SHA256 不匹配。')
 }
 
-async function assertOwnedDesktopProfile(home, expectedBundles, fs) {
+async function verifyDesktopProfileBundles(home, expectedBundles, fs) {
   const manifestPath = path.join(home, 'profiles', 'desktop', 'package.json')
   let current = home
   for (const part of ['profiles', 'desktop', 'package.json']) {
@@ -121,7 +114,7 @@ async function assertOwnedDesktopProfile(home, expectedBundles, fs) {
   }
 }
 
-async function ensureDesktopProfile(home, runtime, bundles, deps) {
+async function initializeDesktopProfileIfMissing(home, runtime, bundles, deps) {
   const profileDir = path.join(home, 'profiles', 'desktop')
   const manifestPath = path.join(profileDir, 'package.json')
   let current = home
@@ -144,7 +137,7 @@ async function ensureDesktopProfile(home, runtime, bundles, deps) {
   }
 }
 
-async function readOwnedManifest({ resourcesPath, fs }) {
+async function readOwnedStagedManifest({ resourcesPath, fs }) {
   const root = path.resolve(resourcesPath, 'tradeloom')
   const markerPath = path.join(root, BOOTSTRAP_MARKER)
   const manifestPath = path.join(root, MANIFEST_NAME)
@@ -167,7 +160,7 @@ async function readOwnedManifest({ resourcesPath, fs }) {
   if (!(await fs.lstat(root)).isDirectory()) throw new Error('bootstrap resources 目录类型无效。')
   const manifestInfo = await fs.lstat(manifestPath)
   if (!manifestInfo.isFile()) throw new Error('bootstrap manifest 必须是普通文件。')
-  return { root, manifest: JSON.parse(await fs.readFile(manifestPath, 'utf8')) }
+  return JSON.parse(await fs.readFile(manifestPath, 'utf8'))
 }
 
 export function validateManifest(manifest, productRoot, workspace) {
@@ -241,7 +234,7 @@ export async function bootstrapDesktop({ env, processEnv, appPath, resourcesPath
   const bridgeKeyFactory = managed
     ? () => env[NATIVE_BRIDGE_ENV]
     : deps.createNativeBridgeKey ?? createNativeBridgeKey
-  const { key: nativeBridgeKey, env: isolated } = buildNativeBridgeChildEnvironment(env, { ...paths, agentsHome }, {
+  const { env: isolated } = buildNativeBridgeChildEnvironment(env, { ...paths, agentsHome }, {
     DSH_WORKSPACE: workspace,
     TRADELOOM_DSH_WORKSPACE: workspace,
     TEMP: paths.localAppData,
@@ -255,7 +248,7 @@ export async function bootstrapDesktop({ env, processEnv, appPath, resourcesPath
   }
   setProcessEnvironment(processEnv, isolated)
 
-  const { root: bootstrapRoot, manifest: rawManifest } = await readOwnedManifest({ resourcesPath, fs: deps.fs })
+  const rawManifest = await readOwnedStagedManifest({ resourcesPath, fs: deps.fs })
   const deployment = validateManifest(rawManifest, productRoot, workspace)
   const runtimePath = managed
     ? path.resolve(appPath, '..', '..')
@@ -267,8 +260,8 @@ export async function bootstrapDesktop({ env, processEnv, appPath, resourcesPath
   try {
     if (!managed) lockServer = await deps.reserveNamedPipe(lockName(paths.home, platform))
     const verifiedReceipt = await deps.verifyReceipt(runtimePath, deployment.lock, releaseRoot)
-    await ensureDesktopProfile(paths.home, runtimePath, deps.profileBundles, deps)
-    await assertOwnedDesktopProfile(paths.home, deps.profileBundles, deps.fs)
+    await initializeDesktopProfileIfMissing(paths.home, runtimePath, deps.profileBundles, deps)
+    await verifyDesktopProfileBundles(paths.home, deps.profileBundles, deps.fs)
     const expectedAppMainHash = managed
       ? verifiedReceipt?.compiledFiles?.['apps/desktop/lib/main.js']
       : deployment.appMainSha256

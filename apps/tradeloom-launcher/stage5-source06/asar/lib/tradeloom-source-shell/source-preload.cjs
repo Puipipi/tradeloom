@@ -65,6 +65,8 @@ contextBridge.exposeInMainWorld('app', Object.freeze({
     create: (sceneId, panelId) => call('create', sceneId, panelId),
     transfer: (sceneId, panelId) => call('transfer', sceneId, panelId),
     setBounds: (sceneId, panelId, bounds) => call('bounds', sceneId, panelId, bounds),
+    beginRoleGeometryMotion: (sceneId, panelId, deadline) => call('beginRoleGeometryMotion', sceneId, panelId, deadline),
+    finishRoleGeometryMotion: (sceneId, panelId, token, bounds) => call('finishRoleGeometryMotion', sceneId, panelId, token, bounds),
     setVisible: (sceneId, panelId, visible) => call('visible', sceneId, panelId, visible),
     popOut: (sceneId, panelId) => call('rolePopOut', sceneId, panelId),
     returnToDock: (sceneId, panelId) => call('roleReturnToDock', sceneId, panelId),

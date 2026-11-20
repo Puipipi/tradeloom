@@ -538,17 +538,103 @@
     return expandedRect.right <= panelRect.left || expandedRect.left >= panelRect.right
   }
 
-  async function syncRole(record) {
-    if (state.sceneTransitionPending || !record.created || record.placement === 'popped-out' || !record.target) return
+  function waitForRoleGeometryResponse(request, timeoutMs) {
+    let timer
+    const timeout = new Promise(resolve => { timer = setTimeout(resolve, timeoutMs) })
+    return Promise.race([request, timeout]).finally(() => clearTimeout(timer))
+  }
+
+  window.addEventListener('tl:panel-geometry-motion', event => {
+    const record = state.roleRecord
+    const detail = event.detail
+    const api = app?.harnessSurface
+    if (!record || detail?.panel !== record.panel || !api?.beginRoleGeometryMotion
+      || record.uiSceneId !== 'agent-center' || record.target?.sceneId !== 'agent-center'
+      || record.target?.panelId !== 'native-chat' || record.geometryMotion) return
+
+    const current = () => isCurrentRole(record) && record.created && !state.sceneTransitionPending
+      && !record.placementPending && record.placement === 'docked' && record.status === 'context-mounted'
+    if (!current() || record.visible === false || !nativePaneVisible(record.panel)) return
+
+    const { sceneId, panelId } = record.target
+    const motion = {}
+    detail.hold = record.geometryMotion = motion
+    record.syncRevision++
+    const startTimeoutMs = 48
+    const deadline = Date.now() + startTimeoutMs
+    const request = Promise.resolve(record.syncQueue).catch(() => {}).then(() => {
+      if (Date.now() < deadline && current() && nativePaneVisible(record.panel)) {
+        return api.beginRoleGeometryMotion(sceneId, panelId, deadline)
+      }
+    }).catch(() => undefined)
+    motion.ready = waitForRoleGeometryResponse(request, startTimeoutMs).then(token => {
+      if (token) return token
+      if (record.geometryMotion === motion) {
+        record.geometryMotion = undefined
+        if (current()) void syncRole(record)
+      }
+      // The shell may already be moving when a delayed acknowledgement arrives.
+      void request.then(async lateToken => {
+        if (!lateToken) return
+        await waitForRoleGeometryResponse(api.finishRoleGeometryMotion(sceneId, panelId, lateToken), 120)
+        if (current()) void syncRole(record)
+      }).catch(() => {})
+    })
+    let finished = false
+    const fallback = setTimeout(() => { void motion.finish(false).catch(() => {}) }, 1000)
+    motion.finish = async settled => {
+      if (finished) return
+      finished = true
+      clearTimeout(fallback)
+      let revealed = false
+      try {
+        const token = await motion.ready
+        if (!token) return
+        let bounds
+        if (settled && current() && nativePaneVisible(record.panel)) {
+          const { x, y, width, height } = record.content.getBoundingClientRect()
+          if (width > 0 && height > 0) bounds = { x, y, width, height }
+        }
+        revealed = await waitForRoleGeometryResponse(
+          api.finishRoleGeometryMotion(sceneId, panelId, token, bounds), 120,
+        ) === true
+      } finally {
+        if (motion.visibilitySync) await waitForRoleGeometryResponse(motion.visibilitySync, 120)
+        if (record.geometryMotion === motion) {
+          record.geometryMotion = undefined
+          if (current()) {
+            // A shell overlay can open while Main is acknowledging the reveal.
+            // Reuse any ordinary hide already queued for it.
+            if (!revealed && record.visible !== false) record.visible = undefined
+            if (revealed && record.visible === undefined && !motion.visibilitySync) record.visible = true
+            if (!revealed || record.visible !== true || !nativePaneVisible(record.panel)) void syncRole(record)
+          }
+        }
+      }
+    }
+  })
+
+  async function syncRole(record, { reportError = true } = {}) {
+    const motion = record.geometryMotion
+    if (motion && nativePaneVisible(record.panel)) return
+    if (state.sceneTransitionPending || !record.created || record.placementPending || record.placement === 'popped-out' || !record.target) return
     const revision = ++record.syncRevision
+    const isCurrentDock = () => !state.sceneTransitionPending && isCurrentRole(record) && revision === record.syncRevision
+      && !record.placementPending && record.placement !== 'popped-out'
     record.syncQueue = Promise.resolve(record.syncQueue).catch(() => {}).then(async () => {
-      if (!isCurrentRole(record) || revision !== record.syncRevision || record.placement === 'popped-out') return
-      const rect = record.content.getBoundingClientRect()
-      const visible = nativePaneVisible(record.panel) && rect.width > 0 && rect.height > 0
+      if (!isCurrentDock()) return
+      const paneVisible = nativePaneVisible(record.panel)
+      if (record.geometryMotion && paneVisible) return
+      const rect = paneVisible ? record.content.getBoundingClientRect() : undefined
+      const visible = rect && rect.width > 0 && rect.height > 0
       if (!visible) {
         if (record.visible !== false) {
-          try { await app.harnessSurface.setVisible(record.target.sceneId, record.target.panelId, false); record.visible = false }
-          catch { record.note.textContent = '原生助手暂时不可用。'; record.note.dataset.state = 'error' }
+          try {
+            await app.harnessSurface.setVisible(record.target.sceneId, record.target.panelId, false)
+            if (isCurrentDock()) record.visible = false
+          } catch {
+            if (reportError && isCurrentDock()) { record.note.textContent = '原生助手暂时不可用。'; record.note.dataset.state = 'error' }
+          }
         }
         return
       }
@@ -558,18 +644,19 @@
         // overlay that opens while setVisible(true) is pending must enqueue false.
         record.visible = undefined
         const applied = await app.harnessSurface.setBounds(record.target.sceneId, record.target.panelId, bounds)
-        if (state.sceneTransitionPending || !isCurrentRole(record) || revision !== record.syncRevision || record.status !== 'context-mounted') return
+        if (!isCurrentDock() || record.status !== 'context-mounted') return
         if (applied?.alreadyVisible !== true) {
           await app.harnessSurface.setVisible(record.target.sceneId, record.target.panelId, true)
         }
-        if (isCurrentRole(record) && revision === record.syncRevision) record.visible = true
+        if (isCurrentDock()) record.visible = true
       } catch {
-        if (isCurrentRole(record) && revision === record.syncRevision) {
+        if (reportError && isCurrentDock()) {
           record.note.textContent = '原生助手暂时不可用。'
           record.note.dataset.state = 'error'
         }
       }
     })
+    if (motion) motion.visibilitySync = record.syncQueue
     return record.syncQueue
   }
 
@@ -610,6 +697,8 @@
     if (record.placementPending) return { ok: false, reason: 'pending' }
     if (intent !== 'toggle' && intent !== 'open') return { ok: false, reason: 'unsupported' }
     record.placementPending = true
+    record.syncRevision++
+    let resyncOptions
     const button = record.placementButton
     if (button) button.disabled = true
     try {
@@ -623,17 +712,21 @@
       if (record.placement === 'popped-out') {
         record.note.textContent = '助手已在独立窗口中打开。'
         record.note.dataset.state = 'ready'
-      } else void syncRole(record)
+      } else resyncOptions = { reportError: true }
       updatePlacementButton(record)
       return { ok: true, placement: record.placement }
     } catch {
       if (isCurrentRole(record)) {
+        if (record.status === 'context-mounted' && record.placement !== 'popped-out') {
+          resyncOptions = { reportError: false }
+        }
         record.note.textContent = '独立窗口操作暂不可用。'
         record.note.dataset.state = 'error'
       }
       return { ok: false, reason: 'unavailable' }
     } finally {
       record.placementPending = false
+      if (resyncOptions) void syncRole(record, resyncOptions)
       if (button?.isConnected) button.disabled = false
     }
   }
@@ -858,7 +951,7 @@
       if (isCurrentRole(record)) { record.status = 'error'; note.textContent = '原生助手暂时不可用。'; note.dataset.state = 'error' }
     })
     if (!state.roleObserver && typeof ResizeObserver === 'function') {
-      state.roleObserver = new ResizeObserver(() => { const active = state.roleRecord; if (active) void syncRole(active) })
+      state.roleObserver = new ResizeObserver(() => { const active = state.roleRecord; if (active && !active.geometryMotion) void syncRole(active) })
       const grid = document.getElementById('grid')
       if (grid) state.roleObserver.observe(grid)
     }

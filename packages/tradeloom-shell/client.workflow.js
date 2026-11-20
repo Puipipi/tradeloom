@@ -51,6 +51,15 @@ window.__ModuleLoader__.load({
       return `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`
     }
 
+    const emptyResumeView = { resumePlan: null, resumeIntent: null, resumeAccepted: false }
+
+    function emptyNativeRunView() {
+      return {
+        phase: 'idle', prepared: null, intent: null, run: null, records: [], canvasProjection: null,
+        cancelOperation: null, cancellation: null, ...emptyResumeView, error: '', blocked: false,
+      }
+    }
+
     // initial 仅供测试注入初始状态；正常挂载时从宿主路由加载。
     function WorkflowCanvas({ modelGroups = [], initial = null }) {
       const [catalog, setCatalog] = React.useState(initial?.catalog ?? null)
@@ -86,7 +95,7 @@ window.__ModuleLoader__.load({
 
 
       // Native runs have their own identity and lifecycle; the mock canvas run stays untouched.
-      const [native, setNative] = React.useState({ open: false, phase: 'idle', prepared: null, intent: null, run: null, records: [], canvasProjection: null, resumePlan: null, resumeIntent: null, resumeAccepted: false, error: '', blocked: false })
+      const [native, setNative] = React.useState(() => ({ open: false, ...emptyNativeRunView() }))
       const nativeRef = React.useRef(native)
       const nativeFlight = React.useRef(false)
       const nativeGeneration = React.useRef(0)
@@ -112,7 +121,7 @@ window.__ModuleLoader__.load({
       }
       React.useEffect(() => {
         stopNativeObservation()
-        patchNative({ prepared: null, intent: null, run: null, records: [], canvasProjection: null, cancelOperation: null, cancellation: null, resumePlan: null, resumeIntent: null, resumeAccepted: false, phase: 'idle', error: '', blocked: false })
+        patchNative(emptyNativeRunView())
         return stopNativeObservation
       }, [nativeSignature, dirty, Boolean(draft)])
       React.useEffect(() => () => {
@@ -137,7 +146,7 @@ window.__ModuleLoader__.load({
             || value.version.source?.seq !== item.sourceSessionSeq || value.version.source?.index !== item.fileIndex
             || !['ready', 'unavailable'].includes(value.version.availability)) throw new Error('import-failed')
           const downloadUrl = value.version.availability === 'ready' && typeof value.version.downloadUrl === 'string'
-            && value.version.downloadUrl.startsWith('/tradeloom/workflows/native/artifacts?') ? value.version.downloadUrl : null
+            && value.version.downloadUrl.startsWith('/tradeloom/workflows/native/artifact?') ? value.version.downloadUrl : null
           if (!controller.signal.aborted) setArtifactImports(current => ({ ...current, [key]: { status: 'registered', version: { ...value.version, downloadUrl } } }))
         } catch {
           if (!controller.signal.aborted) setArtifactImports(current => ({ ...current, [key]: { status: 'failed' } }))
@@ -182,8 +191,8 @@ window.__ModuleLoader__.load({
           && ['resume_blocked', 'resume_plan_conflict', 'resume_revision_conflict', 'operation_conflict'].includes(error.code)
         const blocked = error.status === 403 || error.status === 401 || error.status === 409 && !resumeConflict
         patchNative({ phase: 'error', error: nativeErrorText(error.code), blocked,
-          ...(blocked ? { prepared: null, intent: null, resumePlan: null, resumeIntent: null, resumeAccepted: false } : {}),
-          ...(resumeConflict ? { resumePlan: null, resumeIntent: null, resumeAccepted: false } : {}) })
+          ...(blocked ? { prepared: null, intent: null, ...emptyResumeView } : {}),
+          ...(resumeConflict ? emptyResumeView : {}) })
       }
       async function nativeRequest(action, body, accept) {
         if (nativeFlight.current) return
@@ -220,7 +229,7 @@ window.__ModuleLoader__.load({
           return
         }
         stopNativeObservation()
-        patchNative({ open: true, phase: 'preparing', prepared: null, intent: null, run: null, records: [], canvasProjection: null, cancelOperation: null, cancellation: null, resumePlan: null, resumeIntent: null, resumeAccepted: false, error: '', blocked: false })
+        patchNative({ ...emptyNativeRunView(), open: true, phase: 'preparing' })
         void nativeRequest('prepare', { workflowId: doc.id }, value => {
           const prepared = value.prepared
           const nodes = prepared?.graph?.nodes ?? (prepared?.node ? [prepared.node] : [])
@@ -333,11 +342,14 @@ window.__ModuleLoader__.load({
         }
         return value
       }
+      function scheduleNativeObservation(runId, expected, count = 0, delayMs = 1000) {
+        nativeTimer.current = setTimeout(() => observeNative(runId, expected, count), delayMs)
+      }
       function observeNative(runId, expected, count = 0) {
         void nativeRequest('get', { runId }, value => {
           const result = checkNativeRun(value.run, { ...expected, id: runId })
           patchNative({ run: result, phase: result.settled ? 'settled' : count >= 29 ? 'paused' : 'observing', error: '' })
-          if (!result.settled && count < 29) nativeTimer.current = setTimeout(() => observeNative(runId, result, count + 1), document.hidden ? 4000 : 1000)
+          if (!result.settled && count < 29) scheduleNativeObservation(runId, result, count + 1, document.hidden ? 4000 : 1000)
         })
       }
       function submitNative() {
@@ -354,10 +366,10 @@ window.__ModuleLoader__.load({
             definitionRevision: intent.expectedDefinitionRevision, bindingRevision: intent.expectedBindingRevision,
             sessionId: state.prepared.center.sessionId, nodes: state.prepared.nodes,
           } })
-          nativeTimer.current = setTimeout(() => observeNative(value.submission.runId, {
+          scheduleNativeObservation(value.submission.runId, {
             sessionId: state.prepared.center.sessionId, definitionRevision: intent.expectedDefinitionRevision, bindingRevision: intent.expectedBindingRevision,
             nodes: state.prepared.nodes,
-          }), 1000)
+          })
         })
       }
       function nativeRunIdentity(state) {
@@ -376,7 +388,7 @@ window.__ModuleLoader__.load({
         void nativeRequest('cancel', { runId: state.run.id, operationId }, value => {
           if (value.operationId !== operationId || value.cancellation?.runId !== state.run.id || value.cancellation.settled !== false) throw Object.assign(new Error('cancel'), { code: 'invalid_native_response' })
           patchNative({ phase: 'cancel-requested', cancellation: value.cancellation })
-          nativeTimer.current = setTimeout(() => observeNative(state.run.id, nativeRunIdentity(state)), 1000)
+          scheduleNativeObservation(state.run.id, nativeRunIdentity(state))
         })
       }
       function prepareNativeResume() {
@@ -389,7 +401,7 @@ window.__ModuleLoader__.load({
         if (nativeFlight.current === 'get') stopNativeObservation()
         if (nativeFlight.current) return
         stopNativeObservation()
-        patchNative({ phase: 'preparing-resume', resumePlan: null, resumeIntent: null, resumeAccepted: false, error: '' })
+        patchNative({ phase: 'preparing-resume', ...emptyResumeView, error: '' })
         void nativeRequest('prepare_resume', { runId: state.run.id }, value => {
           const plan = value.preparedResume
           const known = new Set(state.run.nodes.map(node => node.id))
@@ -421,7 +433,7 @@ window.__ModuleLoader__.load({
           if (value.operationId !== intent.operationId || value.resumption?.runId !== intent.runId || value.resumption.accepted !== true
             || value.resumption.settled !== false || typeof value.resumption.reused !== 'boolean') throw Object.assign(new Error('resume acknowledgement'), { code: 'invalid_native_response' })
           patchNative({ phase: 'resume-accepted', resumeAccepted: true, error: '' })
-          nativeTimer.current = setTimeout(() => observeNative(intent.runId, nativeRunIdentity(state)), 1000)
+          scheduleNativeObservation(intent.runId, nativeRunIdentity(state))
         })
       }
       function listNative(event) {
@@ -872,7 +884,7 @@ window.__ModuleLoader__.load({
             node.error && h('p', null, nativeErrorText(node.error))))),
         native.phase === 'listed' && native.records.length === 0 && h('p', null, '当前绑定未返回原生记录。'),
         native.records.length > 0 && h('ul', { 'aria-label': '当前绑定的原生运行记录' }, native.records.map((record, index) => h('li', { key: record.id },
-          h('button', { type: 'button', 'aria-label': `查看原生记录 ${index + 1}`, disabled: nativeBusy || native.blocked || resumeUnknown, onClick: () => { patchNative({ run: record, prepared: null, intent: null, cancelOperation: null, cancellation: null, resumePlan: null, resumeIntent: null, resumeAccepted: false }); observeNative(record.id, record) } }, `原生记录 ${index + 1} · ${nativeStatusLabels[record.status] ?? '状态未知'}`)))),
+          h('button', { type: 'button', 'aria-label': `查看原生记录 ${index + 1}`, disabled: nativeBusy || native.blocked || resumeUnknown, onClick: () => { patchNative({ run: record, prepared: null, intent: null, cancelOperation: null, cancellation: null, ...emptyResumeView }); observeNative(record.id, record) } }, `原生记录 ${index + 1} · ${nativeStatusLabels[record.status] ?? '状态未知'}`)))),
         h('p', null, '提供方 / 模型：未知。文件声明不代表可预览或下载。'))
 
       // Toolbar menus stay within their own canvas; no workspace-wide overlay or hidden command.

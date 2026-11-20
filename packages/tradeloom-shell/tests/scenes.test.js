@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { HOME_MARKER, HOME_MARKER_VALUE, ROLE_IDS, createStateStore } from '../state.js'
 import { createScenesHandler } from '../host.js'
-import { defaultSceneWorkbench } from '../scene-layout.js'
+import { defaultSceneWorkbench, sceneConfigurationRevision } from '../scene-layout.js'
 import { normalizeDockLayouts } from '../dock-layout.js'
 import { pathToFileURL } from 'node:url'
 import { publicRoleMetadata } from '../roles.js'
@@ -67,7 +67,8 @@ test('scene JSON defines role-bound 4x4 grids and maps all known business routes
       ['assistant-user-profile', 'native-chat', 1, 3, 1, 2], ['native-workspace', 'native-workspace', 1, 1, 2, 2],
     ],
     'agent-center': [
-      ['business-main', 'business-iframe', 1, 1, 3, 2], ['files', 'business-iframe', 4, 1, 1, 2],
+      ['business-main', 'business-iframe', 2, 1, 2, 2], ['business-plan', 'business-iframe', 1, 1, 1, 2],
+      ['files', 'business-iframe', 4, 1, 1, 2],
       ['preview', 'business-iframe', 1, 3, 1, 2], ['native-chat', 'native-chat', 2, 3, 3, 2],
       ['assistant-product', 'native-chat', 1, 3, 1, 2], ['assistant-delivery', 'native-chat', 1, 3, 1, 2],
       ['assistant-user-profile', 'native-chat', 1, 3, 1, 2], ['native-workspace', 'native-workspace', 1, 1, 2, 2],
@@ -96,7 +97,7 @@ test('scene JSON defines role-bound 4x4 grids and maps all known business routes
     ],
   }
   assert.deepEqual(config.scenes.map(scene => [scene.id, scene.panels.map(panel => [panel.id, panel.type, panel.col, panel.row, panel.w, panel.h])]),
-    Object.entries(reviewedPanelLayouts), 'each R76 scene keeps its reviewed panel identities, types, and grid geometry')
+    Object.entries(reviewedPanelLayouts), 'each scene keeps its configured panel identities, types, and grid geometry')
   for (const scene of config.scenes) {
     assert.deepEqual(new Set(scene.panels.map(panel => panel.id)).size, scene.panels.length)
     const business = scene.panels.find(panel => panel.id === 'business-main')
@@ -1563,7 +1564,10 @@ test('client entry passes the real Cordis context through to scene registration'
       serviceCtx.reflect.provide('modelDirectories', { directoryFor() { throw new Error('not used in this test') } })
       serviceCtx.reflect.provide('remote', { session: remoteSession, pluginInventory: {} })
       serviceCtx.reflect.provide('remote.session', remoteSession)
+      serviceCtx.reflect.provide('remote.skills', {})
       serviceCtx.reflect.provide('remote.pluginInventory', {})
+      serviceCtx.reflect.provide('remote.settings', {})
+      serviceCtx.reflect.provide('configForms', {})
       serviceCtx.reflect.provide('locale', {})
       serviceCtx.reflect.provide('theme', theme)
     },
@@ -2591,8 +2595,10 @@ test('scene config endpoint returns editable scenes and the live business origin
   assert.equal(res.statusCode, 200)
   assert.equal(res.headers['cache-control'], 'no-store')
   const body = JSON.parse(res.body)
+  const expectedConfig = JSON.parse(expected)
   assert.deepEqual(body, {
-    ...JSON.parse(expected), businessOrigin: 'http://192.168.1.23:3088',
+    ...expectedConfig, businessOrigin: 'http://192.168.1.23:3088',
+    configurationRevision: sceneConfigurationRevision(expectedConfig),
     roles: publicRoleMetadata(), sessionBindings: {}, sessionBindingMetadata: {},
   })
   assert.ok(body.roles.every(role => Object.keys(role).sort().join(',') === 'assistantLabel,id,label'))

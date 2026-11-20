@@ -15,11 +15,19 @@ function exactKeys(value, keys) {
   return isRecord(value) && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key))
 }
 
-function normalizeKinds(value) {
+function validKinds(value) {
+  return Array.isArray(value) && value.length <= NODE_KINDS.size
+    && value.every(kind => typeof kind === 'string' && NODE_KINDS.has(kind))
+    && new Set(value).size === value.length
+}
+
+function validPageSize(value) {
+  return Number.isSafeInteger(value) && value >= 1 && value <= MAX_PAGE_SIZE
+}
+
+function normalizeQueryKinds(value) {
   if (value === undefined || value === null) return null
-  if (!Array.isArray(value) || value.length > NODE_KINDS.size
-    || value.some(kind => typeof kind !== 'string' || !NODE_KINDS.has(kind))
-    || new Set(value).size !== value.length) throw graphError('invalid_arguments')
+  if (!validKinds(value)) throw graphError('invalid_arguments')
   return [...value].sort()
 }
 
@@ -33,11 +41,9 @@ function validateCursorValue(value) {
     || !['profileRevision', 'handoffRevision', 'progressTotal', 'decisionTotal', 'offset']
       .every(key => Number.isSafeInteger(value[key]) && value[key] >= 0)
     || typeof value.text !== 'string' || value.text.length > MAX_QUERY_TEXT
-    || (value.kinds !== null && (!Array.isArray(value.kinds) || value.kinds.length > NODE_KINDS.size
-      || value.kinds.some(kind => typeof kind !== 'string' || !NODE_KINDS.has(kind))
-      || new Set(value.kinds).size !== value.kinds.length
+    || (value.kinds !== null && (!validKinds(value.kinds)
       || JSON.stringify(value.kinds) !== JSON.stringify([...value.kinds].sort())))
-    || !Number.isSafeInteger(value.pageSize) || value.pageSize < 1 || value.pageSize > MAX_PAGE_SIZE) {
+    || !validPageSize(value.pageSize)) {
     throw graphError('scene_graph_cursor_invalid')
   }
   return value
@@ -59,12 +65,12 @@ function normalizeQuery(raw = {}) {
     throw graphError('invalid_arguments')
   }
   if (raw.text !== undefined && (typeof raw.text !== 'string' || raw.text.length > MAX_QUERY_TEXT)) throw graphError('invalid_arguments')
-  if (raw.pageSize !== undefined && (!Number.isSafeInteger(raw.pageSize) || raw.pageSize < 1 || raw.pageSize > MAX_PAGE_SIZE)) {
+  if (raw.pageSize !== undefined && !validPageSize(raw.pageSize)) {
     throw graphError('invalid_arguments')
   }
   const supplied = {
     text: raw.text ?? '',
-    kinds: normalizeKinds(raw.kinds),
+    kinds: normalizeQueryKinds(raw.kinds),
     pageSize: raw.pageSize ?? DEFAULT_PAGE_SIZE,
   }
   if (raw.cursor === undefined) return { ...supplied, offset: 0, cursor: null }

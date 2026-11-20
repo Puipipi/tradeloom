@@ -2,7 +2,7 @@ window.__ModuleLoader__.load({
   id: '@tradeloom/dsh-business-shell', chunk: 'client.scene-memory.js',
   factory(require) {
     const React = require('react'), h = React.createElement
-    const same = (a, b) => a && b && Object.keys(a).length === Object.keys(b).length && Object.keys(b).every(key => a[key] === b[key])
+    const matchesSurfaceDescriptor = (a, b) => a && b && Object.keys(a).length === Object.keys(b).length && Object.keys(b).every(key => a[key] === b[key])
     function register(ctx, descriptor, bridge, reportNotice) {
       if (descriptor.kind !== 'role' || descriptor.surface !== 'chat') return
       const expected = Object.freeze({ ...descriptor })
@@ -15,7 +15,7 @@ window.__ModuleLoader__.load({
         const lifetime = React.useRef(null), sequence = React.useRef(0)
         React.useEffect(() => {
           const controller = new AbortController(); lifetime.current = controller
-          const stop = bridge.onNativeSurfaceChanged(next => { if (!same(next, expected)) { lifetime.current.abort(); if (!next) lifetime.current = new AbortController(); sequence.current++; setOpen(false) } })
+          const stop = bridge.onNativeSurfaceChanged(next => { if (!matchesSurfaceDescriptor(next, expected)) { lifetime.current.abort(); if (!next) lifetime.current = new AbortController(); sequence.current++; setOpen(false) } })
           return () => { lifetime.current.abort(); sequence.current++; stop() }
         }, [])
         // The existing parent panel menu sends a fixed, Main-checked UI intent.
@@ -25,24 +25,24 @@ window.__ModuleLoader__.load({
           if (sessionId !== expected.sessionId) return
           let active = true
           const stopIntent = bridge.onNativeUtilityRequested(request => {
-            if (!active || request?.action !== 'scene-memory' || !same(request.descriptor, expected)) return
+            if (!active || request?.action !== 'scene-memory' || !matchesSurfaceDescriptor(request.descriptor, expected)) return
             void Promise.resolve(bridge.nativeSurfaceDescriptor()).then(current => {
-              if (!active || !same(current, expected)) return
+              if (!active || !matchesSurfaceDescriptor(current, expected)) return
               return menuAction.current?.()
             }).catch(() => { if (active) reportNotice?.('当前会话操作未完成，请重新打开菜单。') })
           })
           return () => { active = false; stopIntent() }
         }, [sessionId])
         async function request(input) {
-          if (lifetime.current?.signal.aborted || sessionId !== expected.sessionId || !same(await bridge.nativeSurfaceDescriptor(), expected)) throw Error('当前场景绑定已变化，请重新打开面板。')
+          if (lifetime.current?.signal.aborted || sessionId !== expected.sessionId || !matchesSurfaceDescriptor(await bridge.nativeSurfaceDescriptor(), expected)) throw Error('当前场景绑定已变化，请重新打开面板。')
           const body = JSON.stringify({ id: crypto.randomUUID(), ...input }), bodyBytes = new TextEncoder().encode(body)
           const grant = await bridge.issueSceneMemoryOriginGrant({ endpoint: 'tradeloom/scene-memory', httpMethod: 'POST', bodyBytes })
-          if (!grant?.token || lifetime.current.signal.aborted || !same(await bridge.nativeSurfaceDescriptor(), expected)) throw Error('场景身份确认失败。')
+          if (!grant?.token || lifetime.current.signal.aborted || !matchesSurfaceDescriptor(await bridge.nativeSurfaceDescriptor(), expected)) throw Error('场景身份确认失败。')
           const response = await fetch('/tradeloom/scene-memory', { method: 'POST', credentials: 'same-origin', signal: lifetime.current.signal,
             headers: { 'content-type': 'application/json', 'x-tradeloom-origin': grant.token }, body })
           const result = await response.json()
           if (!response.ok || result.ok !== true) throw Error(result.error_code || 'scene_memory_unavailable')
-          if (lifetime.current.signal.aborted || !same(await bridge.nativeSurfaceDescriptor(), expected)) throw Error('场景绑定已变化，结果未应用。')
+          if (lifetime.current.signal.aborted || !matchesSurfaceDescriptor(await bridge.nativeSurfaceDescriptor(), expected)) throw Error('场景绑定已变化，结果未应用。')
           return result.result
         }
         async function load(cursor) {
@@ -68,23 +68,23 @@ window.__ModuleLoader__.load({
             if (navigation?.kind === 'bound-role') {
               if (navigation.sessionId !== expected.sessionId || navigation.sceneId !== expected.sceneId
                 || navigation.roleId !== expected.roleId || navigation.bindingRevision !== expected.bindingRevision
-                || !same(await bridge.nativeSurfaceDescriptor(), expected)) throw Error('场景目标已变化，未执行跳转。')
+                || !matchesSurfaceDescriptor(await bridge.nativeSurfaceDescriptor(), expected)) throw Error('场景目标已变化，未执行跳转。')
               // This is the real Main account-sidebar route: it revalidates
               // role ownership and resolves the current saved scene/panel
               // binding before the source-shell openBoundSession consumer.
               await bridge.accountSidebarCommand({ generation: expected.generation, accountGeneration: expected.accountGeneration,
                 command: { action: 'openSession', target: navigation.sessionId } })
-              if (lifetime.current?.signal.aborted || !same(await bridge.nativeSurfaceDescriptor(), expected)) throw Error('场景绑定已变化。')
+              if (lifetime.current?.signal.aborted || !matchesSurfaceDescriptor(await bridge.nativeSurfaceDescriptor(), expected)) throw Error('场景绑定已变化。')
               setOpen(false)
             } else if (navigation?.kind === 'skill') {
-              if (navigation.roleId !== expected.roleId || navigation.sessionId !== expected.sessionId || !same(await bridge.nativeSurfaceDescriptor(), expected)) throw Error('技能所属会话已变化。')
+              if (navigation.roleId !== expected.roleId || navigation.sessionId !== expected.sessionId || !matchesSurfaceDescriptor(await bridge.nativeSurfaceDescriptor(), expected)) throw Error('技能所属会话已变化。')
               // Existing production skills-open re-resolves the user-invocable
               // skill in this actual Agent scope, checks binding and filesystem
               // mapping twice, then uses sessionController.openWorkspacePath.
               const response = await fetch('/tradeloom/skills/open', { method: 'POST', credentials: 'same-origin', signal: lifetime.current.signal,
                 headers: { 'content-type': 'application/json' }, body: JSON.stringify({ role: expected.roleId, expectedSessionId: expected.sessionId, name: navigation.name, target: 'body' }) })
               const opened = await response.json()
-              if (!response.ok || opened.status !== 'handed-off' || !same(await bridge.nativeSurfaceDescriptor(), expected)) throw Error('技能不可用、未获授权或所属会话已变化。')
+              if (!response.ok || opened.status !== 'handed-off' || !matchesSurfaceDescriptor(await bridge.nativeSurfaceDescriptor(), expected)) throw Error('技能不可用、未获授权或所属会话已变化。')
             } else if (navigation?.kind === 'record') setSelectedRecord(navigation.record)
             else setError('此引用类型尚无已授权的打开入口；未打开其它场景、会话或文件。')
           } catch (failure) { if (!lifetime.current?.signal.aborted) setError(failure.message) }
