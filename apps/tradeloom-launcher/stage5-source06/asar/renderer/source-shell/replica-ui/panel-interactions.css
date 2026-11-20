@@ -171,6 +171,12 @@
   cursor: pointer;
 }
 
+.pi-menu-item > .replica-line-icon {
+  display: inline-block;
+  vertical-align: middle;
+  margin-inline-end: 6px;
+}
+
 .pi-menu-item:hover,
 .pi-menu-item:focus-visible {
   background: var(--bg-panel-hover);

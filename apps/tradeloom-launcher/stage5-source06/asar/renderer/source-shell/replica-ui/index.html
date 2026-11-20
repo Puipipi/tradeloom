@@ -23,12 +23,14 @@
       </span>
     </div>
     <div class="titlebar-controls">
-      <button class="tb-btn" id="btn-theme" title="外观：深色 / 浅色 / 跟随系统">🌙</button>
+      <button class="tb-btn" id="btn-theme" title="外观：深色 / 浅色 / 跟随系统" aria-label="切换外观" data-theme-icon="dark" data-theme-effective="dark">
+        <svg class="theme-icon theme-icon-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20.3 15.4A8.5 8.5 0 0 1 8.6 3.7 8.6 8.6 0 1 0 20.3 15.4Z"/></svg>
+        <svg class="theme-icon theme-icon-light" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg>
+        <span class="theme-auto-badge" aria-hidden="true">A</span>
+      </button>
       <span class="tb-sep"></span>
-      <button class="tb-btn" id="btn-refresh" title="刷新当前场景（热更新渲染器）">⟳</button>
-      <button class="tb-btn" id="btn-plugins" title="查看已安装插件">🧩</button>
-      <button class="tb-btn" id="btn-tools" title="工具（Tools）：查看引擎原有与新增工具">🛠</button>
-      <button class="tb-btn" id="btn-models" title="查看模型与提供方">🤖</button>
+      <button class="tb-btn" id="btn-refresh" title="刷新当前场景（热更新渲染器）" aria-label="刷新当前场景"><svg class="replica-line-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 11a8 8 0 1 0-2 6M20 4v7h-7"/></svg></button>
+      <button class="tb-btn" id="btn-tools" title="工作台工具" aria-label="工作台工具"><svg class="replica-line-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 7h16v13H4zM8 7V4h8v3M4 11h16M10 11v2h4v-2"/></svg></button>
       <button class="tb-btn" id="btn-market" title="DSH 集市">🛍</button>
       <button class="tb-btn" id="btn-donate" title="赞助小鱼干">🐟</button>
       <span class="tb-sep"></span>

@@ -44,11 +44,9 @@
       </button>
       <span class="tb-sep"></span>
       <button class="tb-btn tb-btn-compact" id="btn-mobile" title="手机连接" aria-label="手机连接"><svg width="14" height="18" viewBox="0 0 14 18" aria-hidden="true" focusable="false"><rect x="2" y="1.5" width="10" height="15" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M5.5 13.8h3" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></button>
-      <button class="tb-btn tb-btn-compact" id="btn-settings" title="设置" aria-label="设置">⚙</button>
-      <button class="tb-btn" id="btn-refresh" title="刷新当前场景（热更新渲染器）">⟳</button>
-      <button class="tb-btn" id="btn-plugins" title="插件目录">🧩</button>
-      <button class="tb-btn" id="btn-tools" title="工作台工具">🛠</button>
-      <button class="tb-btn" id="btn-models" title="模型与提供方">🤖</button>
+      <button class="tb-btn tb-btn-compact" id="btn-settings" title="设置" aria-label="设置"><svg class="replica-line-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 3h4l.5 2 2 1 2-.5 2 3.5-1.5 1.5v2l1.5 1.5-2 3.5-2-.5-2 1-.5 2H8l-.5-2-2-1-2 .5-2-3.5L3 12v-2L1.5 8.5l2-3.5 2 .5 2-1Z" transform="translate(1 -1) scale(.9)"/><circle cx="10" cy="10" r="3"/></svg></button>
+      <button class="tb-btn" id="btn-refresh" title="刷新当前场景（热更新渲染器）" aria-label="刷新当前场景"><svg class="replica-line-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 11a8 8 0 1 0-2 6M20 4v7h-7"/></svg></button>
+      <button class="tb-btn" id="btn-tools" title="工作台工具" aria-label="工作台工具"><svg class="replica-line-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 7h16v13H4zM8 7V4h8v3M4 11h16M10 11v2h4v-2"/></svg></button>
       <span class="tb-sep"></span>
       </div>
       <button class="tb-btn toolbar-overflow-trigger" id="btn-toolbar-overflow" type="button" aria-label="更多工具栏操作" title="更多操作" aria-haspopup="menu" aria-expanded="false" aria-controls="toolbar-overflow-menu" hidden>
@@ -118,6 +116,7 @@
   <script src="replica-ui/scenes-data.js"></script>
   <script src="replica-ui/business-file-bridge.js"></script>
   <script src="replica-ui/business-bridge.js"></script>
+  <script src="replica-ui/panel-tabs.js"></script>
   <script src="replica-ui/renderer.js"></script>
   <script src="replica-ui/panel-interactions.js"></script>
   <script src="replica-ui/native-account-controls.js"></script>

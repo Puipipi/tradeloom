@@ -122,6 +122,31 @@ def verify_installer(path,expected):
     if total!=expected['bytes'] or actual!=expected['sha512']:raise ValueError('cached/downloaded installer size or SHA512 mismatch; preserved without replacement')
     return {'bytes':total,'sha512':actual,**build.file_pin(path)}
 
+AUTHENTICODE_COMMAND = r"""
+$ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Security/Microsoft.PowerShell.Security.psd1')
+$signature = Get-AuthenticodeSignature -LiteralPath $env:TRADELOOM_INSTALLER_VERIFY_PATH
+[pscustomobject]@{
+    status = $signature.Status.ToString()
+    subject = $signature.SignerCertificate.Subject
+    issuer = $signature.SignerCertificate.Issuer
+    thumbprint = $signature.SignerCertificate.Thumbprint
+} | ConvertTo-Json -Compress
+"""
+
+def inspect_installer_signature(path, run):
+    command = ['powershell.exe','-NoProfile','-NonInteractive','-Command',AUTHENTICODE_COMMAND]
+    env = {**os.environ, 'TRADELOOM_INSTALLER_VERIFY_PATH':str(path.absolute())}
+    return json.loads(run('installer-signature',command,env=env).decode('utf-8-sig'))
+
+def require_installer_publisher(signature, expected):
+    if not isinstance(expected,str) or not expected:
+        raise ValueError('reviewed publisher subject missing')
+    if not isinstance(signature,dict) or signature.get('status')!='Valid' or signature.get('subject')!=expected:
+        raise ValueError('official Authenticode/publisher verification failed')
+    return {**signature,'publisherExact':True}
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     for name in ['cache-root','work-root','output-root','python-packages','postgresql','plugin-seed']:parser.add_argument('--'+name,type=Path,required=True)
@@ -157,8 +182,8 @@ def main():
         build.replay.ordinary(parent)
     work.mkdir(parents=True)
     def write(name,value):build.replay.write_json(work/name,value)
-    def run(label,command):
-        result=subprocess.run([str(p) for p in command],capture_output=True,creationflags=subprocess.CREATE_NO_WINDOW)
+    def run(label,command,*,env=None):
+        result=subprocess.run([str(p) for p in command],capture_output=True,creationflags=subprocess.CREATE_NO_WINDOW,env=env)
         (work/(label+'.stdout.log')).write_bytes(result.stdout);(work/(label+'.stderr.log')).write_bytes(result.stderr)
         write(label+'.command.json',{'command':[str(p) for p in command],'actualExitCode':result.returncode})
         if result.returncode:raise RuntimeError(label+' failed; original outputs retained; inspect apply state/rollback if applicable; installer/application not launched')
@@ -171,7 +196,7 @@ def main():
     recipe_path,policy_path,program=resolve_release(feed);policy=program['acquisition'];installer_spec=program['upstream']['installer']
     if policy['entry']!=Path(__file__).resolve().relative_to(R).as_posix():raise ValueError('reviewed acquisition entry mismatch')
     build.validate_windows_branding(program['windowsBranding'],args.resource_editor)
-    source_paths=[Path(__file__).resolve(),R/policy['signatureScript'],R/policy['applyScript'],policy_path]
+    source_paths=[Path(__file__).resolve(),R/policy['applyScript'],policy_path]
     source_pins={p.relative_to(R).as_posix():build.file_pin(p) for p in source_paths}
     if apply_source_before is not None and source_pins[policy['applyScript']]!=apply_source_before:raise ValueError('apply source changed after early ownership check')
     if not cache.exists():cache.mkdir(parents=True)
@@ -190,7 +215,7 @@ def main():
                 target.write(block)
         verify_installer(partial,installer_spec);partial.rename(installer)
     identity=verify_installer(installer,installer_spec)
-    signature=json.loads(run('installer-signature',['powershell.exe','-NoProfile','-File',R/policy['signatureScript'],'-Path',installer,'-RecipePath',policy_path]).decode('utf-8-sig'))
+    signature=require_installer_publisher(inspect_installer_signature(installer,run),policy['publisherSubject'])
     vendor=cache/'extracted';reused_vendor=vendor.exists()
     if not reused_vendor:
         build.replay.ordinary(args.extractor)

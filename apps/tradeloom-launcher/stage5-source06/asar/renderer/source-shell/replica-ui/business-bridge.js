@@ -374,6 +374,22 @@
     return { path, basePath, route, scene, panel }
   }
 
+  function workflowTemplateRoute(sceneId) {
+    // A copy may display the canonical native surface in the same owned window.
+    // The Host configuration, rather than renderer metadata, supplies the binding.
+    const target = routeForPath('/agent-center')
+    const copy = state.config?.scenes.get(sceneId)
+    if (target?.scene.id !== 'agent-center' || target.panel.id !== 'business-main'
+      || !copy || copy.id === target.scene.id || copy.templateSceneId !== target.scene.id
+      || (copy.defaultBusinessPath && copy.defaultBusinessPath !== '/agent-center')
+      || (copy.defaultBusinessRoute && copy.defaultBusinessRoute !== '/agent-center')) return undefined
+    const standardPanels = [['business-main', '/agent-center'], ['files', '/artifacts#files'], ['preview', '/artifacts#preview']]
+    return [target.scene, copy].every(scene => standardPanels.every(([id, path]) => {
+      const panel = scene.panelMap.get(id)
+      return panel?.type === 'business-iframe' && panel.path === path && panel.componentId === undefined
+    })) ? target : undefined
+  }
+
   function renderBusinessPanel(meta, content, pathOverride, panelOverride) {
     const path = pathOverride || pathForScene(meta?.sceneId)
     if (!path || !allowedRoutes.has(path.split('#')[0])) {
@@ -407,12 +423,23 @@
       stateNode(content, '此业务页面尚未配置到桌面路由。', 'error')
       return () => content.replaceChildren()
     }
+    if (meta?.componentId) {
+      const scene = state.config.scenes.get(meta.sceneId)
+      const owner = scene?.panelMap.get(meta.hostPanelId)
+      if (!owner || owner.componentId !== meta.componentId || owner.type !== 'business-iframe' || owner.path !== path) {
+        stateNode(content, '场景组件未配置到此面板。', 'error')
+        return () => content.replaceChildren()
+      }
+      panelOverride = { sceneId: scene.id, panelId: owner.id }
+    }
     if (meta?.id === 'workflow-plan') {
       // Resolve only the explicitly registered plan panel. Never borrow canvas owner.
       const planScene = state.config.scenes.get(meta.sceneId)
       const planOwner = planScene?.panelMap.get('business-plan')
+      const planRouteMatches = planScene?.id === target.route.sceneId
+        || (path === '/agent-center' && workflowTemplateRoute(meta.sceneId)?.scene.id === target.route.sceneId)
       if (meta.hostPanelId !== 'business-plan' || !planOwner || planOwner.type !== 'business-iframe'
-        || planOwner.path !== path || planScene.id !== target.route.sceneId) {
+        || planOwner.path !== path || !planRouteMatches) {
         stateNode(content, '独立业务计划面板尚未配置。', 'error')
         return () => content.replaceChildren()
       }
@@ -514,7 +541,7 @@
   }
 
   function nativePaneVisible(panel) {
-    if (!panel?.isConnected || panel.hidden || getComputedStyle(panel).display === 'none') return false
+    if (!panel?.isConnected || panel.hidden || panel.classList.contains('pi-tab-inactive') || getComputedStyle(panel).display === 'none') return false
     // The native account sidebar is a topmost overlay. It covers the left
     // portion of the workspace; hiding an entire chat pane would also remove
     // its visible area to the right of the sidebar.
@@ -522,7 +549,7 @@
     if (document.body.classList.contains('titlebar-overflow-open')) return false
     const mask = byId('modal-mask')
     if (mask && getComputedStyle(mask).display !== 'none' && !mask.hidden) return false
-    if (document.querySelector('body > .theme-menu') || document.querySelector('.pi-menu')) return false
+    if (document.querySelector('body > .theme-menu, body > .mobile-link-popover') || document.querySelector('.pi-menu')) return false
     const expanded = [...document.querySelectorAll('#grid .panel-expanded, #grid .pi-maximized')]
       .filter(candidate => !candidate.hidden && getComputedStyle(candidate).display !== 'none')
       .sort((a, b) => {
@@ -538,17 +565,103 @@
     return expandedRect.right <= panelRect.left || expandedRect.left >= panelRect.right
   }
 
-  async function syncRole(record) {
-    if (state.sceneTransitionPending || !record.created || record.placement === 'popped-out' || !record.target) return
+  function waitForRoleGeometryResponse(request, timeoutMs) {
+    let timer
+    const timeout = new Promise(resolve => { timer = setTimeout(resolve, timeoutMs) })
+    return Promise.race([request, timeout]).finally(() => clearTimeout(timer))
+  }
+
+  window.addEventListener('tl:panel-geometry-motion', event => {
+    const record = state.roleRecord
+    const detail = event.detail
+    const api = app?.harnessSurface
+    if (!record || detail?.panel !== record.panel || !api?.beginRoleGeometryMotion
+      || record.uiSceneId !== 'agent-center' || record.target?.sceneId !== 'agent-center'
+      || record.target?.panelId !== 'native-chat' || record.geometryMotion) return
+
+    const current = () => isCurrentRole(record) && record.created && !state.sceneTransitionPending
+      && !record.placementPending && record.placement === 'docked' && record.status === 'context-mounted'
+    if (!current() || record.visible === false || !nativePaneVisible(record.panel)) return
+
+    const { sceneId, panelId } = record.target
+    const motion = {}
+    detail.hold = record.geometryMotion = motion
+    record.syncRevision++
+    const startTimeoutMs = 48
+    const deadline = Date.now() + startTimeoutMs
+    const request = Promise.resolve(record.syncQueue).catch(() => {}).then(() => {
+      if (Date.now() < deadline && current() && nativePaneVisible(record.panel)) {
+        return api.beginRoleGeometryMotion(sceneId, panelId, deadline)
+      }
+    }).catch(() => undefined)
+    motion.ready = waitForRoleGeometryResponse(request, startTimeoutMs).then(token => {
+      if (token) return token
+      if (record.geometryMotion === motion) {
+        record.geometryMotion = undefined
+        if (current()) void syncRole(record)
+      }
+      // The shell may already be moving when a delayed acknowledgement arrives.
+      void request.then(async lateToken => {
+        if (!lateToken) return
+        await waitForRoleGeometryResponse(api.finishRoleGeometryMotion(sceneId, panelId, lateToken), 120)
+        if (current()) void syncRole(record)
+      }).catch(() => {})
+    })
+    let finished = false
+    const fallback = setTimeout(() => { void motion.finish(false).catch(() => {}) }, 1000)
+    motion.finish = async settled => {
+      if (finished) return
+      finished = true
+      clearTimeout(fallback)
+      let revealed = false
+      try {
+        const token = await motion.ready
+        if (!token) return
+        let bounds
+        if (settled && current() && nativePaneVisible(record.panel)) {
+          const { x, y, width, height } = record.content.getBoundingClientRect()
+          if (width > 0 && height > 0) bounds = { x, y, width, height }
+        }
+        revealed = await waitForRoleGeometryResponse(
+          api.finishRoleGeometryMotion(sceneId, panelId, token, bounds), 120,
+        ) === true
+      } finally {
+        if (motion.visibilitySync) await waitForRoleGeometryResponse(motion.visibilitySync, 120)
+        if (record.geometryMotion === motion) {
+          record.geometryMotion = undefined
+          if (current()) {
+            // A shell overlay can open while Main is acknowledging the reveal.
+            // Reuse any ordinary hide already queued for it.
+            if (!revealed && record.visible !== false) record.visible = undefined
+            if (revealed && record.visible === undefined && !motion.visibilitySync) record.visible = true
+            if (!revealed || record.visible !== true || !nativePaneVisible(record.panel)) void syncRole(record)
+          }
+        }
+      }
+    }
+  })
+
+  async function syncRole(record, { reportError = true } = {}) {
+    const motion = record.geometryMotion
+    if (motion && nativePaneVisible(record.panel)) return
+    if (state.sceneTransitionPending || !record.created || record.placementPending || record.placement === 'popped-out' || !record.target) return
     const revision = ++record.syncRevision
+    const isCurrentDock = () => !state.sceneTransitionPending && isCurrentRole(record) && revision === record.syncRevision
+      && !record.placementPending && record.placement !== 'popped-out'
     record.syncQueue = Promise.resolve(record.syncQueue).catch(() => {}).then(async () => {
-      if (!isCurrentRole(record) || revision !== record.syncRevision || record.placement === 'popped-out') return
-      const rect = record.content.getBoundingClientRect()
-      const visible = nativePaneVisible(record.panel) && rect.width > 0 && rect.height > 0
+      if (!isCurrentDock()) return
+      const paneVisible = nativePaneVisible(record.panel)
+      if (record.geometryMotion && paneVisible) return
+      const rect = paneVisible ? record.content.getBoundingClientRect() : undefined
+      const visible = rect && rect.width > 0 && rect.height > 0
       if (!visible) {
         if (record.visible !== false) {
-          try { await app.harnessSurface.setVisible(record.target.sceneId, record.target.panelId, false); record.visible = false }
-          catch { record.note.textContent = '原生助手暂时不可用。'; record.note.dataset.state = 'error' }
+          try {
+            await app.harnessSurface.setVisible(record.target.sceneId, record.target.panelId, false)
+            if (isCurrentDock()) record.visible = false
+          } catch {
+            if (reportError && isCurrentDock()) { record.note.textContent = '原生助手暂时不可用。'; record.note.dataset.state = 'error' }
+          }
         }
         return
       }
@@ -558,18 +671,19 @@
         // overlay that opens while setVisible(true) is pending must enqueue false.
         record.visible = undefined
         const applied = await app.harnessSurface.setBounds(record.target.sceneId, record.target.panelId, bounds)
-        if (state.sceneTransitionPending || !isCurrentRole(record) || revision !== record.syncRevision || record.status !== 'context-mounted') return
+        if (!isCurrentDock() || record.status !== 'context-mounted') return
         if (applied?.alreadyVisible !== true) {
           await app.harnessSurface.setVisible(record.target.sceneId, record.target.panelId, true)
         }
-        if (isCurrentRole(record) && revision === record.syncRevision) record.visible = true
+        if (isCurrentDock()) record.visible = true
       } catch {
-        if (isCurrentRole(record) && revision === record.syncRevision) {
+        if (reportError && isCurrentDock()) {
           record.note.textContent = '原生助手暂时不可用。'
           record.note.dataset.state = 'error'
         }
       }
     })
+    if (motion) motion.visibilitySync = record.syncQueue
     return record.syncQueue
   }
 
@@ -610,6 +724,8 @@
     if (record.placementPending) return { ok: false, reason: 'pending' }
     if (intent !== 'toggle' && intent !== 'open') return { ok: false, reason: 'unsupported' }
     record.placementPending = true
+    record.syncRevision++
+    let resyncOptions
     const button = record.placementButton
     if (button) button.disabled = true
     try {
@@ -623,17 +739,21 @@
       if (record.placement === 'popped-out') {
         record.note.textContent = '助手已在独立窗口中打开。'
         record.note.dataset.state = 'ready'
-      } else void syncRole(record)
+      } else resyncOptions = { reportError: true }
       updatePlacementButton(record)
       return { ok: true, placement: record.placement }
     } catch {
       if (isCurrentRole(record)) {
+        if (record.status === 'context-mounted' && record.placement !== 'popped-out') {
+          resyncOptions = { reportError: false }
+        }
         record.note.textContent = '独立窗口操作暂不可用。'
         record.note.dataset.state = 'error'
       }
       return { ok: false, reason: 'unavailable' }
     } finally {
       record.placementPending = false
+      if (resyncOptions) void syncRole(record, resyncOptions)
       if (button?.isConnected) button.disabled = false
     }
   }
@@ -858,7 +978,7 @@
       if (isCurrentRole(record)) { record.status = 'error'; note.textContent = '原生助手暂时不可用。'; note.dataset.state = 'error' }
     })
     if (!state.roleObserver && typeof ResizeObserver === 'function') {
-      state.roleObserver = new ResizeObserver(() => { const active = state.roleRecord; if (active) void syncRole(active) })
+      state.roleObserver = new ResizeObserver(() => { const active = state.roleRecord; if (active && !active.geometryMotion) void syncRole(active) })
       const grid = document.getElementById('grid')
       if (grid) state.roleObserver.observe(grid)
     }
@@ -883,9 +1003,14 @@
 
   function onWorkflowStatus(value) {
     const record = state.workflowRecord
-    if (!record || value?.componentKey !== 'workflow-canvas-native') return
+    if (!record?.target || value?.componentKey !== 'workflow-canvas-native'
+      || value.sceneId !== record.target.sceneId || value.panelId !== record.target.panelId) return
+    const placement = typeof value.placement === 'string' ? value.placement : record.placement
+    // Visibility setters echo the current status. Only a status or placement
+    // transition can require another visibility synchronization.
+    if (record.status === value.status && record.placement === placement) return
     record.status = value.status
-    if (typeof value.placement === 'string') record.placement = value.placement
+    record.placement = placement
     if (record.note && value.status === 'context-mounted') {
       record.note.hidden = true
       void syncWorkflow(record)
@@ -893,6 +1018,7 @@
       record.note.hidden = false
       record.note.textContent = '原生工作流画布暂时不可用。'
       record.note.dataset.state = 'error'
+      void syncWorkflow(record)
     }
   }
 
@@ -901,7 +1027,9 @@
     const bridge = app?.workflowCanvas
     if (!bridge || typeof bridge.setBounds !== 'function' || typeof bridge.setVisible !== 'function') return
     const rect = record.host.getBoundingClientRect()
-    const visible = state.sceneId === 'agent-center' && record.active && nativePaneVisible(record.panel)
+    const visible = record.status === 'context-mounted'
+      && state.sceneId === record.uiSceneId && record.active && nativePaneVisible(record.panel)
+      && (record.uiSceneId === 'agent-center' || Boolean(workflowTemplateRoute(record.uiSceneId)))
       && rect.width > 0 && rect.height > 0
     const revision = ++record.revision
     record.queue = Promise.resolve(record.queue).catch(() => {}).then(async () => {
@@ -915,7 +1043,8 @@
       try {
         record.visible = undefined
         await bridge.setBounds({ x: rect.left, y: rect.top, width: rect.width, height: rect.height })
-        if (state.sceneTransitionPending || record !== state.workflowRecord || revision !== record.revision) return
+        if (state.sceneTransitionPending || state.tearingDown || state.sceneId !== record.uiSceneId
+          || record !== state.workflowRecord || revision !== record.revision) return
         await bridge.setVisible(true)
         record.visible = true
       } catch {
@@ -958,7 +1087,8 @@
     else content.replaceChildren(tabs, plan, host)
 
     let planCleanup = independent ? undefined : renderBusinessPanel(meta, plan, '/agent-center')
-    const record = { panel: content.closest('.panel'), host, note, hostObserver: undefined, active: false, visible: false, placement: 'docked', status: 'loading', revision: 0, queue: Promise.resolve() }
+    const uiSceneId = meta.sceneId ?? state.sceneId
+    const record = { uiSceneId, panel: content.closest('.panel'), host, note, hostObserver: undefined, active: false, visible: false, placement: 'docked', status: 'loading', revision: 0, queue: Promise.resolve() }
     state.workflowRecord = record
     let observer
     const choose = async label => {
@@ -979,12 +1109,16 @@
           note.hidden = false; note.textContent = state.error || '业务配置不可用。'; note.dataset.state = state.phase === 'unavailable' ? 'unavailable' : 'error'
           return
         }
-        const route = state.config && routeForPath('/agent-center')
+        if (record !== state.workflowRecord || state.sceneId !== uiSceneId) return
+        const inherited = meta.id === 'workflow-main' && meta.type === 'canvas' && meta.hostPanelId === 'business-main'
+          && meta.path === '/agent-center' && meta.componentId === undefined
+        const route = uiSceneId === 'agent-center' ? routeForPath('/agent-center') : inherited && workflowTemplateRoute(uiSceneId)
         if (!route) {
           note.hidden = false; note.textContent = state.error || '工作流路由未配置。'; note.dataset.state = 'error'
           await syncWorkflow(record)
           return
         }
+        record.target = route.route
         if (!state.workflowMounted) {
           state.workflowMounted = true
           const bridge = app?.workflowCanvas
@@ -996,7 +1130,7 @@
               const result = await bridge.mount()
               if (result?.componentKey !== 'workflow-canvas-native'
                 || result.sceneId !== route.route.sceneId || result.panelId !== route.route.panelId) throw new Error('workflow target mismatch')
-              record.status = result.status
+              if (record.status === 'loading' || (record.status === 'document-loaded' && result.status === 'context-mounted')) record.status = result.status
               if (typeof result.placement === 'string') record.placement = result.placement
               if (record !== state.workflowRecord) return
               if (state.tearingDown && record.placement !== 'popped-out') {
@@ -1004,12 +1138,27 @@
                 record.visible = false
                 return
               }
-              if (result.status === 'context-mounted') note.hidden = true
-              else { note.hidden = false; note.textContent = '正在加载原生工作流画布…' }
+              if (record.status === 'context-mounted') note.hidden = true
+              else if (['loading', 'document-loaded'].includes(record.status)) {
+                note.hidden = false; note.textContent = '正在加载原生工作流画布…'
+              }
             } catch {
               state.workflowMounted = false
               note.hidden = false; note.textContent = '原生工作流画布暂时不可用。'; note.dataset.state = 'error'
             }
+          }
+        } else if (record.status === 'loading') {
+          try {
+            const result = await app.workflowCanvas.status()
+            if (record !== state.workflowRecord || !record.active) return
+            if (result?.status === 'unavailable') {
+              state.workflowMounted = false
+              return choose(label)
+            }
+            if (record.status === 'loading') onWorkflowStatus(result)
+          } catch {
+            if (record !== state.workflowRecord || !record.active) return
+            note.hidden = false; note.textContent = '原生工作流画布暂时不可用。'; note.dataset.state = 'error'
           }
         }
         if (!observer && typeof ResizeObserver === 'function') {
@@ -1043,11 +1192,22 @@
 
   function findCompanionPath(meta, view) {
     if (state.phase !== 'ready' || !['files', 'preview'].includes(view)) return undefined
-    const routePath = pathForScene(meta?.sceneId)
-    const target = routeForPath(routePath)
-    if (!target) return undefined
     const companionPath = `/artifacts#${view}`
     if (!allowedRoutes.has('/artifacts') || !routeForPath(companionPath)) return undefined
+    if (meta?.componentId) {
+      const scene = state.config.scenes.get(meta.sceneId)
+      const owner = scene?.panelMap.get(meta.hostPanelId)
+      return owner?.componentId === meta.componentId && owner.type === 'business-iframe' && owner.path === companionPath
+        ? { path: owner.path, panelId: owner.id, sceneId: scene.id } : undefined
+    }
+    const routePath = pathForScene(meta?.sceneId)
+    if (!routePath || routePath === '/agent-center') {
+      const inherited = meta?.id === view && meta.type === view && meta.hostPanelId === view && meta.path === companionPath
+        && workflowTemplateRoute(meta.sceneId)
+      if (inherited) return { path: companionPath, panelId: view, sceneId: meta.sceneId, workflowDirectory: true }
+    }
+    const target = routeForPath(routePath)
+    if (!target) return undefined
     const panel = target.scene.panels.find(item => item.id === view && item.type === 'business-iframe'
       && item.path === companionPath)
     return panel ? { path: panel.path, panelId: panel.id, sceneId: target.scene.id } : undefined
@@ -1080,6 +1240,181 @@
     content.replaceChildren()
   }
 
+  function mountWorkflowFiles(workflow, content, view, business, isCurrent = () => true) {
+    const files = view === 'files'
+    const area = document.createElement('section')
+    area.className = 'tl-workflow-directory'
+    area.dataset.directoryView = files ? 'files' : 'preview'
+    const header = document.createElement('div')
+    header.className = 'tl-workflow-directory-bar'
+    const body = document.createElement('div')
+    body.className = 'tl-workflow-directory-body'
+    const status = document.createElement('p')
+    status.className = 'tl-workflow-directory-status'
+    status.setAttribute('role', 'status')
+    area.append(header, status, body)
+    content.prepend(area)
+    content.classList.add('tl-workflow-directory-host')
+
+    const button = (label, onClick, disabled = false) => {
+      const node = document.createElement('button')
+      node.type = 'button'
+      node.textContent = label
+      node.disabled = disabled
+      node.addEventListener('click', onClick)
+      return node
+    }
+    const download = ({ name, data }) => {
+      const url = URL.createObjectURL(new Blob([Uint8Array.from(atob(data), c => c.charCodeAt(0))]))
+      const link = document.createElement('a')
+      link.href = url
+      link.download = name
+      link.click()
+      setTimeout(() => URL.revokeObjectURL(url), 30_000)
+    }
+    const refresh = () => { for (const render of workflow.panes) render() }
+    async function request(operation, id) {
+      if (!isCurrent()) return
+      if (workflow.busy) {
+        if (operation === 'current') workflow.dirty = true
+        return
+      }
+      workflow.error = ''
+      workflow.busy = true
+      refresh()
+      try {
+        const value = await app.workflowFiles(id ? { operation, id } : { operation })
+        if (!isCurrent() || !workflow.panes.size || (operation === 'pick' && value === null)) return
+        if (operation === 'download') download(value)
+        else if (operation === 'preview') workflow.selected = { ...value, id }
+        else {
+          workflow.directory = value
+          if (!value?.entries.some(item => item.id === workflow.selected?.id)) workflow.selected = null
+        }
+      } catch {
+        if (!isCurrent()) return
+        if (operation === 'current') {
+          if (!workflow.directory) return
+          workflow.directory = null
+          workflow.selected = null
+        }
+        workflow.error = '无法访问所选目录或文件。请重新打开目录。'
+        if (operation !== 'pick' && operation !== 'current') {
+          try {
+            const directory = await app.workflowFiles({ operation: 'current' })
+            if (isCurrent()) {
+              workflow.directory = directory
+              workflow.selected = null
+            }
+          } catch { /* Retain the visible directory while a retry is possible. */ }
+        }
+      } finally {
+        workflow.busy = false
+        if (isCurrent()) {
+          refresh()
+          if (workflow.dirty && workflow.panes.size) {
+            workflow.dirty = false
+            void request('current')
+          }
+        }
+      }
+    }
+    const render = () => {
+      const directory = workflow.directory
+      const showLocal = Boolean(directory)
+      const selected = workflow.selected
+      business.hidden = showLocal
+      area.hidden = !files && !showLocal
+      body.hidden = !showLocal
+      status.textContent = workflow.error || (workflow.busy ? '正在读取…' : '')
+      status.hidden = !status.textContent
+      header.replaceChildren()
+      body.replaceChildren()
+
+      const title = document.createElement('span')
+      title.className = 'tl-workflow-directory-path'
+      title.textContent = (showLocal && !files && selected?.name) || directory?.path || '尚未打开本地目录'
+      title.title = title.textContent
+      header.append(title)
+      const actions = document.createElement('div')
+      actions.className = 'tl-workflow-directory-actions'
+      if (files) {
+        actions.append(button('打开', () => void request('pick'), workflow.busy))
+        actions.append(button('上一级', () => void request('up'), workflow.busy || !showLocal || !directory.canGoUp))
+        if (directory) actions.append(button('关闭目录', () => void request('revoke'), workflow.busy))
+      } else if (selected) {
+        actions.append(button('返回目录', () => { workflow.selected = null; refresh() }, workflow.busy))
+        actions.append(button('下载', () => void request('download', selected.id), workflow.busy))
+      }
+      if (actions.childElementCount) header.append(actions)
+      if (!showLocal) return
+      if (!files && selected) {
+        if (selected.preview?.type === 'text/plain') {
+          const text = document.createElement('pre')
+          text.textContent = selected.preview.data
+          body.append(text)
+        } else if (['image/png', 'image/jpeg'].includes(selected.preview?.type)) {
+          const img = document.createElement('img')
+          img.alt = selected.name
+          img.src = 'data:' + selected.preview.type + ';base64,' + selected.preview.data
+          body.append(img)
+        } else body.textContent = '此文件暂无可用预览。'
+        return
+      }
+      if (!directory.entries.length) body.textContent = '此目录没有可浏览的条目。'
+      else {
+        const entries = files ? body : document.createElement('div')
+        if (!files) {
+          entries.className = 'tl-workflow-directory-cards'
+          body.append(entries)
+        }
+        for (const item of directory.entries) {
+          const folder = item.kind === 'folder'
+          const entry = button(item.name, () => void request(folder ? 'enter' : 'preview', item.id), workflow.busy)
+          entry.className = files ? 'tl-workflow-directory-row' : 'tl-workflow-directory-card'
+          entry.setAttribute('aria-current', String(item.id === selected?.id))
+          const icon = document.createElement('span')
+          icon.setAttribute('aria-hidden', 'true')
+          icon.textContent = folder ? '📁' : '📄'
+          const name = document.createElement('span')
+          name.className = 'tl-workflow-directory-name'
+          name.textContent = item.name
+          entry.title = item.name
+          entry.replaceChildren(icon, name)
+          if (!files) {
+            const kind = document.createElement('span')
+            kind.className = 'tl-workflow-directory-kind'
+            kind.textContent = folder ? '文件夹' : '文件'
+            entry.append(kind)
+          }
+          entries.append(entry)
+        }
+      }
+      if (directory.truncated) {
+        const note = document.createElement('p')
+        note.textContent = '仅显示本目录的部分条目。'
+        body.append(note)
+      }
+    }
+    const firstPane = workflow.panes.size === 0
+    workflow.panes.add(render)
+    render()
+    if (firstPane) {
+      workflow.onFocus = () => { void request('current') }
+      window.addEventListener('focus', workflow.onFocus)
+      workflow.offChanged = app.onWorkflowFilesChanged?.(workflow.onFocus)
+      void request('current')
+    }
+    return () => {
+      workflow.panes.delete(render)
+      if (!workflow.panes.size) {
+        window.removeEventListener('focus', workflow.onFocus)
+        workflow.offChanged?.()
+      }
+      content.classList.remove('tl-workflow-directory-host')
+    }
+  }
+
   function mountFileCompanion(meta, content, target, view) {
     const uiSceneId = meta.sceneId || state.sceneId
     let mounted = fileBridgeMounts.get(uiSceneId)
@@ -1104,8 +1439,15 @@
     mounted.refs++
     const panel = content.closest('.panel')
     if (panel) panel.dataset.businessRoute = (pathForScene(uiSceneId) || '/').slice(1)
-    const cleanupFrame = renderBusinessPanel(meta, content, target.path, { sceneId: target.sceneId, panelId: target.panelId })
-    const frame = content.querySelector('iframe')
+    const directory = target.workflowDirectory === true || (uiSceneId === 'agent-center' && target.sceneId === 'agent-center')
+    const local = directory && state.sceneId === uiSceneId && typeof app?.workflowFiles === 'function'
+    const business = local ? document.createElement('div') : content
+    if (local) {
+      business.className = 'tl-workflow-directory-business'
+      content.replaceChildren(business)
+    }
+    const cleanupFrame = renderBusinessPanel(meta, business, target.path, { sceneId: target.sceneId, panelId: target.panelId })
+    const frame = business.querySelector('iframe')
     if (frame) {
       frame.dataset.tradeloomPanelId = target.panelId
       frame.dataset.tradeloomBusinessSceneId = target.sceneId
@@ -1116,7 +1458,13 @@
     content.dataset.fileBridgeReady = 'true'
     content.__businessFileExport = mounted.handler.requestFileExport
     content.__businessFileFocus = mounted.handler.requestFileFocus
-    return () => { cleanupFrame?.(); releaseFileCompanion(uiSceneId, mounted, content) }
+    if (local && !mounted.workflow) mounted.workflow = { panes: new Set() }
+    const sceneRevision = state.sceneRevision
+    const cleanupWorkflow = local ? mountWorkflowFiles(mounted.workflow, content, view, business,
+      () => state.sceneId === uiSceneId && state.sceneRevision === sceneRevision
+        && !state.sceneTransitionPending && !state.tearingDown
+        && (!target.workflowDirectory || Boolean(workflowTemplateRoute(uiSceneId)))) : undefined
+    return () => { cleanupWorkflow?.(); cleanupFrame?.(); releaseFileCompanion(uiSceneId, mounted, content) }
   }
 
   function renderCompanion(meta, content, view) {
@@ -1248,7 +1596,7 @@
       }
       const operation = Promise.resolve(record.queue).catch(() => {}).then(async () => {
         if (state.tearingDown || record !== state.workflowRecord || !record.host.isConnected) return
-        if (!candidate.wasVisible || !record.active || record.placement === 'popped-out'
+        if (!candidate.wasVisible || record.status !== 'context-mounted' || !record.active || record.placement === 'popped-out'
           || state.sceneId !== 'agent-center' || !nativePaneVisible(record.panel)) return
         const rect = record.host.getBoundingClientRect()
         if (rect.width <= 0 || rect.height <= 0) return
@@ -1401,7 +1749,7 @@
           await syncWorkflow(workflow)
           await workflow.queue
           if (workflow !== state.workflowRecord || state.sceneTransitionPending || state.tearingDown
-            || state.sceneId !== 'agent-center' || !workflow.active || !workflow.host.isConnected
+            || state.sceneId !== workflow.uiSceneId || !workflow.active || !workflow.host.isConnected
             || workflow.status !== 'context-mounted' || workflow.visible !== true || state.sourceEditor !== sourceEditor) return { ok: false, reason: 'unavailable' }
         }
       }
@@ -1414,6 +1762,16 @@
     if (!isDesktop() || !state.config || typeof window.fetch !== 'function') return { ok: false, reason: 'unavailable' }
     const role = roleByUiScene[state.sceneId]
     if (!role || !state.config.roles.has(role)) return { ok: false, reason: 'unconfigured' }
+    return readAgentDataForRole(role)
+  }
+
+  async function readAssistantCapabilities() {
+    const context = await app.assistantCapabilitiesContext()
+    if (context?.componentKey !== 'assistant-capabilities-native' || typeof context.role !== 'string') return { ok: false, reason: 'unavailable' }
+    return readAgentDataForRole(context.role)
+  }
+
+  async function readAgentDataForRole(role) {
     try {
       const [capResponse, configResponse] = await Promise.all([
         window.fetch(`/tradeloom/agent-capabilities?role=${encodeURIComponent(role)}`, { method: 'GET', credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } }),
@@ -1476,6 +1834,7 @@
     setThemePreference,
     setNativeScale,
     globalAction,
+    readAssistantCapabilities,
     openNativeMenu,
     toggleSidebar,
     openWebAi,

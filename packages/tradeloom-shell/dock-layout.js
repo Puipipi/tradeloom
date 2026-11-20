@@ -1,4 +1,4 @@
-import { normalizeSceneLayout, validateSceneConfig } from './scene-layout.js'
+import { isComponentInstanceId, normalizeSceneLayout, validateSceneConfig } from './scene-layout.js'
 
 const MAX_SCENES = 16
 const MAX_PANELS = 12
@@ -32,7 +32,7 @@ function panelRecords(panels) {
   }]))
 }
 
-function requiredPanels(scene) { return scene.panels.filter(panel => panel.optional !== true) }
+function isWorkflowScene(scene) { return (scene.templateSceneId ?? scene.id) === 'agent-center' }
 
 function buildLayout(businessPanels, chatPanels, split = [72, 28], activeGroup = '1') {
   const groups = chatPanels.length === 0
@@ -56,22 +56,26 @@ function buildRecommendation(scene, businessPanels, chatPanels) {
   const kind = scene.layoutProfile?.kind
   if (kind === 'assistant_lead') return buildLayout(businessPanels, chatPanels, [32, 68], '2')
   if (kind === 'collaboration_grid') {
-    const panels = new Map(requiredPanels(scene).map(panel => [panel.id, panel]))
-    if (['business-main', 'files', 'preview', 'native-chat'].every(id => panels.has(id))) {
+    const panels = new Map([...businessPanels, ...chatPanels].map(panel => [panel.id, panel]))
+    const hasPlan = panels.has('business-plan')
+    if (panels.size === (hasPlan ? 5 : 4)
+      && ['business-main', 'files', 'preview', 'native-chat'].every(id => panels.has(id))) {
       const leaf = (groupId, panelId, size) => makeLeaf(groupId, [panels.get(panelId)], size)
-      const row = (id, size, left, right) => ({
-        type: 'branch', size, data: [leaf(`${id}a`, left[0], left[1]), leaf(`${id}b`, right[0], right[1])],
-      })
+      const row = (size, ...data) => ({ type: 'branch', size, data })
       return {
         dockview: {
           grid: {
             root: { type: 'branch', size: 100, data: [
-              row('top', 60, ['business-main', 75], ['files', 25]),
-              row('bottom', 40, ['preview', 40], ['native-chat', 60]),
+              row(hasPlan ? 50 : 60,
+                ...(hasPlan ? [leaf('top-plan', 'business-plan', 25)] : []),
+                leaf('topa', 'business-main', hasPlan ? 50 : 75), leaf('topb', 'files', 25)),
+              row(hasPlan ? 50 : 40,
+                leaf('bottoma', 'preview', hasPlan ? 25 : isWorkflowScene(scene) ? 50 : 40),
+                leaf('bottomb', 'native-chat', hasPlan ? 75 : isWorkflowScene(scene) ? 50 : 60)),
             ] },
             width: 100, height: 100, orientation: 'VERTICAL',
           },
-          panels: panelRecords(requiredPanels(scene)),
+          panels: panelRecords(scene.panels.filter(panel => panels.has(panel.id))),
           activeGroup: 'topa',
         },
       }
@@ -80,8 +84,9 @@ function buildRecommendation(scene, businessPanels, chatPanels) {
   return buildLayout(businessPanels, chatPanels, [72, 28])
 }
 
-export function defaultDockLayout(scene) {
-  const activePanels = requiredPanels(scene)
+function recommendedDockLayout(scene, includePlan) {
+  const activePanels = scene.panels.filter(panel => panel.optional !== true
+    && (panel.id !== 'business-plan' || includePlan || !isWorkflowScene(scene)))
   const chatPanels = activePanels.filter(panel => panel.type === 'native-chat')
   const businessPanels = activePanels.filter(panel => panel.type !== 'native-chat')
   if (activePanels.length === 0) fail('scene must have panels')
@@ -91,11 +96,13 @@ export function defaultDockLayout(scene) {
   return {
     ...groups,
     version: 2,
-    closedPanelIds: scene.panels.filter(panel => panel.optional === true).map(panel => panel.id),
+    closedPanelIds: scene.panels.filter(panel => !activePanels.includes(panel)).map(panel => panel.id),
     legacyV1Snapshot: null,
     migration: { status: 'default', reason: 'no-legacy-layout' },
   }
 }
+
+export function defaultDockLayout(scene) { return recommendedDockLayout(scene, false) }
 
 function rectangleOverlap(left, right) {
   return left.col < right.col + right.w && left.col + left.w > right.col
@@ -104,7 +111,9 @@ function rectangleOverlap(left, right) {
 
 function isDefaultLegacy(scene, layout) {
   const normalized = normalizeSceneLayout(scene, layout)
-  return same(normalized, normalizeSceneLayout(scene))
+  const configured = normalized.panels['business-plan']?.visible === true && isWorkflowScene(scene)
+    ? { panels: { 'business-plan': { visible: true } } } : undefined
+  return same(normalized, normalizeSceneLayout(scene, configured))
 }
 
 function customTwoPanelLayout(scene, normalized) {
@@ -174,9 +183,10 @@ export function migrateLegacyDockLayout(scene, legacyLayout) {
       migration: { status: 'fallback', reason: 'legacy-invalid' },
     }
   }
+  const recommendation = recommendedDockLayout(scene, normalized.panels['business-plan']?.visible === true)
   if (isDefaultLegacy(scene, compatibleLegacy)) {
     return {
-      ...defaultDockLayout(scene),
+      ...recommendation,
       legacyV1Snapshot: snapshot,
       migration: { status: 'default_upgrade', reason: 'matches-scene-default' },
     }
@@ -186,7 +196,7 @@ export function migrateLegacyDockLayout(scene, legacyLayout) {
     for (let j = i + 1; j < visible.length; j++) {
       if (rectangleOverlap(normalized.panels[visible[i].id], normalized.panels[visible[j].id])) {
         return {
-          ...defaultDockLayout(scene),
+          ...recommendation,
           legacyV1Snapshot: snapshot,
           migration: { status: 'fallback', reason: 'legacy-overlap' },
         }
@@ -195,7 +205,7 @@ export function migrateLegacyDockLayout(scene, legacyLayout) {
   }
   if (normalized.expandedPanel !== '') {
     return {
-      ...defaultDockLayout(scene),
+      ...recommendation,
       legacyV1Snapshot: snapshot,
       migration: { status: 'fallback', reason: 'legacy-expanded-panel' },
     }
@@ -210,7 +220,7 @@ export function migrateLegacyDockLayout(scene, legacyLayout) {
     }
   }
   return {
-    ...defaultDockLayout(scene),
+    ...recommendation,
     legacyV1Snapshot: snapshot,
     migration: { status: 'fallback', reason: 'legacy-not-mappable' },
   }
@@ -311,7 +321,119 @@ export function validateDockviewLayout(scene, dockview, closedPanelIds = []) {
   return true
 }
 
-function canonicalMetadata(scene, submitted, previous, legacy) {
+function validClosedPanelPosition(ids, closedPanelIds, id, position) {
+  return closedPanelIds.includes(id) && object(position)
+    && ['within', 'left', 'right', 'above', 'below'].includes(position.direction)
+    && Object.keys(position).sort().join(',') === (position.direction === 'within' ? 'direction,index,neighbors' : 'direction,neighbors')
+    && (position.direction !== 'within' || Number.isInteger(position.index) && position.index >= 0 && position.index < MAX_PANELS)
+    && Array.isArray(position.neighbors) && position.neighbors.length > 0 && position.neighbors.length < MAX_PANELS
+    && new Set(position.neighbors).size === position.neighbors.length
+    && position.neighbors.every(neighbor => neighbor !== id && ids.has(neighbor))
+}
+
+function validateClosedPanelPositions(scene, positions, closedPanelIds) {
+  if (positions === undefined) return
+  const ids = scenePanels(scene)
+  if (!object(positions) || Object.keys(positions).length > MAX_PANELS
+    || Object.entries(positions).some(([id, position]) => !validClosedPanelPosition(ids, closedPanelIds, id, position))) {
+    fail('closed panel positions are invalid')
+  }
+}
+
+function cleanSavedClosedPanelPositions(scene, saved) {
+  if (!object(saved) || saved.closedPanelPositions === undefined) return saved
+  const { closedPanelPositions, ...record } = saved
+  if (!object(closedPanelPositions) || !Array.isArray(saved.closedPanelIds)) return record
+  const ids = scenePanels(scene)
+  const positions = Object.entries(closedPanelPositions)
+    .filter(([id, position]) => validClosedPanelPosition(ids, saved.closedPanelIds, id, position))
+  return positions.length ? { ...record, closedPanelPositions: Object.fromEntries(positions) } : record
+}
+
+function validateDockPreset(scene, preset) {
+  if (!object(preset) || Object.keys(preset).some(key => !['dockview', 'closedPanelIds', 'closedPanelPositions'].includes(key))
+    || !Array.isArray(preset.closedPanelIds) || preset.dockview?.floatingGroups?.length) fail('saved scene preset is invalid')
+  validateDockviewLayout(scene, preset.dockview, preset.closedPanelIds)
+  validateClosedPanelPositions(scene, preset.closedPanelPositions, preset.closedPanelIds)
+}
+
+function cleanSavedDockRecord(scene, saved) {
+  saved = reconcileComponentDockRecord(scene, saved)
+  const record = cleanSavedClosedPanelPositions(scene, saved)
+  if (!object(record) || record.preset === undefined) return record
+  const { preset, ...layout } = record
+  const normalized = cleanSavedClosedPanelPositions(scene, preset)
+  try { validateDockPreset(scene, normalized) } catch { return layout }
+  return { ...layout, preset: normalized }
+}
+
+function reconcileComponentDockRecord(scene, saved) {
+  if (!scene.templateSceneId || !object(saved?.dockview?.panels) || !Array.isArray(saved?.closedPanelIds)) return saved
+  const configured = scenePanels(scene)
+  const isRemoved = id => isComponentInstanceId(id) && !configured.has(id)
+  const reconcile = (value, openNew) => {
+    if (!object(value?.dockview?.panels) || !Array.isArray(value?.closedPanelIds)) return value
+    const visible = Object.keys(value.dockview.panels)
+    const missing = [...configured.keys()].filter(id => isComponentInstanceId(id) && !visible.includes(id) && !value.closedPanelIds.includes(id))
+    if (!missing.length && ![...visible, ...value.closedPanelIds].some(isRemoved)) return value
+    const record = clone(value), dock = record.dockview
+    const leafGroups = []
+    const prune = (node, root = false) => {
+      if (node.type === 'leaf') {
+        const group = node.data
+        group.views = group.views.filter(id => !isRemoved(id))
+        if (!group.views.length) return null
+        if (!group.views.includes(group.activeView)) group.activeView = group.views[0]
+        leafGroups.push(group)
+        return node
+      }
+      node.data = node.data.map(child => prune(child)).filter(Boolean)
+      if (root) return node
+      if (node.data.length === 1) return { ...node.data[0], size: node.size }
+      return node.data.length ? node : null
+    }
+    dock.grid.root = prune(dock.grid.root, true)
+    if (dock.floatingGroups) {
+      dock.floatingGroups = dock.floatingGroups.filter(group => !group.data.views.some(isRemoved))
+      if (!dock.floatingGroups.length) delete dock.floatingGroups
+    }
+    for (const id of Object.keys(dock.panels).filter(isRemoved)) delete dock.panels[id]
+    record.closedPanelIds = record.closedPanelIds.filter(id => !isRemoved(id))
+    if (missing.length && openNew) {
+      const panels = missing.map(id => configured.get(id))
+      const target = leafGroups.find(group => !group.locked && group.views.some(id => configured.get(id)?.type === 'business-iframe'))
+      if (target) target.views.push(...missing)
+      else {
+        let groupId = 'component-dock'
+        for (let suffix = 1; leafGroups.some(group => group.id === groupId); suffix++) groupId = `component-dock-${suffix}`
+        const node = makeLeaf(groupId, panels, 100)
+        dock.grid.root.data.push(node)
+        leafGroups.push(node.data)
+      }
+      Object.assign(dock.panels, panelRecords(panels))
+    } else record.closedPanelIds.push(...missing)
+    if (dock.activeGroup && ![...leafGroups, ...(dock.floatingGroups ?? []).map(group => group.data)].some(group => group.id === dock.activeGroup)) {
+      if (leafGroups.length) dock.activeGroup = leafGroups[0].id
+      else delete dock.activeGroup
+    }
+    if (record.closedPanelPositions) {
+      for (const [id, position] of Object.entries(record.closedPanelPositions)) {
+        if (isRemoved(id)) delete record.closedPanelPositions[id]
+        else if (Array.isArray(position?.neighbors)) position.neighbors = position.neighbors.filter(neighbor => !isRemoved(neighbor))
+      }
+    }
+    return cleanSavedClosedPanelPositions(scene, record)
+  }
+  try {
+    const current = reconcile(saved, true)
+    const preset = reconcile(current.preset, false)
+    const floatingRestore = reconcile(current.floatingRestore, true)
+    return { ...current, ...(preset ? { preset } : {}), ...(floatingRestore ? { floatingRestore } : {}) }
+  } catch { return saved }
+}
+
+// The Host owns migration metadata; it is recovered from storage or recomputed from v1.
+function canonicalMigrationMetadata(scene, previous, legacy) {
   const migrated = previous ?? migrateLegacyDockLayout(scene, legacy)
   return {
     legacyV1Snapshot: clone(migrated.legacyV1Snapshot),
@@ -327,17 +449,18 @@ function renameLegacyBusinessPanes(scene, value) {
     if (!object(dockview) || !object(dockview.panels)) return null
     const copy = clone(dockview)
     if (Object.keys(copy.panels).some(id => aliases[id] && copy.panels[aliases[id]])) return null
+    const renameGroupViews = group => {
+      group.views = group.views.map(id => aliases[id] ?? id)
+      if (aliases[group.activeView]) group.activeView = aliases[group.activeView]
+    }
     const renameNode = node => {
       if (!object(node)) return
-      if (node.type === 'leaf' && object(node.data)) {
-        node.data.views = node.data.views.map(id => aliases[id] ?? id)
-        if (aliases[node.data.activeView]) node.data.activeView = aliases[node.data.activeView]
-      } else if (node.type === 'branch' && Array.isArray(node.data)) node.data.forEach(renameNode)
+      if (node.type === 'leaf' && object(node.data)) renameGroupViews(node.data)
+      else if (node.type === 'branch' && Array.isArray(node.data)) node.data.forEach(renameNode)
     }
     renameNode(copy.grid?.root)
-    for (const group of copy.floatingGroups ?? []) if (object(group?.data)) {
-      group.data.views = group.data.views.map(id => aliases[id] ?? id)
-      if (aliases[group.data.activeView]) group.data.activeView = aliases[group.data.activeView]
+    for (const group of copy.floatingGroups ?? []) {
+      if (object(group?.data)) renameGroupViews(group.data)
     }
     for (const [oldId, newId] of Object.entries(aliases)) {
       if (!copy.panels[oldId]) continue
@@ -364,22 +487,28 @@ function renameLegacyBusinessPanes(scene, value) {
   }
 }
 
+// Both saved layouts use the same panel records. Geometry and closed sets are handled by their callers.
+function refreshSavedPanelTitles(records, panelIds, configured) {
+  if (!panelIds.length || panelIds.some(id => !configured.has(id))) return false
+  for (const id of panelIds) {
+    const panel = configured.get(id)
+    const record = records[id]
+    if (!object(record) || record.id !== id || record.contentComponent !== panel.type || record.renderer !== 'always'
+      || Object.keys(record).some(key => !['id', 'contentComponent', 'title', 'renderer', 'params'].includes(key))) return false
+    record.title = panel.title
+  }
+  return true
+}
+
 function upgradeSavedRecordWithNewPanels(scene, saved) {
-  saved = renameLegacyBusinessPanes(scene, saved)
+  saved = cleanSavedClosedPanelPositions(scene, renameLegacyBusinessPanes(scene, saved))
   if (!object(saved) || saved.version !== 2 || !object(saved.dockview) || !object(saved.dockview.panels)
-    || !Array.isArray(saved.closedPanelIds) || Object.keys(saved).some(key => !['version', 'dockview', 'closedPanelIds', 'legacyV1Snapshot', 'migration', 'floatingRestore'].includes(key))) return null
+    || !Array.isArray(saved.closedPanelIds) || Object.keys(saved).some(key => !['version', 'dockview', 'closedPanelIds', 'legacyV1Snapshot', 'migration', 'floatingRestore', 'closedPanelPositions', 'preset'].includes(key))) return null
   const configured = scenePanels(scene)
   const closed = new Set(saved.closedPanelIds)
   const dockview = clone(saved.dockview)
   const existing = Object.keys(dockview.panels)
-  if (!existing.length || existing.some(id => !configured.has(id))) return null
-  for (const id of existing) {
-    const panel = configured.get(id)
-    const record = dockview.panels[id]
-    if (!object(record) || record.id !== id || record.contentComponent !== panel.type || record.renderer !== 'always'
-      || Object.keys(record).some(key => !['id', 'contentComponent', 'title', 'renderer', 'params'].includes(key))) return null
-    record.title = panel.title
-  }
+  if (!refreshSavedPanelTitles(dockview.panels, existing, configured)) return null
   const added = [...configured.keys()].filter(id => !dockview.panels[id] && !closed.has(id))
   if (!added.length) return null
   added.forEach(id => closed.add(id))
@@ -390,14 +519,7 @@ function upgradeSavedRecordWithNewPanels(scene, saved) {
     floatingRestore = clone(saved.floatingRestore)
     const restoreClosed = new Set(floatingRestore.closedPanelIds)
     const restorePanels = Object.keys(floatingRestore.dockview.panels)
-    if (!restorePanels.length || restorePanels.some(id => !configured.has(id))) return null
-    for (const id of restorePanels) {
-      const panel = configured.get(id)
-      const record = floatingRestore.dockview.panels[id]
-      if (!object(record) || record.id !== id || record.contentComponent !== panel.type || record.renderer !== 'always'
-        || Object.keys(record).some(key => !['id', 'contentComponent', 'title', 'renderer', 'params'].includes(key))) return null
-      record.title = panel.title
-    }
+    if (!refreshSavedPanelTitles(floatingRestore.dockview.panels, restorePanels, configured)) return null
     for (const id of configured.keys()) if (!floatingRestore.dockview.panels[id] && !restoreClosed.has(id)) restoreClosed.add(id)
     floatingRestore.closedPanelIds = [...restoreClosed]
   }
@@ -410,6 +532,7 @@ function upgradeSavedRecordWithNewPanels(scene, saved) {
   }
   try {
     validateDockviewLayout(scene, candidate.dockview, candidate.closedPanelIds)
+    validateClosedPanelPositions(scene, candidate.closedPanelPositions, candidate.closedPanelIds)
     if (candidate.floatingRestore !== undefined) {
       validateDockviewLayout(scene, candidate.floatingRestore.dockview, candidate.floatingRestore.closedPanelIds)
     }
@@ -422,7 +545,7 @@ export function normalizeDockLayouts(config, existingDockLayouts, legacySceneLay
   const existingScenes = object(existingDockLayouts?.scenes) ? existingDockLayouts.scenes : {}
   const scenes = {}
   for (const scene of config.scenes) {
-    const saved = existingScenes[scene.id]
+    const saved = cleanSavedDockRecord(scene, existingScenes[scene.id])
     if (saved !== undefined) {
       try {
         const canonical = validateDockLayouts(config, { version: 2, scenes: { [scene.id]: saved } }, { existingDockLayouts: { version: 2, scenes: { [scene.id]: saved } }, legacySceneLayouts })
@@ -435,6 +558,8 @@ export function normalizeDockLayouts(config, existingDockLayouts, legacySceneLay
             version: 2,
             dockview: clone(upgraded.dockview),
             closedPanelIds: [...upgraded.closedPanelIds],
+            ...(upgraded.closedPanelPositions === undefined ? {} : { closedPanelPositions: clone(upgraded.closedPanelPositions) }),
+            ...(upgraded.preset === undefined ? {} : { preset: clone(upgraded.preset) }),
             ...(upgraded.floatingRestore === undefined ? {} : { floatingRestore: clone(upgraded.floatingRestore) }),
             legacyV1Snapshot: clone(upgraded.legacyV1Snapshot ?? null),
             migration: { status: 'panel_upgrade', reason: 'new-recommendation-panels-available' },
@@ -445,6 +570,7 @@ export function normalizeDockLayouts(config, existingDockLayouts, legacySceneLay
         const fallback = migrateLegacyDockLayout(scene, retainedSnapshot)
         scenes[scene.id] = {
           ...fallback,
+          ...(saved?.preset === undefined ? {} : { preset: clone(saved.preset) }),
           migration: { status: 'fallback', reason: 'stored-layout-invalid' },
         }
         continue
@@ -468,7 +594,7 @@ export function validateDockLayouts(config, value, options = {}) {
     const submitted = value.scenes[scene.id]
     const previous = existingScenes[scene.id]
     if (submitted === undefined && previous !== undefined) {
-      scenes[scene.id] = previous
+      scenes[scene.id] = cleanSavedDockRecord(scene, previous)
       continue
     }
     if (submitted === undefined) {
@@ -476,19 +602,24 @@ export function validateDockLayouts(config, value, options = {}) {
       continue
     }
     if (!object(submitted) || submitted.version !== 2
-      || Object.keys(submitted).some(key => !['version', 'dockview', 'closedPanelIds', 'legacyV1Snapshot', 'migration', 'floatingRestore'].includes(key))) fail(`scene record for ${scene.id} is invalid`)
+      || Object.keys(submitted).some(key => !['version', 'dockview', 'closedPanelIds', 'legacyV1Snapshot', 'migration', 'floatingRestore', 'closedPanelPositions', 'preset'].includes(key))) fail(`scene record for ${scene.id} is invalid`)
     validateDockviewLayout(scene, submitted.dockview, submitted.closedPanelIds)
+    validateClosedPanelPositions(scene, submitted.closedPanelPositions, submitted.closedPanelIds)
+    if (submitted.preset !== undefined) validateDockPreset(scene, submitted.preset)
+    const preset = submitted.preset ?? cleanSavedDockRecord(scene, previous)?.preset
     if (submitted.floatingRestore !== undefined) {
       const restore = submitted.floatingRestore
       if (!object(restore) || Object.keys(restore).sort().join(',') !== 'closedPanelIds,dockview'
         || restore.dockview?.floatingGroups?.length) fail(`floating restore snapshot for ${scene.id} is invalid`)
       validateDockviewLayout(scene, restore.dockview, restore.closedPanelIds)
     }
-    const metadata = canonicalMetadata(scene, submitted, previous, legacy?.[scene.id])
+    const metadata = canonicalMigrationMetadata(scene, previous, legacy?.[scene.id])
     scenes[scene.id] = {
       version: 2,
       dockview: clone(submitted.dockview),
       closedPanelIds: [...submitted.closedPanelIds],
+      ...(submitted.closedPanelPositions === undefined ? {} : { closedPanelPositions: clone(submitted.closedPanelPositions) }),
+      ...(preset === undefined ? {} : { preset: clone(preset) }),
       ...(submitted.floatingRestore === undefined ? {} : { floatingRestore: clone(submitted.floatingRestore) }),
       ...metadata,
     }

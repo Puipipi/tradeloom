@@ -152,8 +152,6 @@ window.__ModuleLoader__.load({
     let layout
     let uiWorkspace
     let shellSlots
-    let shellPluginInventory
-    let shellLocale
     let sceneLoadState = {
       loading: false, error: '', SceneTabs: null, AIWebRail: null,
       roleMetadata: { status: 'idle', error: '', roles: null },
@@ -1306,96 +1304,21 @@ window.__ModuleLoader__.load({
         width: '100%', height: '100%', minWidth: 0, minHeight: 0, overflow: 'hidden',
       } },
         h('style', { 'data-tradeloom-source-workflow-style': 'true' }, `
-          .tl-source-workflow-host { display:flex; flex:1 1 0; flex-direction:column; min-width:0; min-height:0; height:100%; overflow:hidden; font:var(--tl-font-body)/var(--tl-line-height) var(--tl-font-family); }
+          .tl-source-workflow-host {
+            --tl-surface: var(--tl-theme-panel);
+            --tl-surface-soft: var(--tl-theme-header);
+            --tl-ink: var(--tl-theme-text);
+            --tl-muted: var(--tl-theme-muted);
+            --tl-border: var(--tl-theme-border);
+            --tl-accent: var(--tl-theme-accent);
+            display:flex; flex:1 1 0; flex-direction:column; min-width:0; min-height:0; height:100%; overflow:hidden;
+            font:var(--tl-font-body)/var(--tl-line-height) var(--tl-font-family);
+          }
           .tl-source-workflow-host .tl-wf-toolbar { font-size:var(--tl-font-compact); }
           .tl-workflow-canvas-pane { display:flex; flex:1 1 0; flex-direction:column; min-width:0; min-height:0; overflow:hidden; }
           .tl-workflow-canvas-pane>.tl-wf { flex:1 1 0; min-height:0; }
           .tl-workflow-model-hint { flex:0 0 auto; margin:0; padding:var(--tl-space-1) var(--tl-space-2); color:var(--tl-theme-muted); font-size:var(--tl-font-compact); border-bottom:1px solid var(--tl-theme-border); }
         `), h(sceneApi.WorkflowCanvasPane))
-    }
-
-    function PluginInventoryOverview({ onClose }) {
-      const [revision, setRevision] = React.useState(0)
-      const [inventory, setInventory] = React.useState({ status: 'loading' })
-      React.useEffect(() => {
-        let current = true
-        setInventory({ status: 'loading' })
-        if (typeof shellPluginInventory?.list !== 'function') {
-          setInventory({ status: 'unavailable' })
-          return undefined
-        }
-        Promise.resolve().then(() => shellPluginInventory.list()).then(result => {
-          if (!current) return
-          if (!result?.ok || !Array.isArray(result.value?.entries)) {
-            setInventory({ status: 'error' })
-            return
-          }
-          setInventory({ status: 'ready', snapshot: result.value })
-        }).catch(() => { if (current) setInventory({ status: 'error' }) })
-        return () => { current = false }
-      }, [revision])
-      const text = value => {
-        if (typeof value === 'string') return value
-        if (value && typeof value === 'object') return shellLocale?.resolveText?.(value) || value.zh || value.en || ''
-        return ''
-      }
-      const phases = { pending: '等待加载', loading: '加载中', active: '已加载', failed: '加载失败', unloading: '卸载中' }
-      const row = (entry, index) => h('article', { key: `${entry.entryId ?? entry.moduleName}:${index}`, className: 'tl-plugin-inventory-row' },
-        h('div', { className: 'tl-plugin-inventory-name' },
-          h('strong', null, text(entry.meta?.title) || entry.moduleName || '名称未知'),
-          h('span', { className: 'tl-plugin-inventory-version' }, '版本未知')),
-        text(entry.meta?.description) ? h('details', { className: 'tl-plugin-inventory-description' },
-          h('summary', { 'aria-label': `展开或收起${text(entry.meta?.title) || entry.moduleName || '插件'}的说明` },
-            h('span', { className: 'tl-plugin-description-preview' }, text(entry.meta.description)),
-            h('span', { className: 'tl-plugin-description-more' }, '展开说明'),
-            h('span', { className: 'tl-plugin-description-less' }, '收起说明')),
-          h('p', null, text(entry.meta.description))) : h('p', { className: 'tl-plugin-inventory-description' }, '描述未知'),
-        h('code', { title: entry.moduleName }, entry.moduleName || '模块未知'),
-        h('div', { className: 'tl-plugin-inventory-state' },
-          h('span', { 'data-enabled': String(entry.enabled) }, entry.enabled === true ? '已启用' : entry.enabled === false ? '已停用' : entry.enabled === 'conditional' ? '按条件启用' : '启用状态未知'),
-          h('span', { 'data-phase': entry.fiberPhase ?? 'unobserved' }, entry.fiberPhase == null ? '运行状态未观测' : phases[entry.fiberPhase] || `未知状态（${entry.fiberPhase}）`)))
-      const snapshot = inventory.snapshot
-      return h('section', { id: 'tl-plugin-inventory-panel', className: `tl-plugin-inventory-panel tl-shell-top is-${activeColorScheme}`, role: 'dialog', 'aria-modal': 'true', 'aria-label': '插件概览' },
-        h('style', { 'data-tradeloom-plugin-inventory-style': true }, `
-          .tl-plugin-inventory-panel { position:relative; display:flex; flex-direction:column; box-sizing:border-box; width:min(calc(560px * var(--tl-ui-scale,1)),calc(100% - var(--tl-space-5) * 2)); max-height:calc(100% - var(--tl-space-5) * 2); padding:var(--tl-space-3); gap:var(--tl-space-2); overflow:hidden; border:1px solid var(--tl-shell-line); border-radius:var(--tl-corner-radius); background:var(--tl-shell-surface); color:var(--tl-shell-ink); box-shadow:0 8px 24px rgb(0 0 0 / 20%); font:var(--tl-font-compact)/1.45 var(--tl-font-family); }
-          .tl-plugin-inventory-panel header,.tl-plugin-inventory-panel footer { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:var(--tl-space-2); flex:none; }
-          .tl-plugin-inventory-panel button { font:inherit; color:inherit; background:var(--tl-shell-soft); border:1px solid var(--tl-shell-line); border-radius:var(--tl-corner-radius); padding:var(--tl-space-1) var(--tl-space-2); min-height:var(--tl-control-height); cursor:pointer; }
-          .tl-plugin-inventory-panel button:focus-visible { outline:2px solid var(--tl-shell-accent); outline-offset:-2px; }
-          .tl-plugin-inventory-note { margin:0; color:var(--tl-shell-muted); overflow-wrap:anywhere; }
-          .tl-plugin-inventory-list { min-height:0; overflow:auto; scrollbar-gutter:stable; display:grid; gap:var(--tl-space-2); }
-          .tl-plugin-inventory-row { min-width:0; display:grid; gap:var(--tl-space-1); padding:var(--tl-space-2); border:1px solid var(--tl-shell-line); border-radius:var(--tl-corner-radius); overflow-wrap:anywhere; }
-          .tl-plugin-inventory-name,.tl-plugin-inventory-state { display:flex; flex-wrap:wrap; align-items:baseline; gap:var(--tl-space-2); }
-          .tl-plugin-inventory-name strong { flex:1; min-width:0; }
-          .tl-plugin-inventory-version,.tl-plugin-inventory-row code { color:var(--tl-shell-muted); font:inherit; }
-          .tl-plugin-inventory-description { margin:0; }
-          .tl-plugin-inventory-description summary { cursor:pointer; list-style:none; }
-          .tl-plugin-inventory-description summary::-webkit-details-marker { display:none; }
-          .tl-plugin-inventory-description summary:focus-visible { outline:2px solid var(--tl-shell-accent); outline-offset:2px; }
-          .tl-plugin-description-preview { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
-          .tl-plugin-description-more,.tl-plugin-description-less { color:var(--tl-shell-accent); }
-          .tl-plugin-description-less,.tl-plugin-inventory-description[open] .tl-plugin-description-preview,.tl-plugin-inventory-description[open] .tl-plugin-description-more { display:none; }
-          .tl-plugin-inventory-description[open] .tl-plugin-description-less { display:inline; }
-          .tl-plugin-inventory-description p { margin:var(--tl-space-1) 0 0; }
-          .tl-plugin-inventory-state { color:var(--tl-shell-muted); }
-          .tl-plugin-inventory-state [data-enabled="true"] { color:var(--tl-theme-success,var(--tl-shell-ink)); }
-          .tl-plugin-inventory-state [data-phase="failed"] { color:var(--tl-theme-danger,var(--tl-shell-ink)); }
-          .tl-plugin-inventory-presets { min-width:0; }
-          .tl-plugin-inventory-presets summary { cursor:pointer; padding:var(--tl-space-1) 0; overflow-wrap:anywhere; }
-        `),
-        h('header', null, h('strong', null, '插件概览'), h('button', { type: 'button', onClick: onClose, 'aria-label': '关闭插件概览' }, '×')),
-        h('p', { className: 'tl-plugin-inventory-note' }, '当前配置条目与预设组合；不代表全部下载包或 MCP 连接。版本信息尚未提供。'),
-        h('div', { className: 'tl-plugin-inventory-list', 'aria-busy': inventory.status === 'loading' },
-          inventory.status === 'loading' ? h('p', { role: 'status' }, '正在读取插件清单…') : null,
-          inventory.status === 'error' ? h('p', { role: 'alert' }, '插件清单读取失败，请重试。') : null,
-          inventory.status === 'unavailable' ? h('p', { role: 'status' }, '插件清单服务暂不可用。') : null,
-          snapshot ? h(React.Fragment, null,
-            h('p', { className: 'tl-plugin-inventory-note' }, `当前配置 · ${snapshot.entries.length} 条`),
-            snapshot.entries.length ? snapshot.entries.map(row) : h('p', null, '当前配置没有插件条目。'),
-            (snapshot.agentPresets ?? []).map(preset => h('details', { key: preset.id, className: 'tl-plugin-inventory-presets' },
-              h('summary', null, `${preset.name || preset.id}${preset.isDefault ? ' · 默认预设' : ''} · ${preset.rows?.length ?? 0} 条`),
-              preset.broken ? h('p', { role: 'status' }, '预设组合暂不可读取。') : (preset.rows ?? []).map(row)))) : null),
-        h('footer', null, h('button', { type: 'button', disabled: inventory.status === 'loading', onClick: () => setRevision(value => value + 1) }, '刷新清单'),
-          h('button', { type: 'button', onClick: () => { onClose(); layout?.selectPanel('plugins') } }, '完整插件管理')))
     }
 
     function ShellToolsMenu(props = {}) {
@@ -1440,9 +1363,8 @@ window.__ModuleLoader__.load({
       const usageTriggerRef = React.useRef(null)
       const fontSizeTriggerRef = React.useRef(null)
       const motionTriggerRef = React.useRef(null)
-      const [pluginsOpen, setPluginsOpen] = React.useState(false)
       React.useLayoutEffect(() => {
-        if (!open && !usageOpen && !fontSizeOpen && !motionOpen && !pluginsOpen) return undefined
+        if (!open && !usageOpen && !fontSizeOpen && !motionOpen) return undefined
         const panelSelector = '.tl-shell-tools-menu,.tl-session-usage-panel,.tl-font-size-panel,.tl-motion-preference-panel'
         const positionPanels = () => {
           const root = rootRef.current
@@ -1475,7 +1397,7 @@ window.__ModuleLoader__.load({
         for (const panel of rootRef.current?.querySelectorAll(panelSelector) ?? []) observer?.observe(panel)
         window.addEventListener('resize', positionPanels)
         return () => { observer?.disconnect(); window.removeEventListener('resize', positionPanels) }
-      }, [open, usageOpen, fontSizeOpen, motionOpen, pluginsOpen, workbenchUiTokens.fontBody])
+      }, [open, usageOpen, fontSizeOpen, motionOpen, workbenchUiTokens.fontBody])
       const current = sceneApi?.getSnapshot?.()
       const bindingKey = `${current?.activeSceneId ?? ''}`
       const boundUsageKey = JSON.stringify(Object.entries(current?.sessionBindings ?? {}).filter(([, id]) => typeof id === 'string' && id).sort(([left], [right]) => left.localeCompare(right)))
@@ -1492,13 +1414,12 @@ window.__ModuleLoader__.load({
             setUsageOpen(false)
             setFontSizeOpen(false)
             setMotionOpen(false)
-            setPluginsOpen(false)
           }
         }
         return sceneApi.subscribe(onSnapshot)
       }, [sceneApi])
       React.useEffect(() => {
-        if (!open && !usageOpen && !fontSizeOpen && !motionOpen && !pluginsOpen) return undefined
+        if (!open && !usageOpen && !fontSizeOpen && !motionOpen) return undefined
         const closeTopbarPopover = restoreFocus => {
           if (open) { setOpen(false); if (restoreFocus) triggerRef.current?.focus?.() }
           else if (usageOpen) { setUsageOpen(false); if (restoreFocus) usageTriggerRef.current?.focus?.() }
@@ -1541,7 +1462,7 @@ window.__ModuleLoader__.load({
           document.removeEventListener('keydown', dismiss)
           document.removeEventListener('click', dismiss)
         }
-      }, [open, usageOpen, fontSizeOpen, motionOpen, pluginsOpen])
+      }, [open, usageOpen, fontSizeOpen, motionOpen])
 
       React.useEffect(() => {
         const root = window.document?.documentElement
@@ -1829,7 +1750,7 @@ window.__ModuleLoader__.load({
           h('svg', { viewBox: '0 0 20 20', 'aria-hidden': true }, h('path', { d: 'M16.5 12.2A7 7 0 0 1 7.8 3.5a7 7 0 1 0 8.7 8.7Z' }))),
         h('button', { ref: usageTriggerRef, type: 'button', className: 'tl-shell-quick-action tl-session-usage-trigger', 'aria-label': '显示会话用量', title: '会话用量', 'aria-controls': 'tl-session-usage-panel', 'aria-expanded': usageOpen, onClick: () => { setOpen(false); setFontSizeOpen(false); setMotionOpen(false); setUsageOpen(value => !value) } },
           h('svg', { viewBox: '0 0 20 20', 'aria-hidden': true }, h('circle', { cx: 10, cy: 10, r: 7 }), h('path', { d: 'M10 4.5V10l4 2.5' }))),
-        h('button', { ref: triggerRef, type: 'button', className: 'tl-shell-tools-trigger', 'aria-label': '打开工具菜单', title: '工具', 'aria-controls': pluginsOpen ? 'tl-plugin-inventory-panel' : 'tl-shell-tools-menu', 'aria-expanded': open || pluginsOpen, onClick: () => { setUsageOpen(false); setFontSizeOpen(false); setMotionOpen(false); if (pluginsOpen) { setPluginsOpen(false); setOpen(false) } else setOpen(value => !value) } }, '⋯'),
+        h('button', { ref: triggerRef, type: 'button', className: 'tl-shell-tools-trigger', 'aria-label': '打开工具菜单', title: '工具', 'aria-controls': 'tl-shell-tools-menu', 'aria-expanded': open, onClick: () => { setUsageOpen(false); setFontSizeOpen(false); setMotionOpen(false); setOpen(value => !value) } }, '⋯'),
         open ? h('div', { id: 'tl-shell-tools-menu', className: 'tl-shell-tools-menu', role: 'group', 'aria-label': '工作台工具' },
           h('span', { className: 'tl-shell-menu-heading' }, '工作台'),
           action(sceneApi?.getSnapshot?.()?.configError ? '重试读取场景' : '刷新场景配置', () => { void sceneApi?.retryLoadConfig?.() }),
@@ -1838,16 +1759,11 @@ window.__ModuleLoader__.load({
             else layout?.selectPanel('scene-workbench')
           }),
           h('span', { className: 'tl-shell-menu-heading' }, '原生功能'),
-          action('插件管理', () => { setUsageOpen(false); setFontSizeOpen(false); setMotionOpen(false); setPluginsOpen(value => !value) }),
           action('自动化', () => layout?.selectPanel('schedules')),
-          action('切换会话侧栏', () => layout?.toggleSidebar?.()),
-          action('连接手机', () => { void showMobileLink() }),
           h('span', { className: 'tl-shell-menu-heading' }, '显示与会话'),
           h('button', { key: '界面大小', ref: fontSizeTriggerRef, type: 'button', onClick: () => { setUsageOpen(false); setOpen(false); setFontSizeError(''); setFontSizeOpen(true) }, 'aria-expanded': fontSizeOpen }, '界面大小'),
-          h('button', { key: '工作台动效', ref: motionTriggerRef, type: 'button', onClick: () => { setUsageOpen(false); setFontSizeOpen(false); setOpen(false); setMotionOpen(value => !value) }, 'aria-expanded': motionOpen }, '工作台动效'),
-          h('button', { key: '会话用量', type: 'button', onClick: () => { setFontSizeOpen(false); setOpen(false); setUsageOpen(value => !value) }, 'aria-expanded': usageOpen }, '会话用量')) : null,
+          h('button', { key: '工作台动效', ref: motionTriggerRef, type: 'button', onClick: () => { setUsageOpen(false); setFontSizeOpen(false); setOpen(false); setMotionOpen(value => !value) }, 'aria-expanded': motionOpen }, '工作台动效')) : null,
         usagePanelElement,
-        pluginsOpen ? h(WorkspaceModalLayer, { onClose: () => { setPluginsOpen(false); triggerRef.current?.focus?.() } }, h(PluginInventoryOverview, { onClose: () => { setPluginsOpen(false); triggerRef.current?.focus?.() } })) : null,
         motionOpen ? h('section', {
           className: 'tl-motion-preference-panel', role: 'dialog', 'aria-label': '工作台动效',
           style: { position: 'absolute', zIndex: 1002, insetBlockStart: 'calc(100% + var(--tl-space-1))', insetInlineEnd: 0, display: 'grid', gap: 'var(--tl-space-2)', width: 'min(calc(250px * var(--tl-ui-scale, 1)), calc(100vw - var(--tl-space-5) * 2))', padding: 'var(--tl-space-3)', border: '1px solid var(--tl-shell-line)', borderRadius: 'var(--tl-corner-radius)', background: 'var(--tl-shell-surface)', color: 'var(--tl-shell-ink)', boxShadow: '0 8px 24px rgb(0 0 0 / 20%)', font: 'var(--tl-font-compact)/1.45 var(--tl-font-family)' },
@@ -3304,8 +3220,6 @@ window.__ModuleLoader__.load({
               layout = ctx.layout
               uiWorkspace = ctx.uiWorkspace
               shellSlots = ctx.slots
-              shellPluginInventory = ctx.remote?.pluginInventory
-              shellLocale = ctx.locale
               sceneContext = ctx
               sourceAccountMode = true
               installProposalHandoff()
@@ -3348,8 +3262,6 @@ window.__ModuleLoader__.load({
               layout = ctx.layout
               uiWorkspace = ctx.uiWorkspace
               shellSlots = ctx.slots
-              shellPluginInventory = ctx.remote?.pluginInventory
-              shellLocale = ctx.locale
               sceneContext = ctx
               sourceAccountMode = true
               installBusinessThemeBridge(ctx)
@@ -3378,6 +3290,7 @@ window.__ModuleLoader__.load({
               if (descriptor.componentKey === 'workflow-canvas-native') {
                 function SourceWorkflowRootPresenter({ renderFactorySlot }) {
                   return h('div', { 'data-source-owned-workflow': '', style: { position: 'relative', height: '100%', minHeight: 0, minWidth: 0 } },
+                    h('style', null, 'body:has([data-source-owned-workflow]) .dshwv-root { display: none; }'),
                     h(SourceSceneComponent, { renderFactorySlot }))
                 }
                 ctx.slots.inject('root', () => ctx.slots.register({ name: 'root', priority: -1 }, SourceWorkflowRootPresenter))
@@ -3400,8 +3313,6 @@ window.__ModuleLoader__.load({
         layout = ctx.layout
         uiWorkspace = ctx.uiWorkspace
         shellSlots = ctx.slots
-        shellPluginInventory = ctx.remote?.pluginInventory
-        shellLocale = ctx.locale
         installBusinessThemeBridge(ctx)
         ctx.slots.inject('shell.top', () => ctx.slots.register({ name: 'shell.top' }, SceneTopNavigation))
         registerTradeLoomBrand(ctx)

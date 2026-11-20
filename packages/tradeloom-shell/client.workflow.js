@@ -51,8 +51,17 @@ window.__ModuleLoader__.load({
       return `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`
     }
 
+    const emptyResumeView = { resumePlan: null, resumeIntent: null, resumeAccepted: false }
+
+    function emptyNativeRunView() {
+      return {
+        phase: 'idle', prepared: null, intent: null, run: null, records: [], canvasProjection: null,
+        cancelOperation: null, cancellation: null, ...emptyResumeView, error: '', blocked: false,
+      }
+    }
+
     // initial 仅供测试注入初始状态；正常挂载时从宿主路由加载。
-    function WorkflowCanvas({ modelGroups = [], initial = null }) {
+    function WorkflowCanvas({ modelGroups = [], initial = null, refreshRequest }) {
       const [catalog, setCatalog] = React.useState(initial?.catalog ?? null)
       const [list, setList] = React.useState(initial?.list ?? [])
       const [doc, setDoc] = React.useState(initial?.doc ?? null)
@@ -73,9 +82,12 @@ window.__ModuleLoader__.load({
       const draftWorkflow = React.useRef(initial?.doc?.id ?? null)
       const editorView = React.useRef(null)
       const currentDoc = React.useRef(doc?.id ?? null)
+      const handledRefreshRequest = React.useRef(refreshRequest)
       const currentRun = React.useRef(run?.id ?? null)
       const openGeneration = React.useRef(0)
       const opening = React.useRef(false)
+      const actionsPending = React.useRef(0)
+      const tabPrefix = React.useId()
       const nodeWidth = NODE_W * fontSize / 14
       const nodeHeight = NODE_H * fontSize / 14
       const dirtyRef = React.useRef(false)
@@ -86,7 +98,7 @@ window.__ModuleLoader__.load({
 
 
       // Native runs have their own identity and lifecycle; the mock canvas run stays untouched.
-      const [native, setNative] = React.useState({ open: false, phase: 'idle', prepared: null, intent: null, run: null, records: [], canvasProjection: null, resumePlan: null, resumeIntent: null, resumeAccepted: false, error: '', blocked: false })
+      const [native, setNative] = React.useState(() => ({ open: false, ...emptyNativeRunView() }))
       const nativeRef = React.useRef(native)
       const nativeFlight = React.useRef(false)
       const nativeGeneration = React.useRef(0)
@@ -112,7 +124,7 @@ window.__ModuleLoader__.load({
       }
       React.useEffect(() => {
         stopNativeObservation()
-        patchNative({ prepared: null, intent: null, run: null, records: [], canvasProjection: null, cancelOperation: null, cancellation: null, resumePlan: null, resumeIntent: null, resumeAccepted: false, phase: 'idle', error: '', blocked: false })
+        patchNative(emptyNativeRunView())
         return stopNativeObservation
       }, [nativeSignature, dirty, Boolean(draft)])
       React.useEffect(() => () => {
@@ -137,7 +149,7 @@ window.__ModuleLoader__.load({
             || value.version.source?.seq !== item.sourceSessionSeq || value.version.source?.index !== item.fileIndex
             || !['ready', 'unavailable'].includes(value.version.availability)) throw new Error('import-failed')
           const downloadUrl = value.version.availability === 'ready' && typeof value.version.downloadUrl === 'string'
-            && value.version.downloadUrl.startsWith('/tradeloom/workflows/native/artifacts?') ? value.version.downloadUrl : null
+            && value.version.downloadUrl.startsWith('/tradeloom/workflows/native/artifact?') ? value.version.downloadUrl : null
           if (!controller.signal.aborted) setArtifactImports(current => ({ ...current, [key]: { status: 'registered', version: { ...value.version, downloadUrl } } }))
         } catch {
           if (!controller.signal.aborted) setArtifactImports(current => ({ ...current, [key]: { status: 'failed' } }))
@@ -182,8 +194,8 @@ window.__ModuleLoader__.load({
           && ['resume_blocked', 'resume_plan_conflict', 'resume_revision_conflict', 'operation_conflict'].includes(error.code)
         const blocked = error.status === 403 || error.status === 401 || error.status === 409 && !resumeConflict
         patchNative({ phase: 'error', error: nativeErrorText(error.code), blocked,
-          ...(blocked ? { prepared: null, intent: null, resumePlan: null, resumeIntent: null, resumeAccepted: false } : {}),
-          ...(resumeConflict ? { resumePlan: null, resumeIntent: null, resumeAccepted: false } : {}) })
+          ...(blocked ? { prepared: null, intent: null, ...emptyResumeView } : {}),
+          ...(resumeConflict ? emptyResumeView : {}) })
       }
       async function nativeRequest(action, body, accept) {
         if (nativeFlight.current) return
@@ -220,7 +232,7 @@ window.__ModuleLoader__.load({
           return
         }
         stopNativeObservation()
-        patchNative({ open: true, phase: 'preparing', prepared: null, intent: null, run: null, records: [], canvasProjection: null, cancelOperation: null, cancellation: null, resumePlan: null, resumeIntent: null, resumeAccepted: false, error: '', blocked: false })
+        patchNative({ ...emptyNativeRunView(), open: true, phase: 'preparing' })
         void nativeRequest('prepare', { workflowId: doc.id }, value => {
           const prepared = value.prepared
           const nodes = prepared?.graph?.nodes ?? (prepared?.node ? [prepared.node] : [])
@@ -333,11 +345,14 @@ window.__ModuleLoader__.load({
         }
         return value
       }
+      function scheduleNativeObservation(runId, expected, count = 0, delayMs = 1000) {
+        nativeTimer.current = setTimeout(() => observeNative(runId, expected, count), delayMs)
+      }
       function observeNative(runId, expected, count = 0) {
         void nativeRequest('get', { runId }, value => {
           const result = checkNativeRun(value.run, { ...expected, id: runId })
           patchNative({ run: result, phase: result.settled ? 'settled' : count >= 29 ? 'paused' : 'observing', error: '' })
-          if (!result.settled && count < 29) nativeTimer.current = setTimeout(() => observeNative(runId, result, count + 1), document.hidden ? 4000 : 1000)
+          if (!result.settled && count < 29) scheduleNativeObservation(runId, result, count + 1, document.hidden ? 4000 : 1000)
         })
       }
       function submitNative() {
@@ -354,10 +369,10 @@ window.__ModuleLoader__.load({
             definitionRevision: intent.expectedDefinitionRevision, bindingRevision: intent.expectedBindingRevision,
             sessionId: state.prepared.center.sessionId, nodes: state.prepared.nodes,
           } })
-          nativeTimer.current = setTimeout(() => observeNative(value.submission.runId, {
+          scheduleNativeObservation(value.submission.runId, {
             sessionId: state.prepared.center.sessionId, definitionRevision: intent.expectedDefinitionRevision, bindingRevision: intent.expectedBindingRevision,
             nodes: state.prepared.nodes,
-          }), 1000)
+          })
         })
       }
       function nativeRunIdentity(state) {
@@ -376,7 +391,7 @@ window.__ModuleLoader__.load({
         void nativeRequest('cancel', { runId: state.run.id, operationId }, value => {
           if (value.operationId !== operationId || value.cancellation?.runId !== state.run.id || value.cancellation.settled !== false) throw Object.assign(new Error('cancel'), { code: 'invalid_native_response' })
           patchNative({ phase: 'cancel-requested', cancellation: value.cancellation })
-          nativeTimer.current = setTimeout(() => observeNative(state.run.id, nativeRunIdentity(state)), 1000)
+          scheduleNativeObservation(state.run.id, nativeRunIdentity(state))
         })
       }
       function prepareNativeResume() {
@@ -389,7 +404,7 @@ window.__ModuleLoader__.load({
         if (nativeFlight.current === 'get') stopNativeObservation()
         if (nativeFlight.current) return
         stopNativeObservation()
-        patchNative({ phase: 'preparing-resume', resumePlan: null, resumeIntent: null, resumeAccepted: false, error: '' })
+        patchNative({ phase: 'preparing-resume', ...emptyResumeView, error: '' })
         void nativeRequest('prepare_resume', { runId: state.run.id }, value => {
           const plan = value.preparedResume
           const known = new Set(state.run.nodes.map(node => node.id))
@@ -421,7 +436,7 @@ window.__ModuleLoader__.load({
           if (value.operationId !== intent.operationId || value.resumption?.runId !== intent.runId || value.resumption.accepted !== true
             || value.resumption.settled !== false || typeof value.resumption.reused !== 'boolean') throw Object.assign(new Error('resume acknowledgement'), { code: 'invalid_native_response' })
           patchNative({ phase: 'resume-accepted', resumeAccepted: true, error: '' })
-          nativeTimer.current = setTimeout(() => observeNative(intent.runId, nativeRunIdentity(state)), 1000)
+          scheduleNativeObservation(intent.runId, nativeRunIdentity(state))
         })
       }
       function listNative(event) {
@@ -513,14 +528,15 @@ window.__ModuleLoader__.load({
         return value.workflows
       }, [])
 
-      const open = React.useCallback(async id => {
+      const open = React.useCallback(async (id, mayApply) => {
         const generation = ++openGeneration.current
         opening.current = true
         try {
           const value = await api('GET', null, `?id=${encodeURIComponent(id)}`)
           if (generation !== openGeneration.current) return
-          currentDoc.current = value.workflow?.id ?? null; currentRun.current = value.run?.id ?? null
           opening.current = false
+          if (mayApply && !mayApply()) return
+          currentDoc.current = value.workflow?.id ?? null; currentRun.current = value.run?.id ?? null
           closeEditor(); setDoc(value.workflow); setRun(value.run); setDirty(false); setSelected(null)
         } catch (error) {
           if (generation !== openGeneration.current) return
@@ -641,7 +657,9 @@ window.__ModuleLoader__.load({
       function show(text, issues = []) { setMessage({ text, issues }) }
 
       async function act(label, task) {
+        actionsPending.current++
         try { await task(); show(label) } catch (error) { show(`${label}失败：${error.message}`, error.issues ?? []) }
+        finally { actionsPending.current-- }
       }
       const save = () => act('已保存', async () => {
         const value = await api('POST', { action: 'save', workflow: doc })
@@ -701,7 +719,10 @@ window.__ModuleLoader__.load({
         } else if (linking) setLinking({ ...linking, point: toCanvas(event) })
       }
       function onPointerUp() {
-        if (drag.current?.type === 'node' && drag.current.moved) setDirty(true)
+        if (drag.current?.type === 'node' && drag.current.moved) {
+          dirtyRef.current = true
+          setDirty(true)
+        }
         drag.current = null
         setLinking(null)
       }
@@ -728,6 +749,39 @@ window.__ModuleLoader__.load({
         }))
       }, [waitingKey])
 
+      React.useEffect(() => {
+        const closeOutside = event => {
+          const menu = root.current?.querySelector('.tl-wf-category[open]')
+          if (menu && !menu.contains(event.target)) menu.open = false
+        }
+        document.addEventListener('pointerdown', closeOutside)
+        return () => document.removeEventListener('pointerdown', closeOutside)
+      }, [])
+
+      const editingRun = Boolean(active)
+      const nativeBusy = ['preparing', 'submitting', 'listing', 'cancelling', 'preparing-resume', 'resuming'].includes(native.phase)
+      const savedCanvas = list.some(item => item.id === doc?.id)
+      const refreshDisabled = !savedCanvas || dirty || Boolean(draft) || editingRun || nativeBusy
+
+      async function refreshCanvas() {
+        if (!doc) return
+        const runId = currentRun.current
+        const canRefresh = () => !dirtyRef.current && !draftRef.current && !actionsPending.current
+          && drag.current?.type !== 'node' && currentRun.current === runId && currentDoc.current === doc.id
+          && (!nativeFlight.current || nativeFlight.current === 'get')
+        if (refreshDisabled || opening.current || !canRefresh()) return
+        await open(doc.id, canRefresh)
+        try { await refreshList() }
+        catch (error) { show(`刷新画布列表失败：${error.message}`) }
+      }
+
+      React.useEffect(() => {
+        if (handledRefreshRequest.current === refreshRequest) return
+        // Consume blocked requests too, so closing an editor cannot replay an old refresh.
+        handledRefreshRequest.current = refreshRequest
+        if (refreshRequest !== undefined) void refreshCanvas()
+      })
+
       if (!doc) return h('div', { className: 'tl-wf-empty', role: 'status' }, message.text || '加载工作流…')
       const byId = new Map(doc.nodes.map(node => [node.id, node]))
       // Only this view's confirmed current definition owns graph status. Historical
@@ -753,12 +807,29 @@ window.__ModuleLoader__.load({
       }
       const nativeGraphNodes = nativeGraphMatches ? new Map(currentNativeRun.nodes.map(node => [node.id, displayNativeState(node)])) : null
       const nodeState = id => nativeCanvas ? nativeGraphNodes?.get(id) ?? { status: 'unknown' } : run?.nodes?.[id]
-      const editingRun = Boolean(active)
       const selectedNode = selected ? byId.get(selected) : null
       const models = modelGroups.flatMap(group => group.models)
 
 
-      const nativeBusy = ['preparing', 'submitting', 'listing', 'cancelling', 'preparing-resume', 'resuming'].includes(native.phase)
+      const canvasTabs = savedCanvas ? list : [...list, doc]
+      const activeTab = canvasTabs.findIndex(item => item.id === doc.id)
+      function selectCanvas(id) {
+        if (id !== doc.id) void open(id)
+      }
+      function canvasTabKey(event) {
+        const tabs = [...event.currentTarget.querySelectorAll('[role="tab"]')]
+        const index = tabs.indexOf(event.target)
+        if (index < 0) return
+        const target = {
+          ArrowLeft: (index + tabs.length - 1) % tabs.length,
+          ArrowRight: (index + 1) % tabs.length,
+          Home: 0,
+          End: tabs.length - 1,
+        }[event.key]
+        if (target === undefined) return
+        event.preventDefault()
+        tabs[target].focus()
+      }
       const nativeLabels = { idle: '尚未准备', preparing: '正在核对原生执行条件…', confirming: '已准备，尚未启动；请确认本次真实执行。',
         submitting: '正在提交本次确认…', accepted: '请求已接受，尚未核验执行结果。', observing: '正在查询真实执行状态，尚未核验终结。',
         paused: '查询已暂停；可手动重新查询，后台执行不因此停止。', listing: '正在读取当前绑定的原生记录…', listed: '已读取当前绑定的原生记录。',
@@ -872,14 +943,16 @@ window.__ModuleLoader__.load({
             node.error && h('p', null, nativeErrorText(node.error))))),
         native.phase === 'listed' && native.records.length === 0 && h('p', null, '当前绑定未返回原生记录。'),
         native.records.length > 0 && h('ul', { 'aria-label': '当前绑定的原生运行记录' }, native.records.map((record, index) => h('li', { key: record.id },
-          h('button', { type: 'button', 'aria-label': `查看原生记录 ${index + 1}`, disabled: nativeBusy || native.blocked || resumeUnknown, onClick: () => { patchNative({ run: record, prepared: null, intent: null, cancelOperation: null, cancellation: null, resumePlan: null, resumeIntent: null, resumeAccepted: false }); observeNative(record.id, record) } }, `原生记录 ${index + 1} · ${nativeStatusLabels[record.status] ?? '状态未知'}`)))),
+          h('button', { type: 'button', 'aria-label': `查看原生记录 ${index + 1}`, disabled: nativeBusy || native.blocked || resumeUnknown, onClick: () => { patchNative({ run: record, prepared: null, intent: null, cancelOperation: null, cancellation: null, ...emptyResumeView }); observeNative(record.id, record) } }, `原生记录 ${index + 1} · ${nativeStatusLabels[record.status] ?? '状态未知'}`)))),
         h('p', null, '提供方 / 模型：未知。文件声明不代表可预览或下载。'))
 
       // Toolbar menus stay within their own canvas; no workspace-wide overlay or hidden command.
       function placeToolbarMenu(event) {
-        const details = event.currentTarget
-        if (event.target !== details || !details.open || !root.current) return
-        if (details.classList.contains('tl-wf-status-menu') && details.closest('.tl-wf-view-actions')) return
+        const disclosure = event.currentTarget
+        if (event.target !== disclosure || !root.current) return
+        const details = disclosure.classList.contains('tl-wf-status-menu')
+          ? disclosure.closest('.tl-wf-view-menu') ?? disclosure : disclosure
+        if (!details.open) return
         const menu = [...details.children].find(node => node.tagName !== 'SUMMARY')
         const summary = details.querySelector('summary')
         if (!menu || !summary) return
@@ -901,15 +974,12 @@ window.__ModuleLoader__.load({
 
       const toolbar = h('div', { className: 'tl-wf-toolbar', role: 'toolbar', 'aria-label': '工作流操作', inert: draft ? '' : undefined },
         h('div', { className: 'tl-wf-primary' },
-        h('select', {
-          'aria-label': '选择工作流', value: list.some(item => item.id === doc.id) ? doc.id : '',
-          onChange: event => event.target.value && open(event.target.value),
-        }, !list.some(item => item.id === doc.id) && h('option', { value: '' }, `${doc.title}（未保存）`),
-          list.map(item => h('option', { key: item.id, value: item.id }, `${item.source === 'agent' ? '🤖 ' : ''}${item.title}${item.confirmed ? '' : '（待确认）'}`))),
         h('button', { type: 'button', onClick: newWorkflow, disabled: editingRun }, '新建'),
         h('button', { type: 'button', onClick: prepareNative, disabled: nativeBusy || Boolean(nativeEligibility), title: nativeEligibility || '准备真实原生执行，核对后显式确认', ref: nativeTrigger }, '开始…'),
         h('button', { type: 'button', onClick: save, disabled: editingRun }, dirty ? '保存*' : '保存'),
         h('button', { type: 'button', onClick: listNative, disabled: nativeBusy, title: '查询真实原生运行记录' }, '历史'),
+        h('button', { type: 'button', onClick: refreshCanvas, disabled: refreshDisabled,
+          title: savedCanvas ? '读取已保存画布，保留视图位置' : '保存后可以刷新画布' }, '刷新画布'),
         h('details', { className: 'tl-wf-doc-menu', onToggle: placeToolbarMenu },
           h('summary', { 'aria-label': '工作流文档操作', title: '重命名、新建、确认草稿、删除' }, '⋯'),
           h('div', { className: 'tl-wf-doc-actions', role: 'group', 'aria-label': '工作流文档操作菜单' },
@@ -926,17 +996,34 @@ window.__ModuleLoader__.load({
         h('span', { className: `tl-wf-runstate${nativeCanvas ? ' tl-wf-source' : ''}`, role: 'status', 'aria-live': 'polite' },
           nativeCanvas ? `原生运行 · ${nativeGraphMatches ? '当前返回状态' : '等待状态核验'}`
             : `模拟执行 · ${doc.source === 'agent' && !doc.confirmed ? '草稿待确认' : run ? RUN_LABEL[run.status] ?? run.status : '未运行'}`)),
+        h('div', { className: 'tl-wf-tabs', role: 'tablist', 'aria-label': '工作流画布页签', onKeyDown: canvasTabKey },
+          canvasTabs.map((item, index) => h('button', {
+            key: item.id, id: `${tabPrefix}-tab-${index}`, role: 'tab', type: 'button',
+            'aria-selected': index === activeTab, 'aria-controls': `${tabPrefix}-canvas`,
+            tabIndex: index === activeTab ? 0 : -1,
+            onClick: () => selectCanvas(item.id),
+          }, `${item.source === 'agent' ? '🤖 ' : ''}${item.title}${item.id === doc.id && !savedCanvas ? '（未保存）' : item.confirmed ? '' : '（待确认）'}`))),
         h('div', { className: 'tl-wf-categories', role: 'group', 'aria-label': '业务节点分类' },
           (catalog?.kinds ?? []).map(kind => h('details', {
             key: kind.kind, className: 'tl-wf-category', onToggle: placeToolbarMenu,
-            onMouseEnter: event => { event.currentTarget.open = true },
-            onMouseLeave: event => { if (!event.currentTarget.contains(document.activeElement)) event.currentTarget.open = false },
             onBlur: event => { if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false },
+            onKeyDown: event => {
+              if (event.key !== 'Escape' || !event.currentTarget.open) return
+              event.preventDefault()
+              event.stopPropagation()
+              event.currentTarget.open = false
+              event.currentTarget.querySelector('summary')?.focus()
+            },
           }, h('summary', { title: kind.kind === 'external' ? '外部平台：仅模拟/说明，原生不可运行' : `添加${kind.label}节点` }, kind.label),
           h('div', { className: 'tl-wf-kind-menu', role: 'group', 'aria-label': kind.label },
             (kind.kind === 'agent' ? catalog.agents : [kind]).map(item => h('button', {
               key: item.id ?? item.kind, type: 'button', disabled: editingRun,
-              onClick: event => { addNode(kind.kind, item.id); event.currentTarget.closest('details').open = false },
+              onClick: event => {
+                const menu = event.currentTarget.closest('details')
+                addNode(kind.kind, item.id)
+                menu.open = false
+                menu.querySelector('summary')?.focus()
+              },
               title: kind.kind === 'external' ? '仅模拟/说明，原生不可运行' : `添加${item.label}节点`,
             }, h('span', { 'aria-hidden': true }, item.icon ?? kind.icon), ` ${item.label}${kind.kind === 'external' ? '（仅模拟）' : ''}`)))))),
         h('div', { className: 'tl-wf-view-tools', role: 'group', 'aria-label': '画布视图' },
@@ -1073,6 +1160,7 @@ window.__ModuleLoader__.load({
         h('div', { className: 'tl-wf-body' },
           h('div', {
             ref: surface, className: 'tl-wf-surface', inert: draft ? '' : undefined,
+            id: `${tabPrefix}-canvas`, role: 'tabpanel', 'aria-labelledby': `${tabPrefix}-tab-${activeTab}`,
             onPointerDown: event => {
               if (event.button !== 0) return
               setSelected(null)
@@ -1108,6 +1196,9 @@ window.__ModuleLoader__.load({
       .tl-wf-artifact-card summary { font-size:.85em; }
       .tl-wf-toolbar { flex:none; display:flex; flex-wrap:wrap; align-items:center; gap:4px; padding:4px 6px; border-bottom:1px solid var(--tl-border,#cbd5e2); }
       .tl-wf-primary { display:flex; flex:1 1 100%; flex-wrap:wrap; align-items:center; min-width:0; gap:4px; }
+      .tl-wf-tabs { display:flex; flex:1 1 100%; gap:.3em; min-width:0; overflow-x:auto; padding:2px; }
+      .tl-wf-tabs > button { flex:none; max-inline-size:min(20em,100%); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .tl-wf-tabs > [aria-selected="true"] { border-color:var(--tl-accent,#356fc4); background:var(--tl-surface-soft,#eef3f9); }
       .tl-wf-toolbar button, .tl-wf-inspector button { border:1px solid var(--tl-border,#cbd5e2); background:var(--tl-surface,#fff); color:inherit; border-radius:6px; padding:3px 9px; cursor:pointer; }
       .tl-wf-toolbar button[style] { border-color:var(--tl-wf-color); }
       .tl-wf-toolbar button:disabled { opacity:.45; cursor:default; }
@@ -1145,17 +1236,14 @@ window.__ModuleLoader__.load({
       .tl-wf-view-tools button { flex-shrink:0; }
       .tl-wf-toolbar input, .tl-wf-toolbar select, .tl-wf-toolbar button { font:inherit; min-width:0; max-width:100%; box-sizing:border-box; }
       .tl-wf-toolbar input, .tl-wf-toolbar select { background:var(--tl-surface,#fff); color:inherit; border:1px solid var(--tl-border,#cbd5e2); border-radius:6px; padding:.3em .5em; }
-      .tl-wf-primary > select { width:10em; flex:0 1 10em; max-width:100%; }
       .tl-wf-toolbar button, .tl-wf-toolbar summary { padding:.2em .45em; }
       .tl-wf-toolbar summary, .tl-wf-toolbar button { min-height:initial; line-height:1.4; }
       .tl-wf-toolbar summary { box-sizing:border-box; }
       .tl-wf-execution-note { margin:.25em 0; color:var(--tl-muted,#68778c); font-size:.85em; overflow-wrap:anywhere; }
       @container (max-width:900px) {
         .tl-wf-view-tools > button .tl-wf-tool-label, .tl-wf-kind-label { display:none; }
-        .tl-wf-primary > select { flex-basis:7em; max-width:12em; }
       }
       @container (max-width:32em) {
-        .tl-wf-primary > select { width:8em; flex-basis:8em; }
         .tl-wf-view-tools > button:not([aria-label="适应全部节点"]) { display:none; }
         .tl-wf-overflow-zoom { display:flex; flex-direction:column; gap:.25em; }
         .tl-wf-view-level { display:none; }
@@ -1231,7 +1319,7 @@ window.__ModuleLoader__.load({
       }
       .tl-wf :is(.tl-wf-native,.tl-wf-dialog-fields,.tl-wf-output)::-webkit-scrollbar { width:5px; height:5px; }
       .tl-wf :is(.tl-wf-native,.tl-wf-dialog-fields,.tl-wf-output)::-webkit-scrollbar-thumb { background:var(--tl-muted,#68778c); border-radius:5px; }
-      @media(max-width:800px) { .tl-wf-toolbar { gap:4px; } .tl-wf-tool-label { display:none; } .tl-wf-primary > select { max-width:12em; } }
+      @media(max-width:800px) { .tl-wf-toolbar { gap:4px; } .tl-wf-tool-label { display:none; } }
       .tl-wf-decide { display:flex; gap:6px; }
       .tl-wf-quick { position:absolute; pointer-events:none; }
       .tl-wf-quick-btn { pointer-events:auto; position:absolute; top:50%; width:calc(40px * var(--tl-ui-scale,1)); height:calc(40px * var(--tl-ui-scale,1)); margin-top:calc(-20px * var(--tl-ui-scale,1)); border:0; border-radius:50%; color:var(--tl-wf-status-button-ink); font-size:calc(20px * var(--tl-ui-scale,1)); font-weight:700; cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,.35); }

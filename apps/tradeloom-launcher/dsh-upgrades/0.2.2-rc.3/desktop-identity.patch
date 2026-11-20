@@ -1,0 +1,42 @@
+diff --git a/package.json b/package.json
+--- a/package.json
++++ b/package.json
+@@ -1,5 +1,5 @@
+ {
+-  "name": "@deepseek-ai/dsh-desktop",
++  "name": "tradeloom",
+   "description": "Electron desktop shell for a bundled dsh runtime and external plugins",
+   "version": "0.2.2-rc.3",
+   "private": true,
+@@ -8,7 +8,7 @@
+     "name": "Hangzhou DeepSeek Artificial Intelligence Co., Ltd."
+   },
+   "type": "module",
+-  "main": "lib/main.js",
++  "main": "lib/tradeloom/bootstrap-entry.mjs",
+   "dependencies": {
+     "electron-updater": "^6.8.9",
+     "semver": "^7.8.5",
+@@ -16,7 +16,7 @@
+     "@deepseek-ai/dsh-api-gateway": "workspace:*",
+     "@deepseek-ai/cordis": "workspace:~"
+   },
+-  "dshDesktopAppId": "com.deepseek.dsh",
++  "dshDesktopAppId": "cn.tradeloom.workbench",
+   "dshDesktopUpdateChannel": "nightly",
+   "dshMandatoryUpdatePolicy": {
+     "origin": "https://harness.deepseek.com",
+@@ -26,5 +26,10 @@
+     "authentication": "anonymous"
+   },
+   "dshBuildCommit": "6b729fedde0c8fd03af7afdf5a711aa64fe87c3b",
+-  "dshBuildDirty": false
+-}
+\ No newline at end of file
++  "dshBuildDirty": false,
++  "tradeloomAssembly": {
++    "kind": "official-binary-plus-current-own-overlays",
++    "sourceHead": "0d4c15afe32d85364c2b323771cdbb31e5ac940b",
++    "sourceDirty": true
++  }
++}

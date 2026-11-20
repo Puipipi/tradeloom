@@ -15858,6 +15858,10 @@ function isDesktopHostEvent(message, isRunId) {
 		case "native-import-confirmation-cancel": return Number.isSafeInteger(candidate.requestId) && candidate.requestId > 0;
 		case "update-tasks": return Number.isSafeInteger(candidate.requestId) && typeof candidate.active === "boolean" && (candidate.error === void 0 || typeof candidate.error === "string");
 		case "quit-inspection": return Number.isSafeInteger(candidate.requestId) && typeof candidate.activeTasks === "boolean" && typeof candidate.scheduledTasks === "boolean" && (candidate.error === void 0 || typeof candidate.error === "string");
+		case "workflow-files-changed": return true;
+		case "workflow-files": return Number.isSafeInteger(candidate.requestId) && candidate.requestId > 0
+			&& (typeof candidate.error === "string" || candidate.result === null
+				|| typeof candidate.result === "object" && !Array.isArray(candidate.result));
 		case "scene-memory-origin-grant": {
 			if (!Number.isSafeInteger(candidate.requestId)) return false;
 			if (candidate.error !== void 0) return typeof candidate.error === "string" && (candidate.errorCode === void 0 || typeof candidate.errorCode === "string");
@@ -15922,6 +15926,7 @@ var DesktopHostProcess = class {
 	packageManager;
 	onPlatformSession;
 	onPluginOperation;
+	onWorkflowFilesChanged;
 	runId;
 	child;
 	readyResolve;
@@ -15949,7 +15954,7 @@ var DesktopHostProcess = class {
 	* @param onPlatformSession - Private credential updates for embedded Platform views.
 	* @param onPluginOperation - Optional diagnostic sink; malformed records are ignored without failing the Host.
 	*/
-	constructor(node, runtimeDir, projectDir, inspectPort, environment = process.env, onFailure, primaryRuntime, packageManager, onPlatformSession, onNativeImportConfirmation, onThemeReceipt, onRootIdentityReceipt, onPluginOperation) {
+	constructor(node, runtimeDir, projectDir, inspectPort, environment = process.env, onFailure, primaryRuntime, packageManager, onPlatformSession, onNativeImportConfirmation, onThemeReceipt, onRootIdentityReceipt, onPluginOperation, onWorkflowFilesChanged) {
 		this.node = node;
 		this.runtimeDir = runtimeDir;
 		this.projectDir = projectDir;
@@ -15963,6 +15968,7 @@ var DesktopHostProcess = class {
 		this.onThemeReceipt = onThemeReceipt;
 		this.onRootIdentityReceipt = onRootIdentityReceipt;
 		this.onPluginOperation = onPluginOperation;
+		this.onWorkflowFilesChanged = onWorkflowFilesChanged;
 		this.operationBridge = resolveDesktopHostBridge(runtimeDir);
 	}
 	/**
@@ -16044,6 +16050,9 @@ var DesktopHostProcess = class {
 					injections: message.injections
 				});
 			} else if (message.type === "platform-session") this.onPlatformSession?.(message.session);
+			else if (message.type === "workflow-files-changed") {
+				if (this.child === child && !this.stopping && !this.failureReported) this.onWorkflowFilesChanged?.();
+			}
 			else if (message.type === "native-import-confirmation") this.nativeImportConfirmations?.handle(message.requestId, message.context);
 			else if (message.type === "native-import-confirmation-cancel") this.nativeImportConfirmations?.cancel(message.requestId);
 			else if (message.type === "shutdown-complete") {
@@ -16201,6 +16210,11 @@ var DesktopHostProcess = class {
 	cancelNativeImportConfirmations() {
 		this.nativeImportConfirmations?.dispose();
 		this.nativeImportConfirmations = void 0;
+	}
+	async workflowFiles(request) {
+		const response = await this.control({ type: "workflow-files", request }, 15e3, "workflow files: Host request timed out", "workflow files");
+		if (response.type !== "workflow-files") throw new Error("workflow files: unexpected Host response");
+		return response.result;
 	}
 	async issueSceneMemoryOriginGrant(request) {
 		const response = await this.control({ type: "scene-memory-origin-grant", request }, 15e3, "scene-memory origin: grant request timed out", "scene-memory origin");
@@ -16886,22 +16900,31 @@ function installDesktopFileDrag(owner, resolveResource) {
 */
 function installDesktopDirectoryPicker(getWindow, resolveGuest, sourceMode = () => false) {
 	const pending = /* @__PURE__ */ new WeakMap();
+	const pick = (window, purpose) => {
+		const existing = pending.get(window);
+		if (existing !== void 0) {
+			if (existing.purpose !== purpose) throw new Error("dsh desktop: another directory picker is open");
+			return existing.result;
+		}
+		if (window.isMinimized()) window.restore();
+		window.show();
+		window.focus();
+		const options = purpose === "workflow"
+			? { title: "授权工作流中心助手浏览此目录", properties: ["openDirectory"] }
+			: { properties: ["openDirectory", "createDirectory"] };
+		const result = dialog.showOpenDialog(window, options).then(({ canceled, filePaths }) => window.isDestroyed() || canceled ? null : filePaths[0] ?? null).finally(() => {
+			pending.delete(window);
+		});
+		pending.set(window, { purpose, result });
+		return result;
+	};
 	ipcMain.handle(DESKTOP_IPC.directoryPick, async (event) => {
 		const window = sourceMode() ? resolveGuest?.(event) : getWindow();
 		if (window === void 0 || window.isDestroyed() || !sourceMode() && (event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame)) throw new Error("dsh desktop: rejected directory picker from an unowned renderer");
 		assertDesktopSender(event, ["app"]);
-		const existing = pending.get(window);
-		if (existing !== void 0) return existing;
-		if (window.isMinimized()) window.restore();
-		window.show();
-		window.focus();
-		const result = dialog.showOpenDialog(window, { properties: ["openDirectory", "createDirectory"] }).then(({ canceled, filePaths }) => window.isDestroyed() || canceled ? null : filePaths[0] ?? null).finally(() => {
-			pending.delete(window);
-		});
-		pending.set(window, result);
-		return result;
+		return pick(window, "workspace");
 	});
-	return (window) => pending.has(window);
+	return Object.assign((window) => pending.has(window), { pickForWorkflow: (window) => pick(window, "workflow") });
 }
 //#endregion
 //#region lib/types/microphone-permissions.js
@@ -25038,6 +25061,8 @@ async function main() {
 		}, record => {
 			operationJournal ??= new OperationJournal(join(app.getPath("userData"), "plugin-operations"), { segmentBytes: 256 * 1024, recordBytes: 4096, queuedBytes: 64 * 1024 });
 			operationJournal.enqueue(JSON.stringify(record));
+		}, () => {
+			if (!quitting && backend.host === hostWrapper) sourceController?.workflowFilesChanged();
 		});
 		nativeImportHost = host;
 		const wrapper = {
@@ -25106,6 +25131,7 @@ async function main() {
 				} finally { await operationJournal?.drain(500); }
 			},
 			issueSceneMemoryOriginGrant: (request) => host.issueSceneMemoryOriginGrant(request),
+			workflowFiles: (request) => host.workflowFiles(request),
 			updateTasks: (action) => host.updateTasks(action),
 			inspectQuit: () => host.inspectQuit(),
 			resolveDragResource: (address, signal) => host.resolveDragResource(address, signal)
@@ -25433,6 +25459,14 @@ async function main() {
 			ownedPartition: sourcePartition,
 			primaryWindow: window,
 			hasNativeModal: hasDirectoryModal,
+			pickWorkflowDirectory: hasDirectoryModal.pickForWorkflow,
+			requestWorkflowFiles: async (request) => {
+				const host = backend.host;
+				if (typeof host?.workflowFiles !== "function") throw new Error("workflow files: Host unavailable");
+				const result = await host.workflowFiles(request);
+				if (backend.host !== host) throw new Error("workflow files: Host changed");
+				return result;
+			},
 			resolveNativeTheme: (preference) => {
 				if (nativeTheme.themeSource !== preference) nativeTheme.themeSource = preference;
 				return nativeTheme.shouldUseDarkColors ? "dark" : "light";

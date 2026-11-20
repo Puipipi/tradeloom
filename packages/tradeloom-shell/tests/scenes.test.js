@@ -6,8 +6,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { HOME_MARKER, HOME_MARKER_VALUE, ROLE_IDS, createStateStore } from '../state.js'
-import { createScenesHandler } from '../host.js'
-import { defaultSceneWorkbench } from '../scene-layout.js'
+import { createDockLayoutsHandler, createScenesHandler } from '../host.js'
+import { defaultSceneWorkbench, sceneConfigurationRevision, SCENE_COMPONENT_CATALOG } from '../scene-layout.js'
 import { normalizeDockLayouts } from '../dock-layout.js'
 import { pathToFileURL } from 'node:url'
 import { publicRoleMetadata } from '../roles.js'
@@ -67,7 +67,8 @@ test('scene JSON defines role-bound 4x4 grids and maps all known business routes
       ['assistant-user-profile', 'native-chat', 1, 3, 1, 2], ['native-workspace', 'native-workspace', 1, 1, 2, 2],
     ],
     'agent-center': [
-      ['business-main', 'business-iframe', 1, 1, 3, 2], ['files', 'business-iframe', 4, 1, 1, 2],
+      ['business-main', 'business-iframe', 2, 1, 2, 2], ['business-plan', 'business-iframe', 1, 1, 1, 2],
+      ['files', 'business-iframe', 4, 1, 1, 2],
       ['preview', 'business-iframe', 1, 3, 1, 2], ['native-chat', 'native-chat', 2, 3, 3, 2],
       ['assistant-product', 'native-chat', 1, 3, 1, 2], ['assistant-delivery', 'native-chat', 1, 3, 1, 2],
       ['assistant-user-profile', 'native-chat', 1, 3, 1, 2], ['native-workspace', 'native-workspace', 1, 1, 2, 2],
@@ -96,7 +97,7 @@ test('scene JSON defines role-bound 4x4 grids and maps all known business routes
     ],
   }
   assert.deepEqual(config.scenes.map(scene => [scene.id, scene.panels.map(panel => [panel.id, panel.type, panel.col, panel.row, panel.w, panel.h])]),
-    Object.entries(reviewedPanelLayouts), 'each R76 scene keeps its reviewed panel identities, types, and grid geometry')
+    Object.entries(reviewedPanelLayouts), 'each scene keeps its configured panel identities, types, and grid geometry')
   for (const scene of config.scenes) {
     assert.deepEqual(new Set(scene.panels.map(panel => panel.id)).size, scene.panels.length)
     const business = scene.panels.find(panel => panel.id === 'business-main')
@@ -849,7 +850,7 @@ test('scene chat renders the pinned conversation factory inside its retained rol
   const layoutTrigger = find(navTree, node => node.type === 'button' && node.props?.['aria-label'] === '工作区布局')
   assert.ok(layoutTrigger, 'the global navigation keeps layout access independent of Dockview groups')
   const layoutMenu = find(navTree, node => node.props?.id === 'tl-scene-layout-menu')
-  const recommendLayout = find(layoutMenu, node => node.type === 'button' && node.children?.includes('应用推荐布局'))
+  const recommendLayout = find(layoutMenu, node => node.type === 'button' && node.children?.includes('恢复默认预设'))
   assert.ok(recommendLayout, 'the user can explicitly apply the configured recommendation after changing a saved layout')
   recommendLayout.props.onClick()
   assert.equal(JSON.stringify(loadedDockLayouts.at(-1)), JSON.stringify(exports.getSnapshot().dockDefaults.center.dockview),
@@ -926,7 +927,7 @@ test('scene chat renders the pinned conversation factory inside its retained rol
   renderWorkbench()
   const noPanelsNavigation = resolve(invoke(exports.SceneTabs, { workbenchActive: true }))
   const noPanelsMenu = find(noPanelsNavigation, node => node.props?.id === 'tl-scene-layout-menu')
-  const noPanelsRecommendation = find(noPanelsMenu, node => node.type === 'button' && node.children?.includes('应用推荐布局'))
+  const noPanelsRecommendation = find(noPanelsMenu, node => node.type === 'button' && node.children?.includes('恢复默认预设'))
   assert.ok(noPanelsRecommendation, 'the global layout menu remains reachable after every Dockview panel is closed')
   noPanelsRecommendation.props.onClick()
   assert.equal(JSON.stringify(loadedDockLayouts.at(-1)), JSON.stringify(exports.getSnapshot().dockDefaults.center.dockview),
@@ -1563,7 +1564,10 @@ test('client entry passes the real Cordis context through to scene registration'
       serviceCtx.reflect.provide('modelDirectories', { directoryFor() { throw new Error('not used in this test') } })
       serviceCtx.reflect.provide('remote', { session: remoteSession, pluginInventory: {} })
       serviceCtx.reflect.provide('remote.session', remoteSession)
+      serviceCtx.reflect.provide('remote.skills', {})
       serviceCtx.reflect.provide('remote.pluginInventory', {})
+      serviceCtx.reflect.provide('remote.settings', {})
+      serviceCtx.reflect.provide('configForms', {})
       serviceCtx.reflect.provide('locale', {})
       serviceCtx.reflect.provide('theme', theme)
     },
@@ -1845,16 +1849,15 @@ test('business and scene navigation share the single rendered shell.top occupant
   const menu = findNode(toolsTree, node => node?.props?.role === 'group')
   const actions = menu.children.filter(node => node?.type === 'button')
   assert.ok(actions.some(node => node.children.includes('刷新场景配置')), 'scene configuration refresh stays in the utility menu')
-  for (const [label, expected] of [['返回工作台', ['panel', 'scene-workbench']], ['插件管理', ['panel', 'plugins']], ['自动化', ['panel', 'schedules']], ['切换会话侧栏', ['sidebar']]]) {
+  for (const [label, direct] of [['会话用量', '显示会话用量'], ['切换会话侧栏', '切换会话侧栏'], ['连接手机', '连接手机']]) {
+    assert.ok(findNode(toolsTree, node => node?.props?.['aria-label'] === direct), `the direct ${label} button stays available`)
+    assert.ok(!actions.some(node => node.children.includes(label)), `the tools menu does not repeat ${label}`)
+  }
+  assert.ok(!actions.some(node => node.children.includes('插件管理')), 'the workbench menu does not repeat the DSH plugin directory')
+  for (const [label, expected] of [['返回工作台', ['panel', 'scene-workbench']], ['自动化', ['panel', 'schedules']]]) {
     const action = actions.find(node => node.children.includes(label))
     assert.ok(action, `${label} is present in the shell tools menu`)
     action.props.onClick()
-    if (label === '插件管理') {
-      const inventory = renderTools()
-      assert.ok(findNode(inventory, node => node?.type?.name === 'WorkspaceModalLayer'), 'plugin management opens its current modal layer')
-      findNode(inventory, node => node?.type === 'button' && node.props?.['aria-label'] === '打开工具菜单').props.onClick()
-      continue
-    }
     assert.deepEqual(layoutCalls.at(-1), expected)
   }
   hookIndex = 0
@@ -1864,8 +1867,7 @@ test('business and scene navigation share the single rendered shell.top occupant
   hookIndex = 0
   layoutEffectIndex = 0
   const openedWorkbenchTools = renderTools({ workbenchActive: true })
-  const workbenchMenu = findNode(openedWorkbenchTools, node => node?.props?.role === 'group')
-  const workbenchSidebarAction = workbenchMenu.children.find(node => node?.type === 'button' && node.children.includes('切换会话侧栏'))
+  const workbenchSidebarAction = findNode(openedWorkbenchTools, node => node?.props?.['aria-label'] === '切换会话侧栏')
   assert.ok(workbenchSidebarAction, 'the native sidebar toggle stays available in workbench mode')
   workbenchSidebarAction.props.onClick()
   assert.deepEqual(layoutCalls.at(-1), ['sidebar'], 'workbench mode uses the existing Host sidebar toggle contract')
@@ -2449,6 +2451,14 @@ test('scene navigation exposes config reload after a failed request and refreshe
       if (url === '/tradeloom/scenes') {
         configFetches++
         if (configFetches === 1) throw new Error('offline')
+        if (configFetches === 2) {
+          const invalid = structuredClone(config)
+          invalid.componentCatalog = SCENE_COMPONENT_CATALOG
+          const copy = { ...structuredClone(invalid.scenes.find(value => value.id === 'runs')), id: 'runs-copy', templateSceneId: 'runs' }
+          copy.panels.find(value => value.id === 'reference').componentId = 'artifact-files'
+          invalid.scenes.push(copy)
+          return { ok: true, async json() { return invalid } }
+        }
         return { ok: true, async json() { return config } }
       }
       if (url === '/tradeloom/scene-layouts') return { ok: true, async json() { return savedState } }
@@ -2470,10 +2480,15 @@ test('scene navigation exposes config reload after a failed request and refreshe
   tree = renderSceneTabs({ onSceneSelect: id => toolNavigations.push(id) })
   assert.match(JSON.stringify(tree), /场景配置暂时无法读取|工作场景暂时无法读取|读取场景配置失败|无法读取场景/,
     'the scene strip reports an unavailable config without adding a separate toolbar action')
-  await exports.retryLoadConfig()
+  await assert.rejects(exports.retryLoadConfig(), /workbench-unavailable/)
   await new Promise(resolve => setImmediate(resolve))
   tree = renderSceneTabs({ onSceneSelect: id => toolNavigations.push(id) })
   assert.equal(configFetches, 2)
+  assert.match(JSON.stringify(tree), /场景配置暂时无法读取|工作场景暂时无法读取|读取场景配置失败|无法读取场景/)
+  await exports.retryLoadConfig()
+  await new Promise(resolve => setImmediate(resolve))
+  tree = renderSceneTabs({ onSceneSelect: id => toolNavigations.push(id) })
+  assert.equal(configFetches, 3)
   assert.ok(buttons(tree).some(button => button.props['aria-label'] === '本地新场景名'))
   assert.equal(buttons(tree).some(button => button.children.includes('刷新场景配置')), false,
     'scene config refresh is moved out of the scene tab strip into the shell tools menu')
@@ -2591,8 +2606,11 @@ test('scene config endpoint returns editable scenes and the live business origin
   assert.equal(res.statusCode, 200)
   assert.equal(res.headers['cache-control'], 'no-store')
   const body = JSON.parse(res.body)
+  const expectedConfig = JSON.parse(expected)
   assert.deepEqual(body, {
-    ...JSON.parse(expected), businessOrigin: 'http://192.168.1.23:3088',
+    ...expectedConfig, businessOrigin: 'http://192.168.1.23:3088',
+    configurationRevision: sceneConfigurationRevision(expectedConfig),
+    componentCatalog: SCENE_COMPONENT_CATALOG,
     roles: publicRoleMetadata(), sessionBindings: {}, sessionBindingMetadata: {},
   })
   assert.ok(body.roles.every(role => Object.keys(role).sort().join(',') === 'assistantLabel,id,label'))
@@ -2605,5 +2623,46 @@ test('scene config endpoint returns editable scenes and the live business origin
   await rejected(deniedReq, deniedRes)
   assert.equal(deniedRes.statusCode, 401)
   assert.equal(deniedRes.body, '')
+})
+
+test('the Host layout endpoint persists scene presets and keeps the last valid state after a rejected update', async t => {
+  const home = await mkdtemp(join(tmpdir(), 'tradeloom-presets-'))
+  await writeFile(join(home, HOME_MARKER), HOME_MARKER_VALUE, 'utf8')
+  t.after(async () => await rm(home, { recursive: true, force: true }))
+  const env = { TRADELOOM_DSH_APP_HOME: home, DSH_HOME: home }
+  const config = JSON.parse(await readFile(sceneConfigUrl, 'utf8'))
+  const handler = () => createDockLayoutsHandler({ connection: { requestRejection: () => undefined } }, {
+    createStateStore: () => createStateStore({ env }),
+    readScenes: async () => JSON.stringify(config),
+  })
+  const request = async (method, body) => {
+    const req = Readable.from(body ? [Buffer.from(JSON.stringify(body))] : [])
+    req.method = method
+    const res = { statusCode: 200, setHeader() {}, end(value) { this.body = value } }
+    await handler()(req, res)
+    return { status: res.statusCode, body: JSON.parse(res.body) }
+  }
+  const initial = (await request('GET')).body
+  const { dockview, closedPanelIds } = initial.scenes.center
+  const withPreset = structuredClone(initial)
+  withPreset.scenes.center.preset = { dockview, closedPanelIds }
+  assert.equal((await request('PUT', withPreset)).status, 200)
+  const stored = await request('GET')
+  assert.deepEqual(stored.body.scenes.center.preset, { dockview, closedPanelIds })
+  assert.equal(stored.body.scenes.products.preset, undefined)
+  const invalid = structuredClone(stored.body)
+  invalid.scenes.center.preset.closedPanelIds.push('unknown')
+  assert.equal((await request('PUT', invalid)).status, 400)
+  assert.deepEqual((await request('GET')).body, stored.body)
+  const changedPanel = config.scenes.find(scene => scene.id === 'center').panels.find(panel => panel.id === 'business-main')
+  const previousTitle = changedPanel.title
+  changedPanel.title = '临时调整的组件标题'
+  const changed = await request('GET')
+  assert.equal(changed.status, 200)
+  assert.equal(changed.body.scenes.center.preset, undefined)
+  assert.equal((await request('PUT', changed.body)).status, 200)
+  changedPanel.title = previousTitle
+  const restored = (await request('GET')).body
+  assert.deepEqual(restored.scenes.center.preset, { dockview, closedPanelIds })
 })
 

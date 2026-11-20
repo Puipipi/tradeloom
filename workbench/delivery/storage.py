@@ -196,8 +196,11 @@ def write_native_artifact(content: bytes, version_id: str) -> tuple[str, Path]:
             handle.write(content)
             handle.flush()
             os.fsync(handle.fileno())
-    except Exception:
+    except Exception as write_error:
         import shutil
-        shutil.rmtree(final.parent)
+        try:
+            shutil.rmtree(final.parent)
+        except Exception as cleanup_error:
+            write_error.add_note(f"Native artifact directory cleanup failed: {cleanup_error!r}")
         raise
     return relative, final

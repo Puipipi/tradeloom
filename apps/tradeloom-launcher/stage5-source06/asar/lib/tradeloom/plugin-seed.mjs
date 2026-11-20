@@ -4,7 +4,7 @@ import { lstat, mkdir, readFile, readdir, realpath, copyFile, rename, symlink, w
 import path from 'node:path'
 
 // Filled from the sealed program-only seed manifest during candidate preparation.
-export const PROGRAM_SEED_MANIFEST_SHA256 = 'ce6f03e89a87c60b79f611392e82822a8e7a57113559b359579233d90fd4703e'
+export const PROGRAM_SEED_MANIFEST_SHA256 = '40e58722139336149644a361ffa97664a843b26cab0d7ad50e00657471399e8a'
 const PROFILE_PREFIX = 'harness-home/profiles/desktop/'
 const BASE_BUNDLES = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@tradeloom/dsh-business-shell']
 const SEED_MANIFEST_NAME = 'seed-manifest.json'

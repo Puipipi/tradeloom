@@ -2,11 +2,13 @@ import { createHash, randomUUID } from 'node:crypto'
 import { projectSceneMemoryGraph, resolveSceneGraphTarget } from './scene-memory-graph.js'
 
 export const SCENE_MEMORY_ROUTE = '/tradeloom/scene-memory'
-const endpoint = SCENE_MEMORY_ROUTE.slice(1)
+const SCENE_MEMORY_ENDPOINT = SCENE_MEMORY_ROUTE.slice(1)
+const MAX_MEMORY_TEXT_CHARS = 12_000
+const MAX_JOURNAL_ENTRIES = 10_000
 const fail = code => Object.assign(new Error(code), { code })
 const record = value => value && typeof value === 'object' && !Array.isArray(value)
 const revision = value => Number.isSafeInteger(value) && value >= 0
-const text = value => typeof value === 'string' && value.trim().length > 0 && value.length <= 12_000
+const text = value => typeof value === 'string' && value.trim().length > 0 && value.length <= MAX_MEMORY_TEXT_CHARS
 const own = (value, keys) => record(value) && Object.keys(value).every(key => keys.includes(key))
 
 /** This is the structured view of the existing sceneMemories value, not a
@@ -14,12 +16,12 @@ const own = (value, keys) => record(value) && Object.keys(value).every(key => ke
 export function sceneMemoryDocument(value) {
   if (value === null) return { profile: { revision: 0, responsibility: '', assetRefs: [], primarySkill: null }, handoff: null, handoffRevision: 0, progress: [], decisions: [] }
   if (!record(value) || !record(value.profile) || !revision(value.profile.revision)
-    || typeof value.profile.responsibility !== 'string' || value.profile.responsibility.length > 12_000
+    || typeof value.profile.responsibility !== 'string' || value.profile.responsibility.length > MAX_MEMORY_TEXT_CHARS
     || !Array.isArray(value.profile.assetRefs) || value.profile.assetRefs.length > 500
     || value.profile.assetRefs.some(ref => !record(ref) || typeof ref.kind !== 'string' || typeof ref.id !== 'string' || (ref.label !== undefined && typeof ref.label !== 'string'))
     || (value.profile.primarySkill !== null && typeof value.profile.primarySkill !== 'string')
     || !revision(value.handoffRevision) || !Array.isArray(value.progress) || !Array.isArray(value.decisions)
-    || value.progress.length > 10_000 || value.decisions.length > 10_000) throw fail('scene_memory_schema_unsupported')
+    || value.progress.length > MAX_JOURNAL_ENTRIES || value.decisions.length > MAX_JOURNAL_ENTRIES) throw fail('scene_memory_schema_unsupported')
   for (const row of [...value.progress, ...value.decisions]) {
     if (!record(row) || !text(row.text) || typeof row.entryId !== 'string' || !row.entryId
       || typeof row.sourceSessionId !== 'string' || typeof row.createdAt !== 'string') throw fail('scene_memory_schema_unsupported')
@@ -59,7 +61,7 @@ export function createSceneMemoryCatalog(authority, { now = () => new Date().toI
             updatedAt: at, operationId: origin.operationId }
         } else {
           const rows = input.action === 'progress' ? value.progress : value.decisions
-          if (rows.length >= 10_000) throw fail('scene_memory_limit_reached')
+          if (rows.length >= MAX_JOURNAL_ENTRIES) throw fail('scene_memory_limit_reached')
           rows.push({ entryId: randomUUID(), text: input.text, sourceSessionId: origin.sessionId, createdAt: at })
         }
         return value
@@ -82,7 +84,8 @@ export function createSceneMemoryHandler(ctx, authority) {
       for await (const chunk of req) { const bytes = Buffer.from(chunk); size += bytes.length; if (size > 32_768) throw fail('invalid_arguments'); chunks.push(bytes) }
       const bytes = Buffer.concat(chunks), input = JSON.parse(bytes.toString('utf8'))
       if (typeof input.id !== 'string' || !/^[a-f0-9-]{36}$/.test(input.id)) throw fail('invalid_arguments')
-      const origin = await authority.verifyRequest({ token: req.headers['x-tradeloom-origin'], endpoint, routePath: endpoint, httpMethod: 'POST', method: endpoint,
+      const origin = await authority.verifyRequest({ token: req.headers['x-tradeloom-origin'], endpoint: SCENE_MEMORY_ENDPOINT, routePath: SCENE_MEMORY_ENDPOINT,
+        httpMethod: 'POST', method: SCENE_MEMORY_ENDPOINT,
         rpcId: input.id, bodyBytes: bytes, bodyDigest: createHash('sha256').update(bytes).digest('hex'), peerId: 'desktop-scene-memory', peerPrincipal: 'owner' })
       const result = await authority.withVerifiedRequestOrigin(origin, () => catalog.execute(origin, input))
       respond(200, { ok: true, result })

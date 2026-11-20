@@ -79,6 +79,7 @@
   const TRACK_STORAGE_KEY = 'uiGridTrackWeights:v1'
   const SPLIT_TREE_STORAGE_KEY = 'uiPanelSplitTree:v2'
   const CLOSED_PANELS_STORAGE_KEY = 'uiClosedPanels:v1'
+  const LAYOUT_PRESETS_STORAGE_KEY = 'uiSceneLayoutPresets:v1'
   const RESIZE_HIT_CSS_PX = 8
   const RESIZE_START_THRESHOLD_CSS_PX = 4
   const resizeHoverLifecycle = new WeakSet()
@@ -89,6 +90,8 @@
   let activeGridResize
   let activeTreeResize
   let resizeTrees = new Map()
+  let closedPanelProjection
+  const presetGeometryMounted = new WeakSet()
   let observer
   let menu
   let toastTimer
@@ -300,31 +303,191 @@
     return info?.sceneId || panel?.__meta?.sceneId || panel?.dataset?.sceneId || grid?.dataset?.sceneId || ''
   }
 
+  function defaultClosedPanelIds(info) {
+    return info?.panels.filter(panel => panel.__meta?.closedByDefault === true).map(panel => panel.dataset.panelId) ?? []
+  }
+
   function closedPanelIdsFor(sceneKey) {
     const store = closedPanelStore()
-    return Array.isArray(store[sceneKey]) ? store[sceneKey] : []
+    if (Array.isArray(store[sceneKey])) return store[sceneKey]
+    const grid = document.getElementById('grid')
+    const info = grid && sceneGridInfo(grid)
+    if (!info || info.sceneId !== sceneKey) return []
+    const defaultClosed = defaultClosedPanelIds(info)
+    if (!defaultClosed.length) return []
+    const stored = readSplitTrees().scenes[sceneKey]
+    if (savedTree(info) || stored?.fromPreset && validPresetGeometry(info, stored.geometry)) return []
+    return defaultClosed
   }
 
   function recordClosedPanel(sceneKey, panelId, closed) {
     if (!sceneKey || !panelId) return
     const store = closedPanelStore()
-    const current = new Set(Array.isArray(store[sceneKey]) ? store[sceneKey] : [])
+    const current = new Set(closedPanelIdsFor(sceneKey))
     if (closed) current.add(panelId)
     else current.delete(panelId)
-    if (current.size) store[sceneKey] = [...current]
+    const grid = document.getElementById('grid')
+    if (current.size || grid && defaultClosedPanelIds(sceneGridInfo(grid)).length) store[sceneKey] = [...current]
     else delete store[sceneKey]
     persistClosedPanelStore(store)
   }
 
   function applyClosedPanels(grid) {
-    const info = grid ? sceneGridInfo(grid) : null
+    let info = grid ? sceneGridInfo(grid) : null
     if (!info) return
+    if (info.panels.some(panel => !presetGeometryMounted.has(panel))) {
+      const stored = readSplitTrees().scenes[info.sceneId]
+      if ((stored?.fromPreset || stored?.configurationGeometryUpdated) && validPresetGeometry(info, stored.geometry)) {
+        applyPresetGeometry(info, stored.geometry)
+        info = sceneGridInfo(grid)
+      }
+      for (const panel of info.panels) presetGeometryMounted.add(panel)
+    }
     const closed = new Set(closedPanelIdsFor(info.sceneId))
+    const existingTree = resizeTrees.get(info.sceneId)
+    const hasGroupedSlots = (window.sourcePanelTabs?.groups(info).length ?? info.panels.length) < info.panels.length
+    if ((closed.size || hasGroupedSlots) && (!existingTree || info.panels.some((panel, index) => panel !== existingTree.panelRefs?.[index]))) {
+      treeFor(info)
+    }
     for (const panel of info.panels) {
       const shouldHide = closed.has(panel.dataset.panelId)
       panel.classList.toggle('pi-closed', shouldHide)
       panel.setAttribute('aria-hidden', shouldHide ? 'true' : 'false')
     }
+    window.sourcePanelTabs?.render(info)
+  }
+
+  function projectVisiblePanels(node, visible) {
+    if (node.kind === 'leaf') return visible.has(node.id) ? node : null
+    const first = projectVisiblePanels(node.first, visible)
+    const second = projectVisiblePanels(node.second, visible)
+    return first && second ? { ...node, first, second } : first ?? second
+  }
+
+  function compactVisiblePanelTree(geometry) {
+    const rows = new Map()
+    for (const panel of [...geometry].sort((a, b) => a.row - b.row || a.col - b.col)) {
+      if (!rows.has(panel.row)) rows.set(panel.row, [])
+      rows.get(panel.row).push({ kind: 'leaf', id: panel.id })
+    }
+    const split = ([first, ...rest], axis) => rest.length
+      ? { kind: 'split', axis, boundary: 0, ratio: 1 / (rest.length + 1), first, second: split(rest, axis) }
+      : first
+    return split([...rows.values()].map(row => split(row, 'x')), 'y')
+  }
+
+  function defaultWorkflowTree(info, visible) {
+    if (!defaultClosedPanelIds(info).includes('workflow-plan') || visible.has('workflow-plan')) return null
+    const geometry = {
+      'workflow-plan': [1, 1, 1, 2], 'workflow-main': [2, 1, 2, 2], files: [4, 1, 1, 2],
+      preview: [1, 3, 1, 2], 'workflow-chat': [2, 3, 3, 2],
+    }
+    if (info.geometry.length !== Object.keys(geometry).length || !info.geometry.every(panel =>
+      geometry[panel.id]?.every((value, index) => value === [panel.col, panel.row, panel.w, panel.h][index]))) return null
+    const leaf = id => ({ kind: 'leaf', id })
+    const split = (axis, boundary, ratio, first, second) => ({ kind: 'split', axis, boundary, ratio, first, second })
+    return split('y', 3, .6,
+      split('x', 4, .75, leaf('workflow-main'), leaf('files')),
+      split('x', 3, .5, leaf('preview'), leaf('workflow-chat')))
+  }
+
+  function activePanelSlots(info) {
+    return window.sourcePanelTabs?.visible(info) ?? new Map(info.panels
+      .filter(panel => !panel.classList.contains('pi-closed')).map(panel => [panel.dataset.panelId, panel.dataset.panelId]))
+  }
+
+  function closedPanelProjectionFor(info) {
+    const active = activePanelSlots(info)
+    const visible = new Set(active.keys())
+    if (!visible.size || visible.size === info.panels.length && ![...active].some(([slot, id]) => slot !== id)) {
+      closedPanelProjection = undefined
+      return undefined
+    }
+    const key = JSON.stringify([info.sceneId, info.geometry, [...visible]])
+    if (key === closedPanelProjection?.key && info.panels.every((panel, index) => panel === closedPanelProjection.panels[index])) {
+      return closedPanelProjection
+    }
+    const source = resizeTrees.get(info.sceneId)?.tree
+    // Custom grid coordinates may not admit a split across the full canvas.
+    const stored = readSplitTrees().scenes[info.sceneId]
+    const storedProjection = stored?.projection ?? stored?.tree
+    const presetTree = JSON.stringify(stored?.geometry) === JSON.stringify(info.geometry) && storedProjection
+      ? stored.fromPreset ? stored.projection
+        : stored.configurationGeometryUpdated ? projectVisiblePanels(storedProjection, visible) : undefined
+      : undefined
+    const defaultClosed = defaultClosedPanelIds(info)
+    const baseIds = info.geometry.map(panel => panel.id).filter(id => !defaultClosed.includes(id))
+    const legacyTree = defaultClosed.length && defaultClosed.every(id => !visible.has(id)) && validSplitTree(stored?.tree, baseIds)
+      && stored.topology === treeTopology(stored.tree) ? stored.tree : null
+    const fullTree = validSplitTree(source, info.geometry.map(panel => panel.id)) ? source : null
+    const baseTree = legacyTree ?? (!stored?.tree ? defaultWorkflowTree(info, visible) : null) ?? fullTree
+    const projection = validSplitTree(presetTree, [...visible]) ? presetTree
+      : baseTree ? projectVisiblePanels(baseTree, visible)
+        : compactVisiblePanelTree(info.geometry.filter(panel => visible.has(panel.id)))
+    const addPaths = (node, path = 'r') => node.kind === 'leaf' ? node
+      : { ...node, path, first: addPaths(node.first, path + '0'), second: addPaths(node.second, path + '1') }
+    closedPanelProjection = { key, tree: addPaths(projection), panels: info.panels, projected: true }
+    return closedPanelProjection
+  }
+
+  function applyClosedPanelReflow(grid, info, projection) {
+    const region = gridContentBounds(grid)
+    const scale = gridScale(grid)
+    const rects = projection && scale.x > 0 && scale.y > 0
+      ? treeRects(projection, region, { x: sceneGridGap(grid, 'x'), y: sceneGridGap(grid, 'y') }) : null
+    const slots = new Map([...activePanelSlots(info)].map(([slot, id]) => [id, slot]))
+    for (const panel of info.panels) {
+      const rect = rects?.get(slots.get(panel.dataset.panelId))
+      panel.classList.toggle('pi-closed-reflow', Boolean(rect))
+      if (rect) {
+        panel.style.setProperty('--pi-reflow-left', `${(rect.left - region.left) / scale.x}px`)
+        panel.style.setProperty('--pi-reflow-top', `${(rect.top - region.top) / scale.y}px`)
+        panel.style.setProperty('--pi-reflow-width', `${rect.width / scale.x}px`)
+        panel.style.setProperty('--pi-reflow-height', `${rect.height / scale.y}px`)
+      }
+    }
+  }
+
+  function panelsBySlot(info) {
+    const panels = new Map(info.panels.map(panel => [panel.dataset.panelId, panel]))
+    const slots = new Map(panels)
+    for (const [slot, id] of activePanelSlots(info)) slots.set(slot, panels.get(id))
+    return slots
+  }
+
+  function updateSwappedPanelSlots(event) {
+    const [first, second] = event.detail
+    const grid = first.closest('#grid')
+    const info = grid && sceneGridInfo(grid)
+    if (!info) return
+    const ids = [first.dataset.panelId, second.dataset.panelId]
+    const swapLeaves = node => node.kind === 'split'
+      ? { ...node, first: swapLeaves(node.first), second: swapLeaves(node.second) }
+      : { ...node, id: node.id === ids[0] ? ids[1] : node.id === ids[1] ? ids[0] : node.id }
+    const full = resizeTrees.get(info.sceneId)
+    if (full?.panelRefs?.every((panel, index) => panel === info.panels[index])) {
+      const tree = swapLeaves(full.tree)
+      const next = { ...full, tree, topology: treeTopology(tree), geometry: info.geometry, geometrySignature: info.signature }
+      resizeTrees.set(info.sceneId, next)
+    }
+    const projection = closedPanelProjection
+    if (!projection || info.panels.some((panel, index) => panel !== projection.panels[index])) return
+    const visible = treeLeafIds(projection.tree)
+    if (!ids.every(id => visible.includes(id))) return
+    projection.tree = swapLeaves(projection.tree)
+    projection.key = JSON.stringify([info.sceneId, info.geometry, [...activePanelSlots(info).keys()]])
+    updateResizeHandles()
+  }
+
+  function updateClosedProjectionHandles(grid, info) {
+    const state = closedPanelProjectionFor(info)
+    applyClosedPanelReflow(grid, info, state?.tree)
+    if (!state) return false
+    resizeSignature = ''
+    const blocked = info.panels.some(panel => panel.classList.contains('panel-expanded') || panel.classList.contains('pi-maximized'))
+    resizeLayer.hidden = blocked
+    if (!blocked) updateTreeHandles(info, state)
+    return true
   }
 
   function visiblePanelsIn(grid) {
@@ -337,11 +500,16 @@
     const panelId = panel?.dataset?.panelId
     if (!grid || !sceneKey || !panelId) { announce('当前面板无法关闭。'); return false }
     if (visiblePanelsIn(grid).length <= 1) { announce('当前场景至少需要保留一个可见面板。'); return false }
-    if (states.get(panel)?.detached) { announce('独立窗口中的面板请先收回工作台。'); return false }
+    if (states.get(panel)?.detached || window.businessBridge?.panelMenuCapabilities?.(panel)?.placement === 'popped-out') {
+      announce('独立窗口中的面板请先收回工作台。')
+      return false
+    }
+    if (activeTreeResize) finishTreeResize(true)
+    if (!grid.querySelector('.pi-closed')) treeFor(sceneGridInfo(grid))
     recordClosedPanel(sceneKey, panelId, true)
     applyClosedPanels(grid)
     updateResizeHandles()
-    announce(`已关闭面板 ${panelId}；可在任意面板的“更多面板操作”中选择“恢复面板”。`)
+    announce(`已关闭面板 ${panelId}；右键点击场景栏或面板标题即可恢复。`)
     return true
   }
 
@@ -349,6 +517,7 @@
     const sceneKey = grid ? sceneGridInfo(grid)?.sceneId : ''
     const target = grid?.querySelector(`:scope > .panel[data-panel-id="${panelId}"]`)
     if (!target) { announce('未找到要恢复的面板。'); return false }
+    if (activeTreeResize) finishTreeResize(true)
     recordClosedPanel(sceneKey, panelId, false)
     applyClosedPanels(grid)
     updateResizeHandles()
@@ -395,11 +564,24 @@
     return entries
   }
 
+  function layoutPresetEntries(info) {
+    if (!info) return []
+    return [
+      { label: '保存当前为预设', presetAction: 'save' },
+      { label: '使用已保存预设', presetAction: 'apply', disabled: !Object.hasOwn(readLayoutPresets(), info.sceneId) },
+      { label: '恢复默认预设', presetAction: 'default' },
+    ]
+  }
+
   function activateMenuEntry(entry, item) {
-    const { label, explanation, forwardButton, restorePanelId } = entry
+    const { label, explanation, forwardButton, restorePanelId, presetAction } = entry
     const ownerPanel = menu?.panel
     const itemRect = item.getBoundingClientRect()
     closeMenu()
+    if (presetAction) {
+      runLayoutPreset(document.getElementById('grid'), presetAction, entry.sceneId)
+      return
+    }
     if (forwardButton) {
       forwardButton.click()
       return
@@ -463,7 +645,7 @@
     element.className = 'pi-menu'
     element.setAttribute('role', 'menu')
     element.setAttribute('popover', 'manual')
-    element.setAttribute('aria-label', panel ? '面板操作' : '恢复已关闭面板')
+    element.setAttribute('aria-label', panel ? '面板操作' : '场景布局')
     const point = options.point
     const capabilities = panel ? window.businessBridge?.panelMenuCapabilities?.(panel) : undefined
     const entries = panel
@@ -474,6 +656,7 @@
     const panelGrid = panel?.closest?.('#grid') ?? (point ? document.getElementById('grid') : null)
     const sceneKey = panel ? sceneKeyFor(panel) : (panelGrid ? sceneGridInfo(panelGrid)?.sceneId : '')
     entries.push(...restoreEntries(sceneKey, panelGrid, panel?.dataset?.panelId))
+    if (!panel && panelGrid) entries.push(...layoutPresetEntries(sceneGridInfo(panelGrid)).map(entry => ({ ...entry, sceneId: sceneKey })))
     const refreshButton = panel?.querySelector?.('.panel-controls .icon-control[aria-label="刷新面板"]')
     const fullscreenButton = panel?.querySelector?.('.panel-controls .pi-fullscreen')
     if (refreshButton && getComputedStyle(refreshButton).display === 'none') {
@@ -486,14 +669,21 @@
       const { label } = entry
       const item = document.createElement('button')
       item.type = 'button'
+      item.disabled = Boolean(entry.disabled)
       item.className = 'pi-menu-item'
       item.setAttribute('role', 'menuitem')
-      item.textContent = label === '独立窗口' && capabilities?.placement === 'popped-out' ? '收回工作台' : label
+      const returning = label === '独立窗口' && capabilities?.placement === 'popped-out'
+      item.textContent = returning ? '收回工作台' : label
+      if (label === '独立窗口') {
+        item.prepend(createReplicaIcon(returning ? 'M8 8V4h12v12h-4M4 8h12v12H4z' : 'M13 4h7v7M20 4l-9 9M10 4H4v16h16v-6'))
+      }
       item.addEventListener('click', () => activateMenuEntry(entry, item))
       element.append(item)
     }
     document.body.append(element)
     try { element.showPopover?.() } catch {}
+    // The body-level menu must be open before the shell can release its hidden guest.
+    states.get(panel)?.finishShellAnimation?.()
     const rect = point
       ? { bottom: point.y, right: point.x, left: point.x }
       : (anchor?.getBoundingClientRect?.() ?? { bottom: 0, right: 0, left: 0 })
@@ -510,26 +700,7 @@
   }
 
   function setFullscreenButton(button, active) {
-    const ns = 'http://www.w3.org/2000/svg'
-    const icon = document.createElementNS(ns, 'svg')
-    icon.setAttribute('aria-hidden', 'true')
-    icon.setAttribute('focusable', 'false')
-    icon.setAttribute('viewBox', '0 0 16 16')
-    icon.setAttribute('fill', 'none')
-    icon.setAttribute('stroke-width', '1')
-    const paths = [
-      ['M2.33154 9.40576V13.1685C2.3318 13.4444 2.55556 13.6685 2.83154 13.6685H6.49463V14.6685H2.83154C2.00328 14.6685 1.3318 13.9967 1.33154 13.1685V9.40576H2.33154ZM13.1685 1.33154C13.9964 1.33199 14.6683 2.00352 14.6685 2.83154V6.40576H13.6685V2.83154C13.6683 2.5558 13.4441 2.33199 13.1685 2.33154H9.49463V1.33154H13.1685Z', 'fill'],
-      ['M9.4292 6.57077L13.914 2.08594', 'stroke'],
-      ['M6.57077 9.4292L2.08594 13.914', 'stroke'],
-    ]
-    for (const [d, paint] of paths) {
-      const path = document.createElementNS(ns, 'path')
-      path.setAttribute('d', d)
-      path.setAttribute(paint, 'currentColor')
-      icon.append(path)
-    }
-    icon.setAttribute('width', '16'); icon.setAttribute('height', '16')
-    button.replaceChildren(icon)
+    button.replaceChildren(createReplicaIcon(active ? 'M4 10h6V4M14 4v6h6M20 14h-6v6M10 20v-6H4' : 'M4 10V4h6M14 4h6v6M20 14v6h-6M10 20H4v-6'))
     button.title = active ? '还原面板大小' : '放大到主体区域'
     button.setAttribute('aria-label', button.title)
     button.setAttribute('aria-pressed', String(active))
@@ -598,6 +769,200 @@
     } catch { return { version: 2, scenes: {} } }
   }
 
+  function readLayoutPresets() {
+    try {
+      const value = JSON.parse(localStorage.getItem(LAYOUT_PRESETS_STORAGE_KEY) || '{}')
+      return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+    } catch { return {} }
+  }
+
+  function updateConfiguredGeometry({ detail }) {
+    const stored = readSplitTrees()
+    const closed = closedPanelStore()
+    let changed = false
+    let closedChanged = false
+    for (const { sceneId, before, after } of detail) {
+      resizeTrees.delete(sceneId)
+      const record = stored.scenes[sceneId]
+      if (!Array.isArray(record?.geometry)) continue
+      const old = new Map(record.geometry.map(panel => [panel.id, panel]))
+      const original = new Map(before.map(panel => [panel.id, panel]))
+      const geometry = after.map(panel => {
+        const prior = original.get(panel.id)
+        return prior && ['col', 'row', 'w', 'h'].every(key => prior[key] === panel[key])
+          ? old.get(panel.id) ?? panel : panel
+      })
+      stored.scenes[sceneId] = { ...record, geometry, configurationGeometryUpdated: true }
+      changed = true
+      const existing = closed[sceneId] ?? closedPanelIdsFor(sceneId)
+      const nextClosed = new Set(existing.filter(id => geometry.some(panel => panel.id === id)))
+      for (const item of geometry) {
+        if (/^component-[a-z0-9-]{1,38}$/.test(item.id) && geometry.some(other => other !== item && !nextClosed.has(other.id)
+          && item.col < other.col + other.w && other.col < item.col + item.w
+          && item.row < other.row + other.h && other.row < item.row + item.h)) nextClosed.add(item.id)
+      }
+      if (JSON.stringify(existing) !== JSON.stringify([...nextClosed])) {
+        closed[sceneId] = [...nextClosed]
+        closedChanged = true
+      }
+    }
+    if (changed) try { localStorage.setItem(SPLIT_TREE_STORAGE_KEY, JSON.stringify(stored)) } catch {}
+    if (closedChanged) persistClosedPanelStore(closed)
+  }
+
+  function validPresetGeometry(info, geometry) {
+    return Array.isArray(geometry) && geometry.length === info.panels.length
+      && new Set(geometry.map(item => item?.id)).size === geometry.length
+      && info.panels.every(panel => geometry.some(item => item?.id === panel.dataset.panelId
+        && ['col', 'row', 'w', 'h'].every(key => Number.isSafeInteger(item[key]) && item[key] > 0)
+        && item.col + item.w - 1 <= info.columns && item.row + item.h - 1 <= info.rows))
+  }
+
+  function componentGeometry(info, previous) {
+    if (!Array.isArray(previous)) return null
+    const instance = id => /^component-[a-z0-9-]{1,38}$/.test(id)
+    const old = new Map(previous.map(item => [item.id, item]))
+    const ids = new Set(info.geometry.map(item => item.id))
+    const added = info.geometry.filter(item => !old.has(item.id))
+    const removed = previous.filter(item => !ids.has(item.id))
+    if (!(added.length || removed.length) || [...added, ...removed].some(item => !instance(item.id))) return null
+    const geometry = info.geometry.map(item => old.get(item.id) ?? item)
+    if (!validPresetGeometry(info, geometry)) return null
+    return { geometry, ids, added, removed }
+  }
+
+  function reconcileComponentPreset(info, preset) {
+    const next = componentGeometry(info, preset?.geometry)
+    if (!next || !Array.isArray(preset.closedPanelIds)) return preset
+    const closedPanelIds = preset.closedPanelIds.filter(id => next.ids.has(id)).concat(next.added.map(item => item.id))
+    const tabs = window.sourcePanelTabs
+    const groups = tabs?.reconcile(preset.groups, [...next.ids])
+    const visible = new Set(groups ? tabs.visible(info, groups, closedPanelIds).keys()
+      : [...next.ids].filter(id => !closedPanelIds.includes(id)))
+    const source = preset.projection ?? preset.tree
+    const projection = source ? projectVisiblePanels(source, visible) : null
+    const { projection: _oldProjection, groups: _oldGroups, ...record } = preset
+    return { ...record, geometry: next.geometry, closedPanelIds,
+      ...(groups ? { groups } : {}),
+      tree: next.added.length || !preset.tree ? null : projectVisiblePanels(preset.tree, next.ids),
+      ...(projection && validSplitTree(projection, [...visible]) ? { projection } : {}) }
+  }
+
+  function applyPresetGeometry(info, geometry) {
+    const placements = new Map(geometry.map(item => [item.id, item]))
+    for (const panel of info.panels) {
+      const placement = placements.get(panel.dataset.panelId)
+      for (const key of ['col', 'row', 'w', 'h']) {
+        if (Number(panel.dataset[key]) !== placement[key]) panel.dataset[key] = String(placement[key])
+        if (panel.__meta) panel.__meta[key] = placement[key]
+      }
+      if (panel.dataset.splitTreeManaged === 'true') {
+        for (const property of ['position', 'left', 'top', 'width', 'height', 'z-index']) panel.style.removeProperty(property)
+        delete panel.dataset.splitTreeManaged
+      }
+      panel.style.gridColumn = `${placement.col} / span ${placement.w}`
+      panel.style.gridRow = `${placement.row} / span ${placement.h}`
+    }
+  }
+
+  function isValidLayoutPreset(info, preset) {
+    const ids = info.panels.map(panel => panel.dataset.panelId)
+    const groups = window.sourcePanelTabs?.normalize(preset?.groups, ids)
+    const weightsAreValid = (values, count) => Array.isArray(values) && values.length === count
+      && values.every(value => Number.isFinite(value) && value > 0 && value <= 100)
+    return preset && validPresetGeometry(info, preset.geometry)
+      && Array.isArray(preset.closedPanelIds) && new Set(preset.closedPanelIds).size === preset.closedPanelIds.length
+      && preset.closedPanelIds.every(id => ids.includes(id))
+      && (!window.sourcePanelTabs || groups)
+      && weightsAreValid(preset.tracks?.columns, info.columns) && weightsAreValid(preset.tracks?.rows, info.rows)
+      && (preset.tree === null || validSplitTree(preset.tree, ids))
+      && (preset.projection === undefined || validSplitTree(preset.projection,
+        [...(window.sourcePanelTabs?.visible(info, groups, preset.closedPanelIds)?.keys()
+          ?? ids.filter(id => !preset.closedPanelIds.includes(id)))]))
+  }
+
+  function writeActiveLayoutPreset(info, preset, useDefaults) {
+    const sceneId = info.sceneId
+    const closed = closedPanelStore()
+    if (preset.closedPanelIds.length || defaultClosedPanelIds(info).length) closed[sceneId] = preset.closedPanelIds
+    else delete closed[sceneId]
+    const tracks = readTrackPreferences(), trees = readSplitTrees()
+    const legacyWorkflowV1 = trees.scenes[sceneId]?.legacyWorkflowV1
+    if (useDefaults) {
+      delete tracks.scenes[sceneId]
+      delete trees.scenes[sceneId]
+      if (legacyWorkflowV1) trees.scenes[sceneId] = { legacyWorkflowV1 }
+    } else {
+      tracks.scenes[sceneId] = preset.tracks
+      trees.scenes[sceneId] = { fromPreset: true, tree: preset.tree,
+        topology: preset.tree ? treeTopology(preset.tree) : null, geometry: preset.geometry,
+        projection: preset.projection, legacyWorkflowV1 }
+    }
+    const changes = [[TRACK_STORAGE_KEY, tracks], [SPLIT_TREE_STORAGE_KEY, trees], [CLOSED_PANELS_STORAGE_KEY, closed]]
+    const tabs = window.sourcePanelTabs
+    if (tabs) changes.push([tabs.storageKey, tabs.nextStore(info, useDefaults ? undefined : preset.groups)])
+    const written = []
+    try {
+      for (const [key, next] of changes) {
+        const prior = localStorage.getItem(key)
+        localStorage.setItem(key, JSON.stringify(next))
+        written.push([key, prior])
+      }
+    } catch {
+      for (const [key, prior] of written.reverse()) {
+        try { if (prior === null) localStorage.removeItem(key); else localStorage.setItem(key, prior) } catch {}
+      }
+      return false
+    }
+    return true
+  }
+
+  function runLayoutPreset(grid, action, sceneId) {
+    const info = grid && sceneGridInfo(grid)
+    if (!info || info.sceneId !== sceneId) return
+    if (activeGridResize || activeTreeResize || info.panels.some(panel =>
+      panel.classList.contains('panel-expanded') || panel.classList.contains('pi-maximized')
+      || states.get(panel)?.detached || window.businessBridge?.panelMenuCapabilities?.(panel)?.placement === 'popped-out')) {
+      announce('请先结束调整、收起展开面板或收回独立窗口。')
+      return
+    }
+    const saved = readLayoutPresets()
+    if (action === 'save') {
+      const projection = closedPanelProjectionFor(info)?.tree
+      const liveTree = resizeTrees.get(info.sceneId)
+      const currentTree = JSON.stringify(liveTree?.geometry) === JSON.stringify(info.geometry)
+        && validSplitTree(liveTree.tree, info.geometry.map(panel => panel.id)) ? liveTree.tree : savedTree(info)?.tree
+      const preset = {
+        geometry: info.geometry,
+        tracks: getSceneTracks(sceneId, info.columns, info.rows),
+        closedPanelIds: info.panels.filter(panel => panel.classList.contains('pi-closed')).map(panel => panel.dataset.panelId),
+        tree: currentTree ?? null,
+        ...(window.sourcePanelTabs ? { groups: window.sourcePanelTabs.groups(info) } : {}),
+        ...(projection ? { projection } : {}),
+      }
+      if (!isValidLayoutPreset(info, preset)) { announce('当前布局无法保存为预设。'); return }
+      try { localStorage.setItem(LAYOUT_PRESETS_STORAGE_KEY, JSON.stringify({ ...saved, [sceneId]: preset })) }
+      catch { announce('布局预设保存失败。'); return }
+      announce('已保存当前布局为预设。')
+      return
+    }
+    const preset = action === 'default' ? {
+      geometry: info.panels.map(panel => panel.__defaultLayoutGeometry),
+      tracks: { columns: equalTracks(null, info.columns), rows: equalTracks(null, info.rows) },
+      closedPanelIds: defaultClosedPanelIds(info), tree: null,
+    } : reconcileComponentPreset(info, saved[sceneId])
+    if (!isValidLayoutPreset(info, preset) || !writeActiveLayoutPreset(info, preset, action === 'default')) {
+      announce('布局预设无法应用，已保留当前布局。')
+      return
+    }
+    resizeTrees.delete(sceneId)
+    closedPanelProjection = undefined
+    applyPresetGeometry(info, preset.geometry)
+    applyClosedPanels(grid)
+    updateResizeHandles()
+    announce(action === 'default' ? '已恢复默认布局。' : '已应用保存的布局预设。')
+  }
+
   function validSplitTree(tree, panelIds) {
     if (!tree || typeof tree !== 'object') return false
     const leaves = []
@@ -615,40 +980,6 @@
     return leaves.length === panelIds.length && new Set(leaves).size === leaves.length
       && JSON.stringify([...leaves].sort()) === JSON.stringify([...panelIds].sort())
   }
-
-  function migrateWorkflowDefaultLayout(scene) {
-    if (scene?.id !== 'agent-center' || !scene.panels.some(panel => panel.id === 'workflow-plan')) return scene
-    const previous = readSplitTrees(), stored = previous.scenes[scene.id]
-    const oldIds = ['workflow-main','files','preview','workflow-chat']
-    if (!stored || !validSplitTree(stored.tree, oldIds) || stored.topology !== treeTopology(stored.tree)) return scene
-    const expected = { 'workflow-main': [1,1,3,2], files: [4,1,1,2], preview: [1,3,1,2], 'workflow-chat': [2,3,3,2] }
-    const legal = Array.isArray(stored.geometry) && stored.geometry.length === 4
-      && new Set(stored.geometry.map(item => item.id)).size === 4
-      && stored.geometry.every(item => oldIds.includes(item.id) && ['col','row','w','h'].every(key => Number.isSafeInteger(item[key]) && item[key] > 0 && item[key] <= 4)
-        && item.col + item.w <= 5 && item.row + item.h <= 5)
-    if (!legal) return scene
-    const isDefault = stored.geometry.every(item => ['col','row','w','h'].every((key,index) => item[key] === expected[item.id][index]))
-    if (!isDefault) {
-      const geometry = new Map(stored.geometry.map(item => [item.id,item]))
-      return { ...scene, workflowLayoutGap: 'custom-legacy-layout', panels: scene.panels.filter(panel => oldIds.includes(panel.id)).map(panel => ({ ...panel, ...geometry.get(panel.id),
-        ...(panel.id === 'workflow-main' ? { standaloneCanvas: false, tabs: ['业务计划','工作流画布'], activeTab: '工作流画布' } : {}) })) }
-    }
-    const insert = node => node.kind === 'leaf'
-      ? node.id === 'workflow-main' ? { kind:'split', axis:'x', boundary:2, path:'workflow-plan-v2', ratio:1/3,
-        first:{kind:'leaf',id:'workflow-plan'}, second:{kind:'leaf',id:'workflow-main'} } : { ...node }
-      : { ...node, first:insert(node.first), second:insert(node.second) }
-    const tree = insert(stored.tree)
-    if (!validSplitTree(tree, scene.panels.map(panel => panel.id))) return scene
-    const migrated = { tree, topology:treeTopology(tree), geometry:scene.panels.map(({id,col,row,w,h}) => ({id,col,row,w,h})), legacyWorkflowV1:stored }
-    try { localStorage.setItem(SPLIT_TREE_STORAGE_KEY, JSON.stringify({ ...previous, scenes:{ ...previous.scenes, [scene.id]:migrated } })) }
-    catch {
-      // A failed backup must not silently replace the user's old layout.
-      return { ...scene, workflowLayoutGap:'migration-save-failed', panels:scene.panels.filter(panel => oldIds.includes(panel.id)).map(panel => ({ ...panel, ...stored.geometry.find(item => item.id === panel.id),
-        ...(panel.id === 'workflow-main' ? { standaloneCanvas:false, tabs:['业务计划','工作流画布'], activeTab:'工作流画布' } : {}) })) }
-    }
-    return scene
-  }
-  window.prepareWorkflowLayout = migrateWorkflowDefaultLayout
 
   function saveSplitTree(sceneId, tree) {
     const previous = readSplitTrees()
@@ -765,6 +1096,7 @@
 
   function savedTree(info) {
     const stored = readSplitTrees().scenes[info.sceneId]
+    if (stored?.configurationGeometryUpdated) return null
     const panelIds = info.geometry.map(item => item.id)
     if (!stored?.topology || !validSplitTree(stored.tree, panelIds) || stored.topology !== treeTopology(stored.tree)) return null
     if (!Array.isArray(stored.geometry) || stored.geometry.length !== panelIds.length
@@ -826,8 +1158,29 @@
         return state
       }
     }
+    const old = readSplitTrees().scenes[info.sceneId]
+    const compatible = componentGeometry(info, old?.geometry)
+    if (old?.configurationGeometryUpdated && validPresetGeometry(info, old.geometry)) {
+      applyPresetGeometry(info, old.geometry)
+      info = sceneGridInfo(document.getElementById('grid'))
+    }
+    if (compatible) {
+      const overlap = (left, right) => left.col < right.col + right.w && right.col < left.col + left.w
+        && left.row < right.row + right.h && right.row < left.row + left.h
+      if (compatible.added.every(panel => compatible.geometry.every(other => other.id === panel.id || !overlap(panel, other)))) {
+        applyPresetGeometry(info, compatible.geometry)
+        info = sceneGridInfo(document.getElementById('grid'))
+      }
+    }
     const tree = buildMeasuredTree(info.panels)
     if (!tree || !validSplitTree(tree, info.geometry.map(item => item.id))) return null
+    if ((compatible || old?.configurationGeometryUpdated) && old.tree) {
+      const priorRatios = new Map(treeNodes(old.tree).map(node => [treeTopology(node), node.ratio]))
+      for (const node of treeNodes(tree)) {
+        const ratio = priorRatios.get(treeTopology(node))
+        if (Number.isFinite(ratio)) node.ratio = ratio
+      }
+    }
     state = { tree, topology: treeTopology(tree), geometrySignature: info.signature, geometry: info.geometry.map(item => ({ ...item })), panelRefs: [...info.panels] }
     resizeTrees.set(info.sceneId, state)
     return state
@@ -867,6 +1220,30 @@
     const width = Math.max(0, grid.clientWidth - number('padding-left') - number('padding-right')) * scale.x
     const height = Math.max(0, grid.clientHeight - number('padding-top') - number('padding-bottom')) * scale.y
     return { left, top, width, height, right: left + width, bottom: top + height }
+  }
+
+  function releasedSlotRects(grid, free, active) {
+    const info = sceneGridInfo(grid)
+    const bounds = gridContentBounds(grid)
+    const gaps = { x: sceneGridGap(grid, 'x'), y: sceneGridGap(grid, 'y') }
+    const full = resizeTrees.get(info.sceneId)?.tree
+    const tracks = getSceneTracks(info.sceneId, info.columns, info.rows)
+    function trackSpan(weights, extent, gap, index, count) {
+      const total = weights.reduce((sum, weight) => sum + weight, 0)
+      const available = Math.max(0, extent - gap * (weights.length - 1))
+      const before = weights.slice(0, index - 1).reduce((sum, weight) => sum + weight, 0)
+      const span = weights.slice(index - 1, index - 1 + count).reduce((sum, weight) => sum + weight, 0)
+      return { start: available * before / total + gap * (index - 1), size: available * span / total + gap * (count - 1) }
+    }
+    return free.map(slot => {
+      if (full) {
+        const projected = projectVisiblePanels(full, new Set([...active.keys(), slot.id]))
+        return [slot.id, projected && treeRects(projected, bounds, gaps).get(slot.id)]
+      }
+      const x = trackSpan(tracks.columns, bounds.width, gaps.x, slot.col, slot.w)
+      const y = trackSpan(tracks.rows, bounds.height, gaps.y, slot.row, slot.h)
+      return [slot.id, { left: bounds.left + x.start, top: bounds.top + y.start, width: x.size, height: y.size }]
+    })
   }
 
   function positionTreePanels(grid, tree, { persistGeometry = false } = {}) {
@@ -917,16 +1294,15 @@
     return result
   }
 
-  function adjustTreeNode(info, node, delta) {
+  function adjustTreeNode(info, node, delta, state = treeFor(info)) {
     const grid = document.getElementById('grid')
     if (!grid || !node || !Number.isFinite(delta)) return
-    const state = treeFor(info)
     const regions = collectTreeRegions(state.tree, gridContentBounds(grid), { x: sceneGridGap(grid, 'x'), y: sceneGridGap(grid, 'y') })
     const region = regions.get(node.path)
     if (!region) return
     const available = (node.axis === 'x' ? region.width - sceneGridGap(grid, 'x') : region.height - sceneGridGap(grid, 'y'))
     if (available <= 0) return
-    const panels = new Map(info.panels.map(panel => [panel.dataset.panelId, panel]))
+    const panels = panelsBySlot(info)
     node.ratio = clampSplitRatio(node, node.ratio + delta / available, region, panels, { x: sceneGridGap(grid, 'x'), y: sceneGridGap(grid, 'y') })
   }
 
@@ -1021,7 +1397,7 @@
 
   function positionTreeHandles(info, state) {
     const grid = document.getElementById('grid')
-    const panelMap = new Map(info.panels.map(panel => [panel.dataset.panelId, panel]))
+    const panelMap = panelsBySlot(info)
     const bounds = gridContentBounds(grid)
     const gaps = { x: sceneGridGap(grid, 'x'), y: sceneGridGap(grid, 'y') }
     const rects = treeRects(state.tree, bounds, gaps)
@@ -1085,7 +1461,7 @@
     const nodePath = event.currentTarget.dataset.resizeKey.match(/^t[xy]:(.+)$/)?.[1]
     const xy = event.currentTarget.dataset.resizeKey.match(/^txy:(.+):(.+)$/)
     const grid = event.currentTarget.closest('#grid'), info = grid && sceneGridInfo(grid)
-    const state = info && treeFor(info)
+    const state = info && (closedPanelProjectionFor(info) ?? treeFor(info))
     if (!state) return
     const scale = gridScale(grid)
     dx *= scale.x; dy *= scale.y
@@ -1094,16 +1470,18 @@
     if (xy) {
       const xNode = treeNodes(state.tree).find(node => node.path === xy[1])
       const yNode = treeNodes(state.tree).find(node => node.path === xy[2])
-      if (xNode && hasX) adjustTreeNode(info, xNode, dx)
-      if (yNode && hasY) adjustTreeNode(info, yNode, dy)
+      if (xNode && hasX) adjustTreeNode(info, xNode, dx, state)
+      if (yNode && hasY) adjustTreeNode(info, yNode, dy, state)
       if ((!xNode || !hasX) && (!yNode || !hasY)) return
     } else {
       const node = treeNodes(state.tree).find(item => item.path === nodePath)
       if (!node || (node.axis === 'x' ? !hasX : !hasY)) return
-      adjustTreeNode(info, node, node.axis === 'x' ? dx : dy)
+      adjustTreeNode(info, node, node.axis === 'x' ? dx : dy, state)
     }
-    positionTreePanels(grid, state.tree, { persistGeometry: true })
-    saveSplitTree(info.sceneId, { ...state, topology: treeTopology(state.tree), geometry: info.geometry.map(item => ({ ...item })) })
+    if (!state.projected) {
+      positionTreePanels(grid, state.tree, { persistGeometry: true })
+      saveSplitTree(info.sceneId, { ...state, topology: treeTopology(state.tree), geometry: info.geometry.map(item => ({ ...item })) })
+    }
     updateResizeHandles()
     event.preventDefault()
   }
@@ -1253,7 +1631,7 @@
       return
     }
     if (activeTreeResize?.info.sceneId === info.sceneId) {
-      if (activeTreeResize.previewTree) positionTreePanels(grid, activeTreeResize.previewTree)
+      if (activeTreeResize.previewTree) positionResizingPanels(activeTreeResize, activeTreeResize.previewTree)
       return
     }
     if (!resizeLayer || resizeLayer.parentElement !== grid) {
@@ -1268,10 +1646,11 @@
         resizeObserver = new ResizeObserver(() => {
           const current = sceneGridInfo(grid)
           if (activeTreeResize?.info.sceneId === current?.sceneId) {
-            if (activeTreeResize.previewTree) positionTreePanels(grid, activeTreeResize.previewTree)
+            if (activeTreeResize.previewTree) positionResizingPanels(activeTreeResize, activeTreeResize.previewTree)
             return
           }
           if (current?.panels.some(panel => panel.classList.contains('panel-expanded') || panel.classList.contains('pi-maximized'))) return
+          if (current && updateClosedProjectionHandles(grid, current)) return
           const tree = current && treeFor(current)
           if (current && tree) {
             if (savedTree(current)) applyTreeState(current, tree)
@@ -1281,6 +1660,8 @@
         resizeObserver.observe(grid)
       }
     }
+    if (updateClosedProjectionHandles(grid, info)) return
+    resizeLayer.hidden = false
     const persistedTree = savedTree(info)
     const tracks = activeGridResize?.info.sceneId === info.sceneId
       ? activeGridResize.current : getSceneTracks(info.sceneId, info.columns, info.rows)
@@ -1445,7 +1826,7 @@
 
   function beginTreeResize(event, info, key) {
     if (event.button !== 0 || activeTreeResize) return
-    const state = treeFor(info)
+    const state = closedPanelProjectionFor(info) ?? treeFor(info)
     if (!state) return
     const xy = key.match(/^txy:(.+):(.+)$/)
     const single = key.match(/^t([xy]):(.+)$/)
@@ -1461,7 +1842,7 @@
       startX: event.clientX, startY: event.clientY,
       startScale: gridScale(grid),
       xNode, yNode, node, moved: false,
-      endGeometry: panelGeometryProof.begin(info.panels, 'resize'),
+      endGeometry: panelGeometryProof.begin(state.projected ? visiblePanelsIn(grid) : info.panels, 'resize'),
       originalStyles: new Map(info.panels.map(panel => [panel, { style: panel.getAttribute('style'), managed: panel.dataset.splitTreeManaged }]))
     }
     try { event.currentTarget.setPointerCapture?.(event.pointerId) } catch { /* Window listeners below remain active. */ }
@@ -1475,6 +1856,11 @@
 
   function onTreeLostCapture(event) {
     if (activeTreeResize && activeTreeResize.pointerId === event.pointerId) finishTreeResize(true)
+  }
+
+  function positionResizingPanels(active, tree) {
+    if (active.state.projected) applyClosedPanelReflow(active.grid, active.info, tree)
+    else positionTreePanels(active.grid, tree)
   }
 
   function moveTreeResize(event) {
@@ -1497,7 +1883,7 @@
       const region = collectTreeRegions(liveState.tree, gridContentBounds(grid), { x: sceneGridGap(grid, 'x'), y: sceneGridGap(grid, 'y') }).get(path)
       if (!region) return false
       const available = (node.axis === 'x' ? region.width - sceneGridGap(grid, 'x') : region.height - sceneGridGap(grid, 'y'))
-      const panels = new Map(active.info.panels.map(panel => [panel.dataset.panelId, panel]))
+      const panels = panelsBySlot(active.info)
       node.ratio = clampSplitRatio(node, node.ratio + delta / Math.max(1, available), region, panels, { x: sceneGridGap(grid, 'x'), y: sceneGridGap(grid, 'y') })
       return true
     }
@@ -1508,7 +1894,7 @@
     if (!changed) return
     active.previewTree = currentTree
     active.moved = true
-    positionTreePanels(active.grid, currentTree)
+    positionResizingPanels(active, currentTree)
     positionTreeHandles(active.info, { tree: currentTree })
     event.preventDefault(); event.stopPropagation()
   }
@@ -1527,6 +1913,12 @@
     delete active.handle.dataset.pointerActive
     active.handle.dataset.pointerSuppressed = 'true'
     try { if (active.handle.hasPointerCapture?.(active.pointerId)) active.handle.releasePointerCapture(active.pointerId) } catch { /* Capture may already be released by the browser. */ }
+    if (active.state.projected) {
+      if (!cancelled && active.moved) active.state.tree = active.previewTree
+      updateResizeHandles()
+      active.endGeometry(cancelled || !active.moved ? 'cancelled' : undefined)
+      return
+    }
     if (cancelled || !active.moved) {
       if (savedTree(active.info)) {
         active.state.tree = active.original
@@ -1634,27 +2026,128 @@
     panel.addEventListener('transitionend', onEnd)
   }
 
-  function restore(panel) {
+  function prefersReducedMotion() {
+    return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
+  }
+
+  const panelMotions = new WeakMap()
+  const pendingPanelMotions = new WeakSet()
+
+  function preparePanelMotion(panel) {
+    let hold = panelMotions.get(panel)?.hold
+    if (!hold) {
+      const detail = { panel }
+      window.dispatchEvent(new CustomEvent('tl:panel-geometry-motion', { detail }))
+      hold = detail.hold
+    }
+    if (!hold) return undefined
+    const motion = {
+      hold,
+      finish(settled) {
+        if (panelMotions.get(panel) !== motion) return
+        panelMotions.delete(panel)
+        void hold.finish(settled).catch(() => {})
+      },
+    }
+    panelMotions.set(panel, motion)
+    return motion
+  }
+
+  // Lay out the shell once and move it visually while the native assistant is hidden.
+  function animateHeldShell(panel, state, first, target, complete) {
+    if (typeof panel.animate !== 'function' || panel.offsetParent !== null) return false
+    const style = getComputedStyle(panel)
+    if (style.transform !== 'none' || [style.translate, style.rotate, style.scale].some(value => value && value !== 'none')) return false
+    const valid = rect => [rect.left, rect.top, rect.width, rect.height].every(Number.isFinite) && rect.width > 0 && rect.height > 0
+    if (!valid(first) || !valid(target)) return false
+    const { left, top, width, height } = panel.style
+    const initial = { left, top, width, height }
+    let animation
+    try {
+      setRect(panel, target)
+      const last = panel.getBoundingClientRect()
+      if (!valid(last)) throw new Error('invalid shell layout')
+      const dx = first.left - last.left, dy = first.top - last.top
+      const sx = first.width / last.width, sy = first.height / last.height
+      const inverse = 'translate(' + dx + 'px, ' + dy + 'px) scale(' + sx + ', ' + sy + ')'
+      animation = panel.animate([
+        { transform: inverse, transformOrigin: '0 0' },
+        { transform: 'translate(0px, 0px) scale(1, 1)', transformOrigin: '0 0' },
+      ], { duration: 320, easing: 'cubic-bezier(.22, .61, .36, 1)', fill: 'both' })
+    } catch {
+      Object.assign(panel.style, initial)
+      return false
+    }
+
+    const finish = outcome => {
+      if (state.finishShellAnimation !== finish) return
+      state.finishShellAnimation = undefined
+      clearTimeout(timer)
+      animation.cancel()
+      complete(outcome)
+    }
+    state.finishShellAnimation = finish
+    const timer = setTimeout(finish, 420)
+    void animation.finished.then(() => finish(), () => finish())
+    return true
+  }
+
+  async function restore(panel) {
     const state = states.get(panel)
     if (!state || state.pending) return
     state.pending = true
-    const endGeometry = panelGeometryProof.begin([panel], 'restore')
+    if (prefersReducedMotion()) {
+      const motion = panelMotions.has(panel) ? preparePanelMotion(panel) : undefined
+      state.finishShellAnimation?.('superseded')
+      const endGeometry = panelGeometryProof.begin([panel], 'restore')
+      finishRestore(panel, state)
+      endGeometry()
+      motion?.finish(true)
+      return
+    }
+
+    const motion = preparePanelMotion(panel)
+    let endGeometry = motion ? undefined : panelGeometryProof.begin([panel], 'restore')
+    // Reverse from the current visual rectangle without revealing the shared held guest.
+    const reversed = state.finishShellAnimation ? panel.getBoundingClientRect() : undefined
+    state.finishShellAnimation?.('superseded')
+    const held = motion ? await motion.hold.ready : undefined
+    if (!panel.isConnected || states.get(panel) !== state) {
+      cleanupDetached(panel)
+      endGeometry?.('detached')
+      motion?.finish(false)
+      return
+    }
+    const target = state.slot?.getBoundingClientRect()
+    if (held && target && animateHeldShell(panel, state, reversed ?? panel.getBoundingClientRect(), target, outcome => {
+      const present = states.get(panel) === state && panel.isConnected
+      finishRestore(panel, state)
+      motion.finish(present && outcome !== 'pagehide')
+    })) return
+
+    if (reversed) setRect(panel, reversed)
+    endGeometry ??= panelGeometryProof.begin([panel], 'restore')
     panel.classList.add('pi-animating')
     // Commit the current fixed geometry before scheduling the restored grid geometry.
     panel.getBoundingClientRect()
-    const target = state.slot?.getBoundingClientRect()
     if (!target) {
       finishRestore(panel, state)
       endGeometry()
+      motion?.finish(true)
       return
     }
     requestAnimationFrame(() => {
-      if (states.get(panel) !== state || !state.pending) { endGeometry('superseded'); return }
-      if (!panel.isConnected) { cleanupDetached(panel); endGeometry('detached'); return }
+      if (states.get(panel) !== state || !state.pending) { endGeometry('superseded'); motion?.finish(false); return }
+      if (!panel.isConnected) { cleanupDetached(panel); endGeometry('detached'); motion?.finish(false); return }
       const latest = state.slot?.getBoundingClientRect()
-      if (!latest) { finishRestore(panel, state); endGeometry(); return }
+      if (!latest) { finishRestore(panel, state); endGeometry(); motion?.finish(true); return }
       setRect(panel, latest)
-      transitionDone(panel, () => { finishRestore(panel, state); endGeometry() })
+      transitionDone(panel, () => {
+        const settled = states.get(panel) === state && panel.isConnected
+        finishRestore(panel, state)
+        endGeometry()
+        motion?.finish(settled)
+      })
     })
   }
 
@@ -1667,9 +2160,13 @@
     states.delete(panel)
     setFullscreenButton(state.fullButton, false)
     updateResizeHandles()
+    if (state.expandAfterRestore) setTimeout(() => {
+      if (panel.isConnected && !states.has(panel)) state.expandAfterRestore.click()
+    }, 0)
   }
 
   async function maximize(panel, button) {
+    if (pendingPanelMotions.has(panel)) return
     const current = states.get(panel)
     if (current) {
       restore(panel)
@@ -1694,13 +2191,23 @@
     const geometry = gridRect(panel)
     if (!geometry) return
     const { grid, rect: target } = geometry
-    const endGeometry = panelGeometryProof.begin([panel], 'maximize')
+    const motion = prefersReducedMotion() ? undefined : preparePanelMotion(panel)
+    let held
+    if (motion) {
+      pendingPanelMotions.add(panel)
+      try { held = await motion.hold.ready } finally { pendingPanelMotions.delete(panel) }
+      if (!panel.isConnected || panel.closest('#grid') !== grid) {
+        motion.finish(false)
+        return
+      }
+    }
+    let endGeometry = held ? undefined : panelGeometryProof.begin([panel], 'maximize')
     const from = panel.getBoundingClientRect()
     const slot = document.createElement('div')
     slot.className = 'pi-slot'
     slot.style.gridColumn = `${panel.dataset.col} / span ${panel.dataset.w}`
     slot.style.gridRow = `${panel.dataset.row} / span ${panel.dataset.h}`
-    if (panel.dataset.splitTreeManaged === 'true') {
+    if (panel.dataset.splitTreeManaged === 'true' || panel.classList.contains('pi-closed-reflow')) {
       const gridRect = grid.getBoundingClientRect(), panelRect = panel.getBoundingClientRect()
       const css = getComputedStyle(grid), scale = gridScale(grid)
       const originX = gridRect.left + ((Number.parseFloat(css.borderLeftWidth) || 0) + (Number.parseFloat(css.paddingLeft) || 0)) * scale.x
@@ -1723,18 +2230,48 @@
     states.set(panel, state)
     panel.style.position = 'fixed'
     panel.style.zIndex = '10000'
-    setRect(panel, from)
     panel.classList.add('pi-maximized')
+    if (held && !prefersReducedMotion()) {
+      setFullscreenButton(button, true)
+      if (animateHeldShell(panel, state, from, grid.getBoundingClientRect(), outcome => {
+        if (!panel.isConnected) cleanupDetached(panel)
+        const present = states.get(panel) === state && panel.isConnected && !state.pending
+        if (present && outcome !== 'pagehide') updateResizeHandles()
+        motion.finish(present && outcome !== 'pagehide')
+      })) return
+    }
+
+    setRect(panel, from)
+    endGeometry ??= panelGeometryProof.begin([panel], 'maximize')
+    if (prefersReducedMotion()) {
+      setRect(panel, grid.getBoundingClientRect())
+      setFullscreenButton(button, true)
+      updateResizeHandles()
+      endGeometry()
+      motion?.finish(true)
+      return
+    }
     // Commit viewport start geometry before enabling left/top transitions.
     panel.getBoundingClientRect()
     setFullscreenButton(button, true)
     requestAnimationFrame(() => {
-      if (states.get(panel) !== state || state.pending) { endGeometry('superseded'); return }
-      if (!panel.isConnected) { cleanupDetached(panel); endGeometry('detached'); return }
+      if (states.get(panel) !== state || state.pending) { endGeometry('superseded'); motion?.finish(false); return }
+      if (!panel.isConnected) { cleanupDetached(panel); endGeometry('detached'); motion?.finish(false); return }
       panel.classList.add('pi-animating')
       const latest = grid.getBoundingClientRect()
       setRect(panel, latest)
-      transitionDone(panel, () => { if (states.get(panel) !== state || state.pending) { endGeometry('superseded'); return }; panel.classList.remove('pi-animating'); updateResizeHandles(); endGeometry() })
+      transitionDone(panel, () => {
+        if (states.get(panel) !== state || state.pending || !panel.isConnected) {
+          if (!panel.isConnected) cleanupDetached(panel)
+          endGeometry('superseded')
+          motion?.finish(false)
+          return
+        }
+        panel.classList.remove('pi-animating')
+        updateResizeHandles()
+        endGeometry()
+        motion?.finish(true)
+      })
     })
     requestAnimationFrame(updateResizeHandles)
   }
@@ -1742,6 +2279,7 @@
   function cleanupDetached(panel) {
     const state = states.get(panel)
     if (!state) return
+    state.finishShellAnimation?.('detached')
     finishRestore(panel, state)
   }
 
@@ -1760,7 +2298,7 @@
     const closeButton = document.createElement('button')
     closeButton.type = 'button'
     closeButton.className = 'icon-control pi-action pi-close'
-    closeButton.textContent = '×'
+    closeButton.append(createReplicaIcon('M6 6l12 12M18 6L6 18'))
     closeButton.title = '关闭面板'
     closeButton.setAttribute('aria-label', '关闭面板')
     closeButton.addEventListener('click', event => {
@@ -1776,17 +2314,7 @@
     moreButton.setAttribute('aria-label', '更多面板操作')
     moreButton.setAttribute('aria-haspopup', 'menu')
     moreButton.setAttribute('aria-expanded', 'false')
-    const moreIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
-    moreIcon.setAttribute('viewBox', '0 0 16 16')
-    moreIcon.setAttribute('width', '14'); moreIcon.setAttribute('height', '14')
-    moreIcon.setAttribute('aria-hidden', 'true')
-    for (const x of [3, 8, 13]) {
-      const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
-      dot.setAttribute('cx', String(x)); dot.setAttribute('cy', '8')
-      dot.setAttribute('r', '1'); dot.setAttribute('fill', 'currentColor')
-      moreIcon.append(dot)
-    }
-    moreButton.append(moreIcon)
+    moreButton.append(createReplicaIcon('M5 12h1m5 0h1m5 0h1'))
     moreButton.addEventListener('click', event => {
       event.preventDefault(); event.stopPropagation()
       if (menu?.button === moreButton) closeMenu()
@@ -1845,7 +2373,7 @@
     if (!onScenebar && !onGridBlank) return
     const grid = document.getElementById('grid')
     const sceneKey = grid ? sceneGridInfo(grid)?.sceneId : ''
-    if (!closedPanelIdsFor(sceneKey).length) {
+    if (!sceneKey) {
       event.preventDefault()
       event.stopPropagation()
       announce('当前场景没有已关闭的面板。')
@@ -1859,24 +2387,27 @@
   function onExistingExpandClick(event) {
     const button = event.target.closest?.('.panel-expand')
     const panel = button?.closest('.panel')
-    if (!button || !panel || !states.has(panel)) return
+    const state = panel && states.get(panel)
+    if (!button || !state) return
     event.preventDefault()
     event.stopImmediatePropagation()
-    restore(panel)
-    setTimeout(() => {
-      if (panel.isConnected && !states.has(panel)) button.click()
-    }, 360)
+    state.expandAfterRestore = button
+    void restore(panel)
   }
 
   function onResize() {
     for (const [panel, state] of states) {
-      if (state.pending || !panel.isConnected) continue
-      const geometry = gridRect(panel)
-      if (geometry) setRect(panel, geometry.rect)
+      if (!panel.isConnected) continue
+      if (!state.pending) {
+        const geometry = gridRect(panel)
+        if (geometry) setRect(panel, geometry.rect)
+      }
+      state.finishShellAnimation?.()
     }
   }
 
   function start() {
+    if (window.sourcePanelTabs) Object.assign(window.sourcePanelTabs, { getSceneInfo: sceneGridInfo, slotRects: releasedSlotRects })
     scan(document)
     observer = new MutationObserver(records => {
       for (const record of records) {
@@ -1896,7 +2427,17 @@
     document.addEventListener('dblclick', onDoubleClick, true)
     document.addEventListener('contextmenu', onContextMenu, true)
     document.addEventListener('click', onExistingExpandClick, true)
+    window.addEventListener('pagehide', () => {
+      for (const state of states.values()) state.finishShellAnimation?.('pagehide')
+    }, { once: true })
     window.addEventListener('resize', onResize)
+    window.addEventListener('scene-configuration-layout', updateConfiguredGeometry)
+    window.addEventListener('scene-panel-slot-swap', updateSwappedPanelSlots)
+    window.addEventListener('scene-panel-tabs-changed', () => {
+      const grid = document.getElementById('grid')
+      applyClosedPanels(grid)
+      updateResizeHandles()
+    })
     window.addEventListener('resize', updateResizeHandles)
   }
 

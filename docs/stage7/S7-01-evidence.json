@@ -1,0 +1,281 @@
+{
+  "task": "S7-01",
+  "baselineCommit": "0d4c15afe32d85364c2b323771cdbb31e5ac940b",
+  "preparedOnly": true,
+  "preflight": {
+    "record": {
+      "path": "[local-path-redacted]",
+      "bytes": 15824,
+      "sha256": "330db8dfe5f03149dc74cda4aa600fec09572695834b97786ace43ca225ac5e9"
+    },
+    "frozenUpdater": {
+      "path": "[local-path-redacted]",
+      "bytes": 1024,
+      "sha256": "48ad696b98e76636bbf41202d9d2f3760ade890fc48eef26422cf8df668a3db4"
+    },
+    "feed": {
+      "path": "[local-path-redacted]",
+      "bytes": 844,
+      "sha256": "ffd1ff201e3067786b8aaba07deb6dc3023eaadbe931728053d9c75a9f322799"
+    },
+    "signedInstaller": {
+      "path": "[local-path-redacted]",
+      "bytes": 546,
+      "sha256": "087e31daa7e8eccae384e05bce149d0c31de4878d61b2a735e81774ee5d25d69"
+    },
+    "officialArchive": {
+      "path": "[local-path-redacted]",
+      "bytes": 3675,
+      "sha256": "d83a4a3fc35f8075b0df10442b2a1491279f2c7e0dccf72071f6492dfe269c26"
+    },
+    "oldGuardComparison": {
+      "path": "[local-path-redacted]",
+      "bytes": 3773,
+      "sha256": "2f5776ccc49d045f9fb0ca416bacfc7ebfd6d91a57b95fde314f0079b913f6d6"
+    }
+  },
+  "firstBuild": {
+    "updateReceipt": {
+      "path": "[local-path-redacted]",
+      "bytes": 1304,
+      "sha256": "265e38fd3b7b7769d9f3cef5bca97620cd8d095194d515c2341fb5701b9c5ab0"
+    },
+    "buildReceipt": {
+      "path": "[local-path-redacted]",
+      "bytes": 2247,
+      "sha256": "c2e53d79e796acf1a9162ee45ea6eff40d5b384d579240967b1693083c67f23a"
+    }
+  },
+  "frozenBuild": {
+    "updateReceipt": {
+      "path": "[local-path-redacted]",
+      "bytes": 1303,
+      "sha256": "1a57350eb881aec1ef5ac11119aa10db213f05280e5d54cf52f9b01b43ec3649"
+    },
+    "buildReceipt": {
+      "path": "[local-path-redacted]",
+      "bytes": 2139,
+      "sha256": "168b7c2f80c82151dec462860e309ce7661414e54ced14edca07b94940bf4820"
+    },
+    "readback": {
+      "path": "[local-path-redacted]",
+      "bytes": 1552,
+      "sha256": "4a08c5b905c03109bc1b6b8a810dfef9b5321273d61455a6d4772c84fca0e1c3"
+    },
+    "programZip": {
+      "path": "[local-path-redacted]",
+      "bytes": 819387962,
+      "sha256": "844b25b4b4d4e2865601251c64691180b91991e9bd3d96853193839caf0dbbb5"
+    },
+    "programEntryManifest": {
+      "path": "[local-path-redacted]",
+      "bytes": 14670309,
+      "sha256": "23f532f31d8702df99a5c8daa9c62002bd761e4479a5536fe36f56fd3c5b8378"
+    },
+    "sourceZip": {
+      "path": "[local-path-redacted]",
+      "bytes": 19639366,
+      "sha256": "f69bdd729eabc8ff8975b560568a8c888e0de640b0b8b6390a1a2fc4dc68de48"
+    },
+    "sourceManifest": {
+      "path": "[local-path-redacted]",
+      "bytes": 114435,
+      "sha256": "59d752b7da5b5d792494bd0e665a4c0114baa23663e24888822273a582e154ba"
+    },
+    "sourceIdentity": {
+      "head": "0d4c15afe32d85364c2b323771cdbb31e5ac940b",
+      "dirty": true,
+      "sourceFiles": 353,
+      "sha256": "49740eb67be79d90eae24e5c8187b40b4accfbc65f32ab162670f5f6d1b37608",
+      "allBytesStillMatchCheckout": true
+    },
+    "sourceZipEntriesVerifiedAgainstCheckout": 353,
+    "snapshotEolComparison": {
+      "path": "[local-path-redacted]",
+      "bytes": 1585,
+      "sha256": "a4e1b3dd8038472c2ae9063c930bf10b23c2f15ac9407bc6dede991e4ff97df1"
+    },
+    "candidateValidation": {
+      "path": "[local-path-redacted]",
+      "bytes": 177,
+      "sha256": "552253d441fa2328f168120c66ae5ad2437a406e61d56e354ae4d9250976b24b"
+    }
+  },
+  "tests": {
+    "boundary": {
+      "path": "[local-path-redacted]",
+      "bytes": 1398,
+      "sha256": "e895e79621ef535686508db451c57b9479a93aa0d852717af5bdf22b4c13695a"
+    },
+    "sdk-tests": {
+      "path": "[local-path-redacted]",
+      "bytes": 1280,
+      "sha256": "7186d4fd0a6b2635019c39d5db34c71e6ac6f44b87cea1b9aa0ff526bb59f2e5"
+    },
+    "update-tests": {
+      "path": "[local-path-redacted]",
+      "bytes": 109,
+      "sha256": "0004fa8e488e8ec97f052c8ca1bba8be29048064a0a9071bf88aceb1238ecb46"
+    },
+    "build-tests": {
+      "path": "[local-path-redacted]",
+      "bytes": 108,
+      "sha256": "26577bf13ae60111f7fcb8f691db84c350485b86eeb0458863bb3ef2e22b3a1e"
+    },
+    "apply-tests": {
+      "path": "[local-path-redacted]",
+      "bytes": 116,
+      "sha256": "8d1abb96c30071bc224352cbe3e1caa0bf32dc55a7fde405bda1996baa9e7fec"
+    },
+    "strict-replay": {
+      "path": "[local-path-redacted]",
+      "bytes": 353,
+      "sha256": "02ef650a2fc25b517679b4a71686315f470aa3dda8508ef187c66975a848ec21"
+    }
+  },
+  "qa": {
+    "prepared": {
+      "path": "[local-path-redacted]",
+      "bytes": 1528,
+      "sha256": "5e92d422a58b9a78135ee9a7f4253322fbac297a6a14eb578be43496783268d2"
+    },
+    "initialChecks": {
+      "path": "[local-path-redacted]",
+      "bytes": 454,
+      "sha256": "19d828c16ccc7ec60f3c86194f842dd329e83671b0fe8e0a56b12a4c7da247bd"
+    },
+    "targetManifest": {
+      "path": "[local-path-redacted]",
+      "bytes": 11304985,
+      "sha256": "5a814e0ed87f18d2ef9a4a248657036e6978c84d08a0050b6b4e77b081d3201f"
+    },
+    "verificationScript": {
+      "path": "[local-path-redacted]",
+      "bytes": 983,
+      "sha256": "1f844075305e4098ac59074926f4a5f24c82cf696913cf4000b6549a2d76464e"
+    },
+    "launcherPin": {
+      "bytes": 139,
+      "sha256": "67a8b6ab8f9e1fdac988f472e42361f0a85492c17549adae3ef189765537e310"
+    },
+    "work1": "[local-path-redacted]",
+    "work2": "[local-path-redacted]"
+  },
+  "snapshotPaths": [
+    {
+      "path": "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.3/conversation-draft-checked.patch",
+      "bytes": 648957,
+      "sha256": "1b003bd791743b581bf6cb76efde8d8f3d790ba8652e6a5f135f06243d493ac9"
+    },
+    {
+      "path": "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.3/desktop-identity.patch",
+      "bytes": 1283,
+      "sha256": "d9d9878ae324f0854cee632bd1f33542e3f4dc59e86ceec2e300933e280d53b9"
+    },
+    {
+      "path": "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.3/desktop-recipe.json",
+      "bytes": 40333,
+      "sha256": "0b384204bd74f75718bc5a6d6767d3bb9861cada1bd64ac25ef3cd53147e2334"
+    },
+    {
+      "path": "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.3/production-execution-origin.patch",
+      "bytes": 211813,
+      "sha256": "9026d86b59aec1d3a0a688792754be8e8eae69d2ec91fbfb6869e52d6eae9353"
+    },
+    {
+      "path": "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.3/program-recipe.json",
+      "bytes": 19496,
+      "sha256": "2dd3c557ebf0fcae572033dfb04cefc14b90b552dd45823694dab0e3e1f19b32"
+    },
+    {
+      "path": "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.3/recipe.json",
+      "bytes": 32166,
+      "sha256": "f629de0bc4840ac8e192b6bd2a8da93a30f56b329e218f6a585eaf85d61fb515"
+    },
+    {
+      "path": "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.3/root-identity-diagnostic.patch",
+      "bytes": 2860,
+      "sha256": "cd9164dda3194e4e49d4c52e6daa02ce7c4bf331b2ce89c7ecd19df20024a13b"
+    },
+    {
+      "path": "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.3/session-list-failure-phase.patch",
+      "bytes": 107454,
+      "sha256": "7d2d08c554dc832c6ea8b299633a5318ca7a169e8cdacabb7a39353899c7595b"
+    },
+    {
+      "path": "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.3/settings-layout-compat.patch",
+      "bytes": 95800,
+      "sha256": "184d67271633be4fb58705b1f72d1dc9db8073ede205b256ed8013bb7b15fab1"
+    },
+    {
+      "path": "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.3/voice-native-binding.patch",
+      "bytes": 278815,
+      "sha256": "b59cedb7f16937f2ef123cd4f8eb1d7a32d580a9ac74a9ca1fffa80dc75bf005"
+    },
+    {
+      "path": "docs/stage7/S7-01-preflight.md",
+      "bytes": 15824,
+      "sha256": "330db8dfe5f03149dc74cda4aa600fec09572695834b97786ace43ca225ac5e9"
+    },
+    {
+      "path": "docs/stage7/baseline.md",
+      "bytes": 3228,
+      "sha256": "43d7cdb939a26e632a5fa37d99ece374caedf163d6e95eb98328c2629b65ca2a"
+    },
+    {
+      "path": "docs/stage7/contracts.md",
+      "bytes": 4151,
+      "sha256": "7c77e79cef3a20194f4a2ed8912918251086482d5dd86f2d4f4a3cfcb782f289"
+    },
+    {
+      "path": "docs/stage7/feature-matrix.md",
+      "bytes": 3363,
+      "sha256": "309b7454dae1655e305b9f5dbe713ff21df478fb8c4979ef0e01f2296ea438ca"
+    },
+    {
+      "path": "docs/stage7/ownership.json",
+      "bytes": 273357,
+      "sha256": "e6505f6c0f6ff14aa6d2a9933589e2afa1c7a758bbd9e885423a49e544dfb8f6"
+    },
+    {
+      "path": "docs/stage7/ownership.md",
+      "bytes": 1808,
+      "sha256": "a751b1d387a28d73f5e890231c733812bca5b3294eab9e590e406ab529ba201d"
+    },
+    {
+      "path": "dsh-base.manifest.json",
+      "bytes": 9557,
+      "sha256": "df5681d0bbf7985003b94720132a8570ece39b2f11ef1871bba300b833c1ce6d"
+    },
+    {
+      "path": "packages/tradeloom-shell/tests/dsh-base-boundary.test.js",
+      "bytes": 9930,
+      "sha256": "3472446729ada030982f04e32f4eafdf1431fddd530d141c11e12e2c4be8f9a4"
+    },
+    {
+      "path": "scripts/build-dsh-candidate.py",
+      "bytes": 29501,
+      "sha256": "2a5e32a13a87516aef5057fbbfab7f705305635db6845661fd1a6779871e41be"
+    },
+    {
+      "path": "scripts/check-dsh-base-boundary.mjs",
+      "bytes": 11616,
+      "sha256": "b83d3f7104ab39bc992ef8a2f947999cdc4e6d06c99c1fb4322f1caa5953042b"
+    },
+    {
+      "path": "scripts/replay-dsh-candidate.py",
+      "bytes": 19507,
+      "sha256": "d963e1b657419be76a98ddd8dd2347ad181f34d4ef8e7e7831d40e57827ca78f"
+    },
+    {
+      "path": "scripts/tests/update-dsh-candidate.test.py",
+      "bytes": 7735,
+      "sha256": "1bc7a07ce09707cb2831aae14810b219bdb87b89a1ef4e1e7c3b2795c3ada03c"
+    },
+    {
+      "path": "scripts/update-dsh-candidate.py",
+      "bytes": 20700,
+      "sha256": "81b39d3ebf58fed6848eaa0da918c52ce551f34183342c30c5f02174b0c2fa55"
+    }
+  ]
+}

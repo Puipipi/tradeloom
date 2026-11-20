@@ -1,0 +1,135 @@
+{
+  "task": "S7-01",
+  "revision": "rc3-scenes-r3",
+  "r2Failure": {
+    "path": "[local-path-redacted]",
+    "bytes": 1949,
+    "sha256": "1672ad2b4e9eea8f279c138e2c7d970d8a14a997b65189cec86fcec41552b896"
+  },
+  "r2Rollback": {
+    "path": "[local-path-redacted]",
+    "bytes": 606,
+    "sha256": "30ac25ef170dabf3debb881e5af38d7d7b8ccd4972ea8cac4ac67bd69fbc7bee"
+  },
+  "r2RestoredManifest": {
+    "path": "[local-path-redacted]",
+    "bytes": 11624109,
+    "sha256": "f43dede65a99a70698ded568a84b73cfeeabbea13d9b00cb93983d84cca30d10"
+  },
+  "probe": {
+    "baseline-owned-probe.json": {
+      "path": "[local-path-redacted]",
+      "bytes": 248,
+      "sha256": "938ba6335a1d9302e9fa579ceead739bf51c69afd11b662965b82db02a0f6ae0"
+    },
+    "compatible-owned-probe.json": {
+      "path": "[local-path-redacted]",
+      "bytes": 310,
+      "sha256": "b3550d90cf03da47fc832dd8bec7923160669190bb84250519307cea3ada1e0a"
+    },
+    "exact-peer-compatibility.json": {
+      "path": "[local-path-redacted]",
+      "bytes": 80,
+      "sha256": "03e70c7d020440836efebf05ef4c0788ba94e541818a6b6b043f91529936c21e"
+    },
+    "actual-host-and-sdk-tests.log": {
+      "path": "[local-path-redacted]",
+      "bytes": 1471,
+      "sha256": "856d4097e110df6a25d949eab595084739bcd9a2c86d9aaa1a11aae024e42834"
+    },
+    "boundary.log": {
+      "path": "[local-path-redacted]",
+      "bytes": 1157,
+      "sha256": "2dd364335a6ffcca152fa99969278e6388e61e22463b7ff4121a62be8d27d209"
+    }
+  },
+  "program": {
+    "freeze": {
+      "path": "[local-path-redacted]",
+      "bytes": 2385,
+      "sha256": "a005b83b4228bf47f07e75de854bbd0f17748518be2c946471a91aa342cec1a7"
+    },
+    "unsupportedLatestFeedAttempt": {
+      "path": "[local-path-redacted]",
+      "bytes": 967,
+      "sha256": "35d0f43e44cd59407769e9f100d5382ccb88e01386b21be01805d128fe0393b3"
+    },
+    "unsupportedLatestFeed": {
+      "path": "[local-path-redacted]",
+      "bytes": 843,
+      "sha256": "e5c7e24236a6a2285d833782174fecc916e1d946d591f96250a0b1f4444b2e05"
+    },
+    "offlineCommand": {
+      "path": "[local-path-redacted]",
+      "bytes": 947,
+      "sha256": "826dc77e8ddd0fd0204d7964fe818c4238365982665d0d2e0e5a21d6145b4f9a"
+    },
+    "strictReplay": {
+      "path": "[local-path-redacted]",
+      "bytes": 27317,
+      "sha256": "2d97199e0c65cd6d1ef99e102a6cc601e2c37008bc2c48107e542b19eb142e5e"
+    },
+    "candidateValidation": {
+      "path": "[local-path-redacted]",
+      "bytes": 164,
+      "sha256": "0ac7f298c63eea6ece71755f5081432029d85090f6a25f39bc19cb0c67f37f27"
+    },
+    "programZip": {
+      "path": "[local-path-redacted]",
+      "bytes": 819388090,
+      "sha256": "caf14db3914a58a03040e2c276b9160b4442cd45629f23dd2bb2b2ae19faf004"
+    },
+    "sourceZip": {
+      "path": "[local-path-redacted]",
+      "bytes": 19640183,
+      "sha256": "331a28146a6d8315797901f5e67469848634af7d0b772176aaa2ce0b0573ae0f"
+    },
+    "candidateManifest": {
+      "path": "[local-path-redacted]",
+      "bytes": 14670309,
+      "sha256": "35f415d135aed13a830ffff6429ff10030478a5167b61eeb891283fd318a0008"
+    },
+    "sourceHeadAtBuild": "e24eed788c033ac0f098a159012a6d40903a1e54",
+    "dirtyAtBuild": true,
+    "sourceFiles": 354,
+    "sourceDigest": "de6c1b8fa75f03e3da98c0bcdb2fc93a1dd292e66c896ce4e2bfe860645b6f4f"
+  },
+  "changes": [
+    {
+      "path": "apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.3/recipe.json",
+      "bytes": 32166,
+      "sha256": "717da9a387ac42e504234c15d8161fb8470eaf73c3a2e493ffc2c6d7eb863c40"
+    },
+    {
+      "path": "docs/stage7/S7-01-scenes-repair.md",
+      "bytes": 3331,
+      "sha256": "55651eb115097ad3cee7ff7256d2d10565e278e63c7d5f5c384c1ffc58ab28c9"
+    },
+    {
+      "path": "dsh-base.manifest.json",
+      "bytes": 9681,
+      "sha256": "35f6354212ebc367623defeadd2d15c697f73c1be2477df6ca134cb5617afdfb"
+    },
+    {
+      "path": "packages/tradeloom-shell/package.json",
+      "bytes": 4709,
+      "sha256": "272cd3fcfa462359253be1e4a27da9d1664f6d74f834221d2a18e7b3153ee2d8"
+    },
+    {
+      "path": "packages/tradeloom-shell/tests/dsh-base-boundary.test.js",
+      "bytes": 10448,
+      "sha256": "dd22fbee55a81ca70a7df43af745e046e1dce54749afc6963ac58d66e8a6aba4"
+    },
+    {
+      "path": "scripts/check-dsh-base-boundary.mjs",
+      "bytes": 12117,
+      "sha256": "28d33fe465c6d189593cb779a42b738c0b72f1b1b58241c123b952877ee8ed8f"
+    },
+    {
+      "path": "scripts/tests/rc3-host-scenes.test.mjs",
+      "bytes": 6002,
+      "sha256": "08d7f7cea5b25d6b66fadbe91a54e370a3361d1c011915aefddf0b9c0799c004"
+    }
+  ],
+  "nativeAcceptanceRecordedHere": false
+}

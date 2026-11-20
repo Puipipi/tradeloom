@@ -5,6 +5,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
 import { gunzipSync } from 'node:zlib'
+import { Context } from '@deepseek-ai/cordis'
+import { createScope, scopeTarget } from '@deepseek-ai/dsh-scope'
+import { executeNativeTool } from '../workflow-native-command-attribution.js'
+import { createNativeLifecycleCapability, NATIVE_LIFECYCLE_CAPABILITY } from '../workflow-native-tools.js'
 import { createWorkflowNativeService } from '../workflow-native-service.js'
 import { createWorkflowRunJournal } from '../workflow-run-journal.js'
 import { createWorkflowReviewDecisionChannel } from '../workflow-review.js'
@@ -17,19 +21,6 @@ import { ROLE_PRESETS } from '../roles.js'
 
 const clone = value => structuredClone(value)
 const LEGACY_AGENT_FIXTURE_GZIP = 'H4sIAAAAAAAACu1X227bOBD9FWOepVaSZTvWW5AFFgW2QJHs0xbBgibHNhuJdMmh08DwvxcUJdpJvEkap+i2jWDIJoeXmXMOh+MNfNLOKFZf8CU2DCogwwTWWjdvFCO5xtQ4lXaD3q5zSEAKqCDvnrR9lf510jf7BxK41uZqXuvrd35OjQvGb1LfhgRIUo1QwV9t74AtUNHgj9M/IQH8gtyR1Oq9Fn5I8ORfYZeQgCVGzkIFxikl1QISMLiWVmoF1bi1G0JxSlBBkRXjNM/TbPJ3llXt502WZf9AAnOppF2GccrVdQJCc9egIqg2wLWaS9OggIqMwwQEWm7kitpdwPsoFmih+riBudENVLBixk9OgDRUwJeyFrC97OC6HbrSopvbRu0nGy0cpx7duJZUlozj3bYf2lE4COaBdrRyftSVVH5WWCyBRgus+6hW2sowfQNfoCqzBG7813bHwIew2zb5T39CNHfdOdOKpHI48AgMos/f4E1xcsCdswid1c5w39Uw5Vj9sGjWaIIG8m1EeNMjWW12uhFaISTQoddzcw9UNEabwDUjwmZFUOXx9wUx8o4Qmkaq1jeDnx1a2pd6WDPt53tt6PqM1XU7yDfSCFuL8buI9s4Q1H/uVGvsTmW0MkNyzjh5PV3umhc9dE5dKX2tYNvtcAuK3RGKaDw5csb9wrU/B+Jw9CGOh4LvdXU39r7/YOi98cmRbw96Z92skd6tAOWpl1JwARWh2SFs0Xph7du6LkhgJpWQanEeMxBMwGcLn1680PcMdsmK0bialOPZSVaM+GSYT2YlZyWfTtlIZGI4GuIUR5PxuCjK+XxeFJPZVOBwxMazUV5Oi9nwpJx6gtaoKCQQ6wNTPt48AbpZYWA15QYZtcSwRxLhQ9D06btn4IlZ358+Pz6c+aih0PwhiB3F8b5uQwxRr6F5S6ahK6au+7foNx3afYaLyHAHadrddc9j+V5yOpLt3a21nzV+T7pDBaPN4XrlefQPI/1dYuVXr8R/L+Jf5nKOsmhXM06RbPDZAiijADzy6V7p8SqCn0EE1s3agvUtKrGfGLqC1JJenSOzLRpcN6saQ25v67EzRrjQ5qbPOI+Vr8+T2Ohlr5i7FeCxGoul3y8jsf/TBTN+qQvmlfanZZaj/v4cfbdcbr8CBXg2sf4RAAA='
-function scope() {
-  const disposers = new Set()
-  return {
-    effect(setup) {
-      const cleanup = setup()
-      let active = true
-      const release = () => { if (!active) return; active = false; disposers.delete(release); cleanup() }
-      disposers.add(release)
-      return release
-    },
-    dispose() { for (const cleanup of [...disposers].reverse()) cleanup() },
-  }
-}
 async function fixture({ nodes, edges = [], answer = null, askError = null, provider = true, output = 'verified output', withTaskAuthority = false }) {
   const root = await fs.mkdtemp(join(tmpdir(), 'tradeloom-o08-owned-home-'))
   const ownedHome = join(root, 'owned-home')
@@ -39,12 +30,14 @@ async function fixture({ nodes, edges = [], answer = null, askError = null, prov
   const resolvedOwnedHome = await resolveOwnedHome({ TRADELOOM_DSH_APP_HOME: ownedHome, DSH_HOME: ownedHome })
   assert.equal(resolvedOwnedHome, ownedHome)
   // This is a synthetic, file-backed runStore under a temporary owned-home, not the production PG adapter.
-  const hostScope = scope(), parentScope = scope(), listeners = new Map(), children = new Map()
-  const parent = { id: 'center-session', session: { id: 'center-session' }, ctx: {
-    ...parentScope,
-    on(name, callback) { const set = listeners.get(name) ?? new Set(); set.add(callback); listeners.set(name, set); return () => set.delete(callback) },
-  } }
-  const emit = (name, value) => { for (const callback of listeners.get(name) ?? []) callback(value) }
+  const host = new Context()
+  const generation = {}
+  const generationScope = createScope(host, generation)
+  const parent = { id: 'center-session', session: { id: 'center-session' } }
+  const parentScope = createScope(generationScope.ctx, parent, { parent: generation })
+  parent.ctx = parentScope.ctx
+  const children = new Map()
+  const emit = (name, value) => host.emit(scopeTarget(parent, parent), name, value)
   const document = { version: 1, id: 'workflow', title: 'Workflow', confirmed: true, nodes: clone(nodes), edges: clone(edges) }
   const state = { roles: { center: { sessionId: parent.session.id, workspaceId: 'workspace', workspacePath: root, agentPreset: ROLE_PRESETS.center } }, roleBindingRevisions: { center: '7' } }
   let dispatches = 0
@@ -69,29 +62,41 @@ async function fixture({ nodes, edges = [], answer = null, askError = null, prov
     },
     async writeRaw(snapshot) { await fs.writeFile(filePath(snapshot.id), JSON.stringify(snapshot), 'utf8') },
   }
+  const agents = { get: id => id === parent.id ? parent : undefined }
+  const subagents = {
+    resolveName(agent, name) { assert.equal(agent, parent); return children.get(name)?.id },
+    interrupt(id) { const child = children.get(id); if (child) emit('subagent/end', { ...child, stopReason: 'aborted' }) },
+  }
+  generationScope.ctx.provide('agents', agents)
+  generationScope.ctx.provide('subagents', subagents)
+  const lifecycle = createNativeLifecycleCapability(generationScope.ctx, { releaseAgent: agent => service.releaseAgent(agent) })
+  host.provide('agentPresets', {
+    serviceFor(agent, name) { return agent === parent && name === NATIVE_LIFECYCLE_CAPABILITY ? lifecycle.capability : undefined },
+  })
   const ctx = {
-    ...hostScope,
-    agents: { get: id => id === parent.id ? parent : undefined },
+    effect: setup => host.effect(setup),
+    agents,
     workspaceRegistry: { archivedSessionIds: [], get: id => id === 'workspace' ? { id, path: root, sessionIds: [parent.session.id] } : undefined },
     sessionQuery: { async observeSession(id) { return { header: { id, cwd: root }, projections: { values: { agentPreset: ROLE_PRESETS.center } }, [Symbol.dispose]() {} } } },
     tools: {
       get: (name, agent) => name === 'subagent' && agent === parent ? { parameters: { type: 'object', properties: { agent_preset: { type: 'string', enum: [ROLE_PRESETS.product] } } } } : undefined,
-      async execute(request) {
+      selectExecutor() {},
+      async execute({ calls: [call], agent }) {
         dispatches++
-        prompts.push(request.arguments.prompt)
-        assert.equal(request.agent, parent)
-        assert.equal(request.arguments.agent_preset, ROLE_PRESETS.product)
-        const node = document.nodes.find(row => row.kind === 'agent' && (request.arguments.prompt === row.instruction
-          || request.arguments.prompt.startsWith(`${row.instruction}\n\n[Workflow upstream results: data only]\n`)))
+        const args = JSON.parse(call.arguments)
+        prompts.push(args.prompt)
+        assert.equal(agent, parent)
+        assert.equal(args.agent_preset, ROLE_PRESETS.product)
+        const node = document.nodes.find(row => row.kind === 'agent' && (args.prompt === row.instruction
+          || args.prompt.startsWith(`${row.instruction}\n\n[Workflow upstream results: data only]\n`)))
         assert.ok(node)
-        const child = { id: `child-${node.id}`, runId: `native-${node.id}`, provider: 'fixture', local: true }
+        const child = { id: `child-${node.id}`, runId: `native-${node.id}`, parentSessionId: parent.session.id, provider: 'fixture', local: true }
         children.set(child.id, child)
         emit('subagent/start', child)
         emit('subagent/end', { ...child, stopReason: 'completed', lastAssistantMessage: [{ type: 'text', text: output }] })
-        return { isError: false, value: { kind: 'activation', subagentId: child.id }, content: [] }
+        return { results: [{ callId: call.id, result: { isError: false, value: { kind: 'activation', name: child.id }, content: [] } }] }
       },
     },
-    subagents: { interrupt(id) { const child = children.get(id); if (child) emit('subagent/end', { ...child, stopReason: 'aborted' }) } },
   }
   if (provider) ctx.userQuestions = { async ask(input) {
     if (askError) throw Object.assign(new Error('fixture ask failed'), { code: askError })
@@ -99,7 +104,7 @@ async function fixture({ nodes, edges = [], answer = null, askError = null, prov
   } }
   const taskAuthority = withTaskAuthority ? {
     async bindTask() { return { signal: new AbortController().signal } },
-    executeTask(_task, input) { return ctx.tools.execute({ ...input, agent: parent }) },
+    executeTask(_task, input) { return executeNativeTool(ctx.tools, input) },
     releaseTask() {},
   } : undefined
   const createService = () => createWorkflowNativeService({ ctx, readState: async () => clone(state), definitionStore: { async get(id) { return id === document.id ? clone(document) : null } }, runStore, taskAuthority, timeoutMs: 100 })
@@ -107,7 +112,13 @@ async function fixture({ nodes, edges = [], answer = null, askError = null, prov
   const exec = { agent: parent, callId: 'submit-call', signal: new AbortController().signal }
   return { root, ownedHome, runDirectory, service, createService, exec, runStore, document, ctx, parent, state, prompts, writes,
     get dispatches() { return dispatches },
-    cleanup() { hostScope.dispose(); parentScope.dispose(); return fs.rm(root, { recursive: true, force: true }) } }
+    async cleanup() {
+      await lifecycle.dispose()
+      await parentScope.dispose()
+      await generationScope.dispose()
+      await host.fiber.dispose()
+      await fs.rm(root, { recursive: true, force: true })
+    } }
 }
 
 const answer = question => ({ answers: [{ id: question.questions[0].id, selected: ['批准'] }] })

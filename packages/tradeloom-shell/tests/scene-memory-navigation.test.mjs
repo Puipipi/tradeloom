@@ -15,10 +15,10 @@ test('real catalog resolution feeds the actual client native navigation/detail c
   const start = source.indexOf('        async function resolve(node)'), end = source.indexOf('        if (sessionId !== expected.sessionId)', start)
   assert.ok(start > 0 && end > start)
   const commands = [], errors = [], records = []; let open = true
-  const same = (a, b) => a && b && Object.keys(a).length === Object.keys(b).length && Object.keys(a).every(key => a[key] === b[key])
-  const resolve = new Function('request', 'view', 'expected', 'bridge', 'same', 'lifetime', 'setBusy', 'setError', 'setOpen', 'setSelectedRecord', `${source.slice(start, end)};return resolve`)(
+  const matchesSurfaceDescriptor = (a, b) => a && b && Object.keys(a).length === Object.keys(b).length && Object.keys(a).every(key => a[key] === b[key])
+  const resolve = new Function('request', 'view', 'expected', 'bridge', 'matchesSurfaceDescriptor', 'lifetime', 'setBusy', 'setError', 'setOpen', 'setSelectedRecord', `${source.slice(start, end)};return resolve`)(
     input => catalog.execute(origin, input), view, expected, { nativeSurfaceDescriptor: () => producer.bridge.nativeSurfaceDescriptor(), accountSidebarCommand: async command => { commands.push(command); return producer.bridge.accountSidebarCommand(command) } },
-    same, { current: { signal: { aborted: false } } }, () => {}, error => { if (error) errors.push(error) }, state => { open = state }, record => records.push(record))
+    matchesSurfaceDescriptor, { current: { signal: { aborted: false } } }, () => {}, error => { if (error) errors.push(error) }, state => { open = state }, record => records.push(record))
   await resolve(view.graph.nodes.find(node => node.kind === 'scene'))
   assert.equal(open, false); assert.equal(commands.length, 1)
   assert.deepEqual(commands[0], { generation: expected.generation, accountGeneration: expected.accountGeneration, command: { action: 'openSession', target: expected.sessionId } })

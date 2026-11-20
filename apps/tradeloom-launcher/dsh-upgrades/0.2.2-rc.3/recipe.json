@@ -1,0 +1,825 @@
+{
+  "schemaVersion": 1,
+  "patches": [
+    "production-execution-origin.patch",
+    "session-list-failure-phase.patch",
+    "settings-layout-compat.patch",
+    "conversation-draft-checked.patch",
+    "voice-native-binding.patch",
+    "root-identity-diagnostic.patch",
+    "workflow-files-control.patch"
+  ],
+  "browserBootstrap": {
+    "html": "dsh/node_modules/@deepseek-ai/dsh-web-frontend/dist/index.html",
+    "entry": "dsh/node_modules/@deepseek-ai/dsh-web-frontend/dist/assets/index-Ciz7DZxv.js",
+    "needle": "const i=globalThis.__DSH_TRANSPORT__;this.modules=",
+    "replacement": "const i=globalThis.__DSH_TRANSPORT__;if(i?.ownsHost===!0){const{installBrowserTransportAdapter:install}=await import(\"/assets/native-operation-origin-adapter.mjs\");install(i,t)}this.modules="
+  },
+  "copies": [
+    {
+      "source": "apps/tradeloom-launcher/production-origin/browser-transport-adapter.mjs",
+      "destination": "dsh/node_modules/@deepseek-ai/dsh-web-frontend/dist/assets/native-operation-origin-adapter.mjs",
+      "sha256": "e8846e4a897a807d786b7705671b80d25c08d3e5eca6de5f7ff54642ba9f0623"
+    }
+  ],
+  "version": "0.2.2-rc.3",
+  "status": "fixed rc.3 SDK, desktop and final S5 owned replay",
+  "officialInput": {
+    "version": "0.2.2-rc.3",
+    "appAsar": {
+      "bytes": 209021953,
+      "sha256": "14cfd81c9135bf0afb89417543c94f9ecfe09266574452a9b106890c698725ae"
+    },
+    "unpackedFiles": 1666
+  },
+  "preimages": {
+    "dsh/node_modules/@deepseek-ai/dsh-agent-loop/lib/index.js": {
+      "bytes": 67548,
+      "sha256": "f09f60814d4e96a880f41b9fc3832f33c56a28f954f48810d8439ce83ad6ffa8"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-agent/lib/index.js": {
+      "bytes": 30914,
+      "sha256": "bc2a39dea1174c2b2dc0641f08094f840d3a1e414bef42ac93c945f7235d7ead"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-api-gateway/lib/client.browser.js": {
+      "bytes": 53119,
+      "sha256": "3b505de5bca1cd96de580895ce752384e572eb4ffefbe1684f0c65b1c6ade7c8"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-client-connection/lib/index.js": {
+      "bytes": 44434,
+      "sha256": "0ebcca7583e082716f79b0b55bc1749d48269cc8db2989b043b321b57abd3684"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/index.js": {
+      "bytes": 20252,
+      "sha256": "a0615d7ff792eda4dbd576dd4d0996ee150dd875d9dead8d72f1e9f1cd02fdb0"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-tools/lib/index.js": {
+      "bytes": 27559,
+      "sha256": "bf71a6ce1e95c5dfba06be7f69827bab19c5d2d9cf272875d92013ba2a8dadb0"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-tools/lib/pipeline.js": {
+      "bytes": 35733,
+      "sha256": "679072e59502fc211ac2336f5b3146a96c98636b30846ec70433db42d82a7abb"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-tools/lib/types/batch.js": {
+      "bytes": 11188,
+      "sha256": "fc31ae28425535a39eb2fa0b17d14294b186cea0e3a7951333cccbc6e6f07c3b"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-tools/lib/types/pipeline.js": {
+      "bytes": 33229,
+      "sha256": "7124b0e658b0719d84dde773883fbb44675c11f39176936f0c75c3ecf66e8301"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-web-frontend/dist/assets/index-Ciz7DZxv.js": {
+      "bytes": 1093870,
+      "sha256": "65411dabad4de33466b12643cf30376d3d41ea1b7ce10ce329e97c89992d308b"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-client-ui-layout/lib/client.js": {
+      "bytes": 25883,
+      "sha256": "814486863a32f73e7184a66312ec2d7f5884766000af21f60891a0c01b592630"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-client-ui-settings-general/lib/client.js": {
+      "bytes": 89937,
+      "sha256": "53fee556aa9f709425977ec4efbc8be815203f72f7d8819b108751e440abf40b"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-client-ui-conversation/lib/client.js": {
+      "bytes": 704147,
+      "sha256": "2c3c39fddb37df9ee1168c279259aebb7cf484651a7e978ce9baaaf24d142a60"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-experimental-client-ui-voice-input/lib/client.js": {
+      "bytes": 137993,
+      "sha256": "e286192475f0912767d9f7c136ecaa22c55276ec874f9945fbe07878e17553a9"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-app-boot/lib/index.js": {
+      "bytes": 227100,
+      "sha256": "a8d2138bb274bd982079df14a615f6c0d5d7589c9faeae81973128a72293b6de"
+    }
+  },
+  "postimages": {
+    "dsh/node_modules/@deepseek-ai/dsh-agent-loop/lib/index.js": {
+      "bytes": 77994,
+      "sha256": "b3f229a88981df04f1101939c86c40b84f0cc830bfee9c2845d6bb7eb92d26aa"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-agent/lib/index.js": {
+      "bytes": 31734,
+      "sha256": "cb6781c4e5c6f991525a1962ea57e72bcf5cfaa4475ad80fa2221f070f58fd20"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-api-gateway/lib/client.browser.js": {
+      "bytes": 54030,
+      "sha256": "5662abb1c82aaba4859332bb3cd37f06725baddecbad590695ab7a046c919b55"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-client-connection/lib/index.js": {
+      "bytes": 48241,
+      "sha256": "f04acccc1608e1395be044b8fc00a256735eabae8d33af9fb3c4214b6da46a85"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/index.js": {
+      "bytes": 23812,
+      "sha256": "c3f7eb6e550ad1e842b8cfc0adc101cb0e31548b7ad8f7aca449825b5cda88ba"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-tools/lib/index.js": {
+      "bytes": 27559,
+      "sha256": "bf71a6ce1e95c5dfba06be7f69827bab19c5d2d9cf272875d92013ba2a8dadb0"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-tools/lib/pipeline.js": {
+      "bytes": 37019,
+      "sha256": "9b6aa390e2b64e1d58df320d6f3971ce9ce65984809e2b0a01946f459b848840"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-tools/lib/types/batch.js": {
+      "bytes": 11688,
+      "sha256": "8654212d301a882a08f9462c58a8899fe698bcbe68086891d8cb9272bd1f620c"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-tools/lib/types/pipeline.js": {
+      "bytes": 33671,
+      "sha256": "8a8678cd7275e315dfb01fcf9c0ee2fdc6f477b1d51440ef7a6ad5205a274a52"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-web-frontend/dist/assets/index-Ciz7DZxv.js": {
+      "bytes": 1094010,
+      "sha256": "ae6fc15e9f50170fbea764b27ac500a76c066f7500940509c4e0f4de22137466"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-web-frontend/dist/assets/native-operation-origin-adapter.mjs": {
+      "bytes": 6270,
+      "sha256": "e8846e4a897a807d786b7705671b80d25c08d3e5eca6de5f7ff54642ba9f0623"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-client-ui-layout/lib/client.js": {
+      "bytes": 31013,
+      "sha256": "cf293f4651ed56356c54a5d3c1bb2e47ba0b13ef104ae5870611276dba638e85"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-client-ui-settings-general/lib/client.js": {
+      "bytes": 91281,
+      "sha256": "f12bad26bcb8e48db41bdfdddbd896bb5bcad2b89c1a4315f895206b86bc579e"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-client-ui-conversation/lib/client.js": {
+      "bytes": 706033,
+      "sha256": "445b05906cb8a1d60502b585eea8f950c80b4ded17e8b492f090a02f422f8ed1"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-experimental-client-ui-voice-input/lib/client.js": {
+      "bytes": 140449,
+      "sha256": "a348bc40ab44827475abd9f02477364b377d69f5f897e54ae6db997b26963995"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-app-boot/lib/index.js": {
+      "bytes": 228870,
+      "sha256": "7761143d3da0741cb19ccfeb6b033685407b8171478ed7d084910a1a9fa273bb"
+    }
+  },
+  "desktopRecipe": "desktop-recipe.json",
+  "programRecipe": "program-recipe.json",
+  "businessShell": {
+    "sourceMode": "exact-source",
+    "sourceRoot": "packages/tradeloom-shell",
+    "sourcePackage": {
+      "bytes": 4775,
+      "sha256": "84fdb77e32363bbb0329f5d6bbf1550a548a5edd2895656d94201d162de9c751"
+    },
+    "preimages": {
+      "agent-configuration-snapshots.js": {
+        "bytes": 24801,
+        "sha256": "dcb8d6ed748f03ef7262e34c59d0f5e0f5411ffc34313caec0aa0ae7448a9ee2"
+      },
+      "agent-configuration.js": {
+        "bytes": 55012,
+        "sha256": "c86e10ac218c149c47b5eec5b72a22ecbd28a6a7296e395bfad31c6fa892b84b"
+      },
+      "assets/tradeloom-mark.svg": {
+        "bytes": 961,
+        "sha256": "7e2cdb6592de4456295d455056a1d5ca500cf8ef3c759aef90ceba66c76b5849"
+      },
+      "business-tools.js": {
+        "bytes": 126610,
+        "sha256": "e0b2f787b8a0b27b182cf3393f1bcf3ee5d004c27a56d9d38b9f7a4f0bfa213e"
+      },
+      "capabilities.js": {
+        "bytes": 6874,
+        "sha256": "1812c134313048369c40963a8e259f2b97926872dcf83af13c103907826d400d"
+      },
+      "client.dockview.js": {
+        "bytes": 978001,
+        "sha256": "63f1a125d08d469895d1e55cf54bad9fc76f97ddd94f7370eb69385c438bbc9b"
+      },
+      "client.js": {
+        "bytes": 248483,
+        "sha256": "4481d2ac41aea0070e95c03f983aa130ede3a0a9484007f584cf1aa3d95d354c"
+      },
+      "client.mcp-runtime.js": {
+        "bytes": 337,
+        "sha256": "51a76a2b01d9c4405733bbc3ed2e3dbbfac30360776dd7333710e3c8587b8973"
+      },
+      "client.mobile-qr.js": {
+        "bytes": 57681,
+        "sha256": "dd1e38ed79c19ef4d642bd9913ce73b42f27a3881a84f830929f1c914fcc468d"
+      },
+      "client.replica-palette.js": {
+        "bytes": 7434,
+        "sha256": "ba85fdfa59ead0ddf2b69049ae87d4963dab3a06e17e78f11fd3fae33d530f22"
+      },
+      "client.scene-drafts.js": {
+        "bytes": 3721,
+        "sha256": "8457511309687817b413b1881ead25329b9eb87467a2246e5c8f3fb07395c206"
+      },
+      "client.scene-memory.js": {
+        "bytes": 12242,
+        "sha256": "2294738a581baadf60682b86f1d76792486d57265d2ca14776a18d9e51a27ac1"
+      },
+      "client.scenes.js": {
+        "bytes": 410764,
+        "sha256": "7897ce478639b1d02b87b31264369e3af320b4b975ba392d02a1ad9ecd349631"
+      },
+      "client.session-audio.js": {
+        "bytes": 8815,
+        "sha256": "aaa9018b50cd114202ada9223c8d07214a9193a5aa0e7043fc96fe8faa5e7111"
+      },
+      "client.source-native.js": {
+        "bytes": 38674,
+        "sha256": "00fb98c355024cec70d8a0ff1c0daef02883136ffadcea5279f30665cef1a7a4"
+      },
+      "client.workflow.js": {
+        "bytes": 109129,
+        "sha256": "307dc92e798b08a3bcff91ae8217c01eb602f41d64bd004e6262c8d52e68d249"
+      },
+      "cordis.patch.yml": {
+        "bytes": 16222,
+        "sha256": "cff5a1239cfa0cb892991c99075c24fe1f85edb5068ab318c08c2b3cff198461"
+      },
+      "diagnostics-http.js": {
+        "bytes": 17958,
+        "sha256": "80102ed022bc9240af22f8ac54c1bf277d8a356c5b49d5ac7235a9fe25339cae"
+      },
+      "diagnostics-store.js": {
+        "bytes": 12980,
+        "sha256": "d613aba0cb148718917ed129094da404475479de245e2de0b884b27555ea2534"
+      },
+      "dock-layout.js": {
+        "bytes": 32118,
+        "sha256": "ee9f4480a37c4d51ca4b085344291bab54c5f903ac0c3670c871d7ea2c37b8cd"
+      },
+      "engine-generation-owner.js": {
+        "bytes": 18222,
+        "sha256": "a451ed54e9e5c1189f7fad0babc1dad3757a32644b47a3980bcb7462d8c78cb1"
+      },
+      "engine-generation-snapshots.js": {
+        "bytes": 31955,
+        "sha256": "651244997e383613c3500c9e247468e417d197d1e4581bc2d605065e04bc09a2"
+      },
+      "execution-origin-authority.js": {
+        "bytes": 31497,
+        "sha256": "62a43a4cccd512a3df851e566cdf163b83a5476b25dfc3431e26bc9d3db9e2ae"
+      },
+      "host.js": {
+        "bytes": 61921,
+        "sha256": "4e913c584dbc607970657a99ddf7f0bcc68ecb0bf707fb957f5467fed9ee8f4a"
+      },
+      "listener-identity.js": {
+        "bytes": 15697,
+        "sha256": "82e1e16420ff515ecd21f2062bd61baef37df3a03a7819643d8c6276c6f1a80e"
+      },
+      "listener-identity.ps1": {
+        "bytes": 7663,
+        "sha256": "f204d307d4a0343c3d84ef30a948c163d30ea5afde47aa289a1cef2b4c6b54c9"
+      },
+      "mcp-runtime.js": {
+        "bytes": 10536,
+        "sha256": "63a7b7672adaad5de3fc3ade967d9387801be2aa571fd39f08ffe0fdd108a4b3"
+      },
+      "native-import-authorization.js": {
+        "bytes": 846,
+        "sha256": "ae98685c7601a03b5ff07fcc4b06574e1a1bccebb0790bc78fb88517eceeb71a"
+      },
+      "package.json": {
+        "bytes": 4775,
+        "sha256": "84fdb77e32363bbb0329f5d6bbf1550a548a5edd2895656d94201d162de9c751"
+      },
+      "policy.js": {
+        "bytes": 13276,
+        "sha256": "146364db031fe97aa350503e7823dfadc024b08452d0a0cd992ecda92d985e89"
+      },
+      "profile-tool.js": {
+        "bytes": 1368,
+        "sha256": "6a6ddb71a2e777d0a59fae6b19ddb60e167ac54ebdc68eb3507cd6e4a8848d3b"
+      },
+      "proxy.js": {
+        "bytes": 9039,
+        "sha256": "c6452b89dd2e8493d67e3ad1692038af6b016d7c232d05d07c3d655c66c4ba63"
+      },
+      "roles.js": {
+        "bytes": 1824,
+        "sha256": "d1f67e79c5aca73e3d82e4a71b083aa830d87a6d98815deef128a5971abf05bb"
+      },
+      "scene-layout.js": {
+        "bytes": 15128,
+        "sha256": "9c6e030346c71766b1fdd54ca8599fcab1ec06fed94b530a5c3a1efa9f6df537"
+      },
+      "scene-memory-graph.js": {
+        "bytes": 14042,
+        "sha256": "57afedfeab037455991c7b92a918c4e7c2d405e200fa2d8aea23b9505267e0cf"
+      },
+      "scene-memory-store.js": {
+        "bytes": 11322,
+        "sha256": "fb18b62fb1ff1fa13c8ca1a3d5d6801a89d76456e4546248b2c5a26e86beda33"
+      },
+      "scene-memory.js": {
+        "bytes": 7467,
+        "sha256": "ca507ce283842154a68ce1e9946a4a3227a9e0fb651a0e333b8408941df886f7"
+      },
+      "scene-rotation.js": {
+        "bytes": 31086,
+        "sha256": "da8ff9ece2506408cb24471366d1dd7913fcb2376cbbb57c81b3fd7b6e5d771b"
+      },
+      "scenes.json": {
+        "bytes": 16815,
+        "sha256": "c45fbc6c16e770df51de39f554c5b0475de7d0b4e785968f2ed032d4bd6d6ccb"
+      },
+      "scripts/build-dockview-chunk.mjs": {
+        "bytes": 3577,
+        "sha256": "d022e79da41d2896e060c7f09f7f258e7e0cec74892a678573cd84b0a64ce37c"
+      },
+      "scripts/build-mobile-qr-chunk.mjs": {
+        "bytes": 1745,
+        "sha256": "f8080af52d25e86f8199c02923b7806ab792321f80bd72f1f9dea4ffcba3ced8"
+      },
+      "session-speech.js": {
+        "bytes": 17393,
+        "sha256": "ca6420883a4f24772de19b807040ba904346e43d291e5d68b6e38e48208c9926"
+      },
+      "skills/wf-planner/SKILL.md": {
+        "bytes": 4983,
+        "sha256": "aaec14bd5ec85d4252aebf905a95f017f52f8dd56a6ecacce47d853b590811d6"
+      },
+      "skills-open.js": {
+        "bytes": 6606,
+        "sha256": "abd3ebbb8b30fa333467469c832b96c08f291ca8ea41bd4f05d2a9f41429d38d"
+      },
+      "state.js": {
+        "bytes": 14358,
+        "sha256": "1a18e47338c1af76663c436966df99443885b3c17228d77aab87b81f1d1b886d"
+      },
+      "step-policy.js": {
+        "bytes": 479,
+        "sha256": "9749399b874a3599548d0b2e21d299611750991ea5297497126a6cb24f930cce"
+      },
+      "tool-policy.js": {
+        "bytes": 1608,
+        "sha256": "b66001725b882c07b13b9de1e4a97fa6557014346ff2ef78180f907a348aa51a"
+      },
+      "tool-schemas.js": {
+        "bytes": 2212,
+        "sha256": "4514f4396bb22ac07db32786dcbf3878d96a6b0c75a86e17502c0a17239c09f0"
+      },
+      "vendor/dockview-entry.ts": {
+        "bytes": 330,
+        "sha256": "26c0e668bb56be72aa3c4d5a42450a0fe7b7318edeef8d8bae8b95e8d174c54a"
+      },
+      "vendor/dockview-package-lock.json": {
+        "bytes": 1608,
+        "sha256": "b05d55ac0d0723da236cf7b0dcbb401a0e98434bcdc8943c5f241b6a0e948422"
+      },
+      "vendor/dockview.css": {
+        "bytes": 159552,
+        "sha256": "72a757b4d2d0d0f1e38b928b1343c85a7b09766bb2dc2c16c9e3c880f231545d"
+      },
+      "vendor/LICENSE.dockview-react": {
+        "bytes": 1063,
+        "sha256": "1d56757fdc06c9b33c0f80821efe4f4b11960dd7fb6544232cff61752101f513"
+      },
+      "vendor/LICENSE.qrcode-generator": {
+        "bytes": 1071,
+        "sha256": "3a850fa5f08101db6f40676c2786e10bd2cd5fff7b12ffdf1e0c434d4e49d90c"
+      },
+      "vendor/qrcode-generator-2.0.4.js": {
+        "bytes": 56694,
+        "sha256": "79ec86f82856005b1c887905cfccfcfbec3821ca61c7fd5a952faa5f778f791c"
+      },
+      "windows-speech-provider.js": {
+        "bytes": 8868,
+        "sha256": "d4260a4795711125d304bd8dc01df28c8d752b7f30a703cac79dac9327313c8d"
+      },
+      "windows-speech-provider.ps1": {
+        "bytes": 1777,
+        "sha256": "43e67514c1025a35365fa15cada75d5a7092749d6ee8e6c376ac5c9f02096699"
+      },
+      "workflow-artifact-source.js": {
+        "bytes": 2510,
+        "sha256": "7d3a35c0a03a7cf456e767b9b491dbecde71adfeff815abd8a5cc99d3caddbf4"
+      },
+      "workflow-definition-postgres.js": {
+        "bytes": 10234,
+        "sha256": "adc82b8fe79457530c371b0591caf907704313c32f048495498ded48c2810bb9"
+      },
+      "workflow-definition.js": {
+        "bytes": 1534,
+        "sha256": "93488f40fec5e30b77e3fcd4b3c10212f0bb30ec724f65b773bfb39ae583d28d"
+      },
+      "workflow-engine.js": {
+        "bytes": 8069,
+        "sha256": "f75b774274178fd91928d699de55a680d7452808743768a2617107a0931c542f"
+      },
+      "workflow-local-nodes.js": {
+        "bytes": 9036,
+        "sha256": "f78b996e263534d4f6b81775eddf098af5903caa2276fcbd8233392db25df6d8"
+      },
+      "workflow-native-artifact-http.js": {
+        "bytes": 18963,
+        "sha256": "7fc4d9f10e4b469f52c1d4ea4a6de3b1d57e703ec6f56e03e171f18e91077a19"
+      },
+      "workflow-native-binding.js": {
+        "bytes": 11270,
+        "sha256": "1a928c8a7e6a33ba5701f00f7f581bfb81b533f952b2f2290c794d5439e7fa16"
+      },
+      "workflow-native-command-attribution.js": {
+        "bytes": 15714,
+        "sha256": "d4919c1770058e79324b28a35eac80f7c29c34e135b28c69d4fcb8081a7e5e2e"
+      },
+      "workflow-native-executor.js": {
+        "bytes": 25627,
+        "sha256": "c8c97a2f31b891d81c9968209babcc5c0529a5bdd585fc7d6234dfe9c0875421"
+      },
+      "workflow-native-graph.js": {
+        "bytes": 1423,
+        "sha256": "adda5456aa445e70275abb96164739e3da645967d4f8335ee07ac1d2bea278a9"
+      },
+      "workflow-native-readiness.js": {
+        "bytes": 3194,
+        "sha256": "603e6203873e86d564854bf44114c45f3b9ea20d5a26eda8babafa08fde0c312"
+      },
+      "workflow-native-service.js": {
+        "bytes": 43705,
+        "sha256": "1faaf29ba3f83c16dee2b98346574fe810944dfc19591588f00a1775cc5fd2cb"
+      },
+      "workflow-native-task-authority.js": {
+        "bytes": 2785,
+        "sha256": "e6fab4458622f351bc7f9312356e9c1baa8da8749c5e5916c88bfd0202728d85"
+      },
+      "workflow-native-tools.js": {
+        "bytes": 13701,
+        "sha256": "ed4ec29a818dc35e27cfdeb425709ee404964669cc664b637925be114030872e"
+      },
+      "workflow-native-run-projection.js": {
+        "bytes": 17098,
+        "sha256": "0c94c28f3522f2c387ef920940c8bcd947d70302fdbb3d136152ab05ade30152"
+      },
+      "workflow-native-ui-gate.js": {
+        "bytes": 3307,
+        "sha256": "e4cdda6e4d50ec80c639c71a78c7135e36ab569ee4f3ea633dc0fa8b81d52b7e"
+      },
+      "workflow-native-ui.js": {
+        "bytes": 14147,
+        "sha256": "533b137ab77602dba8c4ea30b700492564f23c5fa15a7e735860d3543360bf04"
+      },
+      "workflow-postgres.js": {
+        "bytes": 17182,
+        "sha256": "7a93b9b88457df37e5f207e56b8b19eff5789828ca617db458a7f88a5f23840a"
+      },
+      "workflow-review.js": {
+        "bytes": 10673,
+        "sha256": "87d283877424090d6f47c97226de2051c1cfb17bf4568d3bb56d9a4445f6d6f6"
+      },
+      "workflow-run-journal.js": {
+        "bytes": 53642,
+        "sha256": "838fa7448c30860d9f909664388b2212babb619726c58e6a13d6abc5aef69b7b"
+      },
+      "workflow-schema.js": {
+        "bytes": 8959,
+        "sha256": "c1d6c993d2d76f76b0e607d8b0c3781d36e5a3b0f50a0b6746ca1d4c9a3dd07e"
+      },
+      "workflow-tools.js": {
+        "bytes": 10681,
+        "sha256": "e279172f4e053cb0247a446e8209ce6fe22c76f40d17b7f903cc76416fbb7d4d"
+      },
+      "workflow-files.js": {
+        "bytes": 11686,
+        "sha256": "26944f74ed78d0f516084f705869107305e647a7b55fcf898709ca84f2b68fe7"
+      }
+    },
+    "postimages": {
+      "agent-configuration-snapshots.js": {
+        "bytes": 24801,
+        "sha256": "dcb8d6ed748f03ef7262e34c59d0f5e0f5411ffc34313caec0aa0ae7448a9ee2"
+      },
+      "agent-configuration.js": {
+        "bytes": 55012,
+        "sha256": "c86e10ac218c149c47b5eec5b72a22ecbd28a6a7296e395bfad31c6fa892b84b"
+      },
+      "assets/tradeloom-mark.svg": {
+        "bytes": 961,
+        "sha256": "7e2cdb6592de4456295d455056a1d5ca500cf8ef3c759aef90ceba66c76b5849"
+      },
+      "business-tools.js": {
+        "bytes": 126610,
+        "sha256": "e0b2f787b8a0b27b182cf3393f1bcf3ee5d004c27a56d9d38b9f7a4f0bfa213e"
+      },
+      "capabilities.js": {
+        "bytes": 6874,
+        "sha256": "1812c134313048369c40963a8e259f2b97926872dcf83af13c103907826d400d"
+      },
+      "client.dockview.js": {
+        "bytes": 978001,
+        "sha256": "63f1a125d08d469895d1e55cf54bad9fc76f97ddd94f7370eb69385c438bbc9b"
+      },
+      "client.js": {
+        "bytes": 248483,
+        "sha256": "4481d2ac41aea0070e95c03f983aa130ede3a0a9484007f584cf1aa3d95d354c"
+      },
+      "client.mcp-runtime.js": {
+        "bytes": 337,
+        "sha256": "51a76a2b01d9c4405733bbc3ed2e3dbbfac30360776dd7333710e3c8587b8973"
+      },
+      "client.mobile-qr.js": {
+        "bytes": 57681,
+        "sha256": "dd1e38ed79c19ef4d642bd9913ce73b42f27a3881a84f830929f1c914fcc468d"
+      },
+      "client.replica-palette.js": {
+        "bytes": 7434,
+        "sha256": "ba85fdfa59ead0ddf2b69049ae87d4963dab3a06e17e78f11fd3fae33d530f22"
+      },
+      "client.scene-drafts.js": {
+        "bytes": 3721,
+        "sha256": "8457511309687817b413b1881ead25329b9eb87467a2246e5c8f3fb07395c206"
+      },
+      "client.scene-memory.js": {
+        "bytes": 12242,
+        "sha256": "2294738a581baadf60682b86f1d76792486d57265d2ca14776a18d9e51a27ac1"
+      },
+      "client.scenes.js": {
+        "bytes": 410764,
+        "sha256": "7897ce478639b1d02b87b31264369e3af320b4b975ba392d02a1ad9ecd349631"
+      },
+      "client.session-audio.js": {
+        "bytes": 8815,
+        "sha256": "aaa9018b50cd114202ada9223c8d07214a9193a5aa0e7043fc96fe8faa5e7111"
+      },
+      "client.source-native.js": {
+        "bytes": 38674,
+        "sha256": "00fb98c355024cec70d8a0ff1c0daef02883136ffadcea5279f30665cef1a7a4"
+      },
+      "client.workflow.js": {
+        "bytes": 109129,
+        "sha256": "307dc92e798b08a3bcff91ae8217c01eb602f41d64bd004e6262c8d52e68d249"
+      },
+      "cordis.patch.yml": {
+        "bytes": 16222,
+        "sha256": "cff5a1239cfa0cb892991c99075c24fe1f85edb5068ab318c08c2b3cff198461"
+      },
+      "diagnostics-http.js": {
+        "bytes": 17958,
+        "sha256": "80102ed022bc9240af22f8ac54c1bf277d8a356c5b49d5ac7235a9fe25339cae"
+      },
+      "diagnostics-store.js": {
+        "bytes": 12980,
+        "sha256": "d613aba0cb148718917ed129094da404475479de245e2de0b884b27555ea2534"
+      },
+      "dock-layout.js": {
+        "bytes": 32118,
+        "sha256": "ee9f4480a37c4d51ca4b085344291bab54c5f903ac0c3670c871d7ea2c37b8cd"
+      },
+      "engine-generation-owner.js": {
+        "bytes": 18222,
+        "sha256": "a451ed54e9e5c1189f7fad0babc1dad3757a32644b47a3980bcb7462d8c78cb1"
+      },
+      "engine-generation-snapshots.js": {
+        "bytes": 31955,
+        "sha256": "651244997e383613c3500c9e247468e417d197d1e4581bc2d605065e04bc09a2"
+      },
+      "execution-origin-authority.js": {
+        "bytes": 31497,
+        "sha256": "62a43a4cccd512a3df851e566cdf163b83a5476b25dfc3431e26bc9d3db9e2ae"
+      },
+      "host.js": {
+        "bytes": 61921,
+        "sha256": "4e913c584dbc607970657a99ddf7f0bcc68ecb0bf707fb957f5467fed9ee8f4a"
+      },
+      "listener-identity.js": {
+        "bytes": 15697,
+        "sha256": "82e1e16420ff515ecd21f2062bd61baef37df3a03a7819643d8c6276c6f1a80e"
+      },
+      "listener-identity.ps1": {
+        "bytes": 7663,
+        "sha256": "f204d307d4a0343c3d84ef30a948c163d30ea5afde47aa289a1cef2b4c6b54c9"
+      },
+      "mcp-runtime.js": {
+        "bytes": 10536,
+        "sha256": "63a7b7672adaad5de3fc3ade967d9387801be2aa571fd39f08ffe0fdd108a4b3"
+      },
+      "native-import-authorization.js": {
+        "bytes": 846,
+        "sha256": "ae98685c7601a03b5ff07fcc4b06574e1a1bccebb0790bc78fb88517eceeb71a"
+      },
+      "package.json": {
+        "bytes": 4775,
+        "sha256": "84fdb77e32363bbb0329f5d6bbf1550a548a5edd2895656d94201d162de9c751"
+      },
+      "policy.js": {
+        "bytes": 13276,
+        "sha256": "146364db031fe97aa350503e7823dfadc024b08452d0a0cd992ecda92d985e89"
+      },
+      "profile-tool.js": {
+        "bytes": 1368,
+        "sha256": "6a6ddb71a2e777d0a59fae6b19ddb60e167ac54ebdc68eb3507cd6e4a8848d3b"
+      },
+      "proxy.js": {
+        "bytes": 9039,
+        "sha256": "c6452b89dd2e8493d67e3ad1692038af6b016d7c232d05d07c3d655c66c4ba63"
+      },
+      "roles.js": {
+        "bytes": 1824,
+        "sha256": "d1f67e79c5aca73e3d82e4a71b083aa830d87a6d98815deef128a5971abf05bb"
+      },
+      "scene-layout.js": {
+        "bytes": 15128,
+        "sha256": "9c6e030346c71766b1fdd54ca8599fcab1ec06fed94b530a5c3a1efa9f6df537"
+      },
+      "scene-memory-graph.js": {
+        "bytes": 14042,
+        "sha256": "57afedfeab037455991c7b92a918c4e7c2d405e200fa2d8aea23b9505267e0cf"
+      },
+      "scene-memory-store.js": {
+        "bytes": 11322,
+        "sha256": "fb18b62fb1ff1fa13c8ca1a3d5d6801a89d76456e4546248b2c5a26e86beda33"
+      },
+      "scene-memory.js": {
+        "bytes": 7467,
+        "sha256": "ca507ce283842154a68ce1e9946a4a3227a9e0fb651a0e333b8408941df886f7"
+      },
+      "scene-rotation.js": {
+        "bytes": 31086,
+        "sha256": "da8ff9ece2506408cb24471366d1dd7913fcb2376cbbb57c81b3fd7b6e5d771b"
+      },
+      "scenes.json": {
+        "bytes": 16815,
+        "sha256": "c45fbc6c16e770df51de39f554c5b0475de7d0b4e785968f2ed032d4bd6d6ccb"
+      },
+      "scripts/build-dockview-chunk.mjs": {
+        "bytes": 3577,
+        "sha256": "d022e79da41d2896e060c7f09f7f258e7e0cec74892a678573cd84b0a64ce37c"
+      },
+      "scripts/build-mobile-qr-chunk.mjs": {
+        "bytes": 1745,
+        "sha256": "f8080af52d25e86f8199c02923b7806ab792321f80bd72f1f9dea4ffcba3ced8"
+      },
+      "session-speech.js": {
+        "bytes": 17393,
+        "sha256": "ca6420883a4f24772de19b807040ba904346e43d291e5d68b6e38e48208c9926"
+      },
+      "skills/wf-planner/SKILL.md": {
+        "bytes": 4983,
+        "sha256": "aaec14bd5ec85d4252aebf905a95f017f52f8dd56a6ecacce47d853b590811d6"
+      },
+      "skills-open.js": {
+        "bytes": 6606,
+        "sha256": "abd3ebbb8b30fa333467469c832b96c08f291ca8ea41bd4f05d2a9f41429d38d"
+      },
+      "state.js": {
+        "bytes": 14358,
+        "sha256": "1a18e47338c1af76663c436966df99443885b3c17228d77aab87b81f1d1b886d"
+      },
+      "step-policy.js": {
+        "bytes": 479,
+        "sha256": "9749399b874a3599548d0b2e21d299611750991ea5297497126a6cb24f930cce"
+      },
+      "tool-policy.js": {
+        "bytes": 1608,
+        "sha256": "b66001725b882c07b13b9de1e4a97fa6557014346ff2ef78180f907a348aa51a"
+      },
+      "tool-schemas.js": {
+        "bytes": 2212,
+        "sha256": "4514f4396bb22ac07db32786dcbf3878d96a6b0c75a86e17502c0a17239c09f0"
+      },
+      "vendor/dockview-entry.ts": {
+        "bytes": 330,
+        "sha256": "26c0e668bb56be72aa3c4d5a42450a0fe7b7318edeef8d8bae8b95e8d174c54a"
+      },
+      "vendor/dockview-package-lock.json": {
+        "bytes": 1608,
+        "sha256": "b05d55ac0d0723da236cf7b0dcbb401a0e98434bcdc8943c5f241b6a0e948422"
+      },
+      "vendor/dockview.css": {
+        "bytes": 159552,
+        "sha256": "72a757b4d2d0d0f1e38b928b1343c85a7b09766bb2dc2c16c9e3c880f231545d"
+      },
+      "vendor/LICENSE.dockview-react": {
+        "bytes": 1063,
+        "sha256": "1d56757fdc06c9b33c0f80821efe4f4b11960dd7fb6544232cff61752101f513"
+      },
+      "vendor/LICENSE.qrcode-generator": {
+        "bytes": 1071,
+        "sha256": "3a850fa5f08101db6f40676c2786e10bd2cd5fff7b12ffdf1e0c434d4e49d90c"
+      },
+      "vendor/qrcode-generator-2.0.4.js": {
+        "bytes": 56694,
+        "sha256": "79ec86f82856005b1c887905cfccfcfbec3821ca61c7fd5a952faa5f778f791c"
+      },
+      "windows-speech-provider.js": {
+        "bytes": 8868,
+        "sha256": "d4260a4795711125d304bd8dc01df28c8d752b7f30a703cac79dac9327313c8d"
+      },
+      "windows-speech-provider.ps1": {
+        "bytes": 1777,
+        "sha256": "43e67514c1025a35365fa15cada75d5a7092749d6ee8e6c376ac5c9f02096699"
+      },
+      "workflow-artifact-source.js": {
+        "bytes": 2510,
+        "sha256": "7d3a35c0a03a7cf456e767b9b491dbecde71adfeff815abd8a5cc99d3caddbf4"
+      },
+      "workflow-definition-postgres.js": {
+        "bytes": 10234,
+        "sha256": "adc82b8fe79457530c371b0591caf907704313c32f048495498ded48c2810bb9"
+      },
+      "workflow-definition.js": {
+        "bytes": 1534,
+        "sha256": "93488f40fec5e30b77e3fcd4b3c10212f0bb30ec724f65b773bfb39ae583d28d"
+      },
+      "workflow-engine.js": {
+        "bytes": 8069,
+        "sha256": "f75b774274178fd91928d699de55a680d7452808743768a2617107a0931c542f"
+      },
+      "workflow-local-nodes.js": {
+        "bytes": 9036,
+        "sha256": "f78b996e263534d4f6b81775eddf098af5903caa2276fcbd8233392db25df6d8"
+      },
+      "workflow-native-artifact-http.js": {
+        "bytes": 18963,
+        "sha256": "7fc4d9f10e4b469f52c1d4ea4a6de3b1d57e703ec6f56e03e171f18e91077a19"
+      },
+      "workflow-native-binding.js": {
+        "bytes": 11270,
+        "sha256": "1a928c8a7e6a33ba5701f00f7f581bfb81b533f952b2f2290c794d5439e7fa16"
+      },
+      "workflow-native-command-attribution.js": {
+        "bytes": 15714,
+        "sha256": "d4919c1770058e79324b28a35eac80f7c29c34e135b28c69d4fcb8081a7e5e2e"
+      },
+      "workflow-native-executor.js": {
+        "bytes": 25627,
+        "sha256": "c8c97a2f31b891d81c9968209babcc5c0529a5bdd585fc7d6234dfe9c0875421"
+      },
+      "workflow-native-graph.js": {
+        "bytes": 1423,
+        "sha256": "adda5456aa445e70275abb96164739e3da645967d4f8335ee07ac1d2bea278a9"
+      },
+      "workflow-native-readiness.js": {
+        "bytes": 3194,
+        "sha256": "603e6203873e86d564854bf44114c45f3b9ea20d5a26eda8babafa08fde0c312"
+      },
+      "workflow-native-service.js": {
+        "bytes": 43705,
+        "sha256": "1faaf29ba3f83c16dee2b98346574fe810944dfc19591588f00a1775cc5fd2cb"
+      },
+      "workflow-native-task-authority.js": {
+        "bytes": 2785,
+        "sha256": "e6fab4458622f351bc7f9312356e9c1baa8da8749c5e5916c88bfd0202728d85"
+      },
+      "workflow-native-tools.js": {
+        "bytes": 13701,
+        "sha256": "ed4ec29a818dc35e27cfdeb425709ee404964669cc664b637925be114030872e"
+      },
+      "workflow-native-run-projection.js": {
+        "bytes": 17098,
+        "sha256": "0c94c28f3522f2c387ef920940c8bcd947d70302fdbb3d136152ab05ade30152"
+      },
+      "workflow-native-ui-gate.js": {
+        "bytes": 3307,
+        "sha256": "e4cdda6e4d50ec80c639c71a78c7135e36ab569ee4f3ea633dc0fa8b81d52b7e"
+      },
+      "workflow-native-ui.js": {
+        "bytes": 14147,
+        "sha256": "533b137ab77602dba8c4ea30b700492564f23c5fa15a7e735860d3543360bf04"
+      },
+      "workflow-postgres.js": {
+        "bytes": 17182,
+        "sha256": "7a93b9b88457df37e5f207e56b8b19eff5789828ca617db458a7f88a5f23840a"
+      },
+      "workflow-review.js": {
+        "bytes": 10673,
+        "sha256": "87d283877424090d6f47c97226de2051c1cfb17bf4568d3bb56d9a4445f6d6f6"
+      },
+      "workflow-run-journal.js": {
+        "bytes": 53642,
+        "sha256": "838fa7448c30860d9f909664388b2212babb619726c58e6a13d6abc5aef69b7b"
+      },
+      "workflow-schema.js": {
+        "bytes": 8959,
+        "sha256": "c1d6c993d2d76f76b0e607d8b0c3781d36e5a3b0f50a0b6746ca1d4c9a3dd07e"
+      },
+      "workflow-tools.js": {
+        "bytes": 10681,
+        "sha256": "e279172f4e053cb0247a446e8209ce6fe22c76f40d17b7f903cc76416fbb7d4d"
+      },
+      "workflow-files.js": {
+        "bytes": 11686,
+        "sha256": "26944f74ed78d0f516084f705869107305e647a7b55fcf898709ca84f2b68fe7"
+      }
+    },
+    "inventory": {
+      "fileCount": 79,
+      "bytes": 3072360,
+      "sha256": "f8b50ebaa354e3400370374c593f174b5538f220f5bcfb98b2ff27c8c51e227e"
+    },
+    "validatorInput": {
+      "source": "apps/tradeloom-launcher/installed-bootstrap.mjs",
+      "bytes": 51844,
+      "sha256": "eddaa4b6607ddefb333a3abeb36c2aaae911f33e9e36db48dd799ec509cd8ded"
+    }
+  },
+  "expectedAsar": {
+    "logicalEntries": 21789,
+    "unpackedFiles": 1666,
+    "bytes": 228909644,
+    "sha256": "08991a8f346c1ca35d3a7f0c4dd7c5174afedee892afa90793763e15894d1d5b"
+  }
+}

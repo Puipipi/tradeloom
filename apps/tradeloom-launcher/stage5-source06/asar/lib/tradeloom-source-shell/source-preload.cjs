@@ -16,6 +16,8 @@ contextBridge.exposeInMainWorld('app', Object.freeze({
   sys: Object.freeze({ load: () => call('systemLoad'), disks: () => call('systemDisks') }),
   knownFolders: () => call('knownFolders'), openKnownFolder: key => call('openKnownFolder',key),
   sourceConfig: () => call('config'),
+  openAssistantCapabilities: sceneId => call('openAssistantCapabilities', sceneId),
+  assistantCapabilitiesContext: () => call('assistantCapabilitiesContext'),
   nativeUtility: request => call('nativeUtility', request),
   engineGeneration: request => call('engineGeneration', request),
   saveSceneConfiguration: request => call('configurationSave', request),
@@ -53,6 +55,12 @@ contextBridge.exposeInMainWorld('app', Object.freeze({
   }),
   mobileLink: () => call('mobileLink'),
   sourceTheme: Object.freeze({getSnapshot:()=>call('themeSnapshot'),setPreference:preference=>call('themePreference',preference),onChanged:callback=>{const listener=(_event,value)=>callback(value);ipcRenderer.on('source-shell:theme-event',listener);return()=>ipcRenderer.removeListener('source-shell:theme-event',listener)}}),
+  workflowFiles: request => call('workflowFiles', request),
+  onWorkflowFilesChanged: callback => {
+    const listener = () => callback()
+    ipcRenderer.on('source-shell:workflow-files-changed', listener)
+    return () => ipcRenderer.removeListener('source-shell:workflow-files-changed', listener)
+  },
   workflowCanvas: Object.freeze({mount:()=>call('workflowCanvasMount'),setBounds:rect=>call('workflowCanvasBounds',rect),setVisible:visible=>call('workflowCanvasVisible',visible),status:()=>call('workflowCanvasStatus'),popOut:()=>call('workflowCanvasPopOut'),returnToDock:()=>call('workflowCanvasReturnToDock'),onStatus:callback=>{const listener=(_event,value)=>callback(value);ipcRenderer.on('source-shell:workflow-canvas-status',listener);return()=>ipcRenderer.removeListener('source-shell:workflow-canvas-status',listener)}}),
   erpNextStatus: Object.freeze({mount:()=>call('erpNextStatusMount'),setBounds:rect=>call('erpNextStatusBounds',rect),setVisible:visible=>call('erpNextStatusVisible',visible),status:()=>call('erpNextStatusStatus'),popOut:()=>call('erpNextStatusPopOut'),returnToDock:()=>call('erpNextStatusReturnToDock'),onStatus:callback=>{const listener=(_event,value)=>callback(value);ipcRenderer.on('source-shell:erpnext-status-event',listener);return()=>ipcRenderer.removeListener('source-shell:erpnext-status-event',listener)}}),
   pluginInventory: () => call('pluginInventory'),
@@ -65,6 +73,8 @@ contextBridge.exposeInMainWorld('app', Object.freeze({
     create: (sceneId, panelId) => call('create', sceneId, panelId),
     transfer: (sceneId, panelId) => call('transfer', sceneId, panelId),
     setBounds: (sceneId, panelId, bounds) => call('bounds', sceneId, panelId, bounds),
+    beginRoleGeometryMotion: (sceneId, panelId, deadline) => call('beginRoleGeometryMotion', sceneId, panelId, deadline),
+    finishRoleGeometryMotion: (sceneId, panelId, token, bounds) => call('finishRoleGeometryMotion', sceneId, panelId, token, bounds),
     setVisible: (sceneId, panelId, visible) => call('visible', sceneId, panelId, visible),
     popOut: (sceneId, panelId) => call('rolePopOut', sceneId, panelId),
     returnToDock: (sceneId, panelId) => call('roleReturnToDock', sceneId, panelId),

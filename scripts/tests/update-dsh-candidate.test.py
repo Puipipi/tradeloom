@@ -1,6 +1,6 @@
 """Focused acquisition contracts; no application, installer or service is run.
 
-Set DSH_OFFICIAL_CACHE to the existing reviewed rc2 input cache. The actual
+Set DSH_OFFICIAL_CACHE to the existing reviewed input cache. The actual
 signature and 7z listing tests are required, not silently skipped or stubbed.
 """
 from pathlib import Path
@@ -13,6 +13,14 @@ K=R/'apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.2'
 policy_path=K/'program-recipe.json';program=update.build.replay.load(policy_path)
 installer=program['upstream']['installer']
 FEED=('version: 0.2.2-rc.2\nfiles:\n  - url: >-\n      '+installer['url']+'\n    size: '+str(installer['bytes'])+'\n    sha512: >-\n      '+installer['sha512']+'\npath: >-\n  '+installer['url']+'\nsha512: >-\n  '+installer['sha512']+"\nstagingPercentage: 15\nreleaseDate: '2026-11-11T10:26:31.270Z'\n").encode()
+
+def actual_official_input():
+    cache=Path(os.environ['DSH_OFFICIAL_CACHE'])
+    version=os.environ.get('DSH_OFFICIAL_TEST_VERSION','0.2.2-rc.2')
+    recipe=R/'apps/tradeloom-launcher/dsh-upgrades'/version/'program-recipe.json'
+    actual=update.build.replay.load(recipe)
+    if actual['version']!=version:raise ValueError('test input version drift')
+    return cache,actual,actual['upstream']['installer']
 
 class OfficialAcquisitionContracts(unittest.TestCase):
     def test_actual_feed_shape_and_strict_reviewed_release_selection(self):
@@ -54,30 +62,41 @@ class OfficialAcquisitionContracts(unittest.TestCase):
 
     def test_actual_windows_signature_and_publisher_contract(self):
         self.assertEqual(os.name,'nt')
-        cache=Path(os.environ['DSH_OFFICIAL_CACHE']);source=cache/installer['url'].rsplit('/',1)[1]
+        cache,program,installer=actual_official_input()
+        source=cache/installer['url'].rsplit('/',1)[1]
         self.assertEqual(update.verify_installer(source,installer)['bytes'],installer['bytes'])
-        command=['powershell.exe','-NoProfile','-File',str(R/program['acquisition']['signatureScript']),'-Path',str(source),'-RecipePath',str(policy_path)]
-        result=subprocess.run(command,capture_output=True);self.assertEqual(result.returncode,0,result.stderr)
-        identity=json.loads(result.stdout.decode('utf-8-sig'));self.assertEqual(identity['status'],'Valid');self.assertTrue(identity['publisherExact'])
+        def run(label,command,*,env):
+            result=subprocess.run(command,env=env,capture_output=True)
+            self.assertEqual(result.returncode,0,result.stderr)
+            return result.stdout
+        identity=update.inspect_installer_signature(source,run)
+        subject=program['acquisition']['publisherSubject']
+        self.assertTrue(update.require_installer_publisher(identity,subject)['publisherExact'])
+        with self.assertRaisesRegex(ValueError,'Authenticode/publisher'):
+            update.require_installer_publisher(identity,'Unreviewed Publisher')
         with tempfile.TemporaryDirectory(prefix='tradeloom-publisher-contract-') as directory:
-            wrong=copy.deepcopy(program);wrong['acquisition']['publisherSubject']='Unreviewed Publisher'
-            path=Path(directory)/'wrong-policy.json';path.write_text(json.dumps(wrong),encoding='utf-8')
-            rejected=subprocess.run(command[:-1]+[str(path)],capture_output=True)
-            self.assertNotEqual(rejected.returncode,0)
-            identity=json.loads(rejected.stdout.decode('utf-8-sig'));self.assertEqual(identity['status'],'Valid');self.assertFalse(identity['publisherExact'])
+            unsigned=Path(directory)/'unsigned [literal].exe'
+            unsigned.write_bytes(b'unsigned synthetic file')
+            rejected=update.inspect_installer_signature(unsigned,run)
+            self.assertNotEqual(rejected['status'],'Valid')
+            with self.assertRaisesRegex(ValueError,'Authenticode/publisher'):
+                update.require_installer_publisher(rejected,subject)
+        with self.assertRaises(json.JSONDecodeError):
+            update.inspect_installer_signature(source,lambda *a,**kw:b'not json')
 
     def test_actual_reviewed_7z_full_listing_before_extraction(self):
-        cache=Path(os.environ['DSH_OFFICIAL_CACHE']);tool=Path(os.environ.get('DSH_SEVENZIP','C:/Program Files/7-Zip/7z.exe'))
+        cache,program,installer=actual_official_input()
+        tool=Path(os.environ.get('DSH_SEVENZIP','C:/Program Files/7-Zip/7z.exe'))
         self.assertEqual(update.build.file_pin(tool),program['acquisition']['extractor'])
         source=cache/installer['url'].rsplit('/',1)[1]
         payload=cache/'container'/Path(*update.PureWindowsPath(program['acquisition']['payload']['path']).parts)
-        for path,count in [(source,15),(payload,8802)]:
+        for path,count in [(source,program['acquisition']['outerEntries']),(payload,program['acquisition']['innerEntries'])]:
             result=subprocess.run([str(tool),'l','-slt','-sccUTF-8',str(path)],capture_output=True)
             self.assertEqual(result.returncode,0,result.stderr)
             rows=update.parse_listing(result.stdout);self.assertEqual(len(rows),count)
             files=update.validate_listing(rows)
             if path==payload:
-                self.assertEqual(len(files),7892);self.assertEqual(sum(files.values()),program['vendor']['bytes'])
+                self.assertEqual(len(files),program['vendor']['fileCount']);self.assertEqual(sum(files.values()),program['vendor']['bytes'])
         # This proves real complete listing/validation, not a cold extraction or
         # a full build. The real single-command integration is recorded separately.
 

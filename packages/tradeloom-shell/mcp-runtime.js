@@ -3,9 +3,12 @@ import * as McpClient from '@deepseek-ai/dsh-mcp-client'
 import { scopeOf } from '@deepseek-ai/dsh-scope'
 
 export const name = '@tradeloom/dsh-business-shell/mcp-runtime'
+// Preset configuration is the official client's schema. This wrapper owns
+// runtime controls and observations for one mounted client.
 export const Config = McpClient.Config
 export const inject = [...McpClient.inject, 'mcpRuntime']
 export const MCP_RUNTIME_ROUTE = '/tradeloom/mcp-runtime'
+const MCP_RUNTIME_ENDPOINT = MCP_RUNTIME_ROUTE.slice(1)
 const original = value => value?.[Symbol.for('cordis.original')] ?? value
 const fail = code => Object.assign(new Error(code), { code })
 const SERVER = /^[A-Za-z0-9_-]{1,32}$/
@@ -13,6 +16,12 @@ const PHASES = new Set(['closed', 'waiting-credentials', 'connecting', 'connecte
 const REASONS = new Set(['gave-up', 'reconnect-disabled', 'unclosed-generation'])
 const LABELS = { closed: '连接已关闭', 'waiting-credentials': '等待凭据，请在原生设置配置', connecting: '正在连接', connected: '已连接', reconnecting: '正在重新连接', failed: '连接失败', unknown: '连接状态未识别' }
 const REASON_LABELS = { 'gave-up': '重试次数已用尽', 'reconnect-disabled': '自动重连已关闭', 'unclosed-generation': '旧连接清理未确认，禁止重挂' }
+
+function displayConnectionState(status, phaseOverride, reasonOverride) {
+  const phase = phaseOverride ?? (PHASES.has(status?.state) ? status.state : 'unknown')
+  const reason = reasonOverride ?? (phase === 'failed' && REASONS.has(status?.reason) ? status.reason : null)
+  return { phase, reason, statusLabel: LABELS[phase], reasonLabel: reason ? REASON_LABELS[reason] : null }
+}
 
 /** Only opaque SDK scopes register here. This registry observes the official
  * client; transport, tools, cancellation and credential handling remain DSH's. */
@@ -84,11 +93,11 @@ export async function apply(ctx, config) {
   const handle = {
     snapshot() {
       const value = status?.current()
-      const phase = blocked ? 'failed' : closed || !enabled ? 'closed' : PHASES.has(value?.state) ? value.state : 'unknown'
-      const reason = blocked ? 'unclosed-generation' : phase === 'failed' && REASONS.has(value?.reason) ? value.reason : null
-      return { instanceId, enabled, phase, reason,
-        statusLabel: !enabled ? '已禁用' : LABELS[phase], reasonLabel: reason ? REASON_LABELS[reason] : null,
-        canRestart: !closed && !blocked && phase !== 'waiting-credentials',
+      const state = displayConnectionState(value, blocked ? 'failed' : closed || !enabled ? 'closed' : undefined,
+        blocked ? 'unclosed-generation' : undefined)
+      return { instanceId, enabled, ...state,
+        statusLabel: !enabled ? '已禁用' : state.statusLabel,
+        canRestart: !closed && !blocked && state.phase !== 'waiting-credentials',
         connected: !closed && enabled && value?.state === 'connected',
         registeredToolCount: Number.isSafeInteger(value?.toolCount) ? value.toolCount : null,
         cleanupConfirmed: value?.state === 'closed' ? value.result?.closeConfirmed === true && value.result?.cleanupError === undefined : null }
@@ -132,8 +141,8 @@ export function createMcpRuntimeHandler(ctx, authority, registry) {
       const bytes = Buffer.concat(chunks), input = JSON.parse(bytes.toString('utf8'))
       if (!input || Object.keys(input).some(key => !['id', 'action', 'serverName', 'instanceId'].includes(key))
         || !/^[a-f0-9-]{36}$/.test(input.id ?? '') || !['list', 'restart', 'enable', 'disable'].includes(input.action)) throw fail('invalid_arguments')
-      const endpoint = MCP_RUNTIME_ROUTE.slice(1)
-      const origin = await authority.verifyRequest({ token: req.headers['x-tradeloom-origin'], endpoint, routePath: endpoint, httpMethod: 'POST', method: endpoint,
+      const origin = await authority.verifyRequest({ token: req.headers['x-tradeloom-origin'], endpoint: MCP_RUNTIME_ENDPOINT,
+        routePath: MCP_RUNTIME_ENDPOINT, httpMethod: 'POST', method: MCP_RUNTIME_ENDPOINT,
         rpcId: input.id, bodyBytes: bytes, bodyDigest: createHash('sha256').update(bytes).digest('hex'), peerId: 'desktop-mcp-runtime', peerPrincipal: 'owner' })
       const result = await authority.withVerifiedRequestOrigin(origin, async () => {
         const agent = ctx.agents.get(origin.sessionId), session = agent?.session
@@ -148,12 +157,10 @@ export function createMcpRuntimeHandler(ctx, authority, registry) {
         }
         const rows = registry.list(agent)
         const manager = ctx.get('mcpManager')
-        const global = manager && typeof manager.list === 'function' ? manager.list().map(row => {
-          const phase = PHASES.has(row.status?.state) ? row.status.state : 'unknown'
-          const reason = phase === 'failed' && REASONS.has(row.status?.reason) ? row.status.reason : null
-          return { scope: 'global-manager', serverName: row.name, configured: row.configured === true, phase, reason,
-            statusLabel: LABELS[phase], reasonLabel: reason ? REASON_LABELS[reason] : null, controls: 'native-settings' }
-        }) : []
+        const global = manager && typeof manager.list === 'function' ? manager.list().map(row => ({
+          scope: 'global-manager', serverName: row.name, configured: row.configured === true,
+          ...displayConnectionState(row.status), controls: 'native-settings',
+        })) : []
         return { role: origin.roleId, groups: [...global, ...rows], configuration: 'saved Agent configuration is edited in existing role settings; runtime disable/enable is temporary' }
       })
       respond(200, { ok: true, result })

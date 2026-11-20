@@ -111,6 +111,7 @@ window.__SCENES__ = {
         {
           "id": "workflow-plan",
           "title": "业务计划",
+          "closedByDefault": true,
           "type": "doc",
           "path": "/agent-center",
           "hostPanelId": "business-plan",
@@ -238,6 +239,7 @@ window.__SCENES__ = {
         },
         {
           "id": "tasks",
+          "hostPanelId": "auxiliary",
           "title": "任务",
           "type": "doc",
           "path": "/agent-center",
@@ -248,6 +250,7 @@ window.__SCENES__ = {
         },
         {
           "id": "reference-material",
+          "hostPanelId": "reference",
           "title": "资料",
           "type": "doc",
           "path": "/artifacts",

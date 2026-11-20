@@ -4,7 +4,7 @@ import { isIPv4 } from 'node:net'
 import { createStateStore, getRoleBindingRevision, replaceRoleBinding, resolveOwnedHome, roleWorkspacePath, ROLE_IDS } from './state.js'
 import { createExecutionOriginAuthority } from './execution-origin-authority.js'
 import { publicRoleMetadata, ROLE_PRESETS } from './roles.js'
-import { normalizeSceneWorkbench, validateSceneConfig, validateSceneWorkbench, resolveSceneConfiguration, sceneConfigurationRevision } from './scene-layout.js'
+import { BUSINESS_ROUTE_PATHS, isComponentInstanceId, normalizeSceneWorkbench, validateSceneConfig, validateSceneWorkbench, resolveSceneConfiguration, sceneConfigurationRevision, SCENE_COMPONENT_CATALOG, validateSceneComponentCatalog } from './scene-layout.js'
 import { normalizeDockLayouts, validateDockLayouts } from './dock-layout.js'
 import { apply as applyBusinessProxy, businessProxyEnabled } from './proxy.js'
 import { apply as applyBusinessPolicy } from './policy.js'
@@ -29,6 +29,7 @@ import { registerListenerIdentityRoute } from './listener-identity.js'
 import { registerToolSchemas } from './tool-schemas.js'
 import { registerSkillsOpen } from './skills-open.js'
 import { createNativeImportAuthorizer } from './native-import-authorization.js'
+import { createWorkflowFileAuthority } from './workflow-files.js'
 
 const ROUTE = '/tradeloom/session'
 const NEW_SESSION_ROUTE = '/tradeloom/session/new'
@@ -42,7 +43,7 @@ export const inject = ['connection', 'webServer', 'workspaceRegistry', 'sessionC
 const MAX_BODY = 4096
 // The complete, validated five-scene configuration exceeds the small command body.
 const MAX_SCENE_CONFIGURATION_BODY = 128 * 1024
-const MAX_DOCK_LAYOUT_BODY = 128 * 1024
+const MAX_DOCK_LAYOUT_BODY = 256 * 1024
 
 function json(res, status, value) {
   res.statusCode = status
@@ -617,6 +618,8 @@ export function createScenesHandler(ctx, dependencies = {}) {
     try {
       const [sceneText, store] = await Promise.all([readScenes(), storeFactory()])
       const defaults = validateSceneConfig(JSON.parse(sceneText))
+      const componentCatalog = validateSceneComponentCatalog(SCENE_COMPONENT_CATALOG, defaults)
+      let persisted
       if (req.method === 'PUT') {
         const text = await readBody(req, MAX_SCENE_CONFIGURATION_BODY)
         if (text === null) return json(res, 413, { error: 'request-too-large' })
@@ -629,14 +632,50 @@ export function createScenesHandler(ctx, dependencies = {}) {
         } catch { return json(res, 400, { error: 'invalid-scene-configuration' }) }
         const saved = await store.transact(state => {
           const current = resolveSceneConfiguration(defaults, state)
-          if (sceneConfigurationRevision(current) !== input.expectedRevision) return false
+          if (sceneConfigurationRevision(current) !== input.expectedRevision) return 'conflict'
+          const builtinIds = new Set(defaults.scenes.map(scene => scene.id))
+          const standalone = scene => scene?.panels.filter(panel => isComponentInstanceId(panel.id)) ?? []
+          const before = new Map(current.scenes.map(scene => [scene.id, scene]))
+          const after = new Map(next.scenes.map(scene => [scene.id, scene]))
+          if (next.scenes.some(scene => standalone(scene).length
+            && (builtinIds.has(scene.id) || !builtinIds.has(scene.templateSceneId)))) return 'invalid'
+          const compositionChanged = [...new Set([...before.keys(), ...after.keys()])].some(id =>
+            JSON.stringify(standalone(before.get(id))) !== JSON.stringify(standalone(after.get(id))))
+          if (compositionChanged && (
+            next.scenes.some(scene => standalone(scene).length && before.get(scene.id)?.templateSceneId !== undefined
+              && before.get(scene.id).templateSceneId !== scene.templateSceneId)
+            || BUSINESS_ROUTE_PATHS.some(path => current.businessRoutes[path].sceneId !== next.businessRoutes[path].sceneId
+              || current.businessRoutes[path].panelId !== next.businessRoutes[path].panelId)
+            || [...builtinIds].some(id => JSON.stringify(before.get(id)) !== JSON.stringify(after.get(id))))) return 'invalid'
+          const workbench = state.sceneWorkbench
+          if (compositionChanged && workbench) {
+            for (const [id, scene] of before) {
+              if (!standalone(scene).length) continue
+              const remaining = new Set(after.get(id)?.panels.map(panel => panel.id) ?? [])
+              const layout = workbench.layouts?.[id]
+              if (layout) for (const panel of standalone(scene)) if (!remaining.has(panel.id)) {
+                if (layout.panels) delete layout.panels[panel.id]
+                if (layout.expandedPanel === panel.id) layout.expandedPanel = ''
+              }
+              if (!after.has(id)) {
+                if (workbench.layouts) delete workbench.layouts[id]
+                if (workbench.roleByScene) delete workbench.roleByScene[id]
+                if (workbench.activeSceneId === id) {
+                  workbench.activeSceneId = next.scenes[0].id
+                  workbench.businessPath = next.scenes[0].defaultBusinessPath ?? next.scenes[0].defaultBusinessRoute
+                }
+              }
+            }
+          }
           state.sceneConfiguration = { value: structuredClone(next), previous: current }
-          return true
+          return 'saved'
         }, { compareBeforeRename: true })
-        if (!saved) return json(res, 409, { error: 'scene-configuration-conflict' })
+        if (saved === 'conflict') return json(res, 409, { error: 'scene-configuration-conflict' })
+        if (saved !== 'saved') return json(res, 400, { error: 'invalid-scene-configuration' })
+        persisted = next
       }
       const state = await store.read()
-      const scenes = resolveSceneConfiguration(defaults, state)
+      const scenes = persisted ?? resolveSceneConfiguration(defaults, state)
       const sessionBindings = Object.fromEntries(ROLE_IDS.flatMap(role => {
         const sessionId = state?.roles?.[role]?.sessionId
         return typeof sessionId === 'string' && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(sessionId)
@@ -646,7 +685,7 @@ export function createScenesHandler(ctx, dependencies = {}) {
         role, roleBindingMetadata(role, state.roles[role], ctx.workspaceRegistry, getRoleBindingRevision(state, role)),
       ]))
       const businessOrigin = ctx.webServer.getOrigin()
-      json(res, 200, { ...scenes, configurationRevision: sceneConfigurationRevision(scenes), businessOrigin, roles: publicRoleMetadata(), sessionBindings, sessionBindingMetadata })
+      json(res, 200, { ...scenes, configurationRevision: sceneConfigurationRevision(scenes), businessOrigin, roles: publicRoleMetadata(), sessionBindings, sessionBindingMetadata, componentCatalog })
     }
     catch (error) {
       ctx.logger?.error?.(`tradeloom-shell: scene config read failed: ${String(error)}`)
@@ -664,9 +703,10 @@ export function createSceneLayoutsHandler(ctx, dependencies = {}) {
     if (req.method !== 'GET' && req.method !== 'PUT') { res.statusCode = 405; res.setHeader('allow', 'GET, PUT'); res.end(); return }
     try {
       const store = await storeFactory()
-      const config = resolveSceneConfiguration(JSON.parse(await readScenes()), await store.read())
+      const defaults = JSON.parse(await readScenes())
       if (req.method === 'GET') {
         const state = await store.read()
+        const config = resolveSceneConfiguration(defaults, state)
         const workbench = normalizeSceneWorkbench(config, state.sceneWorkbench)
         json(res, 200, workbench)
         return
@@ -675,9 +715,12 @@ export function createSceneLayoutsHandler(ctx, dependencies = {}) {
       if (text === null) { json(res, 413, { error: 'request-too-large' }); return }
       let input
       try { input = JSON.parse(text) } catch { json(res, 400, { error: 'invalid-json' }); return }
-      let workbench
-      try { workbench = validateSceneWorkbench(config, input) } catch { json(res, 400, { error: 'invalid-scene-layout' }); return }
-      await store.transact(state => { state.sceneWorkbench = workbench })
+      const workbench = await store.transact(state => {
+        try { state.sceneWorkbench = validateSceneWorkbench(resolveSceneConfiguration(defaults, state), input) }
+        catch { return null }
+        return state.sceneWorkbench
+      })
+      if (!workbench) { json(res, 400, { error: 'invalid-scene-layout' }); return }
       json(res, 200, workbench)
     } catch (error) {
       ctx.logger?.error?.(`tradeloom-shell: scene layout route failed: ${String(error)}`)
@@ -689,17 +732,26 @@ export function createSceneLayoutsHandler(ctx, dependencies = {}) {
 export function createDockLayoutsHandler(ctx, dependencies = {}) {
   const storeFactory = dependencies.createStateStore ?? createStateStore
   const readScenes = dependencies.readScenes ?? (() => readFile(new URL('./scenes.json', import.meta.url), 'utf8'))
+  const rememberDockLayouts = (state, layouts) => {
+    const scenes = Object.fromEntries(Object.entries(layouts.scenes).map(([id, record]) => {
+      const previousPreset = state.dockLayouts?.scenes?.[id]?.preset
+      // Keep an incompatible preset in storage until that scene can use it again or saves another.
+      return [id, previousPreset && record.preset === undefined ? { ...record, preset: previousPreset } : record]
+    }))
+    state.dockLayouts = { ...layouts, scenes }
+  }
   return async (req, res) => {
     const rejection = ctx.connection.requestRejection(req)
     if (rejection !== undefined) { res.statusCode = rejection; res.end(); return }
     if (req.method !== 'GET' && req.method !== 'PUT') { res.statusCode = 405; res.setHeader('allow', 'GET, PUT'); res.end(); return }
     try {
       const store = await storeFactory()
-      const config = resolveSceneConfiguration(JSON.parse(await readScenes()), await store.read())
+      const defaults = JSON.parse(await readScenes())
       if (req.method === 'GET') {
         const dockLayouts = await store.transact(state => {
+          const config = resolveSceneConfiguration(defaults, state)
           const normalized = normalizeDockLayouts(config, state.dockLayouts, state.sceneWorkbench?.layouts)
-          state.dockLayouts = normalized
+          rememberDockLayouts(state, normalized)
           return normalized
         })
         json(res, 200, dockLayouts)
@@ -709,21 +761,18 @@ export function createDockLayoutsHandler(ctx, dependencies = {}) {
       if (text === null) { json(res, 413, { error: 'request-too-large' }); return }
       let input
       try { input = JSON.parse(text) } catch { json(res, 400, { error: 'invalid-json' }); return }
-      try {
-        const current = await store.read()
-        validateDockLayouts(config, input, {
-          existingDockLayouts: current.dockLayouts,
-          legacySceneLayouts: current.sceneWorkbench?.layouts,
-        })
-      } catch { json(res, 400, { error: 'invalid-dock-layout' }); return }
       const dockLayouts = await store.transact(state => {
-        const normalized = validateDockLayouts(config, input, {
-          existingDockLayouts: state.dockLayouts,
-          legacySceneLayouts: state.sceneWorkbench?.layouts,
-        })
-        state.dockLayouts = normalized
+        let normalized
+        try {
+          normalized = validateDockLayouts(resolveSceneConfiguration(defaults, state), input, {
+            existingDockLayouts: state.dockLayouts,
+            legacySceneLayouts: state.sceneWorkbench?.layouts,
+          })
+        } catch { return null }
+        rememberDockLayouts(state, normalized)
         return normalized
       })
+      if (!dockLayouts) { json(res, 400, { error: 'invalid-dock-layout' }); return }
       json(res, 200, dockLayouts)
     } catch (error) {
       ctx.logger?.error?.(`tradeloom-shell: dock layout route failed: ${String(error)}`)
@@ -935,6 +984,7 @@ export function apply(ctx, config = {}) {
     },
   })
   ctx.provide('sceneMemoryOriginAuthority', sceneMemoryOriginAuthority)
+  ctx.provide('workflowFileAuthority', createWorkflowFileAuthority(ctx))
   // Public lazy lookup does not make legacy Host/read routes depend on task
   // admission. Missing authority never authorizes a native mutation.
   const taskAuthority = () => ctx.get?.('nativeTaskAuthority')

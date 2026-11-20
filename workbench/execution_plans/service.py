@@ -6,10 +6,10 @@ from workbench.models import EvidenceRecord, ExecutionPlanRevision, IntakeCandid
 from workbench.intake.schemas import FIELD_SCHEMAS
 from workbench.requirements.service import revision_payload
 
-from .schemas import MAX_SOURCE_VALUE_CHARS, validate_plan_body
+from .schemas import MAX_SOURCE_VALUE_CHARS
 
 
-def validate_evidence_binding(requirement_revision: ProductionRequirementRevision, plan: dict) -> None:
+def _validate_requirement_evidence(requirement_revision: ProductionRequirementRevision, plan: dict) -> None:
     references = list(plan["requirement_refs"])
     for collection in (plan["materials"], plan["operations"]):
         for item in collection:
@@ -41,7 +41,7 @@ def _bounded_typed_value(value: object) -> dict:
     return result
 
 
-def freeze_source_references(plan: dict) -> None:
+def _freeze_source_references(plan: dict) -> None:
     wanted = {}
     for collection in (plan["materials"], plan["operations"]):
         for item in collection:
@@ -139,8 +139,7 @@ def plan_payload(plan: ExecutionPlanRevision) -> dict:
     }
 
 
-def create_plan_payload(requirement_revision: ProductionRequirementRevision, body: dict) -> dict:
-    plan = validate_plan_body(body)
-    validate_evidence_binding(requirement_revision, plan)
-    freeze_source_references(plan)
-    return plan
+def bind_plan_evidence(requirement_revision: ProductionRequirementRevision, plan: dict) -> None:
+    """Validate evidence for a schema-checked plan and freeze source references in place."""
+    _validate_requirement_evidence(requirement_revision, plan)
+    _freeze_source_references(plan)

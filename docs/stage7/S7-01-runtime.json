@@ -1,0 +1,424 @@
+{
+  "stage": "S7-01",
+  "scope": "same-path native upgrade rollback corrected upgrade and representative regression",
+  "stage7Complete": false,
+  "productCommit": "795c5056fff205e061dd8c334116be60df79dfde",
+  "productTree": "f0dfa9536676f0dd3c36d34da76365889e56a957",
+  "programZip": {
+    "path": "[local-path-redacted]",
+    "bytes": 819388090,
+    "sha256": "caf14db3914a58a03040e2c276b9160b4442cd45629f23dd2bb2b2ae19faf004"
+  },
+  "sourceZip": {
+    "path": "[local-path-redacted]",
+    "bytes": 19640183,
+    "sha256": "331a28146a6d8315797901f5e67469848634af7d0b772176aaa2ce0b0573ae0f"
+  },
+  "buildSourceHead": "e24eed788c033ac0f098a159012a6d40903a1e54",
+  "dirtyAtBuild": true,
+  "consumedSourceSha256": "de6c1b8fa75f03e3da98c0bcdb2fc93a1dd292e66c896ce4e2bfe860645b6f4f",
+  "isolatedProgram": "[local-path-redacted]",
+  "isolatedData": "[local-path-redacted]",
+  "transactions": {
+    "qa-prepared": {
+      "path": "[local-path-redacted]",
+      "bytes": 1528,
+      "sha256": "5e92d422a58b9a78135ee9a7f4253322fbac297a6a14eb578be43496783268d2"
+    },
+    "first-apply-readback": {
+      "path": "[local-path-redacted]",
+      "bytes": 521,
+      "sha256": "1e961d2eec16ccac6b05c29502bacd9f84fc852e841cab4b0ea0206bfc58229f"
+    },
+    "rollback-readback": {
+      "path": "[local-path-redacted]",
+      "bytes": 606,
+      "sha256": "d934e6561221ec68c6e6cbbc9dac51c369c7348fcec1714c8023ff44e754f1b9"
+    },
+    "second-apply-readback": {
+      "path": "[local-path-redacted]",
+      "bytes": 521,
+      "sha256": "544a15e14ede8bf5ee5e988f08f6ff0203d7b364e01b21dea03707863d989ca7"
+    },
+    "r2-rollback-readback": {
+      "path": "[local-path-redacted]",
+      "bytes": 606,
+      "sha256": "30ac25ef170dabf3debb881e5af38d7d7b8ccd4972ea8cac4ac67bd69fbc7bee"
+    },
+    "third-apply-readback": {
+      "path": "[local-path-redacted]",
+      "bytes": 617,
+      "sha256": "87eee8e72521abfb436b8784ebb455bd36ef8f392062324c3657b6f36736ec80"
+    }
+  },
+  "installedManifest": {
+    "path": "[local-path-redacted]",
+    "bytes": 15035905,
+    "sha256": "79bcff036232d8502c060755db8cd55604c858d7ff9a80a7a0130fea063207b4"
+  },
+  "failures": {
+    "r1HostBridge": {
+      "path": "[local-path-redacted]",
+      "bytes": 1585,
+      "sha256": "d56a0ca07b0cfefc641adde3c8fa4314533dcedc2506416f8fa36114fc3728dc"
+    },
+    "r2Scenes404": {
+      "path": "[local-path-redacted]",
+      "bytes": 1949,
+      "sha256": "1672ad2b4e9eea8f279c138e2c7d970d8a14a997b65189cec86fcec41552b896"
+    }
+  },
+  "r3ColdStartup": {
+    "path": "[local-path-redacted]",
+    "bytes": 5208,
+    "sha256": "51439be576710ce5a93bb141717c89b649269c6cdeb846b240ea8a352abe6bb0"
+  },
+  "r3FinalNativeReadback": {
+    "path": "[local-path-redacted]",
+    "bytes": 5527,
+    "sha256": "3caa2afd671fff75cebb6e259c9936c0ef42cafa36fb97cb80de6acf958ca700"
+  },
+  "r3FinalPortReadback": {
+    "path": "[local-path-redacted]",
+    "bytes": 133,
+    "sha256": "ece22aab65b84867a602f3b52f2e03e4127c4fa38afca4c1e851e58d264f4036"
+  },
+  "terraFinish": {
+    "utc": "2026-11-18T13:21:10.563Z",
+    "owner": null,
+    "occupied": 0,
+    "paused": false,
+    "mainWindowCloseObservationId": "7c2b1ecf",
+    "mainPid": 77852,
+    "windowsAfterExit": 0
+  },
+  "installedConfigPreserved": {
+    "bytes": 139,
+    "sha256": "67a8b6ab8f9e1fdac988f472e42361f0a85492c17549adae3ef189765537e310"
+  },
+  "latestCrashIsR2": "crash-2026-11-18T12-20-30-262Z-main.log",
+  "thirdPartyScope": {
+    "plugin": "@michengai/dsh-skills-manager@1.2.20",
+    "request": "GET /api/dsh-skills-manager/state",
+    "status": 403,
+    "code": "error.proto.forbiddenHost",
+    "oldDesktopArgs": "--host bindHost --trusted-host bindHost --port bindPort",
+    "newDesktopArgs": "--host bindHost --port bindPort",
+    "guardChanged": false,
+    "disposition": "third-party compatibility outside S7-01 per plan"
+  },
+  "evidenceMatrix": [
+    {
+      "id": "S5-01",
+      "title": "插件管理",
+      "executed": [],
+      "reachable": [
+        "内置插件目录和状态可见"
+      ],
+      "unverified": [
+        "切换一个插件并重进验证持久化"
+      ],
+      "evidence": [
+        {
+          "observationId": "09a699d8",
+          "screenshot": "[local-path-redacted]"
+        }
+      ]
+    },
+    {
+      "id": "S5-02",
+      "title": "角色和会话保全",
+      "executed": [
+        "切换现有场景"
+      ],
+      "reachable": [
+        "角色下拉可达"
+      ],
+      "unverified": [
+        "验证原会话身份及历史"
+      ],
+      "evidence": [
+        {
+          "observationId": "c3a78918",
+          "screenshot": "[local-path-redacted]"
+        },
+        {
+          "observationId": "b78bb9aa",
+          "screenshot": "[local-path-redacted]"
+        },
+        {
+          "observationId": "45cdd7f7"
+        }
+      ]
+    },
+    {
+      "id": "S5-03",
+      "title": "三态主题",
+      "executed": [
+        "主窗切换主题三态",
+        "独立助手窗口同步"
+      ],
+      "reachable": [],
+      "unverified": [
+        "重启后主题持久性"
+      ],
+      "evidence": [
+        {
+          "observationId": "0856b9cc",
+          "screenshot": "[local-path-redacted]"
+        },
+        {
+          "observationId": "48aad532",
+          "screenshot": "[local-path-redacted]"
+        },
+        {
+          "observationId": "71edb56e",
+          "screenshot": "[local-path-redacted]"
+        },
+        {
+          "observationId": "b8442541",
+          "screenshot": "[local-path-redacted]"
+        }
+      ]
+    },
+    {
+      "id": "S5-04",
+      "title": "当前助手技能",
+      "executed": [
+        "打开本会话技能列表并显示 archify"
+      ],
+      "reachable": [],
+      "unverified": [],
+      "excludedThirdParty": [
+        "设置内第三方全局技能管理页返回非法 Host 403"
+      ],
+      "evidence": [
+        {
+          "observationId": "54a8e774",
+          "screenshot": "[local-path-redacted]"
+        },
+        {
+          "observationId": "2c567c0b",
+          "screenshot": "[local-path-redacted]"
+        }
+      ]
+    },
+    {
+      "id": "S5-05",
+      "title": "原生费用与输入",
+      "executed": [],
+      "reachable": [
+        "空输入与费用位置可见",
+        "独立助手同项可见"
+      ],
+      "unverified": [
+        "草稿保持"
+      ],
+      "evidence": [
+        {
+          "observationId": "f9be6cb2"
+        },
+        {
+          "observationId": "ef32253b",
+          "screenshot": "[local-path-redacted]"
+        }
+      ]
+    },
+    {
+      "id": "S5-06",
+      "title": "布局和独立窗口",
+      "executed": [
+        "刷新前后题栏按钮顺序一致",
+        "面板放大与还原",
+        "打开场景独立窗和助手独立窗"
+      ],
+      "reachable": [],
+      "unverified": [
+        "内部刷新响应未独立捕获",
+        "单窗关闭",
+        "自由拖动",
+        "物理 FPS"
+      ],
+      "evidence": [
+        {
+          "observationId": "f9be6cb2"
+        },
+        {
+          "observationId": "3d5e5f2a"
+        },
+        {
+          "observationId": "ed4ee5de"
+        },
+        {
+          "observationId": "7895b04a"
+        },
+        {
+          "observationId": "468591e7",
+          "screenshot": "[local-path-redacted]"
+        },
+        {
+          "observationId": "ef32253b",
+          "screenshot": "[local-path-redacted]"
+        }
+      ]
+    },
+    {
+      "id": "S5-07",
+      "title": "两站登录与同步",
+      "executed": [],
+      "reachable": [
+        "DeepSeek 和豆包各站窗口可打开"
+      ],
+      "unverified": [
+        "真实登录及状态同步"
+      ],
+      "evidence": [
+        {
+          "observationId": "ac06a36f",
+          "screenshot": "[local-path-redacted]"
+        },
+        {
+          "observationId": "96cdb5c0",
+          "screenshot": "[local-path-redacted]"
+        }
+      ]
+    },
+    {
+      "id": "S5-08",
+      "title": "工作流画布",
+      "executed": [],
+      "reachable": [
+        "工作流画布及运行记录可达"
+      ],
+      "unverified": [
+        "工作流实际运行"
+      ],
+      "evidence": [
+        {
+          "observationId": "b78bb9aa",
+          "screenshot": "[local-path-redacted]"
+        },
+        {
+          "observationId": "b0c08381",
+          "screenshot": "[local-path-redacted]"
+        }
+      ]
+    },
+    {
+      "id": "S5-09",
+      "title": "运行记录与窄宽",
+      "executed": [
+        "调整主窗口宽度，实框 1082×991 物理像素，DPI 144"
+      ],
+      "reachable": [
+        "运行记录可达"
+      ],
+      "unverified": [
+        "各组件内部滚动",
+        "专属 Edge 窄宽"
+      ],
+      "evidence": [
+        {
+          "observationId": "b0c08381",
+          "screenshot": "[local-path-redacted]"
+        },
+        {
+          "observationId": "5e7d866f",
+          "screenshot": "[local-path-redacted]"
+        }
+      ]
+    },
+    {
+      "id": "S5-10",
+      "title": "目标、权限、模型与计划",
+      "executed": [],
+      "reachable": [
+        "点击目标进入目标界面",
+        "权限入口",
+        "模型入口显示暂无可用模型",
+        "自动化页显示无已开启任务，计划项可见"
+      ],
+      "unverified": [
+        "实际目标/计划执行",
+        "真实模型请求与回复",
+        "语音"
+      ],
+      "evidence": [
+        {
+          "observationId": "b665ae1f",
+          "screenshot": "[local-path-redacted]"
+        },
+        {
+          "observationId": "72f8d5ba",
+          "screenshot": "[local-path-redacted]"
+        },
+        {
+          "observationId": "6a6e3dbb",
+          "screenshot": "[local-path-redacted]"
+        },
+        {
+          "observationId": "02fcd7f5",
+          "screenshot": "[local-path-redacted]"
+        },
+        {
+          "observationId": "11e15ff9",
+          "screenshot": "[local-path-redacted]"
+        }
+      ]
+    },
+    {
+      "id": "S5-11",
+      "title": "手动网页",
+      "executed": [],
+      "reachable": [
+        "两站窗口可见，DeepSeek 提示环境异常，豆包未登录"
+      ],
+      "unverified": [
+        "正常登录后的手动问答、附件和保存"
+      ],
+      "evidence": [
+        {
+          "observationId": "ac06a36f",
+          "screenshot": "[local-path-redacted]"
+        },
+        {
+          "observationId": "96cdb5c0",
+          "screenshot": "[local-path-redacted]"
+        }
+      ]
+    },
+    {
+      "id": "S5-14",
+      "title": "同路径升级、回退与退出",
+      "executed": [
+        "同一外置 DATA 上复验阶段 5 基线",
+        "前两次同路径程序替换成功，各自实机冷启失败并完成真实回退",
+        "第一次回退后以原正式程序冷启",
+        "第三次同路径升级后用 R3 实际冷启及主窗正常 X 退出",
+        "主退出后同 PID 五个窗口全部消失，程序进程和三个标准端口均清空"
+      ],
+      "reachable": [],
+      "unverified": [],
+      "evidence": [
+        {
+          "observationId": "a045a694"
+        },
+        {
+          "observationId": "2e7899c8"
+        },
+        {
+          "observationId": "a37da634"
+        },
+        {
+          "observationId": "c4d89434"
+        },
+        {
+          "observationId": "99c10686"
+        },
+        {
+          "observationId": "7c2b1ecf"
+        }
+      ]
+    }
+  ]
+}

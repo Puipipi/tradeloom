@@ -169,6 +169,12 @@ function validateSnapshot(snapshot, { requireJournal = true } = {}) {
   return snapshot
 }
 
+function clearArtifactDeclarations(node) {
+  node.artifacts = []
+  node.artifactSource = 'unknown'
+  delete node.artifactEvidence
+}
+
 function newNodeState(kind) {
   const state = {
     status: 'pending',
@@ -505,9 +511,7 @@ function makeRunHandle(store, initial, { now, reviewDecisionChannel }) {
       node.nativeRunId = null
       node.output = ''
       node.error = ''
-      node.artifacts = []
-      node.artifactSource = 'unknown'
-      delete node.artifactEvidence
+      clearArtifactDeclarations(node)
       delete node.artifactRangeStart
       next.status = 'running'
       next.finishedAt = null
@@ -600,9 +604,7 @@ function makeRunHandle(store, initial, { now, reviewDecisionChannel }) {
       }
       node.error = normalized.errorCategory ?? ''
       // Declarations are not file-creation proof or immutable content copies.
-      node.artifacts = []
-      node.artifactSource = 'unknown'
-      delete node.artifactEvidence
+      clearArtifactDeclarations(node)
       const evidence = mismatchFields.length === 0 && observation?.terminalSource === 'subagent/end'
         ? validateArtifactEvidence(observation.artifactEvidence, node.artifactRangeStart) : null
       if (evidence && evidence.range.childSessionId === node.childId && evidence.range.nativeRunId === node.nativeRunId) {
@@ -680,8 +682,8 @@ function makeRunHandle(store, initial, { now, reviewDecisionChannel }) {
         target.attempt = 0
         target.attemptState = errorCode ? 'local-error' : 'local'
         target.requestId = null; target.toolCallId = null; target.childId = null; target.nativeRunId = null
-        target.artifacts = []; target.artifactSource = 'unknown'
-        delete target.artifactEvidence; delete target.artifactRangeStart; delete target.localReceipt
+        clearArtifactDeclarations(target)
+        delete target.artifactRangeStart; delete target.localReceipt
         if (errorCode) {
           target.status = 'failed'; target.error = errorCode; target.output = ''
           next.events.push(eventFor(next, 'local-node-error', at, { nodeId: input.nodeId, attempt: 0,
@@ -808,7 +810,8 @@ function makeRunHandle(store, initial, { now, reviewDecisionChannel }) {
         target.attemptState = approved ? 'review-approved' : 'review-rejected'
         target.output = receipt.output; target.error = approved ? '' : 'review_rejected'
         target.requestId = null; target.toolCallId = null; target.childId = null; target.nativeRunId = null
-        target.artifacts = []; target.artifactSource = 'unknown'; delete target.artifactEvidence; delete target.artifactRangeStart
+        clearArtifactDeclarations(target)
+        delete target.artifactRangeStart
         target.reviewState = { status: issued.decision, request: copy(request), receipt, error: approved ? '' : 'review_rejected' }
         aggregateRun(next, at)
         next.events.push(eventFor(next, 'review-node-terminal', at, { source: 'dsh-user-questions', nodeId: input.nodeId,

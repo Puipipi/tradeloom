@@ -15,8 +15,9 @@ test('the DSH base boundary stays declared, patched only through the sanctioned 
   assert.equal(result.manifest.base.version, '0.2.1-rc.3', 'the declared base version matches every engine pin')
   assert.ok(result.checks.some(line => line.startsWith('profile bundles 3')),
     'all three profile bundles remain declared in installed-bootstrap.mjs')
-  assert.ok(result.checks.some(line => line.startsWith('plugin exports 26/')),
-    'the TradeLoom plugin still exports every declared entry so it can be imported directly')
+  const { manifest, exportTargets } = result.manifest.pluginImportContract.tradeLoomPlugin
+  const pkg = JSON.parse(await readFile(join(repoRoot, manifest), 'utf8'))
+  assert.deepEqual(pkg.exports, exportTargets, 'the installed shell exposes exactly the accepted profile import targets')
 })
 
 async function boundaryFixture(t) {
@@ -34,8 +35,17 @@ async function boundaryFixture(t) {
   for (const recipePath of Object.values(manifest.base.upgrade.recipes ?? {})) {
     const recipe = JSON.parse(await readFile(join(repoRoot, recipePath), 'utf8'))
     if (recipe.desktopRecipe) files.add(join(dirname(recipePath), recipe.desktopRecipe))
-    if (recipe.programRecipe) files.add(join(dirname(recipePath), recipe.programRecipe))
-    if (recipe.businessShell) files.add(join(dirname(recipePath), recipe.businessShell.packageSource))
+    if (recipe.programRecipe) {
+      const path = join(dirname(recipePath), recipe.programRecipe)
+      files.add(path)
+      const program = JSON.parse(await readFile(join(repoRoot, path), 'utf8'))
+      if (program.launcher.sourceMode === 'exact-source') files.add(program.launcher.source)
+    }
+    if (recipe.businessShell?.sourceMode === 'exact-source') {
+      for (const name of Object.keys(recipe.businessShell.preimages)) files.add(join(recipe.businessShell.sourceRoot, name))
+    } else if (recipe.businessShell) {
+      files.add(join(dirname(recipePath), recipe.businessShell.packageSource))
+    }
   }
   for (const file of files) {
     await mkdir(dirname(join(root, file)), { recursive: true })
@@ -94,4 +104,73 @@ test('complete-program recipe version and launcher patch stay explicitly registe
   assert.ok(result.problems.some(problem => problem.includes('program recipe version')))
   assert.ok(result.problems.some(problem => problem.includes('program 配方引用未登记')))
   assert.equal(result.manifest.base.version, '0.2.1-rc.3')
+})
+
+test('exact source rejects missing pins, mixed patch inputs and out-of-checkout paths', async t => {
+  const root = await boundaryFixture(t)
+  const prefix = 'apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.3'
+  const shellFile = join(root, prefix, 'recipe.json')
+  const programFile = join(root, prefix, 'program-recipe.json')
+  const recipe = JSON.parse(await readFile(shellFile, 'utf8'))
+  const program = JSON.parse(await readFile(programFile, 'utf8'))
+  delete recipe.businessShell.preimages['package.json']
+  program.launcher.source = '../outside.cs'
+  await writeFile(shellFile, JSON.stringify(recipe))
+  await writeFile(programFile, JSON.stringify(program))
+  let result = await checkBoundary(root)
+  assert.ok(result.problems.some(problem => /business exact-source: .*complete package/.test(problem)))
+  assert.ok(result.problems.some(problem => /launcher exact-source: .*inside checkout/.test(problem)))
+  program.launcher.source = 'apps\\tradeloom-launcher/portable/Program.cs'
+  await writeFile(programFile, JSON.stringify(program))
+  result = await checkBoundary(root)
+  assert.ok(result.problems.some(problem => /launcher exact-source: .*inside checkout/.test(problem)))
+  recipe.businessShell.patch = 'not-a-real.patch'
+  program.launcher.patch = 'not-a-real.patch'
+  await writeFile(shellFile, JSON.stringify(recipe))
+  await writeFile(programFile, JSON.stringify(program))
+  result = await checkBoundary(root)
+  assert.ok(result.problems.some(problem => /mixed business source mode/.test(problem)))
+  assert.ok(result.problems.some(problem => /mixed launcher source mode/.test(problem)))
+})
+
+test('legacy program recipes still require a registered launcher patch', async t => {
+  const root = await boundaryFixture(t)
+  const path = join(root, 'apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.2/program-recipe.json')
+  const program = JSON.parse(await readFile(path, 'utf8'))
+  delete program.launcher.patch
+  await writeFile(path, JSON.stringify(program))
+  const result = await checkBoundary(root)
+  assert.ok(result.problems.some(problem => /launcher/.test(problem)))
+})
+
+test('profile import contract rejects an unexpected export and a mismatched scope pin', async t => {
+  const root = await boundaryFixture(t)
+  const path = join(root, 'packages/tradeloom-shell/package.json')
+  const pkg = JSON.parse(await readFile(path, 'utf8'))
+  pkg.exports['./webai-files'] = './host.js'
+  pkg.peerDependencies['@deepseek-ai/dsh-scope'] = '0.2.2-rc.3'
+  await writeFile(path, JSON.stringify(pkg))
+  const result = await checkBoundary(root)
+  assert.ok(result.problems.some(problem => problem.includes('exports') && problem.includes('./webai-files')))
+  assert.ok(result.problems.some(problem => problem.includes('scope') && problem.includes('0.2.2-rc.2')))
+})
+
+test('legacy desktop final overlay still requires a registered patch', async t => {
+  const root = await boundaryFixture(t)
+  const path = join(root, 'apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.2/desktop-recipe.json')
+  const recipe = JSON.parse(await readFile(path, 'utf8'))
+  recipe.finalOverlay.patch = 'unregistered-final.patch'
+  await writeFile(path, JSON.stringify(recipe))
+  const result = await checkBoundary(root)
+  assert.ok(result.problems.some(problem => problem.includes('desktop') && problem.includes('unregistered-final.patch')))
+})
+
+test('profile peer compatibility list rejects versions without registered recipes', async t => {
+  const root = await boundaryFixture(t)
+  const file = join(root, 'dsh-base.manifest.json')
+  const manifest = JSON.parse(await readFile(file, 'utf8'))
+  manifest.pluginImportContract.tradeLoomPlugin.peerScopeVersions.push('0.2.2-rc.4')
+  await writeFile(file, JSON.stringify(manifest))
+  const result = await checkBoundary(root)
+  assert.ok(result.problems.includes('invalid registered shell peer scope versions'))
 })

@@ -8,10 +8,11 @@ const grid = $('#grid')
 let data
 let configurationTemplates, trustedSceneConfiguration
 const visibleConfiguredScenes = value => value.scenes.filter(scene => configurationTemplates.some(template => template.id === (scene.templateSceneId ?? scene.id)))
-const hostPanelFor = (scene, panel) => scene.panels.find(item =>
-  (panel.hostPanelId ? item.id === panel.hostPanelId : panel.type === 'chat'
+const hostPanelFor = (scene, panel) => scene.panels.find(item => !isComponentInstance(item) && (
+  panel.hostPanelId ? item.id === panel.hostPanelId : panel.type === 'chat'
     ? item.type === 'native-chat' && item.optional !== true
     : item.type === 'business-iframe' && item.path === panel.path))
+const isComponentInstance = panel => /^component-[a-z0-9-]{1,38}$/.test(panel.id) && panel.type === 'business-iframe' && typeof panel.componentId === 'string'
 function projectTrustedScene(scene) {
   const template = configurationTemplates.find(value => value.id === (scene.templateSceneId ?? scene.id))
   if (!template) throw Error('scene template unavailable')
@@ -20,34 +21,30 @@ function projectTrustedScene(scene) {
   const panels = template.panels.map(panel => {
     const host = hostPanelFor(scene, panel)
     return host ? { ...panel, hostPanelId: host.id, roleId: host.roleId ?? scene.roleId,
-      title: host.title, col: host.col, row: host.row, w: host.w, h: host.h, ...(host.path ? { path: host.path } : {}) } : { ...panel }
+      title: host.title, col: host.col, row: host.row, w: host.w, h: host.h, componentId: host.componentId, ...(host.path ? { path: host.path } : {}) } : { ...panel }
   })
+  if (scene.templateSceneId) panels.push(...scene.panels.filter(isComponentInstance).map(panel =>
+    ({ ...panel, type: 'doc', hostPanelId: panel.id, roleId: scene.roleId })))
   if ((scene.templateSceneId ?? scene.id) === 'agent-center' && !scene.panels.some(panel => panel.id === 'business-plan')) {
-    const expected = { 'business-main': [1,1,3,2], files: [4,1,1,2], preview: [1,3,1,2], 'native-chat': [2,3,3,2] }
-    const legacyHostIds = ['business-main','files','preview','native-chat','assistant-product','assistant-delivery','assistant-user-profile','native-workspace']
-    const exactLegacyIds = scene.panels.length === legacyHostIds.length
-      && new Set(scene.panels.map(panel => panel.id)).size === legacyHostIds.length
-      && scene.panels.every(panel => legacyHostIds.includes(panel.id))
-    const legacyDefault = exactLegacyIds && Object.entries(expected).every(([id, geometry]) => {
-      const panel = scene.panels.find(item => item.id === id)
-      return panel && ['col','row','w','h'].every((key, index) => panel[key] === geometry[index])
-    })
-    if (scene.id === 'agent-center' && legacyDefault) {
-      const canvas = panels.find(panel => panel.id === 'workflow-main')
-      Object.assign(canvas, { col: 2, row: 1, w: 2, h: 2, title: '工作流画布' })
-    } else {
-      const legacy = panels.filter(panel => panel.id !== 'workflow-plan')
-      const canvas = legacy.find(panel => panel.id === 'workflow-main')
-      if (canvas) Object.assign(canvas, { standaloneCanvas: false, tabs: ['业务计划','工作流画布'], activeTab: '工作流画布' })
-      return { ...template, id: scene.id, name: scene.label, panels: legacy, workflowLayoutGap: 'custom-legacy-layout' }
-    }
+    const legacy = panels.filter(panel => panel.id !== 'workflow-plan')
+    const canvas = legacy.find(panel => panel.id === 'workflow-main')
+    if (canvas) Object.assign(canvas, { standaloneCanvas: false, tabs: ['业务计划','工作流画布'], activeTab: '工作流画布' })
+    return { ...template, id: scene.id, name: scene.label, templateSceneId: scene.templateSceneId, panels: legacy, workflowLayoutGap: 'custom-legacy-layout' }
   }
-  return { ...template, id: scene.id, name: scene.label, panels }
+  return { ...template, id: scene.id, name: scene.label, templateSceneId: scene.templateSceneId, panels }
 }
 function applyTrustedSceneConfiguration(value) {
   if (!configurationTemplates || !Array.isArray(value?.scenes)) throw Error('trusted scene configuration unavailable')
   const next = visibleConfiguredScenes(value).map(projectTrustedScene)
   const current = next.find(scene => scene.id === currentTab)
+  const previous = data.scenes.find(scene => scene.id === currentTab)
+  const layoutChanges = next.flatMap(scene => {
+    const prior = data.scenes.find(item => item.id === scene.id)
+    if (!prior || ![...prior.panels, ...scene.panels].some(panel => /^component-[a-z0-9-]{1,38}$/.test(panel.id))) return []
+    const before = prior.panels.map(layoutGeometry), after = scene.panels.map(layoutGeometry)
+    return JSON.stringify(before) === JSON.stringify(after) ? [] : [{ sceneId: scene.id, before, after }]
+  })
+  if (layoutChanges.length) window.dispatchEvent(new CustomEvent('scene-configuration-layout', { detail: layoutChanges }))
   trustedSceneConfiguration = value
   data.scenes = next
   buildTabs()
@@ -58,12 +55,18 @@ function applyTrustedSceneConfiguration(value) {
   for (const element of [...grid.querySelectorAll(':scope > [data-panel-id]')]) {
     const panel = current.panels.find(item => item.id === element.dataset.panelId)
     const before = element.__meta
-    if (!panel || ['type', 'roleId', 'path', 'hostPanelId'].some(key => panel[key] !== before[key])) {
+    if (!panel || ['type', 'roleId', 'path', 'hostPanelId', 'componentId'].some(key => panel[key] !== before[key])) {
       cleanups.get(element.dataset.panelId)?.(); cleanups.delete(element.dataset.panelId); element.remove()
     } else {
-      element.__meta = { ...before, ...panel }
-      for (const key of ['col', 'row', 'w', 'h']) element.dataset[key] = panel[key]
-      applyGeom(element)
+      const prior = previous?.panels.find(item => item.id === panel.id)
+      const geometry = ['col', 'row', 'w', 'h']
+      const changed = !prior || geometry.some(key => prior[key] !== panel[key])
+      element.__meta = { ...before, ...panel, ...(!changed && Object.fromEntries(geometry.map(key => [key, Number(element.dataset[key])]))) }
+      element.__defaultLayoutGeometry = layoutGeometry(panel)
+      if (changed) {
+        for (const key of geometry) element.dataset[key] = panel[key]
+        applyGeom(element)
+      }
       const label = element.querySelector('.panel-title')
       if (label) label.textContent = panel.title
     }
@@ -76,6 +79,7 @@ function applyTrustedSceneConfiguration(value) {
 async function showSceneConfiguration() {
   if (typeof window.app?.saveSceneConfiguration !== 'function') return disconnectedModal('场景配置', '桌面场景配置入口不可用。')
   const actual = await window.app.sourceConfig()
+  let expectedRevision = actual.configurationRevision
   const document = structuredClone(Object.fromEntries(['version', 'grid', 'businessRoutes', 'scenes'].map(key => [key, actual[key]])))
   let selected = document.scenes.find(value => value.id === currentTab) ?? document.scenes[0]
   openModal('场景配置', body => {
@@ -97,20 +101,93 @@ async function showSceneConfiguration() {
       fields.append(el('label', 'mdl-row', el('span', '', '默认角色'), roles))
       for (const panel of selected.panels.filter(value => value.optional !== true)) {
         fields.append(el('strong', '', panel.id))
+        const components = actual.componentCatalog?.filter(value => value.templateSceneId === selected.templateSceneId
+          && value.panelId === panel.id && value.type === panel.type) ?? []
+        const base = components[0]
+        if (base && (panel.path === base.defaultPath || components.some(value => value.id === panel.componentId))) {
+          const choice = make('select')
+          const original = make('option', '', base.defaultLabel)
+          original.value = ''
+          choice.append(original, ...components.map(value => {
+            const option = make('option', '', value.label); option.value = value.id; return option
+          })); choice.value = panel.componentId ?? ''
+          choice.addEventListener('change', () => {
+            const component = components.find(value => value.id === choice.value)
+            if (component) {
+              Object.assign(panel, { componentId: component.id, path: component.path, title: component.label, category: component.category })
+            } else {
+              delete panel.componentId
+              Object.assign(panel, { path: base.defaultPath, title: base.defaultLabel })
+            }
+            redraw()
+          })
+          fields.append(el('label', 'mdl-row', el('span', '', '面板组件'), choice))
+        }
         input('面板名称', panel.title, value => { panel.title = value })
-        for (const key of ['col', 'row', 'w', 'h']) input(key, panel[key], value => { panel[key] = value }, 'number')
+        for (const [key, label] of [['col', '起始列'], ['row', '起始行'], ['w', '宽度（格）'], ['h', '高度（格）']]) {
+          input(label, panel[key], value => { panel[key] = value }, 'number')
+        }
+        if (isComponentInstance(panel)) {
+          const removeComponent = make('button', '', `移除组件：${panel.title}`)
+          removeComponent.type = 'button'
+          removeComponent.addEventListener('click', () => {
+            selected.panels = selected.panels.filter(value => value !== panel)
+            redraw()
+          })
+          fields.append(removeComponent)
+        }
+      }
+      if (selected.templateSceneId) {
+        const available = actual.componentCatalog?.filter(component => component.allowStandalone
+          && !selected.panels.some(panel => panel.path === component.path)) ?? []
+        if (available.length) {
+          const choices = make('select')
+          choices.append(...available.map(component => {
+            const option = make('option', '', component.label); option.value = component.id; return option
+          }))
+          const add = make('button', '', '添加组件')
+          add.type = 'button'
+          add.addEventListener('click', () => {
+            const component = available.find(value => value.id === choices.value) ?? available[0]
+            const cells = Array.from({ length: 16 }, (_, index) => ({ col: index % 4 + 1, row: Math.floor(index / 4) + 1 }))
+            const free = cells.find(({ col, row }) => !selected.panels.some(panel => panel.optional !== true
+              && col >= panel.col && col < panel.col + panel.w && row >= panel.row && row < panel.row + panel.h))
+            if (!free || selected.panels.length >= 12) { note.textContent = '没有可用位置。请先缩小或移动现有面板，腾出一个网格。'; return }
+            selected.panels.push({ id: `component-${crypto.randomUUID()}`, componentId: component.id,
+              type: component.type, path: component.path, category: component.category, title: component.label, ...free, w: 1, h: 1 })
+            redraw()
+          })
+          fields.append(el('label', 'mdl-row', el('span', '', '可添加组件'), choices), add)
+        }
       }
     }
     selector.addEventListener('change', () => { selected = document.scenes.find(scene => scene.id === selector.value); redraw() })
     const clone = make('button', '', '复制为新场景'), remove = make('button', '', '移除自建场景')
     clone.type = remove.type = 'button'
+    const cloneId = make('input')
+    cloneId.type = 'text'
+    cloneId.maxLength = 48
+    const confirmClone = make('button', '', '确认复制'), cancelClone = make('button', '', '取消复制')
+    confirmClone.type = cancelClone.type = 'button'
+    const cloneFields = el('div', 'scene-configuration-fields',
+      el('label', 'mdl-row', el('span', '', '新场景标识'), cloneId), confirmClone, cancelClone)
+    cloneFields.hidden = true
     clone.addEventListener('click', () => {
-      const id = window.prompt('新场景标识（小写字母、数字、连字符，最多48位）')
-      if (id === null) return
+      cloneFields.hidden = false
+      cloneId.focus()
+    })
+    const closeClone = () => {
+      cloneFields.hidden = true
+      cloneId.value = ''
+      clone.focus()
+    }
+    cancelClone.addEventListener('click', closeClone)
+    confirmClone.addEventListener('click', () => {
+      const id = cloneId.value
       if (!/^[a-z0-9-]{1,48}$/.test(id) || document.scenes.some(scene => scene.id === id) || document.scenes.length >= 16) { note.textContent = '场景标识无效、重复或数量已达上限。'; return }
       const next = { ...structuredClone(selected), id, label: `${selected.label}（副本）`, templateSceneId: selected.templateSceneId ?? selected.id }
       delete next.defaultBusinessRoute
-      document.scenes.push(next); selected = next; redraw()
+      document.scenes.push(next); selected = next; redraw(); closeClone()
     })
     remove.addEventListener('click', () => {
       if (!selected.templateSceneId || Object.values(document.businessRoutes).some(route => route.sceneId === selected.id)) { note.textContent = '五个现有业务入口场景不能在此移除。'; return }
@@ -126,9 +203,13 @@ async function showSceneConfiguration() {
       } catch { note.textContent = '配置未保存或已被其他编辑更新；请关闭并重新打开配置。' }
       finally { save.disabled = retry.disabled = false }
     }
-    save.addEventListener('click', () => void perform(() => window.app.saveSceneConfiguration({ expectedRevision: actual.configurationRevision, configuration: document })))
+    save.addEventListener('click', () => void perform(async () => {
+      const result = await window.app.saveSceneConfiguration({ expectedRevision, configuration: document })
+      if (result.saved === true && typeof result.configurationRevision === 'string') expectedRevision = result.configurationRevision
+      return result
+    }))
     retry.addEventListener('click', () => void perform(() => window.app.applySceneConfiguration()))
-    body.append(note, selector, fields, clone, remove, save, retry); redraw()
+    body.append(note, selector, fields, clone, cloneFields, remove, save, retry); redraw()
   })
 }
 
@@ -216,8 +297,22 @@ const el = (tag, className, ...children) => {
 }
 
 /* ---------------- 小组件（临摹内容用） ---------------- */
+function createReplicaIcon(d, viewBox = '0 0 24 24') {
+  const ns = 'http://www.w3.org/2000/svg'
+  const svg = document.createElementNS(ns, 'svg')
+  const path = document.createElementNS(ns, 'path')
+  for (const [name, value] of Object.entries({
+    class: 'replica-line-icon', viewBox, fill: 'none', stroke: 'currentColor',
+    'stroke-width': '1.5', 'stroke-linecap': 'round', 'stroke-linejoin': 'round',
+    'aria-hidden': 'true', focusable: 'false',
+  })) svg.setAttribute(name, value)
+  path.setAttribute('d', d)
+  svg.append(path)
+  return svg
+}
+
 function iconBtn(glyph, title, onClick, cls = '') {
-  const b = make('button', `icon-control ${cls}`, glyph)
+  const b = el('button', `icon-control ${cls}`, glyph)
   b.type = 'button'; b.title = title; b.setAttribute('aria-label', title)
   if (onClick) b.onclick = onClick
   return b
@@ -274,6 +369,7 @@ const rendererRegistry = {
 
   /* ---- 文档预览 ---- */
   doc(panel, content) {
+    if (panel.componentId && panel.path === '/artifacts#files' && typeof window.businessBridge?.renderCompanion === 'function') return window.businessBridge.renderCompanion(panel, content, 'files')
     if (typeof window.businessBridge?.renderBusinessPanel === 'function') return window.businessBridge.renderBusinessPanel(panel, content, panel.path)
     const docName = el('span', 'doc-name', `${panel.title || '工作区说明'}.md`)
     const docSub = el('span', 'doc-sub mono', '示例文档 · 仅用于界面预览')
@@ -681,7 +777,20 @@ const unsupportedRenderer = (panel, content) => {
    ============================================================ */
 const TABBAR_VERSION = 'tabs-2026-09-26.1'
 const TAB_COLLAPSED_W = 33
-const SCENE_ICONS = ['▦', '◧', '⇄', '◇', '☰', '⧉', '▤', '▣', '✚']
+const SCENE_ICONS = Object.freeze({
+  center: 'M3 3h5v5H3zM12 3h5v5h-5zM3 12h5v5H3zM12 12h5v5h-5z',
+  products: 'm10 2.5 7 4v7l-7 4-7-4v-7l7-4ZM3 6.5l7 4 7-4M10 10.5v7',
+  'agent-center': 'M7 3.5H5a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-12a1 1 0 0 0-1-1h-2M7 2.5h6v3H7zM7 8h6M7 11h6M7 14h4',
+  deliverables: 'M3 4.5h14v3H3zM4 7.5v9h12v-9M8 11h4m-2-2v5m-2-2 2 2 2-2',
+  runs: 'M17.5 10a7.5 7.5 0 1 1-15 0 7.5 7.5 0 0 1 15 0ZM10 5.5v5l3.5 2',
+  'user-profile': 'M13 6.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0ZM3.5 17c.7-3.1 3.1-4.8 6.5-4.8s5.8 1.7 6.5 4.8',
+  erpnext: 'M3 4a1.5 1.5 0 0 1 1.5-1.5h11A1.5 1.5 0 0 1 17 4v12a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 16ZM6 6h8M6 9h8M6 12h3M11.5 12H14M6 15h3M11.5 15H14',
+})
+function createSceneIcon(scene) {
+  const key = scene.templateSceneId ?? scene.id
+  const shape = Object.hasOwn(SCENE_ICONS, key) ? SCENE_ICONS[key] : 'M16 10a6 6 0 1 1-12 0 6 6 0 0 1 12 0Z'
+  return createReplicaIcon(shape, '0 0 20 20')
+}
 
 function tabListOf(nav) {
   return Array.prototype.filter.call(nav.children, n => n && n.classList && n.classList.contains('tab'))
@@ -869,41 +978,18 @@ function panelHead(meta) {
   return { head, grip, identity }
 }
 
-function createPanelExpandIcon() {
-  const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
-  icon.setAttribute('viewBox', '0 0 24 20')
-  icon.setAttribute('aria-hidden', 'true')
-  icon.setAttribute('focusable', 'false')
-  const addLayer = (className, d) => {
-    const group = document.createElementNS('http://www.w3.org/2000/svg', 'g')
-    group.setAttribute('class', className)
-    for (const layer of d) {
-      const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect')
-      rect.setAttribute('x', layer.x); rect.setAttribute('y', layer.y)
-      rect.setAttribute('width', layer.width); rect.setAttribute('height', layer.height)
-      rect.setAttribute('rx', '1.1')
-      rect.setAttribute('transform', layer.transform)
-      rect.setAttribute('fill', layer.front ? 'var(--panel-header)' : 'none')
-      rect.setAttribute('stroke', layer.front ? 'currentColor' : 'var(--text-dim)')
-      rect.setAttribute('stroke-width', layer.front ? '1.35' : '1.1')
-      group.append(rect)
-    }
-    icon.append(group)
-  }
-  const horizontal = { x: 2, y: 6, width: 15, height: 8, transform: 'rotate(-4 9.5 10)', front: true }
-  const vertical = { x: 9, y: 2.5, width: 8, height: 15, transform: 'rotate(-4 13 10)', front: false }
-  addLayer('panel-expand-icon-normal', [vertical, horizontal])
-  addLayer('panel-expand-icon-extended', [{ ...horizontal, front: false }, { ...vertical, front: true }])
-  return icon
-}
-
 function setPanelExpandControl(button, expanded) {
   if (!button) return
   const label = expanded ? '还原面板高度' : '向上延长面板'
   button.dataset.extended = expanded ? 'true' : 'false'
+  button.replaceChildren(createReplicaIcon(expanded ? 'M12 5v14m-5-5 5 5 5-5' : 'M12 19V5m-5 5 5-5 5 5'))
   button.setAttribute('aria-pressed', String(Boolean(expanded)))
   button.setAttribute('aria-label', label)
   button.title = label
+}
+
+function layoutGeometry({ id, col, row, w, h }) {
+  return { id, col, row, w, h }
 }
 
 function makePanel(meta, idx) {
@@ -913,6 +999,7 @@ function makePanel(meta, idx) {
   wrap.dataset.col = meta.col; wrap.dataset.row = meta.row
   wrap.dataset.w = meta.w; wrap.dataset.h = meta.h
   wrap.__meta = { ...meta, _idx: idx }
+  wrap.__defaultLayoutGeometry = layoutGeometry(meta)
   applyGeom(wrap)
   const { head, grip, identity } = panelHead({ ...meta, _idx: idx })
 
@@ -920,7 +1007,6 @@ function makePanel(meta, idx) {
   const controls = make('div', 'panel-controls')
   const exp = el('button', 'panel-expand')
   exp.type = 'button'
-  exp.append(createPanelExpandIcon())
   setPanelExpandControl(exp, false)
   exp.addEventListener('click', ev => {
     ev.preventDefault(); ev.stopPropagation()
@@ -928,7 +1014,7 @@ function makePanel(meta, idx) {
     else expandPanel(wrap, exp)
   })
   identity.append(exp)
-  const refresh = iconBtn('↻', '刷新面板', () => {
+  const refresh = iconBtn(createReplicaIcon('M20 11a8 8 0 1 0-2 6M20 4v7h-7'), '刷新面板', () => {
     try { cleanups.get(meta.id)?.() } catch { /* ignore */ }
     const body = wrap.querySelector('.panel-content'); body.replaceChildren()
     cleanups.set(meta.id, (rendererRegistry[meta.type] || unsupportedRenderer)(meta, body))
@@ -1077,7 +1163,7 @@ function attachDrag(panel, handle, grip) {
   }
   const start = e => {
     if (e.button !== 0) return
-    if (e.target.closest('.icon-control, .panel-expand')) return
+    if (e.target.closest('.icon-control, .panel-expand, .pi-component-tabs')) return
     if (expandedStateOf(panel)) return
     if (pending || dragging || activePanelDragCancel) return
     const rect = panel.getBoundingClientRect()
@@ -1096,7 +1182,7 @@ function attachDrag(panel, handle, grip) {
   const move = e => {
     if (!pending || e.pointerId !== pending.pointerId) return
     if (!dragging) {
-      if (Math.hypot(e.clientX - pending.x, e.clientY - pending.y) < 8) return
+      if (Math.hypot(e.clientX - pending.x, e.clientY - pending.y) < (window.sourcePanelTabs?.dragThreshold ?? 8)) return
       dragging = true
       panel.classList.add('dragging')
       panel.style.zIndex = '10000'
@@ -1149,7 +1235,7 @@ function attachDrag(panel, handle, grip) {
 function findSnapTarget(x, y, self) {
   let best = null, bestDist = Infinity
   grid.querySelectorAll('.panel').forEach(p => {
-    if (p === self) return
+    if (p === self || p.classList.contains('pi-closed') || p.classList.contains('pi-tab-inactive')) return
     const r = p.getBoundingClientRect()
     const cx = r.left + r.width / 2, cy = r.top + r.height / 2
     const d = Math.hypot(cx - x, cy - y)
@@ -1158,6 +1244,8 @@ function findSnapTarget(x, y, self) {
   return bestDist < 260 ? best : null
 }
 function swapGeom(a, b) {
+  a = window.sourcePanelTabs?.slotPanel(a) ?? a
+  b = window.sourcePanelTabs?.slotPanel(b) ?? b
   for (const k of ['col', 'row', 'w', 'h']) {
     const t = a.dataset[k]; a.dataset[k] = b.dataset[k]; b.dataset[k] = t
   }
@@ -1169,6 +1257,7 @@ function swapGeom(a, b) {
       p.__meta.w = +p.dataset.w; p.__meta.h = +p.dataset.h
     }
   }
+  window.dispatchEvent(new CustomEvent('scene-panel-slot-swap', { detail: [a, b] }))
 }
 
 /* ============================================================
@@ -1189,7 +1278,6 @@ function clearScene() {
 
 function commitScenario(scene) {
   if (!scene) return false
-  scene = window.prepareWorkflowLayout?.(scene) || scene
   activePanelDragCancel?.()
   currentTab = scene.id
   clearScene()
@@ -1356,16 +1444,16 @@ function buildTabs() {
   const byId = new Map(data.scenes.map(s => [s.id, s]))
   const sorted = [...order.map(id => byId.get(id)).filter(Boolean),
                   ...data.scenes.filter(s => !order.includes(s.id))]
-  sorted.forEach((scene, i) => {
+  sorted.forEach(scene => {
     const tab = make('button', 'tab' + (scene.id === currentTab ? ' active' : ''))
     tab.type = 'button'
     tab.dataset.id = scene.id
     tab.dataset.scId = scene.id
     tab.dataset.movable = '1'
     tab.append(
-      el('span', 'tab-ico', SCENE_ICONS[data.scenes.indexOf(scene)] || SCENE_ICONS[i] || '◇'),
+      el('span', 'tab-ico', createSceneIcon(scene)),
       el('span', 'tab-label', scene.name))
-    const detach = el('span', 'tab-detach', '⧉')
+    const detach = el('span', 'tab-detach', createReplicaIcon('M13 4h7v7M20 4l-9 9M10 4H4v16h16v-6'))
     detach.title = '在新窗口打开此场景'
     detach.addEventListener('click', ev => {
       ev.preventDefault(); ev.stopPropagation()
@@ -1420,7 +1508,7 @@ let toolModalBack = null
 function ensureModalHeader(titleText) {
   const title = $('#modal-title')
   const head = title.parentElement
-  let group = head.querySelector('.modal-title-group')
+  let group = head.classList.contains('modal-title-group') ? head : null
   if (!group) {
     group = make('div', 'modal-title-group')
     head.insertBefore(group, title)
@@ -1466,35 +1554,6 @@ function modalRows(body, rows, note) {
     body.append(row)
   }
   if (note) body.append(el('div', 'modal-note', note))
-}
-function showPlugins() {
-  if (window.businessBridge?.isDesktop?.()) {
-    openModal('插件目录', body => {
-      body.append(el('div', 'modal-note', '正在读取原生工作区中的插件目录…'))
-    })
-    const body = $('#modal-body')
-    const current = () => $('#modal-mask').style.display !== 'none' && $('#modal-title').textContent === '插件目录'
-    void window.businessBridge.globalAction('plugins').then(result => {
-      if (!current()) return
-      if (!result?.ok || !Array.isArray(result.value?.entries)) {
-        body.replaceChildren(el('div', 'modal-note', '插件目录暂不可用；原生工作区未返回可确认的条目。'))
-        return
-      }
-      const rows = result.value.entries.map(item => [
-        typeof item?.moduleName === 'string' && item.moduleName ? item.moduleName.slice(0, 1) : '·',
-        typeof item?.meta?.title === 'string' ? item.meta.title : (typeof item?.moduleName === 'string' ? item.moduleName : '未命名插件'),
-        typeof item?.meta?.description === 'string' ? item.meta.description : (typeof item?.entryId === 'string' ? item.entryId : ''),
-        [[item?.enabled === true ? '已启用' : '未启用', item?.enabled === true ? 'ok' : '']],
-      ])
-      body.replaceChildren()
-      modalRows(body, rows, '')
-      if (!rows.length) body.append(el('div', 'modal-note', '原生工作区没有返回插件条目。'))
-    }).catch(() => {
-      if (current()) body.replaceChildren(el('div', 'modal-note', '插件目录暂不可用。'))
-    })
-    return
-  }
-  disconnectedModal('插件目录', '浏览器预览不能读取桌面宿主的插件目录。')
 }
 function disconnectedModal(title, detail) {
   openModal(title, body => body.append(el('div', 'modal-note', detail), el('div', 'modal-note', '桌面宿主或业务服务未连接；此处没有示例数据。')))
@@ -1557,17 +1616,15 @@ function showTools() {
   toolModalBack = null
   const native = window.businessBridge?.isDesktop?.() === true
   const entries = [
-    ['ERPNext 服务', native ? '打开原生 ERPNext 状态组件窗口。' : '浏览器预览不连接 ERPNext。', showERPNextService],
-    ['刷新场景 / 重试', '重新渲染当前场景。', () => { closeModal(); if (currentTab) loadScenario(currentTab) }],
-    ['返回工作台', '切回工作总览场景。', () => { closeModal(); loadScenario('center') }],
-    ['界面大小', '字号与组件尺寸同步档位。', showAppearanceSettings],
-    ['动效', '切换界面动效偏好。', showAppearanceSettings],
-    ['助手能力', native ? '读取当前助手的配置、MCP 与 Skill 状态。' : '浏览器预览不读取助手能力。', showAssistantCapabilities],
-    ['应用 / 编辑', native ? '打开原生应用或编辑菜单。' : '浏览器预览没有桌面应用菜单。', showAppsEditor],
-    ['原生会话', native ? '打开隐藏原生工作区的会话窗口。' : '浏览器预览不能打开原生会话。', showNativeConversation],
-    ['场景配置', native ? '编辑现有场景或复制创建自建场景；保存并应用到当前工作台。' : '浏览器预览不能保存桌面场景配置。', showSceneConfiguration],
-    ['引擎程序快照', native ? '保存、预览并在正常停机后恢复受控程序代际。' : '浏览器预览不能恢复引擎程序。', showEngineGenerations],
-    ['已注册工具', native ? '读取桌面宿主中的已注册工具目录。' : '浏览器预览不能读取桌面工具目录。', showRegisteredTools],
+    ['界面大小与动效', '调整字号、组件尺寸与界面动效。', showAppearanceSettings],
+    ...(native ? [
+      ['ERPNext 服务', '打开原生 ERPNext 状态组件窗口。', showERPNextService],
+      ['助手能力', '读取当前助手的配置、MCP 与 Skill 状态。', showAssistantCapabilities],
+      ['应用 / 编辑', '打开原生应用或编辑菜单。', showAppsEditor],
+      ['场景配置', '编辑现有场景或复制创建自建场景。', showSceneConfiguration],
+      ['引擎程序快照', '保存、预览并在正常停机后恢复受控程序代际。', showEngineGenerations],
+      ['已注册工具', '读取桌面宿主中的已注册工具目录。', showRegisteredTools],
+    ] : []),
   ]
   openModal('工作台工具', body => {
     const list = el('div', 'preview-action-list')
@@ -1579,16 +1636,13 @@ function showTools() {
       button.setAttribute('aria-label', `打开${name}`)
       if (name === '应用 / 编辑' && native) button.dataset.nativeAction = 'application-edit'
       button.addEventListener('click', () => {
-        if (name === '刷新场景 / 重试' || name === '返回工作台') return activate()
         toolModalBack = showTools
         activate()
       })
       row.append(button)
       list.append(row)
     }
-    body.append(list, el('div', 'modal-note', native
-      ? '各入口独立读取或调用现有桌面接口；目录失败不会关闭此菜单。'
-      : '浏览器预览不连接桌面宿主或业务服务；此处不会显示伪造的工具、能力或用量数据。'))
+    body.append(list)
   })
 }
 
@@ -1604,43 +1658,6 @@ function showERPNextService() {
       el('div', 'modal-note', `组件状态：${result.value.status || '未提供'}。此状态不代表 ERPNext 业务服务已通过健康检查。`))
   }).catch(() => { if (current()) body.replaceChildren(el('div', 'modal-note', 'ERPNext 原生状态组件暂不可用。')) })
 }
-function showModels() {
-  if (window.businessBridge?.isDesktop?.()) {
-    openModal('模型与提供方', body => body.append(el('div', 'modal-note', '正在读取模型目录…')))
-    const body = $('#modal-body')
-    const current = () => $('#modal-mask').style.display !== 'none' && $('#modal-title').textContent === '模型与提供方'
-    void window.businessBridge.globalAction('models').then(result => {
-      if (!current()) return
-      const catalog = result?.value
-      if (!result?.ok || !catalog || !Array.isArray(catalog.groups)) {
-        body.replaceChildren(el('div', 'modal-note', '模型目录暂不可读。'))
-        return
-      }
-      const rows = []
-      for (const group of catalog.groups) {
-        if (!group || typeof group.id !== 'string' || !Array.isArray(group.models)) continue
-        const name = typeof group.name === 'string' ? group.name : group.id
-        if (!group.models.length) rows.push([name.slice(0, 1) || '·', name, '该提供方目录当前没有模型条目。', []])
-        for (const model of group.models) {
-          if (!model || typeof model.id !== 'string') continue
-          const isDefault = catalog.defaultModel?.provider === group.id && catalog.defaultModel.model === model.id
-          rows.push([name.slice(0, 1) || '·', model.name || model.id, `${name} · ${model.id}`,
-            isDefault ? [['目录默认（未指定会话）', 'info']] : []])
-        }
-      }
-      const notes = []
-      if (catalog.defaultModel) notes.push(`目录默认（未指定会话）：${catalog.defaultModel.model} @ ${catalog.defaultModel.provider}`)
-      else notes.push('目录默认模型：未提供。')
-      if (Array.isArray(catalog.failures) && catalog.failures.length) notes.push(`部分提供方目录读取失败：${catalog.failures.length} 个；目录结果可能不完整。`)
-      body.replaceChildren()
-      modalRows(body, rows, notes.join(' '))
-      if (!rows.length) body.append(el('div', 'modal-note', '当前没有可确认的模型条目。'))
-    }).catch(() => { if (current()) body.replaceChildren(el('div', 'modal-note', '模型目录暂不可读。')) })
-    return
-  }
-  disconnectedModal('模型与提供方', '浏览器预览不能读取桌面宿主的模型目录。')
-}
-
 function showLocalPreview(title, description) {
   openModal(title, body => {
     body.append(
@@ -1671,50 +1688,29 @@ function showAppsEditor() {
   })
 }
 
-function showNativeConversation() {
-  if (!window.businessBridge?.isDesktop?.()) return disconnectedModal('原生会话', '浏览器预览不能打开隐藏原生工作区。')
-  openModal('原生会话', body => body.append(el('div', 'modal-note', '正在检查原生工作区并打开会话窗口…')))
-  const body = $('#modal-body')
-  const current = () => $('#modal-mask').style.display !== 'none' && $('#modal-title').textContent === '原生会话'
-  void window.businessBridge.globalAction('native-conversation').then(result => {
-    if (!current()) return
-    body.replaceChildren(el('div', 'modal-note', result?.ok
-      ? '已打开或聚焦原生工作区窗口。会话和用量由该工作区显示。'
-      : result?.reason === 'not-mounted' ? '原生工作区尚未挂载，当前没有打开会话。' : '原生工作区窗口暂不可用。'))
-  }).catch(() => { if (current()) body.replaceChildren(el('div', 'modal-note', '原生工作区窗口暂不可用。')) })
-}
-
 function showAssistantCapabilities() {
-  const native = window.businessBridge?.isDesktop?.() === true
-  openModal('助手能力', body => {
-    const content = el('div', 'capability-content')
-    body.append(content)
-    const actions = el('div', 'capability-actions')
-    const reload = () => loadAgentCapabilities(content)
-    for (const label of ['重新读取', '读取最新', '保存为默认', '使用已保存配置新建对话']) {
-      const button = make('button', 'capability-action', label)
-      button.type = 'button'
-      if (label === '重新读取' || label === '读取最新') {
-        button.disabled = !native
-        button.title = native ? '重新读取当前助手的只读配置与能力' : '浏览器预览未连接助手配置服务'
-        button.addEventListener('click', reload)
-      } else {
-        button.disabled = true
-        button.title = '当前桌面桥没有配置写入或带配置新建会话接口'
-      }
-      actions.append(button)
-    }
-    body.append(actions, el('div', 'modal-note', native
-      ? '只读显示当前助手返回的配置与能力。保存和使用配置新建会话尚无桌面桥接。'
-      : '浏览器预览未连接助手配置服务；没有显示示例能力。'))
-    if (native) reload()
-  })
+  if (typeof window.app?.openAssistantCapabilities !== 'function') return disconnectedModal('助手能力', '浏览器预览未连接助手配置服务。')
+  void window.app.openAssistantCapabilities(currentTab).catch(() => disconnectedModal('助手能力', '助手能力窗口暂不可用。'))
 }
 
-function loadAgentCapabilities(content) {
-  content.replaceChildren(el('div', 'modal-note', '正在读取当前助手配置与能力…'))
-  void window.businessBridge.globalAction('agent-data').then(result => {
-    if (!content.isConnected) return
+function mountAssistantCapabilities(host) {
+  const list = el('nav', 'assistant-capability-list')
+  list.setAttribute('aria-label', '能力分组')
+  const content = el('section', 'assistant-capability-detail')
+  content.setAttribute('aria-live', 'polite')
+  const reload = make('button', 'capability-action', '重新读取')
+  reload.type = 'button'
+  host.replaceChildren(el('main', 'assistant-capability-window', el('div', 'assistant-capability-sidebar', reload, list), content))
+  let generation = 0
+  let selected = '0'
+  const load = async () => {
+    const request = ++generation
+    const current = () => content.isConnected && request === generation
+    list.replaceChildren()
+    content.replaceChildren(el('div', 'modal-note', '正在读取当前助手配置与能力…'))
+    let result
+    try { result = await window.businessBridge.readAssistantCapabilities() } catch { result = undefined }
+    if (!current()) return
     if (!result?.ok) { content.replaceChildren(el('div', 'modal-note', agentDataError(result?.reason))); return }
     const { role, capabilities, configuration } = result.value
     const section = (title, details) => {
@@ -1743,10 +1739,39 @@ function loadAgentCapabilities(content) {
       section('工具能力', [`状态：${typeof tools.status === 'string' ? tools.status : '未提供'}`, `已返回：${Array.isArray(tools.items) ? tools.items.length : 0} 项 · 总数：${Number.isFinite(tools.total) ? tools.total : '未提供'}`, ...(Array.isArray(tools.items) ? tools.items.map(item => typeof item?.name === 'string' ? item.name : '').filter(Boolean) : [])]),
       section('Skill', [`状态：${typeof skills.status === 'string' ? skills.status : '未提供'}`, `已返回：${Array.isArray(skills.items) ? skills.items.length : 0} 项 · 总数：${Number.isFinite(skills.total) ? skills.total : '未提供'}`, ...(Array.isArray(skills.items) ? skills.items.map(item => typeof item?.name === 'string' ? item.name : '').filter(Boolean) : [])]),
     ]
-    content.replaceChildren(...details)
-  }).catch(() => {
-    if (content.isConnected) content.replaceChildren(el('div', 'modal-note', '当前助手配置与能力暂不可读。'))
-  })
+    const labels = ['当前配置', '已保存配置', 'MCP 配置', 'MCP 能力', '工具能力', 'Skill']
+    const flags = value => value === true ? '允许' : value === false ? '不允许' : '未提供'
+    const leaves = [[], [],
+      configuration.mcpServers.flatMap(server => typeof server?.serverName === 'string'
+        ? [[server.serverName, [`连接方式：${server.transport === 'stdio' ? 'stdio' : server.transport === 'streamable-http' ? 'Streamable HTTP' : '未提供'}`]]] : []),
+      (Array.isArray(mcp.visibleTools) ? mcp.visibleTools : []).flatMap(name => typeof name === 'string' ? [[name, ['当前助手可见的 MCP 工具']]] : []),
+      (Array.isArray(tools.items) ? tools.items : []).flatMap(item => typeof item?.name === 'string' ? [[item.name, ['当前助手可见的工具']]] : []),
+      (Array.isArray(skills.items) ? skills.items : []).flatMap(item => typeof item?.name === 'string' ? [[item.name, [
+        typeof item.description === 'string' && item.description ? item.description : '未提供描述',
+        `来源：${typeof item.source === 'string' ? item.source : '未提供'}`,
+        `模型调用：${flags(item.invocation?.modelInvocable)} · 用户调用：${flags(item.invocation?.userInvocable)}`,
+      ]]] : []),
+    ]
+    const items = new Map()
+    const pick = key => {
+      selected = key
+      for (const [id, item] of items) item.button.setAttribute('aria-current', id === key ? 'true' : 'false')
+      content.replaceChildren(items.get(key).detail)
+    }
+    const entry = (label, id, detail, child = false) => {
+      const button = make('button', child ? 'capability-action assistant-capability-item' : 'capability-action', label)
+      button.type = 'button'
+      button.addEventListener('click', () => { if (current()) pick(id) })
+      items.set(id, { button, detail })
+      return button
+    }
+    list.replaceChildren(...labels.map((label, index) => el('div', 'assistant-capability-group',
+      entry(label, String(index), details[index]), ...leaves[index].map(([name, facts], position) =>
+        entry(name, `${index}:${position}:${name}`, section(name, facts), true)))))
+    pick(items.has(selected) ? selected : '0')
+  }
+  reload.addEventListener('click', () => void load())
+  void load()
 }
 
 const UI_SCALE_KEY = 'uiPreviewScale'
@@ -1850,11 +1875,51 @@ function showSettings() {
   })
 }
 
-function showMobileLink() {
+function positionToolbarPanel(panel, anchor) {
+  const rect = anchor.getBoundingClientRect()
+  panel.style.top = `${Math.max(4, Math.min(rect.bottom + 4, window.innerHeight - panel.offsetHeight - 4))}px`
+  panel.style.right = `${Math.max(4, Math.min(window.innerWidth - rect.right, window.innerWidth - panel.offsetWidth - 4))}px`
+}
+
+let closeMobileLink
+function showMobileLink(event) {
   if (window.businessBridge?.isDesktop?.()) {
-    openModal('连接手机', body => body.append(el('div', 'modal-note', '正在请求手机连接信息…')))
-    const body = $('#modal-body')
-    const current = () => $('#modal-mask').style.display !== 'none' && $('#modal-title').textContent === '连接手机'
+    if (closeMobileLink) { closeMobileLink(true); return }
+    const button = event.currentTarget
+    const anchor = button.closest('#toolbar-overflow-menu') ? $('#btn-toolbar-overflow') : button
+    const body = el('div', 'titlebar-overflow-menu mobile-link-popover', el('div', 'modal-note', '正在请求手机连接信息…'))
+    body.setAttribute('role', 'dialog')
+    body.setAttribute('aria-label', '连接手机')
+    body.tabIndex = -1
+    const current = () => body.isConnected
+    const position = () => positionToolbarPanel(body, anchor)
+    const outside = event => { if (!body.contains(event.target) && !anchor.contains(event.target)) close(false) }
+    const escape = event => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      event.stopPropagation()
+      close(true)
+    }
+    const close = (focus = false) => {
+      body.remove()
+      closeMobileLink = undefined
+      button.setAttribute('aria-expanded', 'false')
+      if (anchor !== button) anchor.removeEventListener('click', closeFromOverflow, true)
+      document.removeEventListener('pointerdown', outside, true)
+      document.removeEventListener('keydown', escape, true)
+      window.removeEventListener('resize', position)
+      if (focus) (anchor.getClientRects().length ? anchor : button).focus()
+    }
+    const closeFromOverflow = () => close()
+    closeMobileLink = close
+    button.setAttribute('aria-expanded', 'true')
+    if (anchor !== button) anchor.addEventListener('click', closeFromOverflow, true)
+    document.body.append(body)
+    document.addEventListener('pointerdown', outside, true)
+    document.addEventListener('keydown', escape, true)
+    window.addEventListener('resize', position)
+    position()
+    queueMicrotask(() => { if (current()) body.focus() })
     void window.businessBridge.globalAction('mobile').then(result => {
       if (!current()) return
       const value = result?.value
@@ -1864,6 +1929,7 @@ function showMobileLink() {
         || matrix.modules.length !== matrix.size
         || matrix.modules.some(row => typeof row !== 'string' || row.length !== matrix.size || !/^[01]+$/.test(row))) {
         body.replaceChildren(el('div', 'modal-note', '手机连接信息暂不可用；未生成可确认的二维码。'))
+        position()
         return
       }
       const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
@@ -1885,8 +1951,12 @@ function showMobileLink() {
         catch { copy.textContent = '无法自动复制，请重试' }
       })
       body.replaceChildren(el('div', 'mobile-link-content', svg, el('div', 'modal-note', '请使用手机扫描二维码连接此工作台。'), copy))
+      position()
     }).catch(() => {
-      if (current()) body.replaceChildren(el('div', 'modal-note', '手机连接信息暂不可用。'))
+      if (current()) {
+        body.replaceChildren(el('div', 'modal-note', '手机连接信息暂不可用。'))
+        position()
+      }
     })
     return
   }
@@ -2101,8 +2171,8 @@ function initTitlebarOverflow() {
 
   const labels = new Map([
     ['btn-theme', '外观'], ['btn-mobile', '手机连接'], ['btn-settings', '设置'],
-    ['btn-refresh', '刷新当前场景'], ['btn-plugins', '插件目录'],
-    ['btn-tools', '工作台工具'], ['btn-models', '模型与提供方'],
+    ['btn-refresh', '刷新当前场景'],
+    ['btn-tools', '工作台工具'],
   ])
   const actions = [...actionGroup.querySelectorAll(':scope > button.tb-btn')]
     .filter(button => labels.has(button.id))
@@ -2153,9 +2223,7 @@ function initTitlebarOverflow() {
   }
   function positionMenu() {
     if (menu.hidden) return
-    const rect = trigger.getBoundingClientRect()
-    menu.style.top = `${Math.max(4, Math.min(rect.bottom + 4, window.innerHeight - menu.offsetHeight - 4))}px`
-    menu.style.right = `${Math.max(4, Math.min(window.innerWidth - rect.right, window.innerWidth - menu.offsetWidth - 4))}px`
+    positionToolbarPanel(menu, trigger)
   }
   const setMenuItem = item => {
     const button = item.button
@@ -2296,13 +2364,16 @@ function initTitlebar(nativeCaptionOverlay = false) {
   document.getElementById('btn-refresh').addEventListener('click', () => {
     if (currentTab) loadScenario(currentTab)
   })
-  document.getElementById('btn-mobile').addEventListener('click', showMobileLink)
-  document.getElementById('btn-settings').addEventListener('click', showSettings)
-  document.getElementById('btn-plugins').addEventListener('click', showPlugins)
+  const mobile = document.getElementById('btn-mobile')
+  if (mobile && window.businessBridge?.isDesktop?.()) {
+    mobile.setAttribute('aria-haspopup', 'dialog')
+    mobile.setAttribute('aria-expanded', 'false')
+  }
+  mobile?.addEventListener('click', showMobileLink)
+  document.getElementById('btn-settings')?.addEventListener('click', showSettings)
   document.getElementById('btn-tools').addEventListener('click', showTools)
-  document.getElementById('btn-models').addEventListener('click', showModels)
-  document.getElementById('btn-deepseek').addEventListener('click', () => openWebAiWindow('deepseek', 'https://chat.deepseek.com/'))
-  document.getElementById('btn-doubao').addEventListener('click', () => openWebAiWindow('doubao', 'https://www.doubao.com/chat/'))
+  document.getElementById('btn-deepseek')?.addEventListener('click', () => openWebAiWindow('deepseek', 'https://chat.deepseek.com/'))
+  document.getElementById('btn-doubao')?.addEventListener('click', () => openWebAiWindow('doubao', 'https://www.doubao.com/chat/'))
   document.getElementById('modal-close').addEventListener('click', closeModal)
   document.getElementById('modal-mask').addEventListener('click', e => {
     if (e.target === e.currentTarget) closeModal()
@@ -2360,6 +2431,12 @@ function reportInitialPaintProgress(stage){
 }
 
 async function boot() {
+  if (new URLSearchParams(location.search).get('component') === 'assistant-capabilities-native') {
+    document.title = '助手能力'
+    document.body.classList.add('assistant-capability-surface')
+    mountAssistantCapabilities(document.body)
+    return
+  }
   // The approved five-scene geometry is local UI state and must paint even if the
   // Host config is slow or unavailable. The bridge loads/validates business data
   // independently and replaces only the contents of business-backed panels.

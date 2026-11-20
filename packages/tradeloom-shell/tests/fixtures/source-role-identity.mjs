@@ -13,23 +13,32 @@ const R = new URL('../../../../', import.meta.url)
 const pin = value => ({ bytes: value.length, sha256: createHash('sha256').update(value).digest('hex') })
 
 export async function sourceRoleIdentity(t, { sessionId = 'one', onNativeDescriptorChanged } = {}) {
-  assert.ok(process.env.TL_SEVEN_DESKTOP_INPUTS && process.env.TL_SEVEN_SDK_RUNTIME && process.env.TL_SEVEN_TEST_ROOT, 'explicit final desktop inputs, rc2 SDK and owned test root required')
+  assert.ok(process.env.TL_SEVEN_DESKTOP_INPUTS && process.env.TL_SEVEN_SDK_RUNTIME && process.env.TL_SEVEN_TEST_ROOT, 'explicit final desktop inputs, matching SDK and owned test root required')
+  const require = createRequire(pathToFileURL(join(process.env.TL_SEVEN_SDK_RUNTIME, 'package.json')))
+  const sdk = require('./package.json')
+  assert.equal(sdk.name, '@deepseek-ai/dsh-desktop-runtime')
+  assert.ok(['0.2.2-rc.2', '0.2.2-rc.3'].includes(sdk.version), 'unsupported SDK identity')
+  const isRc3 = sdk.version === '0.2.2-rc.3'
   const inputs = JSON.parse(await readFile(process.env.TL_SEVEN_DESKTOP_INPUTS, 'utf8'))
-  const recipe = JSON.parse(await readFile(new URL('apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.2/desktop-recipe.json', R), 'utf8'))
+  const recipe = JSON.parse(await readFile(new URL(`apps/tradeloom-launcher/dsh-upgrades/${sdk.version}/desktop-recipe.json`, R), 'utf8'))
+  assert.equal(recipe.version, sdk.version)
   async function input(name, entry) {
     const data = await readFile(inputs[name].path)
-    assert.deepEqual(pin(data), { bytes: inputs[name].bytes, sha256: inputs[name].sha256 })
-    assert.deepEqual(pin(data), recipe.finalOverlay.postimages[entry])
+    const actualPin = pin(data)
+    assert.deepEqual(actualPin, { bytes: inputs[name].bytes, sha256: inputs[name].sha256 }, name)
+    const recipePin = isRc3 && name !== 'main' ? recipe.sources[entry].preimage : recipe.finalOverlay.postimages[entry]
+    assert.deepEqual(actualPin, recipePin, entry)
     return data.toString('utf8')
   }
   const controllerSource = await input('controller', 'lib/tradeloom-source-shell/source-shell-controller.mjs')
   const mainSource = await input('main', 'lib/main.js'), preload = await input('preload', 'lib/preload-app.cjs')
   const ownerRow = recipe.sources['lib/tradeloom-source-shell/surface-owner.mjs']
-  const ownerPath = new URL(ownerRow.source, R), ownerBytes = await readFile(ownerPath)
+  const ownerPath = isRc3
+    ? new URL('./surface-owner.mjs', pathToFileURL(inputs.controller.path))
+    : new URL(ownerRow.source, R)
+  const ownerBytes = await readFile(ownerPath)
   assert.deepEqual(pin(ownerBytes), ownerRow.preimage)
   const { createSurfaceOwner } = await import(ownerPath.href)
-  const require = createRequire(pathToFileURL(join(process.env.TL_SEVEN_SDK_RUNTIME, 'package.json')))
-  assert.equal(require('./package.json').version, '0.2.2-rc.2')
   let resolving = false
   const hook = registerHooks({ resolve(specifier, context, next) {
     if (!resolving && (specifier.startsWith('@deepseek-ai/') || specifier.startsWith('@modelcontextprotocol/'))) {
@@ -100,6 +109,7 @@ export async function sourceRoleIdentity(t, { sessionId = 'one', onNativeDescrip
   const primary = new Window(), mainEvent = () => ({ sender: primary.webContents, senderFrame: primary.webContents.mainFrame })
   let rotationResult
   const controller = factory({ BrowserWindow: Window, WebContentsView: View, ipcMain, appPreload: 'controlled-app-preload', sourcePreload: 'controlled-source-preload', ownedPartition: 'persist:controlled', primaryWindow: primary,
+    resolveNativeTheme: preference => preference === 'dark' ? 'dark' : 'light', subscribeNativeTheme: () => () => {},
     getConfig: () => request(scenes, 'GET'), resolveBinding: input => request(bindings, 'POST', input), installProtocol: async () => {}, writeUi18Diagnostic: async () => {},
     saveConfig: input => request(scenes, 'PUT', input), confirmConfigurationChange: async () => true, sceneRotationStatus: async () => rotationResult, onNativeDescriptorChanged })
   const started = controller.start(); started.catch(() => {})

@@ -56,3 +56,32 @@
   background: transparent;
 }
 .business-native-placement[hidden] { display: none; }
+
+/* Local workflow directories share the existing workbench file and preview panels. */
+.tl-workflow-directory-host { display:flex; flex-direction:column; min-height:0 }
+.tl-workflow-directory { display:flex; flex-direction:column; min-height:0; color:inherit; padding:0.4rem }
+.tl-workflow-directory[hidden], .tl-workflow-directory [hidden], .tl-workflow-directory-business[hidden] { display:none }
+.tl-workflow-directory-business { flex:1 1 auto; min-height:0; position:relative; display:flex; flex-direction:column }
+.tl-workflow-directory-bar { display:flex; flex-wrap:wrap; gap:0.3rem; align-items:center }
+.tl-workflow-directory-path { flex:1 0 100%; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:0.8rem }
+.tl-workflow-directory[data-directory-view="files"] .tl-workflow-directory-path { flex:1 1 8rem }
+.tl-workflow-directory-actions { display:flex; flex-wrap:wrap; gap:0.3rem; max-width:100%; flex:0 0 auto }
+.tl-workflow-directory-body { overflow:auto; min-height:0; margin-top:0.35rem }
+.tl-workflow-directory button { color:inherit; background:transparent; border:1px solid currentColor; border-radius:0.25rem; padding:0.15rem 0.3rem; font:inherit; font-size:0.75rem; cursor:pointer }
+.tl-workflow-directory button:disabled { opacity:0.45; cursor:default }
+.tl-workflow-directory-row { display:grid; grid-template-columns:auto minmax(0,1fr); align-items:start; gap:0.3rem; width:100%; margin-bottom:0.15rem; text-align:left; overflow-wrap:anywhere }
+.tl-workflow-directory-row[aria-current="true"] { font-weight:700 }
+.tl-workflow-directory-cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,8.5rem),1fr)); gap:0.35rem }
+.tl-workflow-directory button.tl-workflow-directory-card {
+  display:grid; grid-template-columns:auto minmax(0,1fr); align-content:center; align-items:center; gap:0.15rem 0.35rem;
+  min-width:0; min-height:3.25rem; padding:0.35rem; text-align:left;
+  border-color:var(--line,currentColor); background:var(--bg-panel-hover,transparent)
+}
+.tl-workflow-directory-card .tl-workflow-directory-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.tl-workflow-directory-kind { grid-column:2; color:var(--text-2,inherit) }
+.tl-workflow-directory button[aria-current="true"].tl-workflow-directory-card { border-color:var(--accent,currentColor); font-weight:700 }
+.tl-workflow-directory button:not(:disabled):hover { background:var(--bg-panel-hover,transparent); border-color:var(--accent,currentColor) }
+.tl-workflow-directory button:focus-visible { outline:2px solid var(--accent,currentColor); outline-offset:-2px }
+.tl-workflow-directory-status { margin:0.25rem 0; font-size:0.8rem }
+.tl-workflow-directory-body pre { white-space:pre-wrap; overflow-wrap:anywhere }
+.tl-workflow-directory-body img { display:block; max-width:100%; max-height:100%; object-fit:contain }

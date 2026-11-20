@@ -56,15 +56,23 @@ test('actual native skills controller uses only the retained bound session and c
 
 test('actual title skills producer delivers through current source-preload and ownerchecked Main, not global agent-data',async t=>{
  const source=await readFile(path.join(desktop,'renderer/source-shell/replica-ui/business-bridge.js'),'utf8')
- const helperStart=source.indexOf('  function installRoleSkillsControl('),helperEnd=source.indexOf('  function renderRolePanel(',helperStart);assert.ok(helperStart>0&&helperEnd>helperStart,'actual renderRolePanel needs the title skill control')
+ const helperStart=source.indexOf('  function insertRoleControl('),helperEnd=source.indexOf('  function renderRolePanel(',helperStart);assert.ok(helperStart>0&&helperEnd>helperStart,'actual renderRolePanel needs the title skill control and its placement helper')
  const f=await sourceRoleIdentity(t),expected=await f.descriptor();assert.equal(expected.sessionId,owner.sessionId)
  const menuStart=source.indexOf('  function panelMenuCapabilities('),menuEnd=source.indexOf('  async function requestPanelPlacement(',menuStart)
- const state={sceneId:'ui',sceneRevision:1,roleRecord:undefined};const titleControls={children:[],append(...items){this.children.push(...items)}};const panel={isConnected:true,querySelector(selector){assert.equal(selector,'.panel-controls');return titleControls}};const record={panel,content:{isConnected:true},created:true,target:{sceneId:f.sceneId,panelId:f.panelId},status:'context-mounted',revision:1,uiSceneId:'ui',placement:'docked'};state.roleRecord=record
+ const state={sceneId:'ui',sceneRevision:1,roleRecord:undefined}
+ const fullscreen={className:'pi-fullscreen'}
+ const titleControls={
+  children:[fullscreen],
+  querySelector(selector){assert.equal(selector,':scope > .pi-fullscreen');return fullscreen},
+  insertBefore(item,anchor){assert.equal(anchor,fullscreen);this.children.splice(this.children.indexOf(anchor),0,item)},
+ }
+ const panel={isConnected:true,querySelector(selector){assert.equal(selector,':scope > .panel-header > .panel-controls');return titleControls}}
+ const record={panel,content:{isConnected:true},created:true,target:{sceneId:f.sceneId,panelId:f.panelId},status:'context-mounted',revision:1,uiSceneId:'ui',placement:'docked'};state.roleRecord=record
  const preload=await readFile(path.join(desktop,'lib/tradeloom-source-shell/source-preload.cjs'),'utf8');let app
  vm.runInNewContext(preload,{require:()=>({contextBridge:{exposeInMainWorld(_n,value){app=value}},ipcRenderer:{invoke:(name,...args)=>f.handlers.get(name)({sender:f.primary.webContents,senderFrame:f.primary.webContents.mainFrame},...args)}})})
  const nodes=[];const make=()=>({children:[],attrs:{},append(...xs){this.children.push(...xs)},setAttribute(k,v){this.attrs[k]=v},addEventListener(k,fn){this[k]=fn},remove(){this.removed=true}});const document={createElement:()=>{const n=make();nodes.push(n);return n},createElementNS:()=>make()}
  const install=new Function('state','app','document',`const isCurrentRole=r=>r===state.roleRecord&&r.revision===state.sceneRevision&&r.uiSceneId===state.sceneId&&!r.disposed;${source.slice(menuStart,menuEnd)}${source.slice(helperStart,helperEnd)};return installRoleSkillsControl;`)(state,app,document)
- const button=install(record);assert.equal(titleControls.children[0],button,'actual producer appends into the role title controls');assert.equal(titleControls.children.length,1);assert.equal(button.disabled,false);assert.equal(button.attrs['aria-label'],'当前助手技能');assert.equal(button.children[0].attrs.viewBox,'0 0 24 24')
+ const button=install(record);assert.deepEqual(titleControls.children,[button,fullscreen],'actual producer inserts the skills button before the existing fullscreen control');assert.equal(button.disabled,false);assert.equal(button.attrs['aria-label'],'当前助手技能');assert.equal(button.children[0].attrs.viewBox,'0 0 24 24')
  await button.click({preventDefault(){},stopPropagation(){}})
  const sent=f.view().webContents.messages.filter(x=>x.channel==='dsh-desktop:native-utility-request').at(-1);assert.equal(sent.args[0].action,'session-skills');assert.deepEqual(sent.args[0].descriptor,expected)
  record.disposed=true;const count=f.view().webContents.messages.length;await button.click({preventDefault(){},stopPropagation(){}});assert.equal(f.view().webContents.messages.length,count)
