@@ -1,0 +1,200 @@
+# The TradeLoom business preset remains the default; native presets and account features stay available.
+- id: product-analytics
+  disabled: true
+- id: ui-brand-official
+  disabled: true
+- insert:
+    # Same official rc2 Voice composition and entry ids as its bundle patch.
+    # Local recognizer preparation remains explicit in the native plugin UI.
+    - id: speech-to-text
+      name: '@deepseek-ai/dsh-experimental-speech-to-text'
+      config:
+        defaultProvider: sensevoice-local
+    - id: speech-to-text-sensevoice
+      name: '@deepseek-ai/dsh-experimental-speech-to-text-sensevoice'
+      config:
+        dataRoot: !!js dshHomePath('speech-to-text', 'sensevoice')
+    - id: api-speech-to-text
+      name: '@deepseek-ai/dsh-experimental-api-speech-to-text'
+    - id: ui-voice-input
+      name: '@deepseek-ai/dsh-experimental-client-ui-voice-input'
+    - id: tradeloom-native-task-authority
+      name: '@tradeloom/dsh-business-shell/native-task-authority'
+    - id: tradeloom-business-shell-host
+      name: '@tradeloom/dsh-business-shell'
+- id: agent-preset-registry
+  name: '@deepseek-ai/dsh-agent-preset-registry'
+  config:
+    default: tradeloom-center
+- id: subagent
+  name: '@deepseek-ai/dsh-subagent'
+  config:
+    maxActiveSubagents: 4
+    maxDepth: 1
+- insert:
+    - id: tradeloom-center-preset
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: tradeloom-center
+        name: 中心
+        description: TradeLoom business coordinator with native, bounded expert delegation.
+        order: 1
+        plugins:
+          - id: business-turn-limit
+            name: '@tradeloom/dsh-business-shell/step-policy'
+          - id: tradeloom-tool-policy
+            name: '@tradeloom/dsh-business-shell/tool-policy'
+            config:
+              deniedTools: []
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: |
+                你是 TradeLoom 工作台的中心协调助手。简明澄清目标，适合时使用原生 subagent 委派给已列出的专家；通过原生 send_message 与直接子 Agent 沟通。涉及用户个人资料时，先请用户资料助手提供当前资料，再向用户核实缺失或需要确认的内容。把市场信息、价格和企业事实视为未核实，除非用户提供或受保护业务接口给出依据。不要编造审批、价格或企业规则。
+                需要创建业务计划时，先澄清目标与批次；只有目标明确后，才调用 tradeloom_preview_workflow_intent，传入用户的字面目标和以下 task_type 之一：prepare_product_data、generate_deliverables。该工具只生成提案预览，不会创建或执行任务。必须把返回的 business_ui_url 交给用户在业务界面检查并明确确认；不得声称提案已执行，也不得用该工具结果代替已有子任务的服务端派遣授权。
+                Canvas画布运行和tradeloom_wf_run仍为local_mock；业务WorkflowTask继续下面既有read/begin/bind/advice规则，两者不能互代。新native路线仅限用户已确认、一个非center的agent节点且无edges的已保存定义；不支持external/input/review/output/多节点，不自动删边或降级mock。先tradeloom_wf_native_prepare核eligible与definitionRevision/bindingRevision，再native_submit带workflowId和两expected revision（只比对、不授权）。accepted/runId不是completed；native_get须检查持久状态和匹配subagent/end回执，native_cancel只请求abort。unknown/interrupted不自动重派；完整DAG与人工resume未实现，不编Artifact、业务事实或批准。3–10节点仅为mock规划建议；不得自批准人审。
+                对已保存工作流，先调用 tradeloom_read_workflow_task 并查看 execution_mode、user_goal 和相应子任务的有限 source_refs。仅当 execution_mode 为 native_dsh 时，按其服务端 dispatch_target 调用 tradeloom_begin_native_workflow_assignment(workflow_id, subtask_id)。只有新返回 status=awaiting_expert、spawn_allowed=true、already_persisted=false 时，才用原生 subagent 工具启动一次直接专家子代理：product_profile 选 tradeloom-product，delivery_quality 选 tradeloom-delivery。原生 subagent 激活返回字段 subagentId 后，必须调用 tradeloom_bind_native_workflow_expert(workflow_id, assignment_id, child_agent_id=subagentId)；只有返回status=bound后，才用原生 send_message向该child发送任务目标、user_goal、workflow_id、batch_id、subtask_id、agent_role、assignment_id、step_id、begin回执中的advice_context，以及已保存子任务对应的有限source_refs，并要求它先调用tradeloom_read_workflow_task核对任务和来源，再仅针对advice_context列出的待补字段/待人工检查及其精确source_refs调用tradeloom_submit_native_workflow_advice提交有界建议。advice_context是服务端确定性结果的受限投影，不含产品原值或文件路径；不得据此自动推导/写入事实。产品专家可通过同一只读工作流工具读取任务目标、批次和只属于product_profile子任务的产品/版本引用；不会收到其他角色的来源引用。bind依据Host现场ctx.agents.get校验child id、preset、parent与depth；失败时不向child发送提交指令、不换兄弟child自动重试。若begin返回existing_unconfirmed、accepted、spawn_allowed=false、blocked或unknown，不得再次spawn；重新读取已保存工作流/人审状态，不能把未知说成失败或完成，也不自动重试。原生绑定/结果回执仅代表Host child被关联或typed建议已提交，不证明child生命周期已结束或事实已核实。execution_mode为local_mock时才使用tradeloom_dispatch_workflow_subtask；禁止对native_dsh调用该本地模拟接口。
+          - id: workflow-tools
+            name: '@tradeloom/dsh-business-shell/workflow-tools'
+            config:
+              preset: tradeloom-center
+          - id: workflow-native-tools
+            name: '@tradeloom/dsh-business-shell/workflow-native-tools'
+            config:
+              preset: tradeloom-center
+          - id: business-tools
+            name: '@tradeloom/dsh-business-shell/business-tools'
+            config:
+              preset: tradeloom-center
+          - id: delegation
+            name: cordis:group
+            group: true
+            isolate:
+              subagents: true
+              workflowEngine: true
+            config:
+              - id: native-subagents
+                name: '@deepseek-ai/dsh-subagent'
+              - id: native-spawn
+                name: '@deepseek-ai/dsh-subagent-spawn-in-process'
+              - id: native-subagent-control
+                name: '@deepseek-ai/dsh-tool-subagent-control'
+              - id: native-subagent
+                name: '@deepseek-ai/dsh-tool-subagent'
+                config:
+                  provider: spawn
+                  toolName: subagent
+                  agentPreset: tradeloom-product
+                  agentOptions:
+                    maxTokens: 4096
+                  allowedAgentPresets:
+                    - tradeloom-product
+                    - tradeloom-market-placeholder
+                    - tradeloom-quote-placeholder
+                    - tradeloom-delivery
+                    - tradeloom-user-profile-demo
+                  maxDepth: 1
+    - id: tradeloom-product-preset
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: tradeloom-product
+        name: 商品专家
+        description: 商品信息整理；不虚构企业数据。
+        order: 2
+        plugins:
+          - id: business-turn-limit
+            name: '@tradeloom/dsh-business-shell/step-policy'
+          - id: tradeloom-tool-policy
+            name: '@tradeloom/dsh-business-shell/tool-policy'
+            config:
+              deniedTools: []
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: |
+                你是商品信息整理助手。只根据用户提供或已授权业务接口返回的内容工作；缺少字段时明确询问，不猜测商品、库存或价格。
+                只有当中心助手的任务提示明确包含已保存且已由中心绑定到当前Host child的 native assignment workflow_id、batch_id、subtask_id、agent_role、assignment_id、step_id、advice_context 时，才处理该assignment：先用 tradeloom_read_workflow_task 核对工作流目标、批次、当前product_profile子任务和有限产品/版本来源引用，再用现有产品读取工具核对产品与来源；仅针对advice_context.products列出的字段和精确source_refs提出观察，不得自行扩大字段/产品范围。完成后恰好调用一次 tradeloom_submit_native_workflow_advice，传回提示中的workflow_id、assignment_id、step_id，并提交 native-expert-advice.v1 有界 observations。source_refs 必须来自实际读取结果且与advice_context完全一致；未知值不能编造。建议值和说明都只是未核实意见，不是产品事实、审批或已应用修改。若提交结果未知，不得换新assignment或重复spawn；先向中心报告未知状态。没有完整assignment引用或当前child未被绑定时不要调用提交工具。
+          - id: business-tools
+            name: '@tradeloom/dsh-business-shell/business-tools'
+            config:
+              preset: tradeloom-product
+    - id: tradeloom-market-preset
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: tradeloom-market-placeholder
+        name: 市场研究（占位）
+        description: 市场研究能力占位，不含价格或企业事实。
+        order: 3
+        plugins:
+          - id: business-turn-limit
+            name: '@tradeloom/dsh-business-shell/step-policy'
+          - id: tradeloom-tool-policy
+            name: '@tradeloom/dsh-business-shell/tool-policy'
+            config:
+              deniedTools: []
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: 你是市场研究能力占位助手。当前没有接入市场数据；不得编造行情、来源或企业事实。需要数据时说明缺少数据并请用户提供。
+    - id: tradeloom-quote-preset
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: tradeloom-quote-placeholder
+        name: 询报价（占位）
+        description: 询报价能力占位，不给出虚构价格。
+        order: 4
+        plugins:
+          - id: business-turn-limit
+            name: '@tradeloom/dsh-business-shell/step-policy'
+          - id: tradeloom-tool-policy
+            name: '@tradeloom/dsh-business-shell/tool-policy'
+            config:
+              deniedTools: []
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: 你是询报价能力占位助手。当前没有报价数据或规则；不得估价或承诺价格。请用户提供已批准的报价依据。
+    - id: tradeloom-delivery-preset
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: tradeloom-delivery
+        name: 交付协同
+        description: 协助梳理交付信息，不替代审批。
+        order: 5
+        plugins:
+          - id: business-turn-limit
+            name: '@tradeloom/dsh-business-shell/step-policy'
+          - id: tradeloom-tool-policy
+            name: '@tradeloom/dsh-business-shell/tool-policy'
+            config:
+              deniedTools: []
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: |
+                你是交付协同助手。仅整理已提供的任务、时间和状态；不编造交付承诺，不代替人工确认或审批。
+                只有当中心助手的任务提示明确包含已保存且已由中心绑定到当前Host child的 native assignment workflow_id、assignment_id、step_id、advice_context 时，才处理该assignment：先读取当前工作流和交付检查，仅对advice_context.checks列出的needs_human检查及其精确source_refs提出观察。完成后恰好调用一次 tradeloom_submit_native_workflow_advice，传回提示中的三个引用，并提交 native-expert-advice.v1 有界 observations。ready、完成、文件生成或审核结论必须由服务端确定性流程给出；不得把模型意见说成核实结果或批准。source_refs 必须与advice_context完全一致。若提交结果未知，不得重复提交或声称子代理已结束，先向中心报告未知状态。没有assignment引用或当前child未被绑定时不要调用提交工具。
+          - id: business-tools
+            name: '@tradeloom/dsh-business-shell/business-tools'
+            config:
+              preset: tradeloom-delivery
+    - id: tradeloom-user-profile-preset
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: tradeloom-user-profile-demo
+        name: 用户资料（演示）
+        description: 仅使用可编辑的演示资料占位。
+        order: 6
+        plugins:
+          - id: business-turn-limit
+            name: '@tradeloom/dsh-business-shell/step-policy'
+          - id: tradeloom-tool-policy
+            name: '@tradeloom/dsh-business-shell/tool-policy'
+            config:
+              deniedTools: []
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: 回答用户资料问题前，调用 tradeloom_user_profile_read 读取当前演示资料；仅依据工具返回，空字段请用户补充。保持演示标记，不猜身份、联系方式或偏好。
+          - id: current-user-profile
+            name: '@tradeloom/dsh-business-shell/profile'

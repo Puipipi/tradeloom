@@ -1,36 +1,23 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
-import { isDeepStrictEqual } from 'node:util'
-import { validateArtifactRangeStart, validateArtifactEvidence } from './workflow-artifact-source.js'
-import { verifyWorkflowDefinition } from './workflow-definition.js'
+import { executeNativeTool } from './workflow-native-command-attribution.js'
 import { createStateStore, getRoleBindingRevision, resolveOwnedHome } from './state.js'
 import { submissionIdentity } from './workflow-native-service.js'
 import { ROLE_PRESETS } from './roles.js'
-import { validateWorkflowLocalReceipt } from './workflow-local-nodes.js'
-import { formatWorkflowReviewDetail, validateWorkflowReviewState, verifiedReviewOutput } from './workflow-review.js'
+import { NATIVE_WORKFLOW_RUN_ID, nativeWorkflowErrorStatus, projectNativeWorkflowRun, safeNativeWorkflowError } from './workflow-native-run-projection.js'
 
+export { projectNativeWorkflowRun }
 export const WORKFLOW_NATIVE_UI_ROUTE = '/tradeloom/workflows/native'
 const MAX_BODY = 4096
 const WORKFLOW = /^[a-z0-9][a-z0-9_-]{0,47}$/
-const RUN = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/
 const OPERATION = /^[A-Za-z0-9_-]{1,128}$/
 const DEFINITION = /^sha256:[a-f0-9]{64}$/
 const BINDING = /^(?:0|[1-9][0-9]{0,63})$/
 const TOOL_NAMES = Object.freeze({ prepare: 'tradeloom_wf_native_prepare', submit: 'tradeloom_wf_native_submit', get: 'tradeloom_wf_native_get', list: 'tradeloom_wf_native_list', cancel: 'tradeloom_wf_native_cancel', prepare_resume: 'tradeloom_wf_native_prepare_resume', resume: 'tradeloom_wf_native_resume' })
 const ACTIONS = Object.freeze({ prepare: ['workflowId'], submit: ['workflowId', 'operationId', 'expectedDefinitionRevision', 'expectedBindingRevision', 'confirm'], get: ['runId'], list: ['workflowId', 'activeOnly'], cancel: ['runId', 'operationId'], prepare_resume: ['runId'],
   resume: ['runId', 'operationId', 'expectedRunRevision', 'expectedDefinitionRevision', 'expectedBindingRevision', 'resumePlanHash', 'confirm'] })
-const ERRORS = new Map([
-  ...['invalid_input', 'invalid_native_workflow_arguments'].map(code => [code, 400]),
-  ...['center_session_not_live', 'center_binding_mismatch', 'binding_revision_mismatch', 'definition_revision_mismatch', 'submission_identity_conflict', 'unsupported_workflow_graph', 'workflow_not_found', 'workflow_not_confirmed', 'NATIVE_PRESET_NOT_ALLOWED', 'run_not_found', 'run_node_role_not_allowed', 'review_answer_invalid', 'review_context_stale', 'review_rejected', 'review_request_stale', 'resume_confirmation_required'].map(code => [code, 409]),
-  ...['unsupported_model_selection', 'upstream_terminal_unverified', 'upstream_output_unavailable', 'native_prompt_too_large', 'UPSTREAM_FAILED'].map(code => [code, 409]),
-  ...['resume_blocked', 'resume_plan_conflict', 'resume_revision_conflict', 'operation_conflict', 'run_cancel_requested'].map(code => [code, 409]),
-  ...['run_parent_mismatch', 'untrusted_parent', 'TOOL_POLICY_DENIED', 'TOOL_GUARD_DENIED', 'UNKNOWN_TOOL'].map(code => [code, 403]),
-  ...['native_run_unavailable', 'native_task_origin_required', 'ui_origin_required', 'native_bridge_unavailable', 'native_workflow_unavailable', 'run_store_unavailable', 'service_closed', 'ABORTED_BEFORE_NATIVE_SUBMIT', 'TOOL_CANCELLED', 'submission_unverified', 'review_unavailable'].map(code => [code, 503]),
-  ['operation_aborted', 503],
-])
 const fail = code => Object.assign(new Error(code), { code })
 const record = value => value !== null && typeof value === 'object' && !Array.isArray(value)
-function safe(code) { return ERRORS.has(code) ? code : 'native_workflow_unavailable' }
 function write(res, status, value) {
   res.statusCode = status
   res.setHeader('content-type', 'application/json; charset=utf-8')
@@ -45,7 +32,7 @@ function valid(body) {
   if (required.some(key => !Object.hasOwn(body, key))) throw fail('invalid_input')
   for (const key of fields) {
     if (!Object.hasOwn(body, key)) continue
-    const pattern = { workflowId: WORKFLOW, runId: RUN, operationId: OPERATION, expectedDefinitionRevision: DEFINITION, expectedBindingRevision: BINDING, resumePlanHash: DEFINITION }[key]
+    const pattern = { workflowId: WORKFLOW, runId: NATIVE_WORKFLOW_RUN_ID, operationId: OPERATION, expectedDefinitionRevision: DEFINITION, expectedBindingRevision: BINDING, resumePlanHash: DEFINITION }[key]
     if (pattern ? typeof body[key] !== 'string' || !pattern.test(body[key]) : key === 'confirm' ? body[key] !== true
       : key === 'expectedRunRevision' ? !Number.isSafeInteger(body[key]) || body[key] < 1 : typeof body[key] !== 'boolean') throw fail('invalid_input')
   }
@@ -58,168 +45,6 @@ async function read(req) {
   try { return valid(JSON.parse(Buffer.concat(chunks).toString('utf8'))) } catch { throw fail('invalid_input') }
 }
 
-function projectArtifactEvidence(node, receipt) {
-  if (!receipt || node.artifactSource !== 'deliverables/presented' || receipt.artifactSource !== 'deliverables/presented') return null
-  const start = validateArtifactRangeStart(node.artifactRangeStart)
-  if (!start || start.childSessionId !== node.childId || start.nativeRunId !== node.nativeRunId) return null
-  const current = validateArtifactEvidence(node.artifactEvidence, start)
-  const terminal = validateArtifactEvidence(receipt.artifactEvidence, start)
-  if (!current || !terminal || !isDeepStrictEqual(current, terminal)
-    || !isDeepStrictEqual(node.artifacts, current.declarations)
-    || !isDeepStrictEqual(receipt.artifacts, terminal.declarations)) return null
-  return current
-}
-
-/** A receipt is a persisted journal identity match, never text from the model. */
-export function projectNativeWorkflowRun(run) {
-  if (!record(run) || run.executionMode !== 'native_dsh' || run.journalSchema !== 'tradeloom.native-run-journal/v1'
-    || !RUN.test(run.id ?? '') || !record(run.nodes)) throw fail('submission_unverified')
-  let definition
-  try { definition = verifyWorkflowDefinition(run.document, run.definitionRevision).document } catch { throw fail('submission_unverified') }
-  if (definition.id !== run.workflowId || definition.nodes.some(node => !['input', 'agent', 'review', 'output'].includes(node.kind)
-    || node.kind === 'agent' && node.agent === 'center') || !definition.nodes.some(node => node.kind === 'agent')
-    || Object.keys(run.nodes).length !== definition.nodes.length
-    || definition.nodes.some(node => !Object.hasOwn(run.nodes, node.id))) throw fail('submission_unverified')
-  const nodes = definition.nodes.map(definitionNode => {
-    const { id, kind, agent: roleId } = definitionNode
-    const node = run.nodes[id]
-    if (!record(node)) throw fail('submission_unverified')
-    if (kind === 'review') {
-      if (node.attempt !== 0 || ['requestId', 'toolCallId', 'childId', 'nativeRunId'].some(key => node[key] !== null)
-        || node.artifactSource !== 'unknown' || !Array.isArray(node.artifacts) || node.artifacts.length !== 0
-        || Object.hasOwn(node, 'artifactEvidence') || Object.hasOwn(node, 'artifactRangeStart') || Object.hasOwn(node, 'localReceipt')) {
-        throw fail('submission_unverified')
-      }
-      const state = node.reviewState
-      if (node.status === 'pending' && state == null) return { id, kind, executionSource: 'dsh-user-questions', status: 'pending',
-        reviewStatus: 'pending', attempt: 0, childId: null, nativeRunId: null, toolCallId: null, output: '', error: '',
-        artifactState: 'unknown', artifactEvidence: null, settled: false, succeeded: false, terminalReceipt: null }
-      if (node.status === 'skipped' && state == null) {
-        const blocked = Array.isArray(node.blockedBy) && node.blockedBy.length > 0
-          && run.events.findLast(event => event.type === 'node-blocked' && event.source === 'native-run-journal'
-            && event.nodeId === id && event.workflowRunId === run.id && event.status === 'skipped'
-            && event.errorCategory === 'UPSTREAM_FAILED' && JSON.stringify(event.blockedBy) === JSON.stringify(node.blockedBy)
-            && node.blockedBy.every(parentId => definition.edges.some(edge => edge.from === parentId && edge.to === id)
-              && ['failed', 'skipped'].includes(run.nodes[parentId]?.status)))
-        if (!blocked) throw fail('submission_unverified')
-        return { id, kind, executionSource: 'dsh-user-questions', status: 'skipped', reviewStatus: 'blocked',
-          attempt: 0, childId: null, nativeRunId: null, toolCallId: null, output: '', error: 'UPSTREAM_FAILED',
-          artifactState: 'unknown', artifactEvidence: null, settled: true, succeeded: false,
-          terminalReceipt: { source: 'native-run-journal', status: 'skipped', workflowRunId: run.id, nodeId: id,
-            sequence: blocked.sequence, blockedBy: [...node.blockedBy] } }
-      }
-      let reviewed
-      try { reviewed = validateWorkflowReviewState(run, definitionNode) } catch { throw fail('submission_unverified') }
-      if (['waiting', 'deferred'].includes(state.status)) return { id, kind, executionSource: 'dsh-user-questions',
-        status: 'waiting', reviewStatus: state.status, questionId: state.request.questionId, question: definitionNode.title,
-        detail: formatWorkflowReviewDetail(state.request),
-        options: [...state.request.options], attempt: 0, childId: null, nativeRunId: null, toolCallId: null,
-        output: '', error: state.status === 'deferred' ? state.error : '', artifactState: 'unknown', artifactEvidence: null,
-        settled: false, succeeded: false, terminalReceipt: null }
-      if (state.status === 'approved' || state.status === 'rejected') {
-        const receipt = reviewed.receipt
-        return { id, kind, executionSource: 'dsh-user-questions', status: state.status === 'approved' ? 'done' : 'failed',
-          reviewStatus: state.status, questionId: receipt.questionId, attempt: 0, childId: null, nativeRunId: null,
-          toolCallId: null, output: receipt.output, error: state.status === 'rejected' ? 'review_rejected' : '',
-          artifactState: 'unknown', artifactEvidence: null, reviewReceipt: receipt, settled: true,
-          succeeded: state.status === 'approved', terminalReceipt: { source: 'dsh-user-questions', status: state.status,
-            workflowRunId: run.id, nodeId: id, questionId: receipt.questionId, attempt: 0 } }
-      }
-      if (state.status === 'interrupted') return { id, kind, executionSource: 'dsh-user-questions', status: 'interrupted',
-        reviewStatus: 'interrupted', questionId: state.request.questionId, attempt: 0, childId: null, nativeRunId: null,
-        toolCallId: null, output: '', error: state.error, artifactState: 'unknown', artifactEvidence: null,
-        settled: true, succeeded: false, terminalReceipt: { source: 'dsh-user-questions', status: 'interrupted',
-          workflowRunId: run.id, nodeId: id, questionId: state.request.questionId, attempt: 0 } }
-      if (state.status === 'failed') return { id, kind, executionSource: 'dsh-user-questions', status: 'failed',
-        reviewStatus: 'unavailable', attempt: 0, childId: null, nativeRunId: null, toolCallId: null, output: '',
-        error: state.error, artifactState: 'unknown', artifactEvidence: null, settled: true, succeeded: false,
-        terminalReceipt: { source: 'dsh-user-questions', status: 'failed', workflowRunId: run.id, nodeId: id,
-          questionId: state.request.questionId, attempt: 0 } }
-      throw fail('submission_unverified')
-    }
-    if (kind === 'input' || kind === 'output') {
-      if (node.status === 'done') {
-        let localReceipt
-        try { localReceipt = validateWorkflowLocalReceipt(run, definitionNode, { verifyReviewParent: verifiedReviewOutput }) } catch { throw fail('submission_unverified') }
-        const event = run.events.findLast(row => row.type === 'local-node-terminal' && row.source === 'workflow/local'
-          && row.workflowRunId === run.id && row.nodeId === id && row.status === 'done')
-        return { id, kind, executionSource: 'workflow/local', status: 'done', attempt: 0, attemptState: 'local',
-          childId: null, nativeRunId: null, toolCallId: null, output: localReceipt.output, error: '', artifactState: 'unknown',
-          artifactEvidence: null, localReceipt, settled: true, succeeded: true,
-          terminalReceipt: { source: 'workflow/local', status: 'completed', workflowRunId: run.id, nodeId: id,
-            attempt: 0, sequence: event.sequence } }
-      }
-      const localError = node.status === 'failed' && run.events.findLast(row => row.type === 'local-node-error'
-        && row.source === 'workflow/local' && row.workflowRunId === run.id && row.nodeId === id
-        && row.status === 'failed' && row.errorCategory === node.error && row.attempt === 0
-        && ['upstream_terminal_unverified', 'upstream_output_unavailable', 'local_receipt_invalid', 'local_output_unavailable'].includes(row.errorCategory)
-        && row.requestId === null && row.toolCallId === null && row.childId === null && row.nativeRunId === null
-        && ['parentAgentId', 'sessionId', 'bindingRevision', 'definitionRevision'].every(key => row[key] === run[key]))
-      const blocked = node.status === 'skipped' && node.attempt === 0 && node.childId == null
-        && node.toolCallId == null && node.nativeRunId == null && Array.isArray(node.blockedBy) && node.blockedBy.length > 0
-        && run.events.findLast(event => event.type === 'node-blocked' && event.source === 'native-run-journal'
-          && event.nodeId === id && event.workflowRunId === run.id && event.status === 'skipped'
-          && event.errorCategory === 'UPSTREAM_FAILED' && ['parentAgentId', 'sessionId', 'bindingRevision', 'definitionRevision'].every(key => event[key] === run[key])
-          && JSON.stringify(event.blockedBy) === JSON.stringify(node.blockedBy)
-          && node.blockedBy.every(parentId => definition.edges.some(edge => edge.from === parentId && edge.to === id)
-            && ['failed', 'skipped'].includes(run.nodes[parentId]?.status)))
-      if (node.status === 'failed' && !localError || node.status === 'skipped' && !blocked
-        || !['pending', 'failed', 'skipped'].includes(node.status) || node.attempt !== 0
-        || ['requestId', 'toolCallId', 'childId', 'nativeRunId'].some(key => node[key] !== null)
-        || node.artifactSource !== 'unknown' || !Array.isArray(node.artifacts) || node.artifacts.length !== 0
-        || Object.hasOwn(node, 'localReceipt') || Object.hasOwn(node, 'artifactEvidence') || Object.hasOwn(node, 'artifactRangeStart')) throw fail('submission_unverified')
-      const receipt = localError ? { source: 'workflow/local', status: 'failed', reason: safe(node.error),
-        workflowRunId: run.id, nodeId: id, attempt: 0,
-        sequence: localError.sequence } : blocked ? { source: 'native-run-journal', status: 'skipped', reason: 'UPSTREAM_FAILED',
-          workflowRunId: run.id, nodeId: id, sequence: blocked.sequence, blockedBy: [...node.blockedBy] } : null
-      return { id, kind, executionSource: 'workflow/local', status: node.status, attempt: 0, attemptState: node.attemptState,
-        childId: null, nativeRunId: null, toolCallId: null, output: '', error: node.error ? safe(node.error) : '',
-        artifactState: 'unknown', artifactEvidence: null, settled: Boolean(localError || blocked), succeeded: false, terminalReceipt: receipt }
-    }
-    if (Object.hasOwn(node, 'localReceipt')) throw fail('submission_unverified')
-    const fullIdentity = record(node) && ['requestId', 'toolCallId', 'childId', 'nativeRunId'].every(key => typeof node[key] === 'string' && node[key])
-      && ['parentAgentId', 'sessionId', 'bindingRevision', 'definitionRevision'].every(key => typeof run[key] === 'string' && run[key])
-      && Number.isSafeInteger(node.attempt) && node.attempt > 0
-    const receipt = fullIdentity && (Array.isArray(run.events) ? run.events : []).findLast(event => {
-      if (event.source !== 'subagent/end' || typeof event.stopReason !== 'string' || !event.stopReason) return false
-      const expectedStatus = event.stopReason === 'completed' ? 'done' : event.stopReason === 'aborted' ? 'interrupted' : 'failed'
-      const expectedEvent = expectedStatus === 'done' ? 'node-terminal' : expectedStatus === 'interrupted' ? 'node-interrupted' : 'node-error'
-      return event.type === expectedEvent && event.status === expectedStatus && node.status === expectedStatus
-        && event.workflowRunId === run.id && event.nodeId === id && event.attempt === node.attempt
-        && event.requestId === node.requestId && event.parentAgentId === run.parentAgentId && event.sessionId === run.sessionId
-        && event.bindingRevision === run.bindingRevision && event.definitionRevision === run.definitionRevision
-        && event.toolCallId === node.toolCallId && event.childId === node.childId && event.nativeRunId === node.nativeRunId
-    })
-    const blocked = node.status === 'skipped' && node.attempt === 0 && node.childId == null
-      && node.toolCallId == null && node.nativeRunId == null && Array.isArray(node.blockedBy) && node.blockedBy.length > 0
-      && (Array.isArray(run.events) ? run.events : []).findLast(event => event.type === 'node-blocked'
-        && event.source === 'native-run-journal' && event.nodeId === id && event.workflowRunId === run.id
-        && event.status === 'skipped' && event.errorCategory === 'UPSTREAM_FAILED'
-        && ['parentAgentId', 'sessionId', 'bindingRevision', 'definitionRevision'].every(key => event[key] === run[key])
-        && JSON.stringify(event.blockedBy) === JSON.stringify(node.blockedBy)
-        && node.blockedBy.every(parentId => definition.edges.some(edge => edge.from === parentId && edge.to === id)
-          && ['failed', 'skipped'].includes(run.nodes[parentId]?.status)))
-    const succeeded = Boolean(receipt && receipt.stopReason === 'completed' && node.status === 'done')
-    const artifactEvidence = projectArtifactEvidence(node, receipt)
-    return { id, roleId, agentPreset: ROLE_PRESETS[roleId], status: node.status, attempt: node.attempt, attemptState: node.attemptState,
-      childId: node.childId ?? null, nativeRunId: node.nativeRunId ?? null, toolCallId: node.toolCallId ?? null,
-      output: node.output ?? '', error: node.error ? safe(node.error) : '',
-      artifactState: artifactEvidence ? 'declared' : 'unknown', artifactEvidence,
-      settled: Boolean(receipt || blocked), succeeded, terminalReceipt: receipt ? { source: 'subagent/end',
-        status: receipt.stopReason === 'completed' ? 'completed' : receipt.stopReason === 'aborted' ? 'interrupted' : 'failed',
-        stopReason: receipt.stopReason, workflowRunId: run.id, nodeId: id, attempt: node.attempt, toolCallId: node.toolCallId,
-        childId: node.childId, nativeRunId: node.nativeRunId, sequence: receipt.sequence }
-        : blocked ? { source: 'native-run-journal', status: 'skipped', reason: 'UPSTREAM_FAILED',
-          workflowRunId: run.id, nodeId: id, sequence: blocked.sequence, blockedBy: [...node.blockedBy] } : null }
-  })
-  const settled = nodes.length > 0 && nodes.every(node => node.settled)
-  return { id: run.id, workflowId: run.workflowId, status: run.status, revision: run.revision,
-    cancelRequested: run.cancelRequested === true,
-    executionMode: 'native_dsh', definitionRevision: run.definitionRevision, bindingRevision: run.bindingRevision,
-    sessionId: run.sessionId, nodes, provider: 'unknown', model: 'unknown',
-    settled, succeeded: settled && run.status === 'done' && nodes.every(node => node.succeeded),
-    terminalReceipt: settled ? nodes.map(node => node.terminalReceipt) : null }
-}
 function validPreparedGraph(value) {
   const validNode = node => typeof node?.id === 'string' && node.id && node.roleId !== 'center'
     && Object.hasOwn(ROLE_PRESETS, node.roleId) && node.agentPreset === ROLE_PRESETS[node.roleId]
@@ -284,10 +109,10 @@ export function createNativeWorkflowAccess(ctx, dependencies = {}) {
           definitionRevision: args.expectedDefinitionRevision, bindingRevision: args.expectedBindingRevision },
         isCurrent: () => ctx.agents.get(agent.id) === agent && agent.session === session }
       result = await authority.runCommand(intent)
-    } else result = await ctx.tools.execute(request)
-    if (result?.isError) throw fail(safe(result.error?.info?.code ?? result.error?.code))
+    } else result = await executeNativeTool(ctx.tools, request)
+    if (result?.isError) throw fail(safeNativeWorkflowError(result.error?.info?.code ?? result.error?.code))
     const value = result?.value
-    if (!record(value) || value.ok !== true || typeof value.data !== 'string') throw fail(safe(value?.error_code))
+    if (!record(value) || value.ok !== true || typeof value.data !== 'string') throw fail(safeNativeWorkflowError(value?.error_code))
     try { return JSON.parse(value.data) } catch { throw fail('native_workflow_unavailable') }
   }
   return { center, tool }
@@ -319,7 +144,7 @@ export function createWorkflowNativeUiHandler(ctx, dependencies = {}) {
       const value = await tool(action, args, parent, controller.signal, callId)
       const envelope = { schemaVersion: 1, ok: true, executionMode: 'native_dsh', action }
       if (action === 'submit') {
-        if (!RUN.test(value?.runId ?? '')) throw fail('submission_unverified')
+        if (!NATIVE_WORKFLOW_RUN_ID.test(value?.runId ?? '')) throw fail('submission_unverified')
         const persisted = await tool('get', { runId: value.runId }, parent, controller.signal, randomUUID())
         if (!persisted || persisted.id !== value.runId || persisted.workflowId !== body.workflowId
           || persisted.sessionId !== parent.session.id || persisted.parentAgentId !== parent.id
@@ -356,8 +181,8 @@ export function createWorkflowNativeUiHandler(ctx, dependencies = {}) {
           reason: ['already_terminal', 'not_active_in_service', 'abort_requested', 'already_requested'].includes(value?.reason) ? value.reason : 'unknown', settled: false } })
       }
     } catch (error) {
-      const code = safe(error?.code)
-      write(res, ERRORS.get(code) ?? 503, { schemaVersion: 1, ok: false, executionMode: 'native_dsh', ...(action ? { action } : {}), error_code: code })
+      const code = safeNativeWorkflowError(error?.code)
+      write(res, nativeWorkflowErrorStatus(code), { schemaVersion: 1, ok: false, executionMode: 'native_dsh', ...(action ? { action } : {}), error_code: code })
     } finally {
       req.off?.('aborted', abort); req.off?.('close', closeRequest); res.off?.('close', closeResponse)
     }

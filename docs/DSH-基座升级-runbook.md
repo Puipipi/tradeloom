@@ -38,7 +38,7 @@ recover 只处理中断；完成更新需明确 rollback。两者仍检查占用
 ## 官方获取到完整候选的一条命令（本批待集中验证）
 
 ```text
-python -B scripts/update-dsh-candidate.py --cache-root <官方原件缓存目录> --work-root <不存在的新获取收据目录> --python-packages <已钉程序python-packages> --postgresql <已钉程序postgresql> --plugin-seed <已封存程序seed> --data-root D:/TradeLoom-private-data --output-root <不存在的新完整输出目录>
+python -B scripts/update-dsh-candidate.py --cache-root <官方原件缓存目录> --work-root <不存在的新获取收据目录> --python-packages <已钉程序python-packages> --postgresql <已钉程序postgresql> --plugin-seed <已封存程序seed> --data-root D:/TradeLoom-private-data --output-root <不存在的新完整输出目录> --resource-editor <已核rcedit-x64.exe>
 ```
 
 入口只读取实际官方 `https://download.deepseek.com/dsh-desk/feeds/win-x64/nightly.yml`；不猜 stable URL、不修改系统代理/TLS。先核版本有已审完整配方以及 feed 的 URL/size/SHA512 与配方一致，再获取资产。未知版本或新字节立即停止，不能套 rc2 pins、降级默认版本或丢 TradeLoom overlay；需要审核新 SDK 生命周期、desktop/main/preload、布局/自有资源和实际 pre/post 指纹后新增适用配方。
@@ -56,10 +56,10 @@ python -B scripts/update-dsh-candidate.py --cache-root <官方原件缓存目录
 ## 完整固定版本候选入口（本批待集中验证）
 
 ```text
-python -B scripts/build-dsh-candidate.py --version 0.2.2-rc.2 --vendor-root <已核官方完整解包目录> --python-packages <已钉程序python-packages目录> --postgresql <已钉程序postgresql目录> --plugin-seed <已封存程序seed目录> --data-root D:/TradeLoom-private-data --output-root <不存在的新输出目录>
+python -B scripts/build-dsh-candidate.py --version 0.2.2-rc.2 --vendor-root <已核官方完整解包目录> --python-packages <已钉程序python-packages目录> --postgresql <已钉程序postgresql目录> --plugin-seed <已封存程序seed目录> --data-root D:/TradeLoom-private-data --output-root <不存在的新输出目录> --resource-editor <已核rcedit-x64.exe>
 ```
 
-这是离线完整装配命令：复用仓库版本配方和 ASAR 重放器，保留官方 EXE/DLL/locales/unpacked/内置 runtime 原字节，加入当前仓库业务后端、自有壳和资源，并编译候选 launcher。Python/PG/seed 都是显式、逐文件核验的程序输入，不能传 profile 或现用定制程序树；完整官方树指纹、依赖树指纹和 seed 清单钉在 `program-recipe.json`。不会执行官方安装器、应用、PG、迁移或种子安装。
+这是离线完整装配命令：复用仓库版本配方和 ASAR 重放器，保留官方输入原字节，产物 EXE 按已钉品牌资源转换，DLL/locales/unpacked/内置 runtime 保持原字节，加入当前仓库业务后端、自有壳和资源，并编译候选 launcher。Python/PG/seed 都是显式、逐文件核验的程序输入，不能传 profile 或现用定制程序树；完整官方树指纹、依赖树指纹和 seed 清单钉在 `program-recipe.json`。不会执行官方安装器、应用、PG、迁移或种子安装。
 
 输出为 `program/`、完整程序 ZIP、`current-source.zip`、当前 tracked+dirty 实际输入的 `source-manifest.json`、逐物理文件来源的 `program-entry-manifest.json`、命令输出和 `build-receipt.json`。程序根仅含 app、launcher.json、启动工作台.exe；源和证据留在外层。ASAR 仍须等于已核 584f 指纹，业务库存使用实际 4050 validator/native fs 验证，完整 metadata 另调用原 `validateInstalledManifest`。编译器和新 launcher 的实际 bytes/SHA 单列，不冒旧编译产物身份；旧 345/旧完整部署清单不再作为当前源码声明。
 
@@ -170,3 +170,9 @@ rm -rf "$APP/app.asar.unpacked"; cp -r "D:/TL-S5-A20261110/backup-asar-021/app.a
 # deployment.json 从候选 zip 取原始，再按需替换
 cp "$P/host.js.bak" "$P/host.js"
 ```
+
+### Windows 品牌资源构建输入
+
+rc2 完整构建显式接收 `--resource-editor`，必须匹配 `program-recipe.json.windowsBranding.editor` 的 electron/rcedit v2.0.0 固定 bytes/SHA256；不从 PATH 猜工具、不全局安装。工具来源为 https://github.com/electron/rcedit/releases/tag/v2.0.0 ，维护者源码固定于 `28a13190599ed35f472fbaea1179116a29ff8f10`。工具仅构建使用，不随程序交付。
+
+`apps/tradeloom-launcher/branding/tradeloom.ico` 来自仓库 `integrations/dsh/patches/desktop-branding.patch` 的既有 Windows 品牌资源。先严格核官方完整输入，再仅在新产物修改应用 EXE 的 ProductName/FileDescription/ICO，替换托盘 ICO；启动器编译使用同一 ICO 并设置品牌名称。上游版本字符串保持；修改后的 PE 以实际最终 bytes/SHA256 进入清单，不宣称仍有上游签名或与官方 EXE 字节相同。应用内 Logo、窗口/任务栏实际显示需独立实机验收，不能由文件名或 PE 元数据代替。

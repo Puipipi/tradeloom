@@ -30,7 +30,12 @@ function requestContext(result) {
   const ctx = {
     agents: { get: id => id === parent.id ? parent : undefined },
     connection: { requestRejection: () => undefined },
-    tools: { async execute() { return result } },
+    tools: {
+      selectExecutor() {},
+      async execute({ calls: [call] }) {
+        return { results: [{ callId: call.id, result: { content: [], ...result } }] }
+      },
+    },
   }
   const readState = async () => ({ roles: { center: { sessionId: parent.session.id, workspaceId: 'workspace' } } })
   return { ctx, readState }

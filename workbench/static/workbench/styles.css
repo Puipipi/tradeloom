@@ -4525,3 +4525,9 @@ html[data-business-iframe="true"][data-business-browser-mode] .customer-context-
   color: var(--ink);
   background: var(--surface-soft);
 }
+
+/* Nested alias forms follow their actual column width, not the guest viewport. */
+.customer-analysis-grid > div { min-width: 0; container: customer-analysis-column / inline-size; }
+@container customer-analysis-column (max-width: 540px) {
+  .alias-resolve-card { grid-template-columns: minmax(0, 1fr); }
+}

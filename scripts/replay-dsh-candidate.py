@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Replay the fixed rc2 SDK, desktop and own-shell recipes into a new directory.
+"""Replay the reviewed versioned SDK, desktop and own-shell recipes into a new directory.
 
 python -B scripts/replay-dsh-candidate.py --source <official-resources/app.asar> \
     --unpacked <official-resources/app.asar.unpacked> --output-root <new-stage>
@@ -11,8 +11,7 @@ from pathlib import Path
 import argparse,copy,hashlib,importlib.util,json,os,shutil,stat,struct,subprocess,sys
 sys.dont_write_bytecode=True
 R=Path(__file__).resolve().parents[1]
-VERSION='0.2.2-rc.2'
-K=R/'apps/tradeloom-launcher/dsh-upgrades'/VERSION
+DEFAULT_VERSION='0.2.2-rc.2'
 sha=lambda data:hashlib.sha256(data).hexdigest()
 pin=lambda data:{'bytes':len(data),'sha256':sha(data)}
 
@@ -32,13 +31,30 @@ def write_json(path,value):
     path.parent.mkdir(parents=True,exist_ok=True)
     with path.open('x',encoding='utf-8',newline='') as stream:json.dump(value,stream,ensure_ascii=False,indent=2);stream.write('\n')
 
+def uses_exact_source(spec, patch_fields):
+    mode=spec.get('sourceMode','patch')
+    if mode=='exact-source':
+        if any(field in spec for field in patch_fields):
+            raise ValueError('exact-source recipe cannot also declare patch inputs')
+        return True
+    if mode!='patch' or any(not spec.get(field) for field in patch_fields):
+        raise ValueError('patched recipe requires all patch inputs')
+    return False
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--version',default=DEFAULT_VERSION)
     parser.add_argument('--source',type=Path,required=True)
     parser.add_argument('--unpacked',type=Path,required=True)
     parser.add_argument('--output-root',type=Path,required=True)
     parser.add_argument('--node',default='node')
+    parser.add_argument('--derive-pins',action='store_true',help='derive isolated candidate output pins after exact input/patch/integrity checks; never report accepted replay')
     args=parser.parse_args()
+    version=args.version
+    recipes=load(R/'dsh-base.manifest.json')['base']['upgrade']['recipes']
+    if version not in recipes:raise ValueError('unsupported replay version; review the upstream difference first')
+    recipe_path=safe(R,recipes[version])
+    recipe_root=recipe_path.parent
     source=args.source.resolve();unpacked=args.unpacked.resolve();out=args.output_root.absolute()
     ordinary(source);ordinary(unpacked)
     if unpacked!=Path(str(source)+'.unpacked'):raise ValueError('unpacked must be the matching source.asar.unpacked directory')
@@ -46,8 +62,8 @@ def main():
     ancestor=out.parent
     while not ancestor.exists():ancestor=ancestor.parent
     ordinary(ancestor)
-    recipe=load(K/'recipe.json');desktop=load(safe(K,recipe['desktopRecipe']));business=recipe['businessShell']
-    if recipe['version']!=VERSION or desktop['version']!=VERSION:raise ValueError('recipe version mismatch')
+    recipe=load(recipe_path);desktop=load(safe(recipe_root,recipe['desktopRecipe']));business=recipe['businessShell']
+    if recipe['version']!=version or desktop['version']!=version:raise ValueError('recipe version mismatch')
     raw=source.read_bytes()
     if pin(raw)!=recipe['officialInput']['appAsar']:raise ValueError('official ASAR preimage drift')
     helperPath=R/'apps/tradeloom-launcher/scripts/write-n01-origin-candidate.py';ordinary(helperPath)
@@ -64,7 +80,7 @@ def main():
         return data
     for path in [Path(__file__).resolve(),helperPath,R/'scripts/upgrade-dsh-base.mjs',R/'dsh-base.manifest.json']:
         repo_bytes(path.relative_to(R).as_posix())
-    for path in sorted(K.iterdir()):
+    for path in sorted(recipe_root.iterdir()):
         if path.is_file():repo_bytes(path.relative_to(R).as_posix())
     for row in recipe['copies']:repo_bytes(row['source'],row['destination'])
     def run(name,command,cwd=out):
@@ -86,14 +102,14 @@ def main():
         if entry.get('integrity') and sha(data)!=entry['integrity']['hash']:raise ValueError(f'original integrity mismatch: {relative}')
         return data
     sdk=out/'sdk'
-    run('sdk-recipe',[args.node,str(R/'scripts/upgrade-dsh-base.mjs'),'--source',str(source),'--version',VERSION,'--stage',str(sdk)])
+    run('sdk-recipe',[args.node,str(R/'scripts/upgrade-dsh-base.mjs'),'--source',str(source),'--version',version,'--stage',str(sdk)])
     verify(sdk,recipe['postimages'])
     desktopRoot=out/'desktop';desktopRoot.mkdir()
     for relative,expected in desktop['preimages'].items():
         data=original(relative)
         if pin(data)!=expected:raise ValueError(f'desktop preimage drift: {relative}')
         path=safe(desktopRoot,relative);path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(data)
-    run('desktop-patch',['git','-c','core.autocrlf=false','-c','core.eol=lf','apply','--whitespace=nowarn',str(safe(K,desktop['patch']))],desktopRoot)
+    run('desktop-patch',['git','-c','core.autocrlf=false','-c','core.eol=lf','apply','--whitespace=nowarn',str(safe(recipe_root,desktop['patch']))],desktopRoot)
     verify(desktopRoot,desktop['postimages'])
     for target,row in desktop['sources'].items():
         data=repo_bytes(row['source'],target)
@@ -105,17 +121,37 @@ def main():
             data=data.replace(before,after)
         if pin(data)!=desktop['additions'][target]:raise ValueError(f'owned postimage drift: {target}')
         path=safe(desktopRoot,target);path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(data)
+    # Ordered final own-feature overlay: the official desktop patch runs first,
+    # then the declared source map is copied/transformed once. Only now do these
+    # own controller/replica files exist. Do not apply this patch in both stages.
+    final=desktop.get('finalOverlay')
+    desktop_postimages={**desktop['postimages'],**desktop['additions']}
+    if final:
+        if set(final)!={'patch','preimages','postimages'} or set(final['preimages'])!=set(final['postimages']):raise ValueError('invalid final desktop overlay contract')
+        if not set(final['preimages'])<=set(desktop_postimages):raise ValueError('final desktop overlay exceeds declared input map')
+        verify(desktopRoot,final['preimages'])
+        run('seven-features-desktop-patch',['git','-c','core.autocrlf=false','-c','core.eol=lf','apply','--whitespace=nowarn',str(safe(recipe_root,final['patch']))],desktopRoot)
+        verify(desktopRoot,final['postimages'])
+        desktop_postimages.update(final['postimages'])
+    exact_business=uses_exact_source(business,('patch','packageSource'))
     shell=out/'business-shell';shell.mkdir();packageBytes=repo_bytes(business['sourceRoot']+'/package.json')
     if pin(packageBytes)!=business['sourcePackage']:raise ValueError('formal package preimage drift')
     package=json.loads(packageBytes)
-    for relative in ['package.json',*package['files']]:
+    packaged_files=['package.json',*package['files']]
+    if exact_business and (set(packaged_files)!=set(business['preimages']) or business['preimages']!=business['postimages']):
+        raise ValueError('exact-source business pins must cover the complete package')
+    for relative in packaged_files:
         data=repo_bytes(business['sourceRoot']+'/'+relative,'business-shell/'+relative)
         path=safe(shell,relative);path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(data)
     verify(shell,business['preimages'])
-    run('business-patch',['git','-c','core.autocrlf=false','-c','core.eol=lf','apply','--whitespace=nowarn',str(safe(K,business['patch']))],shell)
-    (shell/'package.json').write_bytes(safe(K,business['packageSource']).read_bytes());verify(shell,business['postimages'])
+    if not exact_business:
+        run('business-patch',['git','-c','core.autocrlf=false','-c','core.eol=lf','apply','--whitespace=nowarn',str(safe(recipe_root,business['patch']))],shell)
+        (shell/'package.json').write_bytes(safe(recipe_root,business['packageSource']).read_bytes())
+    business_postimages={relative:pin(safe(shell,relative).read_bytes()) for relative in business['postimages']}
+    business_postimages_exact=business_postimages==business['postimages']
+    if not args.derive_pins:verify(shell,business['postimages'])
     overrides={relative:safe(sdk,relative).read_bytes() for relative in recipe['postimages']}
-    overrides.update({relative:safe(desktopRoot,relative).read_bytes() for relative in [*desktop['postimages'],*desktop['additions']]})
+    overrides.update({relative:safe(desktopRoot,relative).read_bytes() for relative in desktop_postimages})
     expected={};sidecars={};cursor=0;parts=[];payloads={}
     # Insert every new leaf before walking the final tree. Surgical ASAR updates
     # use this same traversal, so additions retain their directory payload order.
@@ -165,15 +201,28 @@ def main():
     if position!=len(actual):raise ValueError('ASAR trailing payload')
     wanted=recipe['expectedAsar'];asarPin=pin(actual)
     logicalExact=len(newRows)==wanted['logicalEntries'] and len(sidecars)==wanted['unpackedFiles']
-    containerExact=asarPin=={key:wanted[key] for key in ['bytes','sha256']}
+    containerExact=asarPin=={key:wanted.get(key) for key in ['bytes','sha256']}
     write_json(evidence/'asar-readback.json',{'actual':asarPin,'expected':wanted,'logicalEntries':len(newRows),'unpackedFiles':len(sidecars),'allExpectedPayloadsExact':True,'allIntegrityBlocksExact':True,'noOverlapOrGap':True,'containerBytesExact':containerExact,'logicalCountsExact':logicalExact})
-    if not logicalExact or not containerExact:raise ValueError('fixed ASAR differs from accepted target; do not rewrite expected pins or repack')
-    validator='apps/tradeloom-launcher/installed-bootstrap.mjs';validatorBytes=repo_bytes(validator)
-    if sha(validatorBytes)!='4050f03f7dc7d3304e3635218fece485b604bed803b4885f162040a1c0c86f66':raise ValueError('original business validator drift')
+    if not logicalExact or not containerExact and not args.derive_pins:raise ValueError('fixed ASAR differs from accepted target; do not rewrite expected pins or repack')
+    validator_input=business.get('validatorInput')
+    if not isinstance(validator_input,dict) or set(validator_input)!={'source','bytes','sha256'}:raise ValueError('explicit business validator source pin required')
+    validator=validator_input['source'];validatorBytes=repo_bytes(validator)
+    if pin(validatorBytes)!={key:validator_input[key] for key in ['bytes','sha256']}:raise ValueError('declared business validator source drift')
+    business_inventory=business['inventory']
+    if args.derive_pins:
+        records=[]
+        for path in sorted(shell.rglob('*')):
+            ordinary(path)
+            if path.is_file():records.append({'path':path.relative_to(shell).as_posix(),**pin(path.read_bytes())})
+        record_path=evidence/'business-derived-records.json';write_json(record_path,records)
+        digest_script='import{digestInventory}from '+json.dumps((R/validator).as_uri())+';import{readFile}from"node:fs/promises";console.log(digestInventory(JSON.parse(await readFile(process.argv[1],"utf8"))));'
+        digest=run('business-derived-digest',[args.node,'--input-type=module','-e',digest_script,str(record_path)]).stdout.decode().strip()
+        if len(digest)!=64 or any(char not in '0123456789abcdef' for char in digest):raise ValueError('invalid original-validator inventory digest')
+        business_inventory={'fileCount':len(records),'bytes':sum(row['bytes'] for row in records),'sha256':digest}
     sourceFiles=sorted(consumed.values(),key=lambda row:row['sourcePath']);sourceDigest=sha(json.dumps(sourceFiles,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode())
     head=subprocess.check_output(['git','rev-parse','HEAD'],cwd=R,text=True).strip();dirty=bool(subprocess.check_output(['git','status','--porcelain'],cwd=R,text=True))
-    sourceBuild={'ownSourceHead':head,'ownSourceDirty':dirty,'ownSourceFilesSha256':sourceDigest,'appMainSha256':desktop['postimages']['lib/main.js']['sha256'],'assemblyKind':'fixed-version source/ASAR replay; not full program installation','vendorVersion':VERSION,'lock':{'upstream':recipe['officialInput'],'patches':{path.name:sha(path.read_bytes()) for path in sorted(K.iterdir()) if path.is_file()}}}
-    metadata={'schemaVersion':1,'artifactScope':'ASAR and own business-shell only; native program payloads not copied or re-certified','sourceBuild':sourceBuild,'resources':{'businessShell':{'version':json.loads((shell/'package.json').read_bytes())['version'],**business['inventory']}}}
+    sourceBuild={'ownSourceHead':head,'ownSourceDirty':dirty,'ownSourceFilesSha256':sourceDigest,'appMainSha256':desktop_postimages['lib/main.js']['sha256'],'assemblyKind':'fixed-version source/ASAR replay; not full program installation','vendorVersion':version,'lock':{'upstream':recipe['officialInput'],'patches':{path.name:sha(path.read_bytes()) for path in sorted(recipe_root.iterdir()) if path.is_file()}}}
+    metadata={'schemaVersion':1,'artifactScope':'ASAR and own business-shell only; native program payloads not copied or re-certified','sourceBuild':sourceBuild,'resources':{'businessShell':{'version':json.loads((shell/'package.json').read_bytes())['version'],**business_inventory}}}
     write_json(out/'deployment.json',metadata);write_json(out/'source-manifest.json',{'head':head,'dirty':dirty,'sourceFilesSha256':sourceDigest,'sourceFiles':sourceFiles})
     validate=r'''
 import assert from 'node:assert/strict';import * as fs from 'node:fs/promises';import path from 'node:path';import {createHash} from 'node:crypto';import vm from 'node:vm';
@@ -185,9 +234,13 @@ const metadata=JSON.parse(await fs.readFile(metadataPath,'utf8')),verified=await
 console.log(JSON.stringify({nativeFs:true,readProjection:false,fileCount:records.length,bytes:records.reduce((n,r)=>n+r.bytes,0),sha256:actual.digestInventory(records),records}));
 '''
     result=run('business-nativefs',[args.node,'--input-type=module','-e',validate,str(R/validator),str(shell),str(out/'deployment.json')]);inventory=json.loads(result.stdout)
-    if {key:inventory[key] for key in ['fileCount','bytes','sha256']}!=business['inventory']:raise ValueError('business inventory differs from accepted target')
+    if {key:inventory[key] for key in ['fileCount','bytes','sha256']}!=business_inventory:raise ValueError('business inventory differs from exact stage inventory')
     write_json(evidence/'business-nativefs-readback.json',inventory)
-    write_json(out/'RESULTS.json',{'version':VERSION,'asar':asarPin,'logicalEntries':len(newRows),'unpackedFiles':len(sidecars),'businessShell':business['inventory'],'sourceFiles':len(sourceFiles),'sourceFilesSha256':sourceDigest,'sourceBuild':sourceBuild,'SDKPreimages':len(recipe['preimages']),'SDKPostimages':len(recipe['postimages']),'desktopPostimages':desktop['postimages'],'businessPostimages':business['postimages'],'allOutputsMatchAcceptedPayloads':True,'sourceOnlyReplay':True,'appStarted':False,'fullProgramCopied':False})
-    print(json.dumps({'status':'fixed rc2 replay exact','output':str(out),'asar':asarPin,'business':business['inventory'],'sourceFiles':len(sourceFiles)}))
+    status_version='rc2' if version==DEFAULT_VERSION else version
+    status='isolated output pins derived; not accepted replay' if args.derive_pins else f'fixed {status_version} replay exact'
+    result={'status':status,'version':version,'asar':asarPin,'logicalEntries':len(newRows),'unpackedFiles':len(sidecars),'businessShell':business_inventory,'sourceFiles':len(sourceFiles),'sourceFilesSha256':sourceDigest,'sourceBuild':sourceBuild,'SDKPreimages':len(recipe['preimages']),'SDKPostimages':len(recipe['postimages']),'desktopPostimages':desktop_postimages,'businessPostimages':business_postimages,'allOutputsMatchAcceptedPayloads':containerExact and business_postimages_exact and business_inventory==business['inventory'],'sourceOnlyReplay':True,'appStarted':False,'fullProgramCopied':False}
+    if args.derive_pins:write_json(out/'derived-output-pins.json',{**result,'recipeChanged':False,'acceptedClaim':False,'priorExpectedAsar':wanted,'priorBusinessInventory':business['inventory'],'priorBusinessPostimages':business['postimages']})
+    write_json(out/'RESULTS.json',result)
+    print(json.dumps({'status':status,'output':str(out),'asar':asarPin,'business':business_inventory,'sourceFiles':len(sourceFiles)}))
 
 if __name__=='__main__':main()

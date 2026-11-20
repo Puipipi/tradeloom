@@ -1,0 +1,77 @@
+.native-account-return {
+  -webkit-app-region: no-drag;
+  flex: 0 0 auto;
+  min-width: 76px;
+  padding-inline: 8px;
+  color: var(--text);
+  border-color: var(--border);
+  background: var(--bg-panel);
+  font: inherit;
+  white-space: nowrap;
+}
+
+.native-account-return:hover,
+.native-account-return:focus-visible {
+  color: var(--accent);
+  background: var(--bg-panel-hover);
+}
+
+.native-account-return[hidden] {
+  display: none !important;
+}
+
+.tl-native-account-sidebar-resize {
+  position: fixed;
+  z-index: 2147483647;
+  top: 50%;
+  right: 8px;
+  width: 8px;
+  height: 44px;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  cursor: ew-resize;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.tl-native-account-sidebar-resize-rail {
+  width: 3px;
+  height: 30px;
+  margin-right: 2px;
+  border-radius: 999px;
+  background: var(--tl-theme-accent, var(--tl-shell-accent, var(--dsw-alias-brand-primary, currentColor)));
+  opacity: .72;
+  transition: opacity 100ms ease, box-shadow 100ms ease;
+}
+
+.tl-native-account-sidebar-resize::before {
+  position: absolute;
+  top: calc(-50vh + 22px);
+  right: -8px;
+  height: 100vh;
+  width: 1px;
+  background: var(--tl-theme-accent, var(--tl-shell-accent, var(--dsw-alias-brand-primary, currentColor)));
+  box-shadow: 0 0 10px 2px color-mix(in srgb, var(--tl-theme-accent-soft, var(--tl-shell-accent-soft, var(--dsw-alias-brand-primary, currentColor))) 24%, transparent);
+  opacity: .45;
+  content: "";
+  pointer-events: none;
+}
+
+.tl-native-account-sidebar-resize:hover .tl-native-account-sidebar-resize-rail,
+.tl-native-account-sidebar-resize:focus-visible .tl-native-account-sidebar-resize-rail {
+  opacity: .95;
+}
+
+.tl-native-account-sidebar-resize.is-resizing .tl-native-account-sidebar-resize-rail {
+  opacity: 1;
+  box-shadow: 0 0 0 8px color-mix(in srgb, var(--tl-theme-accent-soft, var(--tl-shell-accent-soft, var(--dsw-alias-brand-primary, currentColor))) 24%, transparent);
+}
+
+.tl-native-account-sidebar-resize.is-resizing::before { opacity: .9; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tl-native-account-sidebar-resize-rail { transition: none; }
+}

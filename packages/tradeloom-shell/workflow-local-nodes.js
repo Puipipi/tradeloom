@@ -35,8 +35,10 @@ function verifiedAgentOutput(run, definitionNode) {
   if (!receipt || !isDeepStrictEqual(receipt.output, state.output)) throw fail('upstream_terminal_unverified')
   let text = receipt.output ?? ''
   if (Array.isArray(text)) {
-    if (!text.every(block => block?.type === 'text' && typeof block.text === 'string')) throw fail('upstream_output_unavailable')
-    text = text.map(block => block.text).join('\n')
+    if (!text.every(block => ['text', 'reasoning'].includes(block?.type) && typeof block.text === 'string')) throw fail('upstream_output_unavailable')
+    const visible = text.filter(block => block.type === 'text')
+    if (text.length > 0 && visible.length === 0) throw fail('upstream_output_unavailable')
+    text = visible.map(block => block.text).join('\n')
   }
   if (typeof text !== 'string') throw fail('upstream_output_unavailable')
   const evidence = validateArtifactEvidence(receipt.artifactEvidence, state.artifactRangeStart)

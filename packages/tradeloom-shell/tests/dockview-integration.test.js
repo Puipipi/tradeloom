@@ -62,21 +62,24 @@ test('real Dockview snapshot survives the client HTTP save and server restore co
   const originalRect = dom.window.HTMLElement.prototype.getBoundingClientRect
   const originalElementFromPoint = dom.window.document.elementFromPoint
   const originalElementsFromPoint = dom.window.document.elementsFromPoint
+  let viewportWidth = 980
+  const resizeObservers = new Set()
   dom.window.HTMLElement.prototype.getBoundingClientRect = function () {
     if (this.classList?.contains('tl-dockview-host')) {
-      return { x: 0, y: 0, left: 0, top: 0, right: 980, bottom: 650, width: 980, height: 650, toJSON() { return this } }
+      return { x: 0, y: 0, left: 0, top: 0, right: viewportWidth, bottom: 650, width: viewportWidth, height: 650, toJSON() { return this } }
     }
     return originalRect.call(this)
   }
   class ResizeObserverShim {
     constructor(callback) { this.callback = callback; this.targets = new Set() }
     observe(target) {
+      resizeObservers.add(this)
       this.targets.add(target)
       const rect = target.getBoundingClientRect()
       this.callback([{ target, contentRect: rect }], this)
     }
     unobserve(target) { this.targets.delete(target) }
-    disconnect() { this.targets.clear() }
+    disconnect() { this.targets.clear(); resizeObservers.delete(this) }
   }
   class PointerEventShim extends dom.window.MouseEvent {
     constructor(type, init = {}) {
@@ -121,6 +124,20 @@ test('real Dockview snapshot survives the client HTTP save and server restore co
 
   const config = JSON.parse(await readFile(new URL('../scenes.json', import.meta.url), 'utf8'))
   config.roles = publicRoleMetadata()
+  const workflow = config.scenes.find(scene => scene.id === 'agent-center')
+  const workflowCopy = { ...structuredClone(workflow), id: 'workflow-copy', templateSceneId: workflow.id, label: '工作流副本' }
+  delete workflowCopy.defaultBusinessRoute
+  const legacyWorkflow = { ...structuredClone(workflowCopy), id: 'workflow-legacy', label: '旧工作流' }
+  legacyWorkflow.panels = legacyWorkflow.panels.filter(panel => panel.id !== 'business-plan')
+  const tabbedWorkflow = { ...structuredClone(workflowCopy), id: 'workflow-tabbed', label: '分标签工作流' }
+  const tabbedMain = tabbedWorkflow.panels.find(panel => panel.id === 'business-main')
+  tabbedMain.frontendTabs = [
+    { id: 'plan', view: 'business', label: '原业务视图' },
+    { id: 'drawing', view: 'workflow-canvas', label: '原画布视图' },
+  ]
+  const customWorkflow = { ...structuredClone(workflowCopy), id: 'workflow-custom', label: '自定义工作流' }
+  customWorkflow.panels.find(panel => panel.id === 'business-main').path = '/products'
+  config.scenes.push(workflowCopy, legacyWorkflow, tabbedWorkflow, customWorkflow)
   const sceneState = defaultSceneWorkbench(config)
   sceneState.activeSceneId = 'products'
   sceneState.businessPath = '/products'
@@ -130,6 +147,10 @@ test('real Dockview snapshot survives the client HTTP save and server restore co
   const validatorErrors = []
   const putValidations = []
   let nextPutResponse = null
+  const workflowReads = []
+  const savedWorkflow = { version: 1, id: 'saved-canvas', title: '已保存画布', description: '',
+    source: 'manual', confirmed: true, nodes: [{ id: 'in', kind: 'input', title: '输入', instruction: '', position: { x: 40, y: 60 } }], edges: [] }
+  const workflowDetailUrl = '/tradeloom/workflows?id=saved-canvas'
   const fetch = async (url, options = {}) => {
     if (url === '/tradeloom/scenes') return { ok: true, async json() { return { ...config, businessOrigin: 'http://desktop.local' } } }
     if (url === '/tradeloom/scene-layouts') return { ok: true, async json() { return sceneState } }
@@ -145,28 +166,38 @@ test('real Dockview snapshot survives the client HTTP save and server restore co
       return { ok: valid, async json() { return {} } }
     }
     if (url === '/tradeloom/session') return { ok: true, status: 201, async json() { return { role: 'product', sessionId: 'synthetic-session' } } }
+    if (url === '/tradeloom/workflows' || url === workflowDetailUrl) {
+      workflowReads.push(url)
+      return { ok: true, async json() { return url === workflowDetailUrl ? { workflow: savedWorkflow, run: null }
+        : { workflows: [savedWorkflow], catalog: { agents: [], kinds: [] } } } }
+    }
     throw new Error(`unexpected request: ${url}`)
   }
   const clientSource = await readFile(new URL('../client.scenes.js', import.meta.url), 'utf8')
   const dockviewSource = await readFile(new URL('../client.dockview.js', import.meta.url), 'utf8')
+  const workflowSource = await readFile(new URL('../client.workflow.js', import.meta.url), 'utf8')
   const dockviewCss = await readFile(new URL('../vendor/dockview.css', import.meta.url), 'utf8')
   let clientRegistration
   let dockviewRegistration
+  let workflowRegistration
   dom.window.__ModuleLoader__ = { load(value) {
     if (value.chunk === 'client.scenes.js') clientRegistration = value
     if (value.chunk === 'client.dockview.js') dockviewRegistration = value
+    if (value.chunk === 'client.workflow.js') workflowRegistration = value
   } }
   const vmGlobals = {
     window: dom.window, document: dom.window.document, navigator: dom.window.navigator,
     HTMLElement: dom.window.HTMLElement, Element: dom.window.Element, Node: dom.window.Node, Document: dom.window.Document,
     PointerEvent: PointerEventShim,
     MutationObserver: dom.window.MutationObserver, ResizeObserver: ResizeObserverShim,
-    URLSearchParams, fetch, requestAnimationFrame: frame,
+    URLSearchParams, fetch, requestAnimationFrame: frame, getComputedStyle: dom.window.getComputedStyle.bind(dom.window),
     cancelAnimationFrame: id => dom.window.clearTimeout(id),
     setTimeout: dom.window.setTimeout.bind(dom.window), clearTimeout: dom.window.clearTimeout.bind(dom.window),
+    setInterval: dom.window.setInterval.bind(dom.window), clearInterval: dom.window.clearInterval.bind(dom.window),
     queueMicrotask: callback => dom.window.queueMicrotask(callback),
   }
   runInNewContext(clientSource, { ...vmGlobals, React })
+  runInNewContext(workflowSource, vmGlobals)
   dom.window.eval(dockviewSource)
   assert.equal(clientRegistration?.chunk, 'client.scenes.js')
   assert.equal(dockviewRegistration?.chunk, 'client.dockview.js')
@@ -175,7 +206,11 @@ test('real Dockview snapshot survives the client HTTP save and server restore co
     if (name === 'react') return React
     if (name === 'react-dom') return pinnedRequire('react-dom')
     assert.fail(`unexpected client-scene dependency ${name}`)
-  }, { async: async id => { assert.equal(id, './client.dockview.js'); return dockviewModule } })
+  }, { async: async id => {
+    if (id === './client.workflow.js') return workflowRegistration.factory(pinnedRequire)
+    assert.equal(id, './client.dockview.js')
+    return dockviewModule
+  } })
   const sceneExports = clientRegistration.factory(sceneRequire)
   const cleanups = []
   sceneExports.register({
@@ -217,14 +252,14 @@ test('real Dockview snapshot survives the client HTTP save and server restore co
   })
 
     root = createRoot(host)
-    const App = () => React.createElement(React.Fragment, null,
-      React.createElement(sceneExports.SceneTabs, { workbenchActive: true }),
-      React.createElement(sceneExports.SceneWorkbench, {
+    const sceneApp = exports => React.createElement(React.Fragment, null,
+      React.createElement(exports.SceneTabs, { workbenchActive: true }),
+      React.createElement(exports.SceneWorkbench, {
         SessionProvider: ({ children }) => children,
         renderSlot: () => React.createElement('div', { 'data-native-chat-instance': 'true' }, 'native chat fixture'),
       }))
     await act(async () => {
-      root.render(React.createElement(App))
+      root.render(sceneApp(sceneExports))
       await settle(80)
     })
     const api = sceneExports.getDockviewApi('products')
@@ -722,17 +757,22 @@ test('real Dockview snapshot survives the client HTTP save and server restore co
       'the custom 63/37 tree is observably different from the default 60/40 recommendation')
     assertSizesNear(customApplied.grid.root.data.map(child => child.size), expectedCustomSizes, 2)
 
-    const filesPanel = api.getPanel('files')
-    assert.ok(filesPanel)
+    const filesClose = host.querySelector('.tl-dock-scene.is-active [data-tab-panel-id="files"] .dv-default-tab-action')
+    assert.ok(filesClose, 'the ordinary Dockview tab exposes a close control')
     await act(async () => {
-      filesPanel.api.close()
+      filesClose.click()
       await settle(20)
     })
+    const top = api.toJSON().grid.root.data[0]
+    assert.equal(top.type, 'leaf', 'the split collapses and the remaining group occupies the whole top row')
+    assert.deepEqual(top.data.views, ['business-main'])
     await act(async () => { await settle(30) })
     assert.ok(putBodies.length > 0, 'closing a real panel reaches the client queueDockLayoutSave HTTP PUT path')
     const bodyOverHttp = JSON.parse(JSON.stringify(putBodies.at(-1)))
     const sentRecord = bodyOverHttp.scenes.products
     assert.deepEqual(sentRecord.closedPanelIds, ['files', 'assistant-center', 'assistant-delivery', 'assistant-user-profile', 'native-workspace'])
+    assert.deepEqual(sentRecord.closedPanelPositions, { files: { direction: 'right', neighbors: ['business-main'] } })
+    assert.deepEqual(normalizeDockLayouts(config, bodyOverHttp).scenes.products.closedPanelPositions, sentRecord.closedPanelPositions)
     assertSizesNear(sentRecord.dockview.grid.root.data.map(child => child.size), expectedCustomSizes, 2,
       'the actual HTTP save preserves the changed split, rather than merely preserving its ordering')
     const extraKeysAfterJson = [...new Set(Object.values(sentRecord.dockview.panels).flatMap(panel =>
@@ -748,6 +788,7 @@ test('real Dockview snapshot survives the client HTTP save and server restore co
     assert.ok(api.getPanel('files'), 'the visible restore action recreates the closed panel')
     assert.equal(Object.keys(api.toJSON().panels).filter(id => id === 'files').length, 1,
       'the visible restore action creates exactly one files panel')
+    assert.deepEqual(walkLeaves(api.toJSON().grid.root).map(leaf => leaf.views), walkLeaves(customApplied.grid.root).map(leaf => leaf.views))
 
     const normalized = normalizeDockLayouts(config, bodyOverHttp).scenes.products
     const beforeRestore = walkLeaves(normalized.dockview.grid.root)
@@ -797,4 +838,369 @@ test('real Dockview snapshot survives the client HTTP save and server restore co
     assert.equal(reopenedRecord.closedPanelIds.includes('files'), false, 'the saved closed-panel list is cleared after restoration')
     assert.deepEqual(validatorErrors, [], 'the restored layout passes the production validator')
     assert.equal(putValidations.at(-1), true)
+
+    const workflowTab = host.querySelector('[data-scene-tab-id="agent-center"]')
+    assert.ok(workflowTab, 'the workflow scene is available from the scene bar')
+    await act(async () => { workflowTab.click(); await settle(80) })
+    const workflowApi = sceneExports.getDockviewApi('agent-center')
+    assert.ok(workflowApi)
+    await act(async () => { workflowApi.layout(980, 650, true); await settle() })
+    const recommendedGrid = JSON.parse(JSON.stringify(workflowApi.toJSON().grid))
+    assert.deepEqual(walkLeaves(recommendedGrid.root).map(leaf => leaf.views), [
+      ['business-main'], ['files'], ['preview'], ['native-chat'],
+    ])
+    assertSplitPercentages(recommendedGrid.root.data, [60, 40])
+    assertSplitPercentages(recommendedGrid.root.data[1].data, [50, 50])
+    const currentScene = () => host.querySelector('.tl-dock-scene.is-active')
+    const workflowFrame = id => currentScene().querySelector(`iframe[data-tradeloom-panel-id="${id}"]`)
+    const canvas = () => currentScene().querySelector('[data-workflow-canvas] .tl-wf [data-node-id="in"]')
+    const originalCanvas = canvas()
+    assert.ok(originalCanvas, 'the canonical Web workflow actually mounts its canvas')
+    assert.deepEqual(workflowReads, ['/tradeloom/workflows', workflowDetailUrl], 'loading does not request a second refresh')
+    assert.equal(workflowFrame('business-main'), null)
+    assert.equal(workflowFrame('business-plan'), null)
+    const restorePlanButton = () => [...host.querySelectorAll('.tl-layout-menu-popover button')]
+      .find(button => button.textContent === '恢复业务计划')
+    assert.ok(restorePlanButton())
+    await act(async () => { restorePlanButton().click(); await settle(70) })
+    assert.equal(workflowFrame('business-plan')?.getAttribute('src'), '/business/agent-center')
+    assert.equal(canvas(), originalCanvas)
+    assert.deepEqual(walkLeaves(workflowApi.toJSON().grid.root).map(leaf => leaf.views), [
+      ['business-plan'], ['business-main'], ['files'], ['preview'], ['native-chat'],
+    ])
+
+    await act(async () => { workflowApi.getPanel('business-plan').api.close(); await settle(60) })
+    assert.equal(workflowApi.getPanel('business-plan'), undefined)
+    assert.equal(workflowFrame('business-plan'), null)
+    assert.equal(canvas(), originalCanvas)
+    const shellSource = await readFile(new URL('../client.js', import.meta.url), 'utf8')
+    const origin = 'http://business.fixture'
+    const proposalGuard = shellSource.slice(shellSource.indexOf('    function proposalRoute('), shellSource.indexOf('    function isSourceProposalCandidate('))
+    const handoff = shellSource.slice(shellSource.indexOf('    function installProposalHandoff('), shellSource.indexOf('    function setTrustedBusinessOrigin('))
+    const removeHandoff = runInNewContext(`${proposalGuard}${handoff}
+      let removeProposalHandoff
+      installProposalHandoff()
+      removeProposalHandoff`, {
+      window: dom.window, URL, URLSearchParams, trustedBusinessOrigin: origin,
+      sourceAccountMode: false, sceneApi: sceneExports, setAgentCenterHref() {},
+    })
+    t.after(removeHandoff)
+    const clickProposal = async href => {
+      const anchor = currentScene().appendChild(dom.window.document.createElement('a'))
+      anchor.href = href
+      let intercepted = true
+      anchor.addEventListener('click', event => { intercepted = false; event.preventDefault() })
+      await act(async () => { anchor.click(); await settle(70) })
+      anchor.remove()
+      return intercepted
+    }
+    const taskRoute = '/business/workflow-tasks/demo#workflow-plan'
+    assert.equal(await clickProposal('http://untrusted.fixture' + taskRoute), false)
+    assert.equal(await clickProposal(origin + '/business/workflow-tasks/demo?unexpected=1#workflow-plan'), false)
+    assert.equal(workflowApi.getPanel('business-plan'), undefined)
+    assert.equal(await clickProposal(origin + taskRoute), true)
+    assert.equal(workflowFrame('business-plan')?.getAttribute('src'), taskRoute)
+    assert.equal(workflowApi.activePanel?.id, 'business-plan')
+    assert.equal(canvas(), originalCanvas)
+    await act(async () => { sceneExports.navigateBusiness('/agent-center'); await settle() })
+    assert.equal(workflowApi.activePanel?.id, 'business-main')
+    assert.equal(canvas(), originalCanvas)
+    const refreshCanvas = currentScene().querySelector('[data-pane-action="refresh"][aria-label="刷新工作流画布"]')
+    assert.ok(refreshCanvas)
+    const readsBeforeRefresh = workflowReads.length
+    savedWorkflow.nodes[0].title = '服务端已刷新'
+    await act(async () => { refreshCanvas.click(); await settle() })
+    assert.deepEqual(workflowReads.slice(readsBeforeRefresh), [workflowDetailUrl, '/tradeloom/workflows'])
+    assert.equal(canvas(), originalCanvas)
+    assert.match(canvas().textContent, /服务端已刷新/)
+    const readsBeforeDraft = workflowReads.length
+    await act(async () => { canvas().dispatchEvent(new dom.window.MouseEvent('dblclick', { bubbles: true })); await settle() })
+    const draftInput = currentScene().querySelector('.tl-wf textarea')
+    assert.ok(draftInput)
+    const draftText = '保留编辑中的节点说明'
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(dom.window.HTMLTextAreaElement.prototype, 'value').set.call(draftInput, draftText)
+      pinnedRequire('react-dom/test-utils').Simulate.change(draftInput)
+      await settle()
+    })
+    await act(async () => { refreshCanvas.click(); await settle() })
+    assert.equal(currentScene().querySelector('.tl-wf textarea'), draftInput)
+    assert.equal(draftInput.value, draftText)
+    const canvasButton = label => [...currentScene().querySelectorAll('.tl-wf button')].find(button => button.textContent === label)
+    await act(async () => { canvasButton('应用到草稿').click(); await settle() })
+    assert.ok(canvasButton('保存*'))
+    assert.match(canvas().textContent, new RegExp(draftText))
+    await act(async () => { refreshCanvas.click(); await settle() })
+    assert.equal(canvas(), originalCanvas)
+    assert.ok(canvasButton('保存*'))
+    assert.match(canvas().textContent, new RegExp(draftText))
+    assert.equal(workflowReads.length, readsBeforeDraft)
+    await act(async () => { workflowApi.getPanel('business-plan').api.close(); await settle() })
+    const beforeReset = putBodies.length
+    const resetButton = [...host.querySelectorAll('.tl-layout-menu-popover button')]
+      .find(button => button.textContent === '恢复默认预设')
+    assert.ok(resetButton, 'the workflow scene offers its local recommendation')
+    await act(async () => { resetButton.click(); await settle(80) })
+    const resetGrid = JSON.parse(JSON.stringify(workflowApi.toJSON().grid))
+    assert.deepEqual(walkLeaves(resetGrid.root), walkLeaves(recommendedGrid.root))
+    assertSizesNear(resetGrid.root.data.map(row => row.size), recommendedGrid.root.data.map(row => row.size))
+    assert.ok(putBodies.length > beforeReset, 'reset saves the workflow recommendation through the client')
+    assert.equal(putBodies.at(-1).scenes['agent-center'].closedPanelIds.includes('business-plan'), true)
+    assert.deepEqual(validatorErrors, [], 'the workflow recommendation is accepted on save')
+
+    await act(async () => {
+      restorePlanButton().click()
+      const plan = workflowApi.getPanel('business-plan')
+      const files = workflowApi.getPanel('files')
+      files.api.moveTo({ group: plan.api.group, index: 0 })
+      await settle(30)
+    })
+    const tabbedViews = walkLeaves(workflowApi.toJSON().grid.root).map(leaf => leaf.views)
+    assert.ok(tabbedViews.some(views => views.join(',') === 'files,business-plan'))
+    const workflowFilesClose = host.querySelector('.tl-dock-scene.is-active [data-tab-panel-id="files"] .dv-default-tab-action')
+    assert.ok(workflowFilesClose)
+    await act(async () => { workflowFilesClose.click(); await settle(60) })
+    const persisted = normalizeDockLayouts(config, JSON.parse(JSON.stringify(putBodies.at(-1))))
+    assert.deepEqual(persisted.scenes['agent-center'].closedPanelPositions.files, { direction: 'within', neighbors: ['business-plan'], index: 0 })
+    dockLayouts.scenes['agent-center'] = persisted.scenes['agent-center']
+    sceneState.activeSceneId = 'agent-center'
+    await act(async () => {
+      await sceneExports.retryLoadConfig()
+      workflowApi.fromJSON(persisted.scenes['agent-center'].dockview)
+      await settle(60)
+    })
+    const planTab = host.querySelector('.tl-dock-scene.is-active [data-tab-panel-id="business-plan"]')
+    await act(async () => {
+      planTab.dispatchEvent(new dom.window.MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+      await settle()
+    })
+    const restoreFile = [...dom.window.document.querySelectorAll('.dv-context-menu [role="menuitem"]')]
+      .find(item => item.textContent === '恢复面板：文件')
+    assert.ok(restoreFile, 'right-clicking a Dockview tab offers closed panels from the current scene')
+    await act(async () => { restoreFile.click(); await settle(60) })
+    assert.deepEqual(walkLeaves(workflowApi.toJSON().grid.root).map(leaf => leaf.views), tabbedViews)
+    assert.equal(putBodies.at(-1).scenes['agent-center'].closedPanelPositions, undefined)
+
+    const floatFiles = host.querySelector('.tl-dock-scene.is-active [data-pane-action="float"][aria-label="悬浮文件"]')
+    assert.ok(floatFiles)
+    await act(async () => { floatFiles.click(); await settle(40) })
+    const detachedClose = host.querySelector('.tl-dock-scene.is-active [data-tab-panel-id="files"] .dv-default-tab-action')
+    assert.ok(detachedClose)
+    await act(async () => { detachedClose.click(); await settle(30) })
+    assert.equal(workflowApi.getPanel('files').api.location.type, 'floating')
+    const returnFiles = host.querySelector('.tl-dock-scene.is-active [data-pane-action="float"][aria-label="收回文件"]')
+    await act(async () => { returnFiles.click(); await settle(40) })
+    await act(async () => {
+      workflowApi.fromJSON(persisted.scenes['agent-center'].dockview)
+      for (const panel of [...workflowApi.panels]) {
+        if (panel.id !== 'business-main') panel.api.close()
+      }
+      await settle(40)
+    })
+    const lastClose = host.querySelector('.tl-dock-scene.is-active [data-tab-panel-id="business-main"] .dv-default-tab-action')
+    await act(async () => { lastClose.click(); await settle(30) })
+    assert.deepEqual(workflowApi.panels.map(panel => panel.id), ['business-main'])
+
+    // Older records can still contain zero open panels, so the scene menu must remain usable.
+    await act(async () => { workflowApi.getPanel('business-main').api.close(); await settle(40) })
+    assert.deepEqual(workflowApi.panels, [])
+    await act(async () => {
+      workflowTab.dispatchEvent(new dom.window.MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+      await settle()
+    })
+    const emptySceneRestore = [...host.querySelectorAll('.tl-scene-tab-menu [role="menuitem"]')]
+      .find(item => item.textContent === '恢复面板：文件')
+    assert.ok(emptySceneRestore)
+    await act(async () => { emptySceneRestore.click(); await settle(60) })
+    assert.deepEqual(workflowApi.panels.map(panel => panel.id), ['files'])
+    assert.deepEqual(validatorErrors, [])
+
+    const presetAction = async label => {
+      const action = [...host.querySelectorAll('.tl-layout-menu-popover button')].find(button => button.textContent === label)
+      assert.ok(action, label)
+      await act(async () => { action.click(); await settle(70) })
+    }
+    const officeTab = host.querySelector('[data-scene-tab-id="products"]')
+    await act(async () => { officeTab.click(); await settle(90) })
+    await presetAction('保存当前为预设')
+    const productPreset = structuredClone(putBodies.at(-1).scenes.products.preset)
+    assert.ok(productPreset?.dockview)
+    assert.equal(putBodies.at(-1).scenes['agent-center'].preset, undefined)
+    await act(async () => { workflowTab.click(); await settle(70) })
+    await act(async () => {
+      viewportWidth = 500
+      for (const observer of resizeObservers) {
+        for (const target of observer.targets) {
+          if (target.matches('.tl-dock-scene.is-active .tl-dockview-host')) {
+            observer.callback([{ target, contentRect: target.getBoundingClientRect() }], observer)
+          }
+        }
+      }
+      await settle(90)
+    })
+    assert.ok(host.querySelector('.tl-dock-scene.is-active.is-narrow'))
+    await presetAction('保存当前为预设')
+    const workflowPreset = structuredClone(putBodies.at(-1).scenes['agent-center'].preset)
+    assert.deepEqual(Object.keys(workflowPreset.dockview.panels), ['files'])
+    assert.deepEqual(putBodies.at(-1).scenes.products.preset, productPreset)
+    await presetAction('恢复默认预设')
+    assert.ok(workflowApi.getPanel('business-main'))
+    assert.equal(workflowApi.getPanel('business-plan'), undefined)
+    assert.deepEqual(putBodies.at(-1).scenes['agent-center'].preset, workflowPreset)
+    assert.equal(await clickProposal(origin + taskRoute), true)
+    assert.equal(workflowApi.activePanel?.id, 'business-plan')
+    assert.equal(workflowApi.getPanel('business-plan').api.isMaximized(), true)
+    assert.equal(workflowFrame('business-plan')?.getAttribute('src'), taskRoute)
+    await act(async () => { sceneExports.navigateBusiness('/agent-center'); await settle() })
+    assert.equal(workflowApi.activePanel?.id, 'business-main')
+    assert.equal(workflowApi.getPanel('business-main').api.isMaximized(), true)
+    await presetAction('恢复默认预设')
+    nextPutResponse = { ok: false, status: 400, async json() { return { error: 'invalid-dock-layout' } } }
+    await presetAction('保存当前为预设')
+    nextPutResponse = null
+    assert.deepEqual(JSON.parse(JSON.stringify(sceneExports.getSnapshot().dockLayouts.scenes['agent-center'].preset)), workflowPreset)
+    await presetAction('使用已保存预设')
+    assert.deepEqual(workflowApi.panels.map(panel => panel.id), ['files'])
+    await presetAction('恢复默认预设')
+
+    const savedAfterDefault = normalizeDockLayouts(config, putBodies.at(-1))
+    Object.assign(dockLayouts.scenes, savedAfterDefault.scenes)
+    dockLayouts.scenes['workflow-copy'] = persisted.scenes['agent-center']
+    const reloaded = clientRegistration.factory(sceneRequire)
+    await act(async () => { root.render(sceneApp(reloaded)); await settle(110) })
+    const reloadedWorkflow = reloaded.getDockviewApi('agent-center')
+    assert.ok(reloadedWorkflow?.getPanel('business-main'))
+    assert.equal(reloadedWorkflow.getPanel('business-plan'), undefined)
+    assert.deepEqual(JSON.parse(JSON.stringify(reloaded.getSnapshot().dockLayouts.scenes.products.preset)), productPreset)
+    await presetAction('使用已保存预设')
+    assert.deepEqual(reloadedWorkflow.panels.map(panel => panel.id), ['files'])
+    await act(async () => { reloaded.navigateScene('workflow-copy'); await settle(80) })
+    assert.ok(canvas(), 'a copy inheriting both canonical seats keeps its canvas')
+    assert.equal(workflowFrame('business-plan')?.getAttribute('src'), '/business/agent-center',
+      'an existing saved layout with the separate plan open retains the business frame')
+    await act(async () => { reloaded.navigateScene('workflow-legacy'); await settle(80) })
+    assert.equal(canvas(), null)
+    assert.equal(workflowFrame('business-main')?.getAttribute('src'), '/business/agent-center')
+    await act(async () => { reloaded.navigateScene('workflow-tabbed'); await settle(80) })
+    const drawingTab = currentScene().querySelector('[data-business-view-tabs] button[id$="-drawing-tab"]')
+    assert.ok(drawingTab)
+    assert.equal(workflowFrame('business-main')?.getAttribute('src'), '/business/agent-center')
+    assert.equal(canvas(), null)
+    await act(async () => { drawingTab.click(); await settle() })
+    assert.ok(canvas())
+    await act(async () => { reloaded.navigateScene('workflow-custom'); await settle(80) })
+    assert.equal(canvas(), null)
+    assert.equal(workflowFrame('business-main')?.getAttribute('src'), '/business/products')
+
+    // Start on the real single-tab recommendation, then exercise the header drop targets.
+    viewportWidth = 980
+    await act(async () => { reloaded.navigateScene('products'); await settle(90) })
+    await presetAction('恢复默认预设')
+    const tabsApi = reloaded.getDockviewApi('products')
+    assert.equal(tabsApi.dndCapabilities.pointer, true)
+    assert.ok(tabsApi.groups.every(group => group.panels.length === 1))
+    const tab = id => currentScene().querySelector(`.dv-tab[data-tab-panel-id="${id}"]`)
+    const position = (element, left, top, width, height) => {
+      element.getBoundingClientRect = () => ({ x: left, y: top, left, top, width, height,
+        right: left + width, bottom: top + height, toJSON() { return this } })
+      Object.defineProperties(element, {
+        offsetWidth: { configurable: true, get: () => width },
+        offsetHeight: { configurable: true, get: () => height },
+      })
+    }
+    const dragTab = async (source, destination, from, to, preview) => {
+      pointerId++
+      dom.window.document.elementFromPoint = () => destination
+      dom.window.document.elementsFromPoint = () => [destination]
+      await act(async () => {
+        source.dispatchEvent(dragPointer('pointerdown', ...from))
+        dom.window.dispatchEvent(dragPointer('pointermove', ...to))
+        dom.window.dispatchEvent(dragPointer('pointermove', to[0] + 1, to[1]))
+        preview?.()
+        dom.window.dispatchEvent(dragPointer('pointerup', to[0] + 1, to[1]))
+        await settle(60)
+      })
+    }
+    const mergedSeatId = tabsApi.getPanel('business-main').api.group.id
+    const tabStrip = () => tab('business-main').closest('.dv-tabs-container')
+    const tabsInSeat = () => tabsApi.getGroup(mergedSeatId).panels.map(panel => panel.id)
+    position(tabStrip(), 480, 40, 440, 36)
+    position(tab('business-main'), 480, 40, 140, 36)
+    position(tab('files'), 160, 40, 120, 36)
+    await dragTab(tab('files'), tab('business-main'), [200, 56], [607, 56], () => {
+      assert.ok(currentScene().querySelector('.tl-dock-drop-intent[data-intent="merge"]'))
+    })
+    assert.deepEqual(tabsInSeat(), ['business-main', 'files'])
+    assert.equal(tabsApi.groups.length, 3, 'merging the old one-tab panel removes its empty group')
+    assert.equal(tabsApi.getPanel('files').api.isVisible, true)
+    assert.equal(tabsApi.getPanel('business-main').api.isVisible, false)
+
+    position(tabStrip(), 480, 40, 440, 36)
+    position(tab('business-main'), 480, 40, 140, 36)
+    position(tab('files'), 620, 40, 120, 36)
+    const beforeReorder = geometrySignature(tabsApi.toJSON().grid)
+    await dragTab(tab('files'), tab('business-main'), [680, 56], [490, 56])
+    assert.deepEqual(tabsInSeat(), ['files', 'business-main'], 'same-header drag only reorders its tabs')
+    assert.equal(tabsApi.groups.length, 3)
+    assert.deepEqual(geometrySignature(tabsApi.toJSON().grid), beforeReorder)
+    pointerId++
+    await act(async () => {
+      tab('business-main').dispatchEvent(dragPointer('pointerdown', 650, 56))
+      tab('business-main').dispatchEvent(dragPointer('pointerup', 650, 56))
+      await settle()
+    })
+    assert.equal(tabsApi.activePanel?.id, 'business-main')
+    assert.equal(tab('business-main').getAttribute('aria-selected'), 'true')
+    assert.ok(workflowFrame('business-main'), 'selecting the tab activates the business component')
+    assert.equal(tabsApi.getPanel('business-main').api.isVisible, true)
+    assert.equal(tabsApi.getPanel('files').api.isVisible, false)
+    await presetAction('保存当前为预设')
+    const tabsSaved = normalizeDockLayouts(config, putBodies.at(-1))
+    const tabsPreset = tabsSaved.scenes.products.preset
+    const findSeat = node => node.type === 'leaf'
+      ? (node.data.id === mergedSeatId ? node.data : undefined)
+      : node.data.map(findSeat).find(Boolean)
+    const savedSeat = findSeat(tabsPreset.dockview.grid.root)
+    assert.deepEqual(savedSeat.views, ['files', 'business-main'])
+    assert.equal(savedSeat.activeView, 'business-main')
+    assert.equal(tabsPreset.dockview.activeGroup, mergedSeatId)
+    const current = tabsApi.toJSON()
+    await presetAction('恢复默认预设')
+    Object.assign(dockLayouts.scenes, normalizeDockLayouts(config, putBodies.at(-1)).scenes)
+    const tabsReloaded = clientRegistration.factory(sceneRequire)
+    await act(async () => { root.render(sceneApp(tabsReloaded)); await settle(120) })
+    await act(async () => { tabsReloaded.navigateScene('products'); await settle(80) })
+    const loadedApi = tabsReloaded.getDockviewApi('products')
+    assert.ok(loadedApi.groups.every(group => group.panels.length === 1))
+    await presetAction('使用已保存预设')
+    const loaded = loadedApi.toJSON()
+    assert.equal(loaded.activeGroup, current.activeGroup)
+    assert.equal(findSeat(loaded.grid.root).activeView, 'business-main')
+    assert.equal(loadedApi.activePanel?.id, 'business-main')
+    assert.deepEqual(loadedApi.getGroup(mergedSeatId).panels.map(panel => panel.id), ['files', 'business-main'])
+
+    const mergedGroup = loadedApi.getGroup(mergedSeatId)
+    const splitTarget = mergedGroup.element.querySelector('.dv-content-container')
+    position(mergedGroup.element, 480, 40, 440, 410)
+    position(splitTarget, 480, 76, 440, 374)
+    position(tab('files'), 480, 40, 140, 36)
+    const popouts = loadedApi.getPopouts().length
+    const originalOpen = dom.window.open
+    let windowOpens = 0
+    dom.window.open = () => { windowOpens++; return null }
+    try {
+      await dragTab(tab('files'), splitTarget, [510, 56], [910, 215], () => {
+        assert.ok(currentScene().querySelector('.tl-dock-drop-intent[data-intent="split"]'))
+      })
+    } finally { dom.window.open = originalOpen }
+    assert.deepEqual(mergedGroup.panels.map(panel => panel.id), ['business-main'])
+    const separatedGroup = loadedApi.getPanel('files').api.group
+    assert.notEqual(separatedGroup.id, mergedSeatId)
+    assert.equal(separatedGroup.api.location.type, 'grid')
+    assert.deepEqual(separatedGroup.panels.map(panel => panel.id), ['files'])
+    assert.equal(loadedApi.getPopouts().length, popouts)
+    assert.equal(windowOpens, 0)
+    assert.equal(loadedApi.toJSON().floatingGroups?.length ?? 0, 0)
+
+    assert.deepEqual(validatorErrors, [])
 })

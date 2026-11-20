@@ -223,8 +223,17 @@ async function testReparseBeforeCreateRequestsAFreshPreview() {
     location: { href: "" },
   });
   await submit(page.form);
+  page.form.elements.user_goal.value = "整理本批产品资料";
+  page.form.dispatch("input");
+  assert.match(ui.notice.textContent, /旧预览已失效/);
+  assert.equal(ui.notice.hidden, false);
+  assert.equal(ui.confirmButton.disabled, true);
+
   await submit(page.form);
   assert.equal(requests.filter((item) => item.url.includes("preview")).length, 2);
+  assert.equal(ui.confirmButton.disabled, false);
+  assert.equal(ui.notice.hidden, true);
+  assert.equal(ui.notice.textContent, "");
   await confirm(ui);
   assert.equal(requests[2].body.confirmation_token, "token-2");
 }
@@ -374,11 +383,13 @@ async function testStructuredProposalHandoffReachesExistingPreviewAndExplicitCre
     batch_id: proposal.batch_id,
     user_goal: proposal.user_goal,
     task_type: proposal.task_type,
+    execution_mode: "local_mock",
   });
   assert.equal(ui.confirmButton.disabled, false);
   await confirm(ui);
   assert.equal(requests[1].body.user_goal, proposal.user_goal);
   assert.equal(requests[1].body.task_type, proposal.task_type);
+  assert.equal(requests[1].body.execution_mode, "local_mock");
   assert.equal(requests[1].body.confirmation_token, "signed-structured-token");
   assert.equal(requests[1].body.idempotency_key, "stable-key");
   assert.equal(location.href, "/workflow-tasks/structured-workflow");
@@ -530,9 +541,10 @@ async function testStructuredPreviewIsDiscardedAfterRefreshAndRecreatedBeforeCon
   assert.equal(page.form.elements.batch_id.value, payload.batch_id);
   assert.equal(page.form.elements.user_goal.value, payload.user_goal);
   await submit(page.form);
-  assert.deepEqual(requests[0].body, payload);
+  assert.deepEqual(requests[0].body, { ...payload, execution_mode: "local_mock" });
   await confirm(ui);
   assert.equal(requests[1].body.task_type, payload.task_type);
+  assert.equal(requests[1].body.execution_mode, "local_mock");
   assert.equal(requests[1].body.confirmation_token, "fresh-token");
 }
 

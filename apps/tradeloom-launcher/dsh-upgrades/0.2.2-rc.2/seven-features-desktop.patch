@@ -1,0 +1,1315 @@
+diff --git a/lib/main.js b/lib/main.js
+--- a/lib/main.js
++++ b/lib/main.js
+@@ -15668,7 +15668,7 @@
+ 	if (typeof parseRecord !== "function") throw new Error("desktop Host bridge: public operation diagnostic parser is unavailable");
+ 	return { parseRecord, isRunId: value => runIdSchema.safeParse(value).success };
+ }
+-function isDesktopHostEvent(message, isRunId) {
++function isDesktopHostEvent(message, isRunId, revocationKind = () => void 0) {
+ 	if (typeof message !== "object" || message === null || !("type" in message)) return false;
+ 	const candidate = message;
+ 	switch (candidate.type) {
+@@ -15705,7 +15705,17 @@
+ 		case "native-import-confirmation-cancel": return Number.isSafeInteger(candidate.requestId) && candidate.requestId > 0;
+ 		case "update-tasks": return Number.isSafeInteger(candidate.requestId) && typeof candidate.active === "boolean" && (candidate.error === void 0 || typeof candidate.error === "string");
+ 		case "quit-inspection": return Number.isSafeInteger(candidate.requestId) && typeof candidate.activeTasks === "boolean" && typeof candidate.scheduledTasks === "boolean" && (candidate.error === void 0 || typeof candidate.error === "string");
+-		case "scene-memory-origin-grant": return Number.isSafeInteger(candidate.requestId) && (candidate.error === void 0 && typeof candidate.grant?.token === "string" && Number.isFinite(candidate.grant.expiresAt) && typeof candidate.grant.hostEpoch === "string" || typeof candidate.error === "string" && (candidate.errorCode === void 0 || typeof candidate.errorCode === "string"));
++		case "scene-memory-origin-grant": {
++			if (!Number.isSafeInteger(candidate.requestId)) return false;
++			if (candidate.error !== void 0) return typeof candidate.error === "string" && (candidate.errorCode === void 0 || typeof candidate.errorCode === "string");
++			const grant = candidate.grant;
++			if (grant !== null && typeof grant === "object" && "controlOnly" in grant) {
++				if (grant.controlOnly !== true || Object.keys(grant).sort().join(",") !== "controlOnly,nativeDirectoryResult") return false;
++				const kind = revocationKind(candidate.requestId), result = grant.nativeDirectoryResult;
++				return kind === "revoke" ? typeof result === "boolean" : kind === "task-cancel" && result !== null && typeof result === "object" && Object.keys(result).join(",") === "cancelled" && result.cancelled === true;
++			}
++			return typeof grant?.token === "string" && Number.isFinite(grant.expiresAt) && typeof grant.hostEpoch === "string";
++		}
+ 		/* 0.2.2 Host 新增事件：DSH 升级后必须能识别，否则整条 IPC 会被判为非法。 */
+ 		case "starting": return typeof isRunId === "function" && isRunId(candidate.runId);
+ 		case "file-drag-resource": {
+@@ -15824,7 +15834,8 @@
+ 			...this.packageManager === void 0 ? [] : [this.packageManager.pnpm, this.packageManager.nodeBin]
+ 		], {
+ 			cwd: this.projectDir,
+-			env: desktopNodeEnvironment(this.node, void 0, this.environment),
++			// Host model downloads use Windows system trust in this child only.
++			env: { ...desktopNodeEnvironment(this.node, void 0, this.environment), NODE_USE_SYSTEM_CA: "1" },
+ 			stdio: [
+ 				"ignore",
+ 				"pipe",
+@@ -15873,7 +15884,7 @@
+ 				catch (_error) { console.error("desktop plugin operation diagnostic sink failed"); }
+ 				return;
+ 			}
+-			if (!isDesktopHostEvent(message, this.operationBridge.isRunId)) {
++			if (!isDesktopHostEvent(message, this.operationBridge.isRunId, id => this.controlRequests.get(id)?.webAiRevocation)) {
+ 				this.fail(/* @__PURE__ */ new Error("dsh desktop host sent an invalid IPC event"));
+ 				child.kill("SIGTERM");
+ 				return;
+@@ -15973,6 +15984,7 @@
+ 		try {
+ 			return await new Promise((resolve, reject) => {
+ 				this.controlRequests.set(requestId, {
++					webAiRevocation: request.type === "scene-memory-origin-grant" && request.request?.endpoint === "tradeloom/webai-directory-control" && request.request.httpMethod === "POST" && ["task-cancel", "revoke"].includes(request.request.nativeDirectory?.action) ? request.request.nativeDirectory.action : void 0,
+ 					resolve,
+ 					reject
+ 				});
+@@ -16045,7 +16057,7 @@
+ 	}
+ 	async issueSceneMemoryOriginGrant(request) {
+ 		const response = await this.control({ type: "scene-memory-origin-grant", request }, 15e3, "scene-memory origin: grant request timed out", "scene-memory origin");
+-		if (response.type !== "scene-memory-origin-grant" || typeof response.grant?.token !== "string") throw new Error("scene-memory origin: Host returned an invalid grant");
++		if (response.type !== "scene-memory-origin-grant" || (typeof response.grant?.token !== "string" && !(request.endpoint === "tradeloom/webai-directory-control" && ["task-cancel", "revoke"].includes(request.nativeDirectory?.action) && response.grant?.controlOnly === true))) throw new Error("scene-memory origin: Host returned an invalid grant");
+ 		return response.grant;
+ 	}
+ };
+@@ -24442,7 +24454,7 @@
+ 		node: process.execPath,
+ 		nodeBin: development ? join(app.getAppPath(), "scripts", "node-bin") : join(process.resourcesPath, "runtime", "bin"),
+ 		pnpm: (development ? process.env.DSH_DESKTOP_PNPM_ENTRY : void 0) ?? (development ? join(app.getAppPath(), "node_modules", "pnpm", "bin", "pnpm.mjs") : join(process.resourcesPath, "runtime", "primary-runtime", "dependencies", "pnpm", "bin", "pnpm.mjs")),
+-		dsh: (development ? process.env.DSH_DESKTOP_DSH_DIR : void 0) ?? (development ? join(app.getAppPath(), ".desktop-build", "development", "project") : join(app.getAppPath(), "dsh"))
++		dsh: (development ? process.env.DSH_DESKTOP_DSH_DIR : void 0) ?? (development ? join(app.getAppPath(), ".desktop-build", "development", "project") : join(realpathSync.native(app.getAppPath()), "dsh"))
+ 	};
+ }
+ function developmentPrimaryRuntime() {
+@@ -25077,19 +25089,159 @@
+ 	const productWorkspace = typeof manifest === "object" && manifest !== null && "dshDesktopAppId" in manifest && manifest.dshDesktopAppId === "cn.tradeloom.workbench";
+ 	const sourceMode = productWorkspace && process.env.TRADELOOM_SOURCE_SHELL_CANDIDATE === "1";
+ 	const sourceRoot = join(app.getAppPath(), "lib", "tradeloom-source-shell");
++	let engineOwnerPromise, engineRestorePending = false;
++	const engineOwner = () => engineOwnerPromise ??= (async () => {
++		const programRoot = dirname(dirname(process.execPath));
++		if (resolve(join(programRoot, "app")) !== resolve(dirname(process.execPath))) throw Error("engine owner requires the identified program app");
++		const validation = await import(pathToFileURL(join(app.getAppPath(), "lib/tradeloom/installed-bootstrap.mjs")).href);
++		const metadata = validation.validateInstalledManifest(JSON.parse(await fsPromises.readFile(join(process.resourcesPath, "tradeloom/deployment.json"), "utf8")));
++		const resource = metadata.resources.engineRecovery;
++		if (!resource) throw Error("engine recovery resources unavailable");
++		const root = validation.resolvePackagedPath(process.resourcesPath, resource.root, "engine recovery");
++		await validation.verifyResourceTree(root, "", resource, fsPromises, "Engine recovery resources");
++		const recoveryResources = JSON.parse(await fsPromises.readFile(join(root, "runtime-inputs.json"), "utf8"));
++		const own = await import(pathToFileURL(join(root, "packages/tradeloom-shell/engine-generation-owner.js")).href);
++		return own.createEngineGenerationOwner({ programRoot, validation, recoveryResources });
++	})();
++	const engineGenerationAction = async (window, request, assertOwner) => {
++		if (!request || typeof request !== "object" || Array.isArray(request)) throw Error("invalid engine action");
++		const owner = await engineOwner(); assertOwner();
++		if (request.action === "list" && Object.keys(request).length === 1) return owner.list();
++		if (request.action === "capture" && Object.keys(request).length === 1) return owner.capture();
++		if (request.action === "preview" && Object.keys(request).sort().join(',') === 'action,snapshotId') return owner.previewRestore(request.snapshotId);
++		if (request.action === "cancel" && Object.keys(request).sort().join(',') === 'action,previewId') return { cancelled: owner.cancelRestorePreview(request.previewId) };
++		if (request.action !== "restore" || Object.keys(request).sort().join(',') !== 'action,previewId' || engineRestorePending) throw Error("invalid or pending engine recovery");
++		const consent = await dialog.showMessageBox(window, { type: "warning", buttons: ["取消", "正常退出并恢复"], defaultId: 0, cancelId: 0,
++			message: "恢复所选引擎程序快照并重新打开工作台？", detail: "只恢复受控程序 payload；账号、配置和数据不在快照内。工作台及子服务正常退出后才会切换；未正常退出或出现新代际将拒绝恢复。请先处理未发送附件。" });
++		assertOwner();
++		if (consent.response !== 1) return { cancelled: true };
++		engineRestorePending = true;
++		try {
++			const system = process.env.SystemRoot;
++			if (!system || !isAbsolute(system)) throw Error("system process identity unavailable");
++			const command = "$ErrorActionPreference='Stop';Import-Module (Join-Path $PSHOME 'Modules/CimCmdlets/CimCmdlets.psd1') -ErrorAction Stop;$p=Get-CimInstance Win32_Process -Filter 'ProcessId=" + process.pid + "';[Console]::Out.Write((@{pid=[int]$p.ProcessId;exe=$p.ExecutablePath;creation=$p.CreationDate.ToUniversalTime().ToString('o')}|ConvertTo-Json -Compress))";
++			const output = await promisify(execFile)(join(system, "System32/WindowsPowerShell/v1.0/powershell.exe"), ["-NoProfile", "-NonInteractive", "-Command", command], { windowsHide: true, encoding: "utf8", maxBuffer: 8192 });
++			const identity = JSON.parse(output.stdout.replace(/^\uFEFF/, ""));
++			if (identity.pid !== process.pid || resolve(identity.exe) !== resolve(process.execPath)) throw Error("Main process identity changed");
++			const job = await owner.prepareWorker(request.previewId, identity); assertOwner();
++			const errorLog = openSync(join(dirname(job.requestPath), "worker-error.log"), "wx");
++			let child;
++			try {
++				child = spawn(job.node, [job.worker, job.requestPath, job.requestSha256], { cwd: dirname(job.requestPath), detached: true, windowsHide: true, shell: false, stdio: ["ignore", "ignore", errorLog] });
++				await new Promise((done, reject) => { child.once("spawn", done); child.once("error", reject); });
++			} finally { closeSync(errorLog); }
++			child.unref();
++			// Normal application shutdown owns Host/PG cleanup. The external worker
++			// independently waits exact Main, then CLI checks every target/work exe.
++			setImmediate(() => app.quit());
++			return { exitingNormallyForRecovery: true };
++		} catch (error) { engineRestorePending = false; throw error; }
++	};
+ 	const sourcePreload = join(sourceRoot, "source-preload.cjs");
+ 	const sourcePartition = "persist:tradeloom-source-shell-candidate";
+ 	let sourceController;
++	let webAiDirectoryPromise, webAiDirectoryReady;
++	const webAiDirectory = () => webAiDirectoryPromise ??= (async () => {
++		const businessRoot = join(process.resourcesPath, "tradeloom/business-shell");
++		const { createWebAiDirectoryPolicies } = await import(pathToFileURL(join(businessRoot, "webai-directory-policy.js")).href);
++		const { createWebAiNativeTargets } = await import(pathToFileURL(join(businessRoot, "webai-native-site-adapter.js")).href);
++		const { connectWebAiSiteTransports } = await import(pathToFileURL(join(businessRoot, "webai-site-transport.js")).href);
++		const grants = new Map(), ownerFrames = new Map(), taskOwners = new Map();
++		const sendControl = async (owner, nativeDirectory) => {
++			const bytes = Buffer.from(JSON.stringify({ id: randomUUID(), action: "native-directory-control" }));
++			if (!backend.host) throw Error("webai directory: Host unavailable");
++			return (await backend.host.issueSceneMemoryOriginGrant({ endpoint: "tradeloom/webai-directory-control", httpMethod: "POST", bodyBytesBase64: bytes.toString("base64"), source: { ...owner, scope: "role" }, nativeDirectory })).nativeDirectoryResult;
++		};
++		const revoke = async id => {
++			const grant = grants.get(id); if (!grant) return false;
++			grants.delete(id); grant.dispose(); policies.revoke(id);
++			await sendControl(grant.owner, { action: "revoke", id }); return true;
++		};
++		const targets = createWebAiNativeTargets({ findWindow: provider => aiWebWindows.windows.get(provider)?.liveWindow(),
++			revokeTarget: targetId => { for (const [id, grant] of grants) if (grant.target.targetId === targetId) void revoke(id).catch(() => {}); } });
++		const siteTransports = connectWebAiSiteTransports({ targets, aiWebWindows });
++		const assertOwner = async owner => {
++			const captured = ownerFrames.get(owner.operationId), contents = webContents.fromId(owner.guestId);
++			if (!captured || captured.contents !== contents || contents?.mainFrame !== captured.frame || sourceController !== captured.controller) throw Error("webai directory: owner changed");
++			const descriptor = sourceController.nativeDescriptor(contents, captured.frame);
++			if (!descriptor || descriptor.kind !== "role" || ["generation", "sceneId", "panelId", "roleId", "sessionId", "bindingRevision"].some(key => descriptor[key] !== owner[key])) throw Error("webai directory: owner changed");
++			await targets.assertOwner(owner);
++		};
++		const policies = createWebAiDirectoryPolicies({ readTarget: id => targets.read(id), assertOwner,
++			chooseDirectory: async owner => { await assertOwner(owner); const contents = webContents.fromId(owner.guestId), guest = sourceController.resolveGuest(contents, contents.mainFrame); const result = await dialog.showOpenDialog(guest.window, { title: "授权本次网站任务目录", properties: ["openDirectory"] }); return result.canceled ? null : result.filePaths.length === 1 ? result.filePaths[0] : null; },
++			confirmAccess: async (owner, target, root, permissions) => { await assertOwner(owner); const contents = webContents.fromId(owner.guestId), guest = sourceController.resolveGuest(contents, contents.mainFrame); const result = await ordinaryMessageBox({ type: "question", buttons: ["取消", "授权"], defaultId: 0, cancelId: 0, message: `仅授权当前 ${target.providerId} 会话任务使用选定目录`, detail: `${root}\n允许：读取${permissions.write ? "、仅新建文件（不覆盖）" : "（不允许写入）"}` }, guest.window); return result.response === 1; } });
++		app.once("will-quit", () => {
++			const failures = [];
++			for (const cleanup of [() => siteTransports.dispose(), () => targets.dispose(), () => policies.dispose(), () => grants.clear(), () => ownerFrames.clear(), () => taskOwners.clear()]) try { cleanup(); } catch (error) { failures.push(error); }
++			if (failures.length) console.error("webai directory shutdown cleanup failed", { failures: failures.length });
++		});
++		return webAiDirectoryReady = { targets, invalidateSource(contents, descriptor) {
++			for (const task of taskOwners.values()) if (task.owner.guestId === contents.id && (!descriptor || descriptor.kind !== "role" || ["generation", "sceneId", "panelId", "roleId", "sessionId", "bindingRevision"].some(key => task.owner[key] !== descriptor[key]))) targets.cancelOperation(task.owner);
++		}, async handle(event, request) {
++			assertDesktopSender(event, ["app"]);
++			const contents = event.sender, frame = event.senderFrame, descriptor = sourceController?.nativeDescriptor(contents, frame);
++			if (frame !== contents.mainFrame || descriptor?.kind !== "role" || descriptor.surface !== "chat") throw Error("webai directory: rejected sender");
++			siteTransports.sync();
++			if (request?.action === "status" && Object.keys(request).length === 1) return targets.status();
++			if (request?.action === "cancel-task" && Object.keys(request).sort().join(",") === "action,taskId") {
++				const task = taskOwners.get(request.taskId);
++				if (task && (task.owner.guestId !== contents.id || ownerFrames.get(task.owner.operationId)?.frame !== frame)) throw Error("webai task: rejected owner");
++				if (task) targets.cancelOperation(task.owner);
++				await sendControl(task?.owner ?? { ...descriptor, guestId: contents.id }, { action: "task-cancel", taskId: request.taskId });
++				return { cancelled: true };
++			}
++			if (request?.action === "run-task" && Object.keys(request).sort().join(",") === "action,taskId,write" && typeof request.write === "boolean") {
++				if (taskOwners.has(request.taskId)) throw Error("webai task: already running");
++				const capturedSource = { ...descriptor, guestId: contents.id };
++				const task = await sendControl(capturedSource, { action: "task-read", taskId: request.taskId });
++				if (!task || task.taskId !== request.taskId || task.owner?.guestId !== contents.id || ["generation", "sceneId", "panelId", "roleId", "sessionId", "bindingRevision"].some(key => task.owner[key] !== descriptor[key])) throw Error("webai task: rejected owner");
++				ownerFrames.set(task.owner.operationId, { contents, frame, controller: sourceController });
++				taskOwners.set(task.taskId, task);
++				try {
++					return await targets.runFileTask(task, {
++						authorize: async target => { const result = await this.handle(event, { action: "select", targetId: target.targetId, write: request.write }); if (result.cancelled) throw Error("webai task: cancelled"); },
++						observe: async observation => { await assertOwner(task.owner); return sendControl(task.owner, { action: "task-observe", taskId: task.taskId, observation }); },
++						cancel: () => sendControl(task.owner, { action: "task-cancel", taskId: task.taskId })
++					});
++				} finally {
++					taskOwners.delete(task.taskId);
++					try { for (const [id, grant] of grants) if (grant.owner.operationId === task.owner.operationId) await revoke(id); }
++					finally { try { await sendControl(task.owner, { action: "task-cancel", taskId: task.taskId }); } finally { ownerFrames.delete(task.owner.operationId); } }
++				}
++			}
++			if (request?.action === "revoke" && Object.keys(request).sort().join(",") === "action,id") {
++				const grant = grants.get(request.id); if (!grant || grant.owner.guestId !== contents.id) throw Error("webai directory: rejected grant");
++				await assertOwner(grant.owner); return { revoked: await revoke(request.id) };
++			}
++			if (!request || request.action !== "select" || Object.keys(request).sort().join(",") !== "action,targetId,write" || typeof request.write !== "boolean") throw Error("webai directory: invalid request");
++			const target = await targets.read(request.targetId), owner = target.owner;
++			if (owner.guestId !== contents.id) throw Error("webai directory: rejected owner");
++			ownerFrames.set(owner.operationId, { contents, frame, controller: sourceController });
++			await assertOwner(owner);
++			const selected = await policies.select(owner, target.targetId, { write: request.write });
++			if (selected.cancelled) return selected;
++			const permission = await policies.resolve(selected.id, owner, target, "list");
++			try {
++				await sendControl(owner, { action: "mount", id: selected.id, owner, target: Object.fromEntries(["targetId", "providerId", "windowId", "conversationId", "generation"].map(key => [key, target[key]])), rootPath: permission.rootPath, write: selected.write, expiresAt: selected.expiresAt });
++				await assertOwner(owner);
++				const invalidated = () => { void revoke(selected.id).catch(() => {}); };
++				contents.on("did-start-navigation", invalidated); contents.once("destroyed", invalidated);
++				const timer = setTimeout(invalidated, selected.expiresAt - Date.now()); timer.unref?.();
++				grants.set(selected.id, { owner, target, dispose: () => { clearTimeout(timer); contents.removeListener("did-start-navigation", invalidated); contents.removeListener("destroyed", invalidated); } }); return selected;
++			} catch (error) { policies.revoke(selected.id); await sendControl(owner, { action: "revoke", id: selected.id }).catch(() => {}); throw error; }
++		} };
++	})();
++	ipcMain.handle("dsh-desktop:webai-directory", async (event, request) => (await webAiDirectory()).handle(event, request));
+ 	let sourceStartup;
+ 	const sourceFailure = (message, code, httpStatus) => Object.assign(new Error(message), {
+ 		code,
+ 		...httpStatus === void 0 ? {} : { httpStatus }
+ 	});
+-	const sourceRequest = async (path, body) => {
++	const sourceRequest = async (path, body, method = body === void 0 ? "GET" : "POST") => {
+ 		const requestHost = backend.host, requestHostUrl = hostUrl, requestHostCookie = hostCookie;
+ 		if (requestHost === void 0 || requestHostUrl === void 0 || requestHostCookie === void 0) throw sourceFailure("source shell: Host unavailable", "HOST_UNAVAILABLE");
+ 		const response = await forwardWebRequest(new Request(`dsh-app://app${path}`, body === void 0 ? void 0 : {
+-			method: "POST",
++			method,
+ 			headers: { "content-type": "application/json" },
+ 			body: JSON.stringify(body)
+ 		}), requestHostUrl, requestHostCookie);
+@@ -25240,6 +25392,14 @@
+ 			attachAccountShortcuts: (owner, contents, isVisible) => shortcuts.attachAccount(owner, contents, () => !contents.isDestroyed() && sourceController?.resolveGuest(contents, contents.mainFrame)?.scope === "account", isVisible),
+ 			resetAccountShortcuts: (contents) => shortcuts.resetAccount(contents),
+ 			getConfig: getSourceSceneConfig,
++			engineGenerationAction,
++			onNativeDescriptorChanged: (contents, descriptor) => webAiDirectoryReady?.invalidateSource(contents, descriptor),
++			saveConfig: (request) => sourceRequest("/tradeloom/scenes", request, "PUT"),
++			confirmConfigurationChange: async (owner) => (await dialog.showMessageBox(owner, {
++				type: "warning", buttons: ["取消", "保存并应用"], defaultId: 0, cancelId: 0,
++				message: "应用场景配置会关闭被修改或移除的角色面板。",
++				detail: "未变化的面板与会话保持原样。先保存受影响面板的文字草稿；未发送附件不承诺跨面板重建保留。若需保留附件，请取消并先自行处理。"
++			})).response === 1,
+ 			resolveBinding: (binding) => sourceRequest("/tradeloom/source-shell/resolve-binding", binding),
+ 			sceneRotationPreview: (request) => sourceRequest("/tradeloom/scene-rotation/preview", request),
+ 			sceneRotationConfirm: (request) => sourceRequest("/tradeloom/scene-rotation/confirm", request),
+diff --git a/lib/preload-app.cjs b/lib/preload-app.cjs
+--- a/lib/preload-app.cjs
++++ b/lib/preload-app.cjs
+@@ -1804,16 +1804,19 @@
+ /** Install the Windows-only titlebar marker and observe application language and palette changes. */
+ function syncWindowsAppearance() {
+ 	if (process.platform !== "win32") return;
++	// This preload-only capability is supplied by the Main-owned account view.
++	// Its outer shell already owns caption/menu space; keep palette reporting.
++	const parentCaption = process.argv.includes("--tradeloom-account-parent-caption");
+ 	const mark = () => {
+ 		const root = document.documentElement;
+ 		root.dataset.windowsTitlebar = "";
+ 		root.style.setProperty("--dsh-windows-titlebar-height", `40px`);
+ 	};
+-	if (document.documentElement !== null) mark();
++	if (!parentCaption && document.documentElement !== null) mark();
+ 	const install = () => {
+-		mark();
++		if (!parentCaption) mark();
+ 		const root = document.documentElement;
+-		const menu = installWindowsMenu();
++		const menu = parentCaption ? void 0 : installWindowsMenu();
+ 		const probe = document.createElement("span");
+ 		probe.style.cssText = "position:fixed;visibility:hidden;pointer-events:none;background-color:var(--dsw-specific-sidebar-fill);color:var(--dsw-alias-label-primary)";
+ 		document.body.append(probe);
+@@ -1841,7 +1844,7 @@
+ 			const current = JSON.stringify(values);
+ 			if (current === previous) return;
+ 			previous = current;
+-			menu.update();
++			menu?.update();
+ 			electron.ipcRenderer.send(DESKTOP_IPC.windowsAppearance, ...values);
+ 		};
+ 		const observer = new MutationObserver(send);
+@@ -1861,7 +1864,7 @@
+ 		document.head.addEventListener("load", send, true);
+ 		window.addEventListener("pagehide", () => {
+ 			observer.disconnect();
+-			menu.dispose();
++			menu?.dispose();
+ 			probe.remove();
+ 			document.head.removeEventListener("load", send, true);
+ 		}, { once: true });
+@@ -2142,6 +2145,19 @@
+ nativeSurfaceDescriptor: () => electron.ipcRenderer.invoke(DESKTOP_IPC.nativeSurfaceDescriptor),
+ nativeSurfaceLayout: () => electron.ipcRenderer.invoke(DESKTOP_IPC.nativeSurfaceDescriptor, "layout"),
+ nativeSurfaceMounted: (descriptor) => electron.ipcRenderer.invoke(DESKTOP_IPC.nativeSurfaceMounted, descriptor),
++onSceneDraftFlushRequested(listener) {
++  const receive = (_event, value) => {
++    if (value && Object.keys(value).sort().join(',') === 'descriptor,requestId' && typeof value.requestId === 'string') listener(value);
++  };
++  electron.ipcRenderer.on('source-shell:draft-flush-request', receive);
++  return () => electron.ipcRenderer.removeListener('source-shell:draft-flush-request', receive);
++},
++sceneDraftFlushResult: (value) => electron.ipcRenderer.invoke('source-shell:draftFlushResult', value),
++onNativeUtilityRequested(listener) {
++  const handler = (_event, value) => listener(value);
++  electron.ipcRenderer.on('dsh-desktop:native-utility-request', handler);
++  return () => electron.ipcRenderer.off('dsh-desktop:native-utility-request', handler);
++},
+ onNativeSurfaceChanged(listener) {
+ 			const handler = (_event, value) => {
+ 				listener(value);
+@@ -2152,6 +2168,12 @@
+ 			};
+ 		},
+ sourceTheme: {
++			getSnapshot: () => electron.ipcRenderer.invoke("source-shell:themeSnapshot"),
++			onChanged(listener) {
++				const handler = (_event, snapshot) => listener(snapshot);
++				electron.ipcRenderer.on("source-shell:theme-event", handler);
++				return () => electron.ipcRenderer.off("source-shell:theme-event", handler);
++			},
+ 			publishSnapshot: (snapshot) => electron.ipcRenderer.invoke("source-shell:themePublish", snapshot),
+ 			completePreference: (request, ok) => electron.ipcRenderer.invoke("source-shell:themePreferenceResult", request, ok),
+ 			onPreferenceSet(listener) {
+@@ -2214,6 +2236,7 @@
+ 	electron.contextBridge.exposeInMainWorld("dshDesktopBoot", {
+ 		ready: () => electron.ipcRenderer.invoke(DESKTOP_IPC.boot),
+ 		issueSceneMemoryOriginGrant: (request) => electron.ipcRenderer.invoke(DESKTOP_IPC.sceneMemoryOriginGrant, request),
++		webAiDirectory: (request) => electron.ipcRenderer.invoke("dsh-desktop:webai-directory", request),
+ 		failed: (message) => electron.ipcRenderer.invoke(DESKTOP_IPC.bootFailed, message)
+ 	});
+ 	electron.contextBridge.exposeInMainWorld("dshPlatform", {
+diff --git a/lib/tradeloom-source-shell/source-shell-controller.mjs b/lib/tradeloom-source-shell/source-shell-controller.mjs
+--- a/lib/tradeloom-source-shell/source-shell-controller.mjs
++++ b/lib/tradeloom-source-shell/source-shell-controller.mjs
+@@ -1,13 +1,66 @@
+ import { cpus, totalmem, freemem } from 'node:os'
+ import { appendFile, mkdir, statfs } from 'node:fs/promises'
+ import { join } from 'node:path'
++import { randomUUID } from 'node:crypto'
+ import { createSurfaceOwner } from './surface-owner.mjs'
+ const SOURCE_URL = 'dsh-app://app/source-shell/renderer/source-entry.html'
+ const ACCOUNT_URL = 'dsh-app://app/source-shell/renderer/account-window.html'
+ const SCENE_COMPONENT_URL = 'dsh-app://app/'
+-export function createSourceShellController({ BrowserWindow, WebContentsView, ipcMain, appPreload, sourcePreload, ownedPartition, getConfig, resolveBinding, sceneRotationPreview = async () => { throw Error('scene rotation unavailable') }, sceneRotationConfirm = async () => { throw Error('scene rotation unavailable') }, sceneRotationStatus = async () => { throw Error('scene rotation unavailable') }, sceneRotationResume = async () => { throw Error('scene rotation unavailable') }, sceneRotationCancel = async () => { throw Error('scene rotation unavailable') }, sceneRotationAbandon = async () => { throw Error('scene rotation unavailable') }, installProtocol, primaryWindow, getNativeCaptionFallback, hasNativeModal = () => false, updateOwnership = () => {}, createRegistry = createSurfaceOwner, loadUiScale = async () => 1, saveUiScale = async () => { throw Error('UI scale persistence unavailable') }, loadSceneOrder = async () => ({saved:false,ids:[]}), saveSceneOrder = async () => { throw Error('scene order persistence unavailable') }, inventoryTimeoutMs = 5000, systemInfo = { cpus, totalmem, freemem }, diskStat = statfs, getKnownFolders, openKnownFolder, attachAccountShortcuts, resetAccountShortcuts, observeFailure = () => {}, observePhase = () => {}, writeUi18Diagnostic = appendFile }) {
++export function createSourceShellController({ BrowserWindow, WebContentsView, ipcMain, appPreload, sourcePreload, ownedPartition, getConfig, saveConfig, confirmConfigurationChange, engineGenerationAction, onNativeDescriptorChanged = () => {}, resolveBinding, sceneRotationPreview = async () => { throw Error('scene rotation unavailable') }, sceneRotationConfirm = async () => { throw Error('scene rotation unavailable') }, sceneRotationStatus = async () => { throw Error('scene rotation unavailable') }, sceneRotationResume = async () => { throw Error('scene rotation unavailable') }, sceneRotationCancel = async () => { throw Error('scene rotation unavailable') }, sceneRotationAbandon = async () => { throw Error('scene rotation unavailable') }, installProtocol, primaryWindow, getNativeCaptionFallback, hasNativeModal = () => false, updateOwnership = () => {}, createRegistry = createSurfaceOwner, loadUiScale = async () => 1, saveUiScale = async () => { throw Error('UI scale persistence unavailable') }, loadSceneOrder = async () => ({saved:false,ids:[]}), saveSceneOrder = async () => { throw Error('scene order persistence unavailable') }, inventoryTimeoutMs = 5000, systemInfo = { cpus, totalmem, freemem }, diskStat = statfs, getKnownFolders, openKnownFolder, attachAccountShortcuts, resetAccountShortcuts, observeFailure = () => {}, observePhase = () => {}, writeUi18Diagnostic = appendFile }) {
+   if (!appPreload || !sourcePreload || !ownedPartition || typeof getConfig !== 'function' || typeof resolveBinding !== 'function' || typeof installProtocol !== 'function') throw new Error('missing trusted desktop configuration')
+   let initialSourcePaint;
++  let configurationQueue = Promise.resolve(), configurationEpoch = 0
++  const draftFlushes = new Map()
++  const panelIdentity = (value, sceneValue) => value && JSON.stringify([value.type, value.roleId ?? sceneValue.roleId])
++  const captureRoleBinding = (binding, sceneId, panelId) => {
++    const currentScene = scene(sceneId), currentPanel = currentScene.panels.find(value => value.id === panelId)
++    const roleId = currentPanel?.roleId ?? currentScene.roleId
++    if (!currentPanel || !['native-chat', 'native-workspace'].includes(currentPanel.type)
++      || binding?.sceneId !== sceneId || binding.panelId !== panelId || binding.bindingStatus !== 'bound'
++      || typeof roleId !== 'string' || !roleId || binding.roleId !== roleId
++      || typeof binding.sessionId !== 'string' || !binding.sessionId
++      || typeof binding.bindingRevision !== 'string' || !/^(0|[1-9][0-9]{0,63})$/.test(binding.bindingRevision)) throw Error('trusted role binding mismatch')
++    return Object.freeze({ roleId, sessionId: binding.sessionId, bindingRevision: binding.bindingRevision })
++  }
++  const changedRoleViews = next => [...views.values()].filter(item => {
++    const oldScene = config.scenes.find(value => value.id === item.sceneId)
++    const nextScene = next.scenes.find(value => value.id === item.sceneId)
++    return panelIdentity(oldScene?.panels.find(value => value.id === item.panelId), oldScene)
++      !== panelIdentity(nextScene?.panels.find(value => value.id === item.panelId), nextScene)
++  })
++  async function flushRoleDraft(item) {
++    const expected = descriptor(item), requestId = randomUUID()
++    if (item.status !== 'context-mounted' || item.view.webContents.isDestroyed()) throw Error('scene draft owner not ready')
++    return await new Promise((resolve, reject) => {
++      const timer = setTimeout(() => { draftFlushes.delete(requestId); reject(Error('scene draft save not confirmed')) }, inventoryTimeoutMs)
++      draftFlushes.set(requestId, { item, expected, resolve: saved => { clearTimeout(timer); draftFlushes.delete(requestId); saved ? resolve() : reject(Error('scene draft save failed')) } })
++      try { item.view.webContents.send('source-shell:draft-flush-request', { requestId, descriptor: expected }) }
++      catch (error) { clearTimeout(timer); draftFlushes.delete(requestId); reject(error) }
++    })
++  }
++  async function applyConfiguration(next, assertCapturedOwner) {
++    if (!next || !Array.isArray(next.scenes) || typeof next.configurationRevision !== 'string') throw Error('invalid trusted scene configuration')
++    const affected = changedRoleViews(next)
++    for (const item of affected) {
++      if (rolePopouts.has(key(item.sceneId, item.panelId)) || hasNativeModal(item.parent)) throw Error('return affected popout and close its modal before applying')
++      await flushRoleDraft(item)
++      assertCapturedOwner()
++    }
++    // Read back the exact saved revision after persistence and before revoking
++    // any surface. An older save may not rebind a newer configuration.
++    const current = await getConfig(); assertCapturedOwner()
++    if (current.configurationRevision !== next.configurationRevision) throw Error('scene configuration superseded before application')
++    for (const item of affected) if (views.get(key(item.sceneId, item.panelId)) !== item || item.view.webContents.isDestroyed()) throw Error('scene configuration surface changed')
++    configurationEpoch++
++    config = current
++    for (const item of affected) {
++      notifyGuest(item)
++      revoke(item)
++      if (!item.view.webContents.isDestroyed()) item.view.webContents.close()
++    }
++    for (const window of windows.values()) if (!window.isDestroyed()) window.webContents.send('source-shell:configuration-changed', config)
++    return { saved: true, applied: true, configurationRevision: config.configurationRevision }
++  }
+   let accountOverlay;
+   let controller, main, accountPopout, accountPopoutCreating, registry, config, account, accountGlobalPanel, sceneComponent, erpNextStatusComponent, accountSidebar, accountSidebarOpen=false, accountSidebarWidthDip=340, accountSidebarRequest=0, accountSidebarCreating, accountCreating, closed = false, generation = 0, uiScale=1, orderSaved=false, orderMigrationAllowed=true, orderQueue=Promise.resolve(), sourceThemeSnapshot, sourceThemePublisher, pendingSourceThemePreference, themeRequest, themeSequence=0
+   const windows = new Map(), nativeCaptionWindows = new WeakSet(), views = new Map(), rolePopouts = new Map(), rolePopoutCreating = new Map(), closingRolePopouts = new Set(), componentPopouts = new Map(), componentPopoutCreating = new Map(), closingComponentPopouts = new Set(), channels = [], focusedGuests = new Map(), inventoryRequests = new Map(), modelRequests = new Map(), settingsRequests = new Map(), mobileLinkRequests = new Map()
+@@ -127,9 +180,9 @@
+     for(const item of [...views.values(),...(account?[account]:[]),...(sceneComponent?[sceneComponent]:[]),...(erpNextStatusComponent?[erpNextStatusComponent]:[])])applyBounds(item)
+     if(accountSidebar)applyAccountSidebarBounds(accountSidebar)
+   }
+-  const descriptor = item => item.kind === 'account' ? {kind:'account',generation:item.generation,businessNavigation:'shell'} : item.kind==='account-sidebar' ? {kind:'account-sidebar',generation:item.generation,accountGeneration:item.accountGeneration} : item.kind==='scene-component' ? {kind:'scene-component',componentKey:item.componentKey,sceneId:item.sceneId,panelId:item.panelId,generation:item.generation,...(account?{accountGeneration:account.generation}:{})} : {kind:'role',sceneId:item.sceneId,panelId:item.panelId,sessionId:item.sessionId,surface:item.surface,generation:item.generation,...(account?{accountGeneration:account.generation}:{})}
+-  const notifyRoleLayout = item => { const contents=item.view.webContents;if(contents.isDestroyed())return;try { contents.send('dsh-desktop:native-surface-changed',descriptor(item)) } catch {} }
+-  const notifyGuest = item => { item.generation=++generation; item.status=item.loaded?'document-loaded':'loading'; try { item.view.webContents.send('dsh-desktop:native-surface-changed',descriptor(item)) } catch(error) { item.status='context-update-failed'; console.error('source shell: guest notification failed',error) } }
++  const descriptor = item => item.kind === 'account' ? {kind:'account',generation:item.generation,businessNavigation:'shell'} : item.kind==='account-sidebar' ? {kind:'account-sidebar',generation:item.generation,accountGeneration:item.accountGeneration} : item.kind==='scene-component' ? {kind:'scene-component',componentKey:item.componentKey,sceneId:item.sceneId,panelId:item.panelId,generation:item.generation,...(account?{accountGeneration:account.generation}:{})} : {kind:'role',sceneId:item.sceneId,panelId:item.panelId,roleId:item.roleId,sessionId:item.sessionId,bindingRevision:item.bindingRevision,surface:item.surface,generation:item.generation,...(account?{accountGeneration:account.generation}:{})}
++  const notifyRoleLayout = item => { const contents=item.view.webContents;if(contents.isDestroyed())return;const next=descriptor(item);if(next.kind==='role')onNativeDescriptorChanged(contents,next);try { contents.send('dsh-desktop:native-surface-changed',next) } catch {} }
++  const notifyGuest = item => { item.generation=++generation; item.status=item.loaded?'document-loaded':'loading';const next=descriptor(item);if(next.kind==='role')onNativeDescriptorChanged(item.view.webContents,next); try { item.view.webContents.send('dsh-desktop:native-surface-changed',next) } catch(error) { item.status='context-update-failed'; console.error('source shell: guest notification failed',error) } }
+   const observedOperations = Object.freeze({
+     create:'role-create',status:'role-status',bounds:'role-bounds',visible:'role-visibility',
+     workflowCanvasMount:'workflow-create',workflowCanvasStatus:'workflow-status',workflowCanvasBounds:'workflow-bounds',workflowCanvasVisible:'workflow-visibility',
+@@ -221,6 +274,7 @@
+   }
+   const revoke = item => {
+     const id=key(item.sceneId,item.panelId),child=rolePopouts.get(id)
++    onNativeDescriptorChanged(item.view.webContents,null)
+     if (!closed) registry.revoke(item.sceneId,item.panelId)
+     views.delete(id); rolePopouts.delete(id)
+     try { item.parent.contentView.removeChildView(item.view) } catch {}
+@@ -691,6 +745,55 @@
+         throw Error('invalid initial paint acknowledgement')
+       })
+       bind('config', event => { assertWindow(event); return config })
++      bind('draftFlushResult', (event, value) => {
++        if (!value || Object.keys(value).sort().join(',') !== 'requestId,saved' || typeof value.saved !== 'boolean') throw Error('invalid draft save result')
++        const pending = draftFlushes.get(value.requestId)
++        const guest = controller.resolveGuest(event.sender, event.senderFrame)
++        if (!pending || guest?.scope !== 'role' || guest.view !== pending.item.view
++          || views.get(key(pending.item.sceneId, pending.item.panelId)) !== pending.item
++          || JSON.stringify(descriptor(pending.item)) !== JSON.stringify(pending.expected)) throw Error('stale draft save result')
++        pending.resolve(value.saved)
++        return { accepted: true }
++      })
++      const configurationOwner = event => {
++        const window = assertWindow(event), frame = event.senderFrame
++        if (window !== main) throw Error('scene configuration requires the source worktable')
++        return () => { if (closed || assertWindow(event) !== window || event.senderFrame !== frame || window.isDestroyed()) throw Error('scene configuration owner changed') }
++      }
++      const queueConfiguration = operation => {
++        const result = configurationQueue.catch(() => {}).then(operation)
++        configurationQueue = result.catch(() => {})
++        return result
++      }
++      bind('nativeUtility', (event, request) => this.nativeUtility(event, request))
++      bind('configurationApply', event => {
++        const assertOwner = configurationOwner(event)
++        return queueConfiguration(async () => {
++          assertOwner()
++          const next = await getConfig(); assertOwner()
++          if (changedRoleViews(next).length && !await confirmConfigurationChange(main)) return { cancelled: true, saved: true, applied: false }
++          assertOwner()
++          return applyConfiguration(next, assertOwner)
++        })
++      })
++      bind('engineGeneration', (event, request) => {
++        const assertOwner = configurationOwner(event)
++        if (typeof engineGenerationAction !== 'function') throw Error('engine generation unavailable')
++        return engineGenerationAction(main, request, assertOwner)
++      })
++      bind('configurationSave', (event, input) => {
++        const assertOwner = configurationOwner(event)
++        if (!input || Object.keys(input).sort().join(',') !== 'configuration,expectedRevision') throw Error('invalid scene configuration request')
++        return queueConfiguration(async () => {
++          assertOwner()
++          if (changedRoleViews(input.configuration).length && !await confirmConfigurationChange(main)) return { cancelled: true, saved: false, applied: false }
++          assertOwner()
++          const saved = await saveConfig(input)
++          assertOwner()
++          try { return await applyConfiguration(saved, assertOwner) }
++          catch { return { saved: true, applied: false, configurationRevision: saved.configurationRevision, error: 'saved-not-applied' } }
++        })
++      })
+       const rotationOwner = event => {
+         const requester = assertThemeWindow(event)
+         const registered = [...windows].find(([, value]) => value === requester)
+@@ -724,6 +827,8 @@
+           if (binding?.sceneId !== item.sceneId || binding?.panelId !== item.panelId
+             || binding.bindingStatus !== 'bound' || binding.sessionId !== result.sessionId
+             || typeof binding.bindingRevision !== 'string') throw Error('scene rotation surface binding changed')
++          const capturedBinding = captureRoleBinding(binding, item.sceneId, item.panelId)
++          if (capturedBinding.roleId !== result.roleId) throw Error('scene rotation role changed')
+           const seat = registry.get(item.sceneId, item.panelId)
+           if (!seat || seat.view !== item.wrapper) throw Error('scene rotation surface owner changed')
+           const previous = { sessionId: item.sessionId, bindingRevision: item.bindingRevision,
+@@ -746,8 +851,7 @@
+             } catch (restoreError) { throw new AggregateError([error, restoreError], 'scene rotation surface restore failed') }
+             throw error
+           }
+-          item.sessionId = result.sessionId
+-          item.bindingRevision = binding.bindingRevision
++          Object.assign(item, capturedBinding)
+           notifyGuest(item)
+           emit(item, item.status)
+         }
+@@ -775,7 +879,7 @@
+       bind('sceneRotationCancel', (event, request) => runRotationRequest(event, sceneRotationCancel, request))
+       bind('sceneRotationAbandon', (event, request) => runRotationRequest(event, sceneRotationAbandon, request))
+       bind('getUiScale',event=>{assertWindow(event);return uiScale})
+-      bind('themeSnapshot',event=>{assertThemeWindow(event);return sourceThemeSnapshot})
++      bind('themeSnapshot',event=>{if(!controller.resolveGuest(event.sender,event.senderFrame))assertThemeWindow(event);return sourceThemeSnapshot})
+       bind('themePreference', (event, preference) => {
+         assertThemeWindow(event)
+         if(!themePreference(preference))throw Error('invalid source theme preference')
+@@ -815,7 +919,7 @@
+           ui18Diagnostic('theme', 'publish-rejected', { ...ui18AccountFields(), failure: 'snapshot-invalid' })
+           throw Error('invalid source theme snapshot')
+         }
+-        const sourceWindows = new Set([...windows.values(), ...(accountPopout ? [accountPopout] : [])])
++        const sourceWindows = new Set([...windows.values(), ...rolePopouts.values(), ...componentPopouts.values(), ...(accountPopout ? [accountPopout] : [])])
+         let sendCount = 0
+         const mainTargetIncluded = sourceWindows.has(main)
+         for (const sourceWindow of sourceWindows) {
+@@ -825,6 +929,11 @@
+           }
+           try { sourceWindow.webContents.send('source-shell:theme-event', snapshot); sendCount++ } catch { /* A closing source window cannot block theme publication elsewhere. */ }
+         }
++        const nativeGuests = new Set([account?.view, accountSidebar?.view, sceneComponent?.view, erpNextStatusComponent?.view, ...[...views.values()].map(item => item.view)].filter(Boolean))
++        for (const view of nativeGuests) {
++          if (view.webContents.isDestroyed()) continue
++          try { view.webContents.send('source-shell:theme-event', snapshot) } catch { /* Closing owned guests cannot block other targets. */ }
++        }
+         ui18Diagnostic('theme', 'publish-accepted', { ...ui18AccountFields(), sendCount, mainTargetIncluded })
+         ui18Diagnostic('theme', 'broadcast-complete', { ...ui18AccountFields(), sendCount, mainTargetIncluded })
+         sourceThemeSnapshot = snapshot
+@@ -949,7 +1058,7 @@
+   const revokeAccount = item => { if(account!==item)return; if(sourceThemePublisher?.item===item)sourceThemePublisher=undefined; if(accountGlobalPanel?.item===item){accountGlobalPanel=undefined;notifyAccountGlobalPanel({mode:null,open:false,panelId:null})}disposeAccountSidebar();failInventory();account=undefined;if(focusedGuests.get(item.parent)===item.view.webContents)focusedGuests.delete(item.parent);item.detachShortcuts?.();try{item.parent.contentView.removeChildView(item.view)}catch{};const child=accountPopout;accountPopout=undefined;if(child && !child.isDestroyed())try{child.close()}catch{} }
+       bind('accountCreate',async event=>{
+         const requester=assertWindow(event);if(requester!==main && requester!==accountPopout)throw Error('wrong account creator'); if(account)return accountStatusValue(account); if(requester!==main)throw Error('wrong account creator'); if(accountCreating)return accountCreating
+-        accountCreating=(async()=>{ const v=new WebContentsView({webPreferences:{preload:appPreload,partition:ownedPartition,contextIsolation:true,nodeIntegration:false,sandbox:true}})
++        accountCreating=(async()=>{ const v=new WebContentsView({webPreferences:{preload:appPreload,partition:ownedPartition,contextIsolation:true,nodeIntegration:false,sandbox:true,additionalArguments:['--tradeloom-account-parent-caption']}})
+           const item={kind:'account',generation:++generation,view:v,parent:main,status:'loading',loaded:false,placement:'docked'}; account=item
+           try { main.contentView.addChildView(v); v.setVisible(false); v.webContents.setZoomFactor(uiScale); updateOwnership(v.webContents,main);item.detachShortcuts=attachAccountShortcuts?.(main,v.webContents,()=>account===item && item.visible===true)
+             v.webContents.once('destroyed',()=>revokeAccount(item)); v.webContents.once('render-process-gone',()=>{emitAccount(item,'error');revokeAccount(item)})
+@@ -1027,11 +1136,14 @@
+           owner(w,sceneId,panelId);return {status:existing.status,placement:'docked'}
+         }
+         observeCreatePhase('binding-start')
++        const capturedEpoch = configurationEpoch
+         const binding = await resolveBinding({ sceneId, panelId })
++        if (capturedEpoch !== configurationEpoch || closed) throw Error('scene configuration changed during binding resolution')
+         observeCreatePhase('binding-end')
+         if (binding?.sceneId !== sceneId || binding?.panelId !== panelId) throw new Error('binding mismatch')
+         if (binding.bindingStatus === 'unbound') return { status:'unbound' }
+         if (binding.bindingStatus !== 'bound' || !binding.sessionId) throw new Error('binding unavailable')
++        const capturedBinding = captureRoleBinding(binding, sceneId, panelId)
+         // Recheck authority after awaiting the Host, including the hidden-seat reuse path.
+         if (closed || assertWindow(event)!==w) throw new Error('owner closed')
+         const surface=panel.type==='native-chat'?'chat':'files'
+@@ -1049,17 +1161,17 @@
+           if(w===main && item?.parent===main && existing.window?.window===main && !existing.rehomed
+             && item.visible===false && existing.surface===surface) {
+             registry.transfer(binding.sessionId,sceneId,panelId,surface)
+-            views.delete(oldKey);item.sceneId=sceneId;item.panelId=panelId;item.surface=surface;item.bindingRevision=binding.bindingRevision
++            views.delete(oldKey);item.sceneId=sceneId;item.panelId=panelId;item.surface=surface;Object.assign(item,capturedBinding)
+             item.status=item.loaded?'document-loaded':'loading';views.set(key(sceneId,panelId),item)
+             notifyGuest(item);emit(item,item.status)
+             return {status:item.status,placement:'docked'}
+           }
+           return {status:'owned-elsewhere',sceneId:existing.sceneId,panelId:existing.panelId}
+         }
+-        const v = new WebContentsView({ webPreferences:{ preload:appPreload, partition:ownedPartition, contextIsolation:true,nodeIntegration:false,sandbox:true } })
++        const v = new WebContentsView({ webPreferences:{ preload:appPreload, partition:ownedPartition, contextIsolation:true,nodeIntegration:false,sandbox:true,additionalArguments:['--tradeloom-account-parent-caption'] } })
+         const wrapper={ get frame() { return v.webContents.mainFrame }, destroy:()=>v.webContents.destroy() }
+         try { registry.attach({sceneId,panelId,sessionId:binding.sessionId,surface,view:wrapper,partition:ownedPartition}); owner(w,sceneId,panelId) } catch(error) { registry.revoke(sceneId,panelId); v.webContents.destroy(); throw error }
+-        const item={sceneId,panelId,sessionId:binding.sessionId,bindingRevision:binding.bindingRevision,surface,generation:++generation,view:v,wrapper,parent:w,status:'loading',loaded:false}; views.set(key(sceneId,panelId),item)
++        const item={sceneId,panelId,...capturedBinding,surface,generation:++generation,view:v,wrapper,parent:w,status:'loading',loaded:false}; views.set(key(sceneId,panelId),item)
+         w.contentView.addChildView(v); v.setVisible(false); v.webContents.setZoomFactor(uiScale); updateOwnership(v.webContents,w);raiseAccountOverlay(w)
+         if(accountSidebarOpen&&accountSidebar&&accountSidebar.parent===w&&!accountGlobalPanel)w.contentView.addChildView(accountSidebar.view)
+         v.webContents.on('console-message',(...args)=>{observeRoleGuestMessage(item,args);observeRoleGuestListProbeMessage(item,args)})
+@@ -1073,7 +1185,9 @@
+       bind('transfer',async(event,s,p)=>{
+         const w=assertWindow(event), panel=scene(s).panels.find(x=>x.id===p)
+         if(!panel || !['native-chat','native-workspace'].includes(panel.type) || (windows.get(s) ?? main)!==w || hasNativeModal(w)) throw new Error('invalid transfer')
+-        const binding=await resolveBinding({sceneId:s,panelId:p}); if(binding?.sceneId!==s || binding?.panelId!==p || binding.bindingStatus!=='bound' || !binding.sessionId) throw new Error('binding unavailable')
++        const capturedEpoch=configurationEpoch
++        const binding=await resolveBinding({sceneId:s,panelId:p}); if(capturedEpoch!==configurationEpoch)throw Error('scene configuration changed during transfer')
++        const capturedBinding=captureRoleBinding(binding,s,p)
+         if(closed || assertWindow(event)!==w) throw new Error('owner closed')
+         const seat=registry.findSession(binding.sessionId,panel.type==='native-chat'?'chat':'files'); if(!seat || hasNativeModal(seat.window.window) || hasNativeModal(w)) throw new Error('transfer unavailable')
+         const oldKey=key(seat.sceneId,seat.panelId), item=views.get(oldKey); if(!item) throw new Error('missing view')
+@@ -1081,7 +1195,7 @@
+         oldParent.contentView.removeChildView(item.view)
+         try { w.contentView.addChildView(item.view); updateOwnership(item.view.webContents,w); registry.transfer(binding.sessionId,s,p,panel.type==='native-chat'?'chat':'files') }
+         catch(error) { try { w.contentView.removeChildView(item.view) } catch {} oldParent.contentView.addChildView(item.view); updateOwnership(item.view.webContents,oldParent); throw error }
+-        item.parent=w; views.delete(oldKey); item.sceneId=s; item.panelId=p; item.surface=panel.type==='native-chat'?'chat':'files'; item.status=item.loaded?'document-loaded':'loading'; views.set(key(s,p),item); notifyGuest(item); return {status:item.status}
++        item.parent=w; views.delete(oldKey); item.sceneId=s; item.panelId=p; Object.assign(item,capturedBinding); item.surface=panel.type==='native-chat'?'chat':'files'; item.status=item.loaded?'document-loaded':'loading'; views.set(key(s,p),item); notifyGuest(item); return {status:item.status}
+       })
+       bind('bounds',(event,s,p,rect)=>{ const w=assertWindow(event);owner(w,s,p);const item=views.get(key(s,p));if(!rect||!['x','y','width','height'].every(k=>Number.isFinite(rect[k]))||rect.width<0||rect.height<0)throw Error('invalid bounds');item.rect=rect;return applyBounds(item) })
+       bind('visible',(event,s,p,visible)=>{ const w=assertWindow(event); owner(w,s,p); if(typeof visible!=='boolean') throw new Error('invalid visibility'); const item=views.get(key(s,p));item.view.setVisible(visible);item.visible=visible })
+@@ -1117,6 +1231,30 @@
+     getAccountSidebarGuest() { return accountSidebar?.view },
+     getAccountViewBounds() { return account?.view.getBounds?.() },
+     findScene(s) { return windows.get(s) },
++    async nativeUtility(event, request) {
++      if (!exactKeys(request, ['sceneId','panelId','action']) || !['scene-memory','task-directory','session-speech','session-skills'].includes(request.action)) throw Error('source shell: invalid native utility')
++      const window = assertWindow(event), frame = event.senderFrame, epoch = configurationEpoch
++      const { sceneId, panelId, action } = request
++      const target = scene(sceneId).panels.find(panel => panel.id === panelId)
++      if (target?.type !== 'native-chat') throw Error('source shell: native utility target unavailable')
++      owner(window, sceneId, panelId)
++      const item = views.get(key(sceneId, panelId))
++      if (!item || item.failed || item.parent !== window || item.surface !== 'chat' || item.status !== 'context-mounted' || item.view.webContents.isDestroyed()) throw Error('source shell: native utility target unavailable')
++      const expected = descriptor(item), contents = item.view.webContents, guestFrame = contents.mainFrame
++      const binding = await resolveBinding({ sceneId, panelId })
++      if (binding?.bindingStatus !== 'bound' || binding.sceneId !== sceneId || binding.panelId !== panelId) throw Error('source shell: native utility binding unavailable')
++      const currentBinding = captureRoleBinding(binding, sceneId, panelId)
++      if (closed || configurationEpoch !== epoch || assertWindow(event) !== window || event.senderFrame !== frame
++        || views.get(key(sceneId, panelId)) !== item || item.parent !== window || item.failed || item.status !== 'context-mounted'
++        || contents.isDestroyed() || contents.mainFrame !== guestFrame || !this.resolveGuest(contents, guestFrame)
++        || ['roleId','sessionId','bindingRevision'].some(name => currentBinding[name] !== expected[name])
++        || JSON.stringify(descriptor(item)) !== JSON.stringify(expected)) throw Error('source shell: stale native utility target')
++      owner(window, sceneId, panelId)
++      // Only a fixed UI intent crosses frames. Host grants and operations must
++      // still be issued by the actual guest's existing checked action.
++      contents.send('dsh-desktop:native-utility-request', { action, descriptor: expected })
++      return { delivered: true }
++    },
+     trustedSourceShellWindow(event) {
+       const window=assertWindow(event)
+       if(window.isDestroyed() || window.webContents.isDestroyed() || ![...windows.values()].includes(window))throw Error('source shell: rejected source window')
+diff --git a/lib/tradeloom-source-shell/source-preload.cjs b/lib/tradeloom-source-shell/source-preload.cjs
+--- a/lib/tradeloom-source-shell/source-preload.cjs
++++ b/lib/tradeloom-source-shell/source-preload.cjs
+@@ -15,7 +15,16 @@
+   topbar: Object.freeze({}),
+   sys: Object.freeze({ load: () => call('systemLoad'), disks: () => call('systemDisks') }),
+   knownFolders: () => call('knownFolders'), openKnownFolder: key => call('openKnownFolder',key),
+-  sourceConfig: () => call('config'),
++  sourceConfig: () => call('config'),
++  nativeUtility: request => call('nativeUtility', request),
++  engineGeneration: request => call('engineGeneration', request),
++  saveSceneConfiguration: request => call('configurationSave', request),
++  applySceneConfiguration: () => call('configurationApply'),
++  onSceneConfigurationChanged: callback => {
++    const listener = (_event, value) => callback(value)
++    ipcRenderer.on('source-shell:configuration-changed', listener)
++    return () => ipcRenderer.removeListener('source-shell:configuration-changed', listener)
++  },
+   sceneRotation: Object.freeze({
+     preview: request => call('sceneRotationPreview', request),
+     confirm: request => call('sceneRotationConfirm', request),
+diff --git a/renderer/source-shell/replica-ui/business-bridge.js b/renderer/source-shell/replica-ui/business-bridge.js
+--- a/renderer/source-shell/replica-ui/business-bridge.js
++++ b/renderer/source-shell/replica-ui/business-bridge.js
+@@ -285,6 +285,12 @@
+ 
+   function start() {
+     installRuntimeListeners()
++    if (!state.configurationOff && typeof app?.onSceneConfigurationChanged === 'function') state.configurationOff = app.onSceneConfigurationChanged(value => {
++      const next = validateConfig(value)
++      state.config = next
++      state.configPromise = Promise.resolve(next)
++      send('business-configuration-applied', value)
++    })
+     if (state.configPromise) return state.configPromise
+     state.phase = isDesktop() ? 'loading' : 'unavailable'
+     if (!isDesktop()) {
+@@ -355,7 +361,7 @@
+     return state.configPromise
+   }
+ 
+-  function pathForScene(sceneId) { return routeByUiScene[sceneId] }
++  function pathForScene(sceneId) { return state.config?.scenes.get(sceneId)?.defaultBusinessPath ?? routeByUiScene[sceneId] }
+   function routeForPath(path) {
+     const basePath = typeof path === 'string' ? path.split('#')[0] : ''
+     const hash = typeof path === 'string' && path.includes('#') ? path.slice(path.indexOf('#')) : ''
+@@ -400,6 +406,17 @@
+     if (!target) {
+       stateNode(content, '此业务页面尚未配置到桌面路由。', 'error')
+       return () => content.replaceChildren()
++    }
++    if (meta?.id === 'workflow-plan') {
++      // Resolve only the explicitly registered plan panel. Never borrow canvas owner.
++      const planScene = state.config.scenes.get(meta.sceneId)
++      const planOwner = planScene?.panelMap.get('business-plan')
++      if (meta.hostPanelId !== 'business-plan' || !planOwner || planOwner.type !== 'business-iframe'
++        || planOwner.path !== path || planScene.id !== target.route.sceneId) {
++        stateNode(content, '独立业务计划面板尚未配置。', 'error')
++        return () => content.replaceChildren()
++      }
++      panelOverride = { sceneId: planScene.id, panelId: planOwner.id }
+     }
+     const panel = content.closest('.panel')
+     const routeId = ({ '/home': 'home', '/products': 'products', '/agent-center': 'agent-center', '/artifacts': 'artifacts', '/runs': 'runs' })[target.basePath]
+@@ -478,14 +495,15 @@
+     }
+   }
+ 
+-  function findRoleTarget(roleId) {
++  function findRoleTarget(roleId, explicitPanelId) {
+     if (!state.config || !state.config.roles.has(roleId) || typeof state.config.raw.sessionBindings[roleId] !== 'string'
+       || !state.config.raw.sessionBindings[roleId]) return { error: 'unbound' }
+-    const route = routeForPath(pathForScene(state.sceneId))
+-    if (!route) return { error: 'scene-unavailable' }
+-    const candidates = route.scene.panels.filter(panel => panel.type === 'native-chat' && panel.optional !== true
+-      && (panel.roleId || route.scene.roleId) === roleId)
+-      .map(panel => ({ sceneId: route.scene.id, panelId: panel.id, roleId }))
++    const currentScene = state.config.scenes.get(state.sceneId)
++    if (!currentScene) return { error: 'scene-unavailable' }
++    const candidates = currentScene.panels.filter(panel => panel.type === 'native-chat' && panel.optional !== true
++      && (!explicitPanelId || panel.id === explicitPanelId)
++      && (panel.roleId || currentScene.roleId) === roleId)
++      .map(panel => ({ sceneId: currentScene.id, panelId: panel.id, roleId }))
+     if (candidates.length === 1) return { target: candidates[0] }
+     return { error: candidates.length > 1 ? 'ambiguous' : 'unbound' }
+   }
+@@ -557,6 +575,7 @@
+     const record = state.roleRecord
+     if (!record || !record.target || value?.sceneId !== record.target.sceneId || value?.panelId !== record.target.panelId) return
+     record.status = value.status
++    record.updateSkillsControl?.()
+     if (typeof value.placement === 'string') record.placement = value.placement
+     if (value.status === 'context-mounted') {
+       record.note.textContent = '助手会话已挂载。'
+@@ -687,6 +706,17 @@
+       placement: roleReady ? role.placement : workflowReady ? workflow.placement : undefined }
+   }
+ 
++  async function requestNativeUtility(panel, action) {
++    const record = state.roleRecord, target = record?.target
++    if (!['scene-memory','task-directory','session-speech','session-skills'].includes(action) || !panelMenuCapabilities(panel).nativeConversation
++      || !record || record.panel !== panel || !target || typeof app?.nativeUtility !== 'function') return { ok: false, reason: 'unavailable' }
++    try {
++      const result = await app.nativeUtility({ sceneId: target.sceneId, panelId: target.panelId, action })
++      if (!isCurrentRole(record) || record.panel !== panel || record.target !== target || result?.delivered !== true) return { ok: false, reason: 'unavailable' }
++      return { ok: true }
++    } catch { return { ok: false, reason: 'unavailable' } }
++  }
++
+   async function requestPanelPlacement(panel, intent = 'toggle') {
+     if (panelMenuCapabilities(panel).nativeConversation) return requestRolePlacement(panel, intent)
+     const record = state.workflowRecord
+@@ -709,6 +739,36 @@
+     finally { record.placementPending = false }
+   }
+ 
++  function installRoleSkillsControl(record) {
++    const button = document.createElement('button')
++    button.type = 'button'
++    button.className = 'icon-control business-native-skills'
++    button.title = '当前助手技能'
++    button.setAttribute('aria-label', '当前助手技能')
++    const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
++    icon.setAttribute('viewBox', '0 0 24 24')
++    icon.setAttribute('width', '16')
++    icon.setAttribute('height', '16')
++    icon.setAttribute('fill', 'none')
++    icon.setAttribute('stroke', 'currentColor')
++    icon.setAttribute('stroke-width', '1.7')
++    icon.setAttribute('aria-hidden', 'true')
++    const shape = document.createElementNS('http://www.w3.org/2000/svg', 'path')
++    shape.setAttribute('d', 'M12 3 3 8l9 5 9-5-9-5ZM3 12l9 5 9-5M3 16l9 5 9-5')
++    icon.append(shape)
++    button.append(icon)
++    record.updateSkillsControl = () => { button.disabled = !panelMenuCapabilities(record.panel).nativeConversation }
++    record.updateSkillsControl()
++    button.addEventListener('click', async event => {
++      event.preventDefault(); event.stopPropagation()
++      if (!isCurrentRole(record) || record.disposed) return
++      await requestNativeUtility(record.panel, 'session-skills')
++    })
++    record.panel?.querySelector?.('.panel-controls')?.append(button)
++    record.skillsButton = button
++    return button
++  }
++
+   function renderRolePanel(meta, content) {
+     if (state.phase === 'idle') void start()
+     const note = document.createElement('div')
+@@ -732,6 +792,7 @@
+     record.placementButton = placementButton
+     const previous = state.roleRecord
+     state.roleRecord = record
++    installRoleSkillsControl(record)
+     if (previous && previous !== record && previous.created && previous.target && previous.placement !== 'popped-out') {
+       state.roleQueue = Promise.resolve(state.roleQueue).catch(() => {}).then(async () => {
+         previous.disposed = true
+@@ -749,8 +810,8 @@
+         note.dataset.state = state.phase === 'unavailable' ? 'unavailable' : 'error'
+         return
+       }
+-      const roleId = roleByUiScene[record.uiSceneId]
+-      const resolved = findRoleTarget(roleId)
++      const roleId = meta.roleId ?? state.config?.scenes.get(record.uiSceneId)?.roleId ?? roleByUiScene[record.uiSceneId]
++      const resolved = findRoleTarget(roleId, meta.hostPanelId)
+       const target = resolved.target
+       if (!target) {
+         note.textContent = resolved.error === 'ambiguous'
+@@ -774,6 +835,7 @@
+       }
+       record.created = result?.status !== 'owned-elsewhere' && typeof result?.status === 'string'
+       record.status = result?.status || 'unavailable'
++      record.updateSkillsControl?.()
+       if (result?.placement) record.placement = result.placement
+       onRoleStatus({ ...result, sceneId: target.sceneId, panelId: target.panelId })
+       if (!record.created) return
+@@ -797,6 +859,8 @@
+       record.syncRevision++
+       state.roleObserver?.unobserve?.(content)
+       record.placementButton?.remove()
++      record.skillsButton?.remove()
++      record.updateSkillsControl = undefined
+       if (state.roleRecord === record) state.roleRecord = undefined
+       if (record.created && record.target && record.placement !== 'popped-out') {
+         state.roleQueue = Promise.resolve(state.roleQueue).catch(() => {}).then(async () => {
+@@ -880,9 +944,11 @@
+     note.dataset.state = 'loading'
+     note.textContent = '正在连接工作流画布…'
+     host.append(note)
+-    content.replaceChildren(tabs, plan, host)
+-
+-    let planCleanup = renderBusinessPanel(meta, plan, '/agent-center')
++    const independent = meta.standaloneCanvas === true
++    if (independent) content.replaceChildren(host)
++    else content.replaceChildren(tabs, plan, host)
++
++    let planCleanup = independent ? undefined : renderBusinessPanel(meta, plan, '/agent-center')
+     const record = { panel: content.closest('.panel'), host, note, hostObserver: undefined, active: false, visible: false, placement: 'docked', status: 'loading', revision: 0, queue: Promise.resolve() }
+     state.workflowRecord = record
+     let observer
+@@ -923,6 +989,7 @@
+                 || result.sceneId !== route.route.sceneId || result.panelId !== route.route.panelId) throw new Error('workflow target mismatch')
+               record.status = result.status
+               if (typeof result.placement === 'string') record.placement = result.placement
++              if (record !== state.workflowRecord) return
+               if (state.tearingDown && record.placement !== 'popped-out') {
+                 await bridge.setVisible(false).catch(() => {})
+                 record.visible = false
+@@ -949,7 +1016,7 @@
+     }
+     planButton.addEventListener('click', () => { void choose('业务计划') })
+     canvasButton.addEventListener('click', () => { void choose('工作流画布') })
+-    const initial = meta.activeTab === '业务计划' ? '业务计划' : '工作流画布'
++    const initial = !independent && meta.activeTab === '业务计划' ? '业务计划' : '工作流画布'
+     void choose(initial)
+     return () => {
+       const title = content.closest('.panel')?.querySelector('.panel-title')
+@@ -1396,6 +1463,7 @@
+     openSceneRotation,
+     panelMenuCapabilities,
+     requestPanelPlacement,
++    requestNativeUtility,
+     setThemePreference,
+     setNativeScale,
+     globalAction,
+diff --git a/renderer/source-shell/replica-ui/renderer.js b/renderer/source-shell/replica-ui/renderer.js
+--- a/renderer/source-shell/replica-ui/renderer.js
++++ b/renderer/source-shell/replica-ui/renderer.js
+@@ -6,6 +6,173 @@
+ const $ = s => document.querySelector(s)
+ const grid = $('#grid')
+ let data
++let configurationTemplates, trustedSceneConfiguration
++const visibleConfiguredScenes = value => value.scenes.filter(scene => configurationTemplates.some(template => template.id === (scene.templateSceneId ?? scene.id)))
++const hostPanelFor = (scene, panel) => scene.panels.find(item =>
++  (panel.hostPanelId ? item.id === panel.hostPanelId : panel.type === 'chat'
++    ? item.type === 'native-chat' && item.optional !== true
++    : item.type === 'business-iframe' && item.path === panel.path))
++function projectTrustedScene(scene) {
++  const template = configurationTemplates.find(value => value.id === (scene.templateSceneId ?? scene.id))
++  if (!template) throw Error('scene template unavailable')
++  // Preserve the accepted shell's own account/web/plugin panels and ids. Only
++  // fields actually owned by the Host scene document are updated here.
++  const panels = template.panels.map(panel => {
++    const host = hostPanelFor(scene, panel)
++    return host ? { ...panel, hostPanelId: host.id, roleId: host.roleId ?? scene.roleId,
++      title: host.title, col: host.col, row: host.row, w: host.w, h: host.h, ...(host.path ? { path: host.path } : {}) } : { ...panel }
++  })
++  if ((scene.templateSceneId ?? scene.id) === 'agent-center' && !scene.panels.some(panel => panel.id === 'business-plan')) {
++    const expected = { 'business-main': [1,1,3,2], files: [4,1,1,2], preview: [1,3,1,2], 'native-chat': [2,3,3,2] }
++    const legacyHostIds = ['business-main','files','preview','native-chat','assistant-product','assistant-delivery','assistant-user-profile','native-workspace']
++    const exactLegacyIds = scene.panels.length === legacyHostIds.length
++      && new Set(scene.panels.map(panel => panel.id)).size === legacyHostIds.length
++      && scene.panels.every(panel => legacyHostIds.includes(panel.id))
++    const legacyDefault = exactLegacyIds && Object.entries(expected).every(([id, geometry]) => {
++      const panel = scene.panels.find(item => item.id === id)
++      return panel && ['col','row','w','h'].every((key, index) => panel[key] === geometry[index])
++    })
++    if (scene.id === 'agent-center' && legacyDefault) {
++      const canvas = panels.find(panel => panel.id === 'workflow-main')
++      Object.assign(canvas, { col: 2, row: 1, w: 2, h: 2, title: '工作流画布' })
++    } else {
++      const legacy = panels.filter(panel => panel.id !== 'workflow-plan')
++      const canvas = legacy.find(panel => panel.id === 'workflow-main')
++      if (canvas) Object.assign(canvas, { standaloneCanvas: false, tabs: ['业务计划','工作流画布'], activeTab: '工作流画布' })
++      return { ...template, id: scene.id, name: scene.label, panels: legacy, workflowLayoutGap: 'custom-legacy-layout' }
++    }
++  }
++  return { ...template, id: scene.id, name: scene.label, panels }
++}
++function applyTrustedSceneConfiguration(value) {
++  if (!configurationTemplates || !Array.isArray(value?.scenes)) throw Error('trusted scene configuration unavailable')
++  const next = visibleConfiguredScenes(value).map(projectTrustedScene)
++  const current = next.find(scene => scene.id === currentTab)
++  trustedSceneConfiguration = value
++  data.scenes = next
++  buildTabs()
++  if (!current) { void loadScenario(next[0].id); return }
++  // Retain the DOM and the native surface for every unchanged panel. Geometry
++  // and labels are updated in place, not via a global scene reload.
++  activePanelDragCancel?.()
++  for (const element of [...grid.querySelectorAll(':scope > [data-panel-id]')]) {
++    const panel = current.panels.find(item => item.id === element.dataset.panelId)
++    const before = element.__meta
++    if (!panel || ['type', 'roleId', 'path', 'hostPanelId'].some(key => panel[key] !== before[key])) {
++      cleanups.get(element.dataset.panelId)?.(); cleanups.delete(element.dataset.panelId); element.remove()
++    } else {
++      element.__meta = { ...before, ...panel }
++      for (const key of ['col', 'row', 'w', 'h']) element.dataset[key] = panel[key]
++      applyGeom(element)
++      const label = element.querySelector('.panel-title')
++      if (label) label.textContent = panel.title
++    }
++  }
++  current.panels.forEach((panel, index) => {
++    if (![...grid.children].some(element => element.dataset.panelId === panel.id)) makePanel({ ...panel, sceneId: current.id }, index)
++  })
++}
++
++async function showSceneConfiguration() {
++  if (typeof window.app?.saveSceneConfiguration !== 'function') return disconnectedModal('场景配置', '桌面场景配置入口不可用。')
++  const actual = await window.app.sourceConfig()
++  const document = structuredClone(Object.fromEntries(['version', 'grid', 'businessRoutes', 'scenes'].map(key => [key, actual[key]])))
++  let selected = document.scenes.find(value => value.id === currentTab) ?? document.scenes[0]
++  openModal('场景配置', body => {
++    const note = el('div', 'modal-note', '保存以版本校验防止覆盖他人的修改。受影响角色面板须先保存文字草稿；附件边界会另行确认。')
++    const fields = el('div', 'scene-configuration-fields'), selector = make('select')
++    const redraw = () => {
++      selector.replaceChildren(...visibleConfiguredScenes(document).map(scene => { const option = make('option', '', scene.label); option.value = scene.id; return option }))
++      selector.value = selected.id; fields.replaceChildren()
++      const input = (label, value, change, type = 'text') => {
++        const control = make('input'); control.type = type; control.value = value
++        if (type === 'number') { control.min = '1'; control.max = '4' }
++        control.addEventListener('change', () => change(type === 'number' ? Number(control.value) : control.value))
++        fields.append(el('label', 'mdl-row', el('span', '', label), control))
++      }
++      input('场景名称', selected.label, value => { selected.label = value })
++      const roles = make('select')
++      roles.replaceChildren(...actual.roles.map(role => { const option = make('option', '', role.label ?? role.id); option.value = role.id; return option }))
++      roles.value = selected.roleId; roles.addEventListener('change', () => { selected.roleId = roles.value })
++      fields.append(el('label', 'mdl-row', el('span', '', '默认角色'), roles))
++      for (const panel of selected.panels.filter(value => value.optional !== true)) {
++        fields.append(el('strong', '', panel.id))
++        input('面板名称', panel.title, value => { panel.title = value })
++        for (const key of ['col', 'row', 'w', 'h']) input(key, panel[key], value => { panel[key] = value }, 'number')
++      }
++    }
++    selector.addEventListener('change', () => { selected = document.scenes.find(scene => scene.id === selector.value); redraw() })
++    const clone = make('button', '', '复制为新场景'), remove = make('button', '', '移除自建场景')
++    clone.type = remove.type = 'button'
++    clone.addEventListener('click', () => {
++      const id = window.prompt('新场景标识（小写字母、数字、连字符，最多48位）')
++      if (id === null) return
++      if (!/^[a-z0-9-]{1,48}$/.test(id) || document.scenes.some(scene => scene.id === id) || document.scenes.length >= 16) { note.textContent = '场景标识无效、重复或数量已达上限。'; return }
++      const next = { ...structuredClone(selected), id, label: `${selected.label}（副本）`, templateSceneId: selected.templateSceneId ?? selected.id }
++      delete next.defaultBusinessRoute
++      document.scenes.push(next); selected = next; redraw()
++    })
++    remove.addEventListener('click', () => {
++      if (!selected.templateSceneId || Object.values(document.businessRoutes).some(route => route.sceneId === selected.id)) { note.textContent = '五个现有业务入口场景不能在此移除。'; return }
++      document.scenes = document.scenes.filter(scene => scene !== selected); selected = document.scenes[0]; redraw()
++    })
++    const save = make('button', '', '保存并应用'), retry = make('button', '', '应用已保存配置')
++    save.type = retry.type = 'button'
++    async function perform(operation) {
++      save.disabled = retry.disabled = true
++      try {
++        const result = await operation()
++        note.textContent = result.cancelled ? result.saved ? '已取消应用；已保存配置保持，当前面板未销毁。' : '已取消，未保存。' : result.applied ? '场景配置已保存并应用。' : '配置已保存，但未应用。请保留当前面板内容，处理提示后重试应用。'
++      } catch { note.textContent = '配置未保存或已被其他编辑更新；请关闭并重新打开配置。' }
++      finally { save.disabled = retry.disabled = false }
++    }
++    save.addEventListener('click', () => void perform(() => window.app.saveSceneConfiguration({ expectedRevision: actual.configurationRevision, configuration: document })))
++    retry.addEventListener('click', () => void perform(() => window.app.applySceneConfiguration()))
++    body.append(note, selector, fields, clone, remove, save, retry); redraw()
++  })
++}
++
++async function showEngineGenerations() {
++  const run = window.app?.engineGeneration
++  if (typeof run !== 'function') return disconnectedModal('引擎程序快照', '受控程序恢复入口不可用。')
++  openModal('引擎程序快照', body => {
++    const status = el('div', 'modal-note', '快照只包含当前受控程序 app，不包含账号、profile、附件或业务数据。'), list = el('div')
++    const capture = make('button', '', '保存当前引擎程序快照'); capture.type = 'button'
++    async function refresh() {
++      const value = await run({ action: 'list' })
++      list.replaceChildren()
++      for (const row of value.snapshots) {
++        const preview = make('button', '', '预览恢复'); preview.type = 'button'
++        preview.addEventListener('click', async () => {
++          preview.disabled = true
++          try {
++            const result = await run({ action: 'preview', snapshotId: row.snapshotId })
++            const confirm = make('button', '', '正常退出并恢复'), cancel = make('button', '', '取消预览')
++            confirm.type = cancel.type = 'button'
++            const detail = el('div', 'modal-note', `版本 ${row.runtimeVersion}；程序差异 ${JSON.stringify(result.changes)}。恢复前会再核完整当前代际。`)
++            confirm.addEventListener('click', async () => {
++              confirm.disabled = true
++              try { const accepted = await run({ action: 'restore', previewId: result.previewId }); status.textContent = accepted.cancelled ? '已取消。' : '正在正常退出；受控 worker 会等待真实停机后恢复并重开。' }
++              catch { status.textContent = '恢复未启动或当前代际已变化；程序未被强制关闭。'; confirm.disabled = false }
++            })
++            cancel.addEventListener('click', async () => { await run({ action: 'cancel', previewId: result.previewId }); detail.remove(); confirm.remove(); cancel.remove() })
++            list.append(detail, confirm, cancel)
++          } catch { status.textContent = '快照校验失败或当前程序代际变化。' }
++          finally { preview.disabled = false }
++        })
++        list.append(el('div', 'mdl-row', el('span', '', `${row.createdAt} · ${row.runtimeVersion} · ${row.fileCount} 文件`), preview))
++      }
++      if (value.invalid.length) status.textContent = `有 ${value.invalid.length} 个快照无效，未列为可恢复项。`
++    }
++    capture.addEventListener('click', async () => {
++      capture.disabled = true
++      try { await run({ action: 'capture' }); status.textContent = '当前程序快照已保存并校验。'; await refresh() }
++      catch { status.textContent = '程序快照未保存；请检查受控程序和存储可用性。' }
++      finally { capture.disabled = false }
++    })
++    body.append(status, capture, list); void refresh().catch(() => { status.textContent = '引擎快照服务不可用。' })
++  })
++}
+ let currentTab = null
+ let cleanups = new Map()
+ let panelExpandStates = []
+@@ -1018,6 +1185,7 @@
+ 
+ function commitScenario(scene) {
+   if (!scene) return false
++  scene = window.prepareWorkflowLayout?.(scene) || scene
+   activePanelDragCancel?.()
+   currentTab = scene.id
+   clearScene()
+@@ -1393,6 +1561,8 @@
+     ['助手能力', native ? '读取当前助手的配置、MCP 与 Skill 状态。' : '浏览器预览不读取助手能力。', showAssistantCapabilities],
+     ['应用 / 编辑', native ? '打开原生应用或编辑菜单。' : '浏览器预览没有桌面应用菜单。', showAppsEditor],
+     ['原生会话', native ? '打开隐藏原生工作区的会话窗口。' : '浏览器预览不能打开原生会话。', showNativeConversation],
++    ['场景配置', native ? '编辑现有场景或复制创建自建场景；保存并应用到当前工作台。' : '浏览器预览不能保存桌面场景配置。', showSceneConfiguration],
++    ['引擎程序快照', native ? '保存、预览并在正常停机后恢复受控程序代际。' : '浏览器预览不能恢复引擎程序。', showEngineGenerations],
+     ['已注册工具', native ? '读取桌面宿主中的已注册工具目录。' : '浏览器预览不能读取桌面工具目录。', showRegisteredTools],
+   ]
+   openModal('工作台工具', body => {
+@@ -1736,13 +1906,15 @@
+   const api = window.app?.aiWeb
+   const providers = ['deepseek', 'doubao']
+   const latestGeneration = new Map(providers.map(provider => [provider, -1]))
++  const stateRevision = new Map(providers.map(provider => [provider, 0]))
++  const latestReads = new Map()
+   const openedProviders = new Set()
+   const sampling = new Set()
+   const lastSampleAt = new Map(providers.map(provider => [provider, -Infinity]))
+   let active = true
+   let unsubscribe
+ 
+-  function applyState(dto) {
++  function applyState(dto, readTicket) {
+     if (!active || !dto || typeof dto !== 'object' || Array.isArray(dto)) return
+     const keys = Object.keys(dto).sort()
+     if (keys.length !== 4 || keys.join(',') !== 'authState,evidence,generation,provider') return
+@@ -1752,8 +1924,12 @@
+       : { none: 'unknown', 'doubao-login-button': 'unauthenticated', 'doubao-account-menu': 'authenticated' }
+     if (!providers.includes(provider) || !Object.hasOwn(expected, evidence) || expected[evidence] !== authState
+       || !Number.isSafeInteger(generation) || generation < 0) return
++    if (readTicket && readTicket.provider !== provider) return
+     if (generation < latestGeneration.get(provider)) return
++    if (readTicket && stateRevision.get(provider) !== readTicket.revision
++      && generation <= latestGeneration.get(provider)) return
+     latestGeneration.set(provider, generation)
++    stateRevision.set(provider, stateRevision.get(provider) + 1)
+     const button = document.getElementById(provider === 'deepseek' ? 'btn-deepseek' : 'btn-doubao')
+     if (button) {
+       const providerName = provider === 'deepseek' ? 'DeepSeek' : '豆包'
+@@ -1767,7 +1943,13 @@
+ 
+   async function refreshState(provider) {
+     if (!active || !providers.includes(provider) || typeof api?.authState !== 'function') return
+-    try { applyState(await api.authState(provider)) } catch { /* Keep the last Host-reported state. */ }
++    const ticket = { provider, revision: stateRevision.get(provider) }
++    latestReads.set(provider, ticket)
++    try {
++      const snapshot = await api.authState(provider)
++      if (latestReads.get(provider) !== ticket) return
++      applyState(snapshot, ticket)
++    } catch { /* Keep the last Host-reported state. */ }
+   }
+ 
+   async function sample(provider, source) {
+@@ -1915,7 +2097,7 @@
+ 
+   const labels = new Map([
+     ['btn-theme', '外观'], ['btn-mobile', '手机连接'], ['btn-settings', '设置'],
+-    ['btn-refresh', '刷新当前场景'], ['btn-plugins', '插件目录'], ['btn-skills', '助手能力'],
++    ['btn-refresh', '刷新当前场景'], ['btn-plugins', '插件目录'],
+     ['btn-tools', '工作台工具'], ['btn-models', '模型与提供方'],
+   ])
+   const actions = [...actionGroup.querySelectorAll(':scope > button.tb-btn')]
+@@ -2113,7 +2295,6 @@
+   document.getElementById('btn-mobile').addEventListener('click', showMobileLink)
+   document.getElementById('btn-settings').addEventListener('click', showSettings)
+   document.getElementById('btn-plugins').addEventListener('click', showPlugins)
+-  document.getElementById('btn-skills').addEventListener('click', showSkills)
+   document.getElementById('btn-tools').addEventListener('click', showTools)
+   document.getElementById('btn-models').addEventListener('click', showModels)
+   document.getElementById('btn-deepseek').addEventListener('click', () => openWebAiWindow('deepseek', 'https://chat.deepseek.com/'))
+@@ -2191,6 +2372,12 @@
+     data = { scenes: normalizeScenes(await resp.json()) }
+   }
+   data.scenes = normalizeScenes(data.scenes)
++  configurationTemplates = structuredClone(data.scenes)
++  if (typeof window.app?.sourceConfig === 'function') {
++    trustedSceneConfiguration = await window.app.sourceConfig()
++    data.scenes = visibleConfiguredScenes(trustedSceneConfiguration).map(projectTrustedScene)
++  }
++  if (typeof window.app?.onSceneConfigurationChanged === 'function') window.app.onSceneConfigurationChanged(applyTrustedSceneConfiguration)
+   // ?scene=<id> 直达；&solo=1 分离窗口（隐藏场景栏，腾高度给面板）
+   const params = new URLSearchParams(location.search)
+   const want = params.get('scene')
+diff --git a/renderer/source-shell/replica-ui/panel-interactions.js b/renderer/source-shell/replica-ui/panel-interactions.js
+--- a/renderer/source-shell/replica-ui/panel-interactions.js
++++ b/renderer/source-shell/replica-ui/panel-interactions.js
+@@ -2,6 +2,9 @@
+   'use strict'
+ 
+   const ACTIONS = [
++    ['场景记忆', '当前场景记忆暂时无法打开。'],
++    ['任务目录', '当前任务目录暂时无法打开。'],
++    ['回复朗读控制', '当前会话回复朗读暂时无法切换。'],
+     ['独立窗口', '独立窗口操作暂不可用。'],
+     ['打开原生会话', '该面板不支持原生会话。'],
+     ['轮换此角色会话', '此面板当前没有可轮换的角色会话。'],
+@@ -344,6 +347,13 @@
+       closePanel(ownerPanel)
+       return
+     }
++    const nativeUtility = { '场景记忆': 'scene-memory', '任务目录': 'task-directory', '回复朗读控制': 'session-speech' }[label]
++    if (nativeUtility) {
++      const request = window.businessBridge?.requestNativeUtility
++      if (typeof request !== 'function') { announce(explanation); return }
++      Promise.resolve(request(ownerPanel, nativeUtility)).then(result => { if (!result?.ok) announce(explanation) }).catch(() => announce(explanation))
++      return
++    }
+     if (label === '独立窗口') {
+       const requestPlacement = window.businessBridge?.requestPanelPlacement
+       if (typeof requestPlacement !== 'function') {
+@@ -393,7 +403,7 @@
+     const capabilities = panel ? window.businessBridge?.panelMenuCapabilities?.(panel) : undefined
+     const entries = panel
+       ? ACTIONS.filter(([label]) => label === '独立窗口' ? capabilities?.independent === true
+-        : label === '打开原生会话' || label === '轮换此角色会话' ? capabilities?.nativeConversation === true : true)
++        : ['打开原生会话','轮换此角色会话','场景记忆','任务目录','回复朗读控制'].includes(label) ? capabilities?.nativeConversation === true : true)
+         .map(([label, explanation]) => ({ label, explanation }))
+       : []
+     const panelGrid = panel?.closest?.('#grid') ?? (point ? document.getElementById('grid') : null)
+@@ -435,7 +445,12 @@
+   }
+ 
+   function setFullscreenButton(button, active) {
+-    button.textContent = active ? '❐' : '⛶'
++    const icon = createPanelExpandIcon()
++    const layer = icon.children[active ? 1 : 0]
++    layer.removeAttribute('class')
++    icon.replaceChildren(layer)
++    icon.setAttribute('width', '16'); icon.setAttribute('height', '16')
++    button.replaceChildren(icon)
+     button.title = active ? '还原面板大小' : '放大到主体区域'
+     button.setAttribute('aria-label', button.title)
+     button.setAttribute('aria-pressed', String(active))
+@@ -522,9 +537,44 @@
+       && JSON.stringify([...leaves].sort()) === JSON.stringify([...panelIds].sort())
+   }
+ 
++  function migrateWorkflowDefaultLayout(scene) {
++    if (scene?.id !== 'agent-center' || !scene.panels.some(panel => panel.id === 'workflow-plan')) return scene
++    const previous = readSplitTrees(), stored = previous.scenes[scene.id]
++    const oldIds = ['workflow-main','files','preview','workflow-chat']
++    if (!stored || !validSplitTree(stored.tree, oldIds) || stored.topology !== treeTopology(stored.tree)) return scene
++    const expected = { 'workflow-main': [1,1,3,2], files: [4,1,1,2], preview: [1,3,1,2], 'workflow-chat': [2,3,3,2] }
++    const legal = Array.isArray(stored.geometry) && stored.geometry.length === 4
++      && new Set(stored.geometry.map(item => item.id)).size === 4
++      && stored.geometry.every(item => oldIds.includes(item.id) && ['col','row','w','h'].every(key => Number.isSafeInteger(item[key]) && item[key] > 0 && item[key] <= 4)
++        && item.col + item.w <= 5 && item.row + item.h <= 5)
++    if (!legal) return scene
++    const isDefault = stored.geometry.every(item => ['col','row','w','h'].every((key,index) => item[key] === expected[item.id][index]))
++    if (!isDefault) {
++      const geometry = new Map(stored.geometry.map(item => [item.id,item]))
++      return { ...scene, workflowLayoutGap: 'custom-legacy-layout', panels: scene.panels.filter(panel => oldIds.includes(panel.id)).map(panel => ({ ...panel, ...geometry.get(panel.id),
++        ...(panel.id === 'workflow-main' ? { standaloneCanvas: false, tabs: ['业务计划','工作流画布'], activeTab: '工作流画布' } : {}) })) }
++    }
++    const insert = node => node.kind === 'leaf'
++      ? node.id === 'workflow-main' ? { kind:'split', axis:'x', boundary:2, path:'workflow-plan-v2', ratio:1/3,
++        first:{kind:'leaf',id:'workflow-plan'}, second:{kind:'leaf',id:'workflow-main'} } : { ...node }
++      : { ...node, first:insert(node.first), second:insert(node.second) }
++    const tree = insert(stored.tree)
++    if (!validSplitTree(tree, scene.panels.map(panel => panel.id))) return scene
++    const migrated = { tree, topology:treeTopology(tree), geometry:scene.panels.map(({id,col,row,w,h}) => ({id,col,row,w,h})), legacyWorkflowV1:stored }
++    try { localStorage.setItem(SPLIT_TREE_STORAGE_KEY, JSON.stringify({ ...previous, scenes:{ ...previous.scenes, [scene.id]:migrated } })) }
++    catch {
++      // A failed backup must not silently replace the user's old layout.
++      return { ...scene, workflowLayoutGap:'migration-save-failed', panels:scene.panels.filter(panel => oldIds.includes(panel.id)).map(panel => ({ ...panel, ...stored.geometry.find(item => item.id === panel.id),
++        ...(panel.id === 'workflow-main' ? { standaloneCanvas:false, tabs:['业务计划','工作流画布'], activeTab:'工作流画布' } : {}) })) }
++    }
++    return scene
++  }
++  window.prepareWorkflowLayout = migrateWorkflowDefaultLayout
++
+   function saveSplitTree(sceneId, tree) {
+     const previous = readSplitTrees()
+-    const serializable = { tree: tree.tree, topology: tree.topology, geometry: tree.geometry }
++    const serializable = { tree: tree.tree, topology: tree.topology, geometry: tree.geometry,
++      ...(previous.scenes[sceneId]?.legacyWorkflowV1 ? { legacyWorkflowV1: previous.scenes[sceneId].legacyWorkflowV1 } : {}) }
+     const next = { ...previous, version: 2, scenes: { ...previous.scenes, [sceneId]: serializable } }
+     try { localStorage.setItem(SPLIT_TREE_STORAGE_KEY, JSON.stringify(next)); return true }
+     catch { return false }
+@@ -1513,12 +1563,17 @@
+       return
+     }
+     requestAnimationFrame(() => {
+-      setRect(panel, target)
++      if (states.get(panel) !== state || !state.pending) return
++      if (!panel.isConnected) return cleanupDetached(panel)
++      const latest = state.slot?.getBoundingClientRect()
++      if (!latest) return finishRestore(panel, state)
++      setRect(panel, latest)
+       transitionDone(panel, () => finishRestore(panel, state))
+     })
+   }
+ 
+   function finishRestore(panel, state) {
++    if (states.get(panel) !== state) return
+     if (state.originalStyle == null) panel.removeAttribute('style')
+     else panel.setAttribute('style', state.originalStyle)
+     panel.classList.remove('pi-maximized', 'pi-animating')
+@@ -1587,11 +1642,12 @@
+     panel.getBoundingClientRect()
+     setFullscreenButton(button, true)
+     requestAnimationFrame(() => {
++      if (states.get(panel) !== state || state.pending) return
+       if (!panel.isConnected) return cleanupDetached(panel)
+       panel.classList.add('pi-animating')
+       const latest = grid.getBoundingClientRect()
+       setRect(panel, latest)
+-      transitionDone(panel, () => { panel.classList.remove('pi-animating'); updateResizeHandles() })
++      transitionDone(panel, () => { if (states.get(panel) !== state || state.pending) return; panel.classList.remove('pi-animating'); updateResizeHandles() })
+     })
+     requestAnimationFrame(updateResizeHandles)
+   }
+@@ -1599,8 +1655,7 @@
+   function cleanupDetached(panel) {
+     const state = states.get(panel)
+     if (!state) return
+-    state.slot?.remove()
+-    states.delete(panel)
++    finishRestore(panel, state)
+   }
+ 
+   function installPanel(panel) {
+diff --git a/renderer/source-shell/replica-ui/index.html b/renderer/source-shell/replica-ui/index.html
+--- a/renderer/source-shell/replica-ui/index.html
++++ b/renderer/source-shell/replica-ui/index.html
+@@ -27,7 +27,6 @@
+       <span class="tb-sep"></span>
+       <button class="tb-btn" id="btn-refresh" title="刷新当前场景（热更新渲染器）">⟳</button>
+       <button class="tb-btn" id="btn-plugins" title="查看已安装插件">🧩</button>
+-      <button class="tb-btn" id="btn-skills" title="技能（Skills）：查看 / 打开技能目录">⚡</button>
+       <button class="tb-btn" id="btn-tools" title="工具（Tools）：查看引擎原有与新增工具">🛠</button>
+       <button class="tb-btn" id="btn-models" title="查看模型与提供方">🤖</button>
+       <button class="tb-btn" id="btn-market" title="DSH 集市">🛍</button>
+diff --git a/renderer/source-shell/replica-ui/scenes-data.js b/renderer/source-shell/replica-ui/scenes-data.js
+--- a/renderer/source-shell/replica-ui/scenes-data.js
++++ b/renderer/source-shell/replica-ui/scenes-data.js
+@@ -109,19 +109,27 @@
+       "rows": 4,
+       "panels": [
+         {
++          "id": "workflow-plan",
++          "title": "业务计划",
++          "type": "doc",
++          "path": "/agent-center",
++          "hostPanelId": "business-plan",
++          "col": 1,
++          "row": 1,
++          "w": 1,
++          "h": 2
++        },
++        {
+           "id": "workflow-main",
+-          "title": "工作流",
++          "title": "工作流画布",
+           "type": "canvas",
+           "path": "/agent-center",
+-          "col": 1,
+-          "row": 1,
+-          "w": 3,
++          "col": 2,
++          "row": 1,
++          "w": 2,
+           "h": 2,
+-          "tabs": [
+-            "业务计划",
+-            "工作流画布"
+-          ],
+-          "activeTab": "工作流画布"
++          "standaloneCanvas": true,
++          "hostPanelId": "business-main"
+         },
+         {
+           "id": "files",

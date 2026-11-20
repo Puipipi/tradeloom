@@ -80,7 +80,7 @@ function mcpDeclaration(inventory, preset) {
   if (!Array.isArray(inventory)) return 'unavailable'
   const composition = inventory.find(item => item?.id === preset)
   if (!composition || !Array.isArray(composition.rows)) return 'not_configured'
-  return composition.rows.some(row => row?.moduleName === MCP_MODULE && (row.enabled === true || row.enabled === 'conditional'))
+  return composition.rows.some(row => [MCP_MODULE, '@tradeloom/dsh-business-shell/mcp-runtime'].includes(row?.moduleName) && (row.enabled === true || row.enabled === 'conditional'))
     ? 'declared_only'
     : 'not_configured'
 }

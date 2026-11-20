@@ -1,0 +1,977 @@
+{
+  "schemaVersion": 1,
+  "version": "0.2.2-rc.3",
+  "base": "signed Windows rc.3 native desktop with accepted S5 owned overlay",
+  "preimages": {
+    "package.json": {
+      "bytes": 882,
+      "sha256": "09a24f154710583949e37c38ed6ae6509340538133bab8320ea5dbff424dceaf"
+    }
+  },
+  "postimages": {
+    "package.json": {
+      "bytes": 1069,
+      "sha256": "8ecaa27fc4f6a4ec9bb4058f0d18dc498ab18fa72141dbf3ba5a60db0a001e97"
+    }
+  },
+  "patch": "desktop-identity.patch",
+  "additions": {
+    "lib/main.js": {
+      "bytes": 1111351,
+      "sha256": "25044c011858380c5bca15a9ffeea845b13a9d79e3ff9a1ab682c3460cc1fc80"
+    },
+    "lib/operation-report-worker.js": {
+      "bytes": 185600,
+      "sha256": "bce69b578f7f9f66788517a4b03c27634d6be25ec3ebebca0a8f9f33cd916d00"
+    },
+    "lib/preload-app.cjs": {
+      "bytes": 148006,
+      "sha256": "cddbedc8eaadb35e394f81af904155ee69ef54db5431fa39205680ceeb0ad46d"
+    },
+    "lib/preload-mandatory.cjs": {
+      "bytes": 1033,
+      "sha256": "1d1df2edd1b50e051cae606019081731a5939ab7b4313567029fdaa97ee59273"
+    },
+    "lib/preload-platform-account.cjs": {
+      "bytes": 2083,
+      "sha256": "bf997c17dfc71885e8fa01e75c75a527c0863877ca995c6f7e943a288ea90f3c"
+    },
+    "lib/preload-update-dialog.cjs": {
+      "bytes": 1108,
+      "sha256": "65856af44fbd11bca80df7ac065ac118611c6d060d745d39efa7d18544648483"
+    },
+    "lib/preload-welcome.cjs": {
+      "bytes": 119229,
+      "sha256": "95ed9f11f2ff8dae9772f6b1b683ab65e762435f0b7ecb104e2aad5daf180dc0"
+    },
+    "lib/welcome/Montserrat-OFL.txt": {
+      "bytes": 4400,
+      "sha256": "861d64229728cd65a98d119612c12769582574d1a092f0b63c8b0fd474e7065f"
+    },
+    "lib/welcome/brand-font.css": {
+      "bytes": 554,
+      "sha256": "d0733ee69620e686561800ac788e54fc0bb9e02af5294c8b6f74c109132210cf"
+    },
+    "lib/welcome/design-platform.css": {
+      "bytes": 29861,
+      "sha256": "3234f318769ea5065013793d58d98b235948486789d69ea16e850bd3713babcc"
+    },
+    "lib/welcome/montserrat-light.woff2": {
+      "bytes": 61548,
+      "sha256": "da25f1327eb1dcc70c193897b5d7e00d31821d9518c0a49e073ff50d97a3f10a"
+    },
+    "lib/welcome/montserrat-medium.woff2": {
+      "bytes": 62148,
+      "sha256": "8a81ca6f05cb6831d5487e4b287ce5a625a718c39226b736f155900adc394166"
+    },
+    "lib/welcome/montserrat-regular.woff2": {
+      "bytes": 62008,
+      "sha256": "0f4a15e29a9535af580a64db967929a8d6b202fad9a467be390619a591d2c4c5"
+    },
+    "lib/welcome/welcome.css": {
+      "bytes": 43121,
+      "sha256": "fdbd0027db58c83b5118da31e76d28c0ab44db0302287efaf8da915de1a40ca0"
+    },
+    "lib/deepseek-account-bootstrap.mjs": {
+      "bytes": 40004,
+      "sha256": "d35815eaf7b411133963dd7ad96edb2b1e12c39bb43441d876fa7c8d49ed7a03"
+    },
+    "lib/doubao-account-bootstrap.mjs": {
+      "bytes": 27032,
+      "sha256": "4f5a4a467408c199b7bc2acbf404d277368540cf8207d1869e6d96b883464d56"
+    },
+    "lib/fixed-account-entry-probe-r2.mjs": {
+      "bytes": 14971,
+      "sha256": "0913ca57be60240892bc1969591fccf39d8f7443c3fb2b0cfc782f8d016c0f22"
+    },
+    "lib/main-location-validator.mjs": {
+      "bytes": 333571,
+      "sha256": "7c44601ef31709571c913e03f463ed5caca49454c039b033be6ac5337bf14fb5"
+    },
+    "lib/tradeloom-source-shell/source-core-controller.mjs": {
+      "bytes": 89501,
+      "sha256": "0636255c17e62f1bf30211b34d8663f316c543adbec4edc7643883a849e4dd6b"
+    },
+    "lib/tradeloom-source-shell/source-preload.cjs": {
+      "bytes": 10146,
+      "sha256": "b4d3c2e01ac0e849c6a149bcb549beb75dd5ddd2d59304c447511a7f2b7cede6"
+    },
+    "lib/tradeloom-source-shell/source-shell-controller.mjs": {
+      "bytes": 157897,
+      "sha256": "beb3d46ee88fde83f5594ab61900ee3edda5a823b7d5a0c9130579103a41b654"
+    },
+    "lib/tradeloom-source-shell/surface-owner.mjs": {
+      "bytes": 4927,
+      "sha256": "f59a854677872d4b8919e1c47a468cb85d59e212b311fcd368e2bcfc092fa6a8"
+    },
+    "lib/tradeloom/bootstrap-core.mjs": {
+      "bytes": 16820,
+      "sha256": "c5c8d2d5957060c6c2774a0441203479e0be478ff96952df13e1b58a918550a7"
+    },
+    "lib/tradeloom/bootstrap-entry.mjs": {
+      "bytes": 7487,
+      "sha256": "3033d5308626946ae2999dd65ca5dda1c69704fd80c41e6d1b1ac77b979acfa4"
+    },
+    "lib/tradeloom/core.mjs": {
+      "bytes": 15170,
+      "sha256": "5177d356626b1659a0a4e3306dc025609b8b95d7014f20077895127e0a5be194"
+    },
+    "lib/tradeloom/desktop-receipt.mjs": {
+      "bytes": 8896,
+      "sha256": "9560e2f94fa32c7aaa243b1393edb019bf977a70ca6b2bbfcfc9d7783711ab59"
+    },
+    "lib/tradeloom/installed-bootstrap.mjs": {
+      "bytes": 51844,
+      "sha256": "eddaa4b6607ddefb333a3abeb36c2aaae911f33e9e36db48dd799ec509cd8ded"
+    },
+    "lib/tradeloom/plugin-seed.mjs": {
+      "bytes": 14648,
+      "sha256": "a5bc5347bd79855c9a402e7133f535dd7cb667d53cf9a53affaeaf51baf7a222"
+    },
+    "lib/tradeloom/prepare-profile.mjs": {
+      "bytes": 10752,
+      "sha256": "0e6592a1738234b2c76fca6cdcfc805ef155a65e434df2674d17ad2c97ff29dd"
+    },
+    "lib/tradeloom/receipt-writer.mjs": {
+      "bytes": 3439,
+      "sha256": "958035500235b0e764e905842f320fa14224302d5cea0421f1ed11c16bd2a90d"
+    },
+    "lib/webai-account-trigger-main-r2.mjs": {
+      "bytes": 4725,
+      "sha256": "4d2f7954073aef0466cd2b4e59ca5c74380a865c7232b385d193cb6b170b3766"
+    },
+    "lib/webai-account-trigger-probe-r2.mjs": {
+      "bytes": 21601,
+      "sha256": "db97d21c222739a452451451654fa5a12276fe42e91d7cb75542938a02d15b26"
+    },
+    "renderer/source-shell/account-window.css": {
+      "bytes": 3007,
+      "sha256": "80e933dafb77ef4519e169e3c891d9a864f5661f8d1b2f3f92e6a13a5eafafb9"
+    },
+    "renderer/source-shell/account-window.html": {
+      "bytes": 1513,
+      "sha256": "5b66ec1d4802a4e65d90bb61c94465c44a4ec24d0bb77cef1f703e4d06c8ff37"
+    },
+    "renderer/source-shell/account-window.js": {
+      "bytes": 11545,
+      "sha256": "aa7c369e237027ae951bd6047ca74071633e935101f6992d00e1ce585b52584c"
+    },
+    "renderer/source-shell/assets/bilibili-icon.ico": {
+      "bytes": 4286,
+      "sha256": "2681561eb24e7435fea1acf26f3af95e4efc9f7d451587b58bef62f030f337e9"
+    },
+    "renderer/source-shell/assets/bilibili-icon.png": {
+      "bytes": 2833,
+      "sha256": "9a931e013b9e049e92f2f6ed8f0da8c1c1110241c95267eb268c3741f7497b91"
+    },
+    "renderer/source-shell/assets/bilibili-icon.svg": {
+      "bytes": 1923,
+      "sha256": "dbbdb511357980f234e65f71301713d64c65a4b8fb1e65b611fad817e705e945"
+    },
+    "renderer/source-shell/assets/blender-icon.png": {
+      "bytes": 1311,
+      "sha256": "5643979402711bb06b48a53449f6cb26ddb10e022bcbaf8b89c439b25b77c872"
+    },
+    "renderer/source-shell/assets/boot-video-720p.mp4": {
+      "bytes": 2594993,
+      "sha256": "1d6b3b618008bc4f6bcb8708d55dc51c33316e2ab69203a6de57bca61ed2a801"
+    },
+    "renderer/source-shell/assets/boot-video.mp4": {
+      "bytes": 13364807,
+      "sha256": "fc9555880082904a1ad1b5f5168cf37d4620b1a75a15c8c80a720d93eac78693"
+    },
+    "renderer/source-shell/assets/danghui.png": {
+      "bytes": 13975,
+      "sha256": "8c3f5efbf62fcadfa9bfb57acd7a358bf1560fd30a42c2bf2376e9a519924865"
+    },
+    "renderer/source-shell/assets/deepseek-whale.png": {
+      "bytes": 6370,
+      "sha256": "cba0168e484cf74016847e09aff47c839f4198000a52f19e76f44a73dafe24e4"
+    },
+    "renderer/source-shell/assets/douyin-icon.png": {
+      "bytes": 821,
+      "sha256": "65eeadaba260aae870a0a8402e02be52090c1edc23ba48006e0f7904adc9bc2f"
+    },
+    "renderer/source-shell/assets/hithink-icon.png": {
+      "bytes": 961,
+      "sha256": "9dfae1ba3f7dd6b387ec042bd3204306c41505091f04692b47c3076ae299904d"
+    },
+    "renderer/source-shell/assets/ideal-emblem.png": {
+      "bytes": 17044,
+      "sha256": "b91aa6c37c045eff07917c9528e996b839ce22e109d700fe11d247e023781857"
+    },
+    "renderer/source-shell/assets/stock-icon-96.png": {
+      "bytes": 9599,
+      "sha256": "4d7415976befd652033f01ae1ef8c5efa7e319e14d439fe1a0efde794a183fa2"
+    },
+    "renderer/source-shell/assets/webai/chatglm.png": {
+      "bytes": 2217,
+      "sha256": "94e48956654f0b02d7a113628cdea50819579c6bccecec8888928f321c0f997d"
+    },
+    "renderer/source-shell/assets/webai/deepseek.png": {
+      "bytes": 7384,
+      "sha256": "547ead56dcb71424315ba53bf8f4c35e745efeaece106b9fb7e4dcdfa19c1a7a"
+    },
+    "renderer/source-shell/assets/webai/doubao.png": {
+      "bytes": 8216,
+      "sha256": "f4467b1b14a9588a40ccf2f312c2a2c9d285d69d9f7ab8c20eea375a547d5ea5"
+    },
+    "renderer/source-shell/assets/webai/kimi.png": {
+      "bytes": 21645,
+      "sha256": "6c14f9c3062e953b3ed57ae3e19db931c1c1bba38d4d8d55550544f31d55e469"
+    },
+    "renderer/source-shell/assets/webai/tongyi.png": {
+      "bytes": 1658,
+      "sha256": "cd9390bc4209c319121d111f3a1f535b3c7dd909b8f860d41acc9744138d58df"
+    },
+    "renderer/source-shell/customer-start.js": {
+      "bytes": 1894,
+      "sha256": "52d21812adeda9472b0adfef4d83e69680b4d8d278e030f5e2a62f247e9c5c16"
+    },
+    "renderer/source-shell/index.html": {
+      "bytes": 9227,
+      "sha256": "c22a7e00ee608e7ff2195c974b315e55590a4c9078145d80dd4bfc3e3350a186"
+    },
+    "renderer/source-shell/mcp-panel.js": {
+      "bytes": 29850,
+      "sha256": "842bdb3c4cd3ef3ddc2e473ed1e6da4158cf5a98b1981a426fadc41d835cde69"
+    },
+    "renderer/source-shell/public-clean.js": {
+      "bytes": 1347,
+      "sha256": "77788918a1ebf2ddce4dbf3f32b3b1aae9c51655073481dc79d80bcec3717955"
+    },
+    "renderer/source-shell/public-links.js": {
+      "bytes": 1234,
+      "sha256": "2995eb621aec5511fae18f7e0ab87157d93095237c4752d19cfbf1f46dcdfc13"
+    },
+    "renderer/source-shell/renderer.js": {
+      "bytes": 74299,
+      "sha256": "7e7beb5a8aa57b5e850e91b7b2be2d3b1bb8a0e6459e27964f4d9c695c1978a6"
+    },
+    "renderer/source-shell/renderers.js": {
+      "bytes": 1097913,
+      "sha256": "bd998b648beda22b279d68823b9b8c284098fc9202b7bd16e333801f1a425679"
+    },
+    "renderer/source-shell/replica-ui/assets/deepseek.svg": {
+      "bytes": 3642,
+      "sha256": "90d7e400ca261d28dfb7982bfade335912b3a27a620faee9a787f8a52164fd43"
+    },
+    "renderer/source-shell/replica-ui/assets/doubao.png": {
+      "bytes": 6520,
+      "sha256": "967f66980a35f2187841193d625693d233d7c451774ecffaebfa19e8884c3257"
+    },
+    "renderer/source-shell/replica-ui/assets/tradeloom-mark.svg": {
+      "bytes": 961,
+      "sha256": "7e2cdb6592de4456295d455056a1d5ca500cf8ef3c759aef90ceba66c76b5849"
+    },
+    "renderer/source-shell/replica-ui/business-bridge.css": {
+      "bytes": 4171,
+      "sha256": "27d58b0546dd6bf0509c37e11b6dc3e3a6ec65de707d2e17579a0230b4987e5d"
+    },
+    "renderer/source-shell/replica-ui/business-bridge.js": {
+      "bytes": 93974,
+      "sha256": "4c4f54165b715fbc5650e8a4e00b3d9161efaed8defe6799680e2d9ab4d95b99"
+    },
+    "renderer/source-shell/replica-ui/business-file-bridge.js": {
+      "bytes": 13570,
+      "sha256": "05157d2f2d231306f4c80a8a013e626925e66d5821b753c07971365c15c38435"
+    },
+    "renderer/source-shell/replica-ui/index.html": {
+      "bytes": 4327,
+      "sha256": "cf91222612b28c43cbf6b275fc9f9957ec68846266d8c3d5ab46d1d3f2f37695"
+    },
+    "renderer/source-shell/replica-ui/native-account-controls.css": {
+      "bytes": 2180,
+      "sha256": "33d43ca494dabc88143c085a5429e17365fd7c901e7e67a896bcc15c5a1cabc4"
+    },
+    "renderer/source-shell/replica-ui/native-account-controls.js": {
+      "bytes": 9310,
+      "sha256": "6d4001ed9fee59af5a209eedd25f035136431e866557fcb41cf1d2390e8e6c45"
+    },
+    "renderer/source-shell/replica-ui/palette-tokens.css": {
+      "bytes": 13570,
+      "sha256": "2f9de244fe9347040227e444e51b8ab7f3d25f6796dd9d2dc37fe0660d2ba240"
+    },
+    "renderer/source-shell/replica-ui/palette.css": {
+      "bytes": 7541,
+      "sha256": "79c8eb54adcbaea1022084a2273d16e88bf22e7f9c1885211fcc25537c7b3c88"
+    },
+    "renderer/source-shell/replica-ui/panel-interactions.css": {
+      "bytes": 4755,
+      "sha256": "145dd57540b879c6ea3984d657a7bb3735a375cb371378e1c1a4b9ccf8508869"
+    },
+    "renderer/source-shell/replica-ui/panel-interactions.js": {
+      "bytes": 120239,
+      "sha256": "9a84e456de97e5e56dcd467f9bd8fb79fbf4350f4f80f71fc23528802d18b8c2"
+    },
+    "renderer/source-shell/replica-ui/renderer.js": {
+      "bytes": 125789,
+      "sha256": "99cb5944992554f1d21cb20247699ec68ca57474a42af6e42cab5af3f2bdf5c4"
+    },
+    "renderer/source-shell/replica-ui/replica-adapter.js": {
+      "bytes": 111663,
+      "sha256": "a8af143109690c507ba01080711df3dad41692e040de090ee631bcc4b0bc58b0"
+    },
+    "renderer/source-shell/replica-ui/scenes-data.js": {
+      "bytes": 6327,
+      "sha256": "b4bbb780f982887a03cfd11764e433478cab13d49465b939aafacfb3813bee03"
+    },
+    "renderer/source-shell/replica-ui/scenes.json": {
+      "bytes": 5894,
+      "sha256": "1855228680120c458bfa0695bb47f92f8d6f31c1bd776cb55f5b48866334c34f"
+    },
+    "renderer/source-shell/replica-ui/style.css": {
+      "bytes": 40013,
+      "sha256": "53b3c39ba1dc9583af3a455122bebde42b390572d2227dcedfc2dfbf3a3b9f0d"
+    },
+    "renderer/source-shell/replica-ui/tradeloom-mark.svg": {
+      "bytes": 961,
+      "sha256": "7e2cdb6592de4456295d455056a1d5ca500cf8ef3c759aef90ceba66c76b5849"
+    },
+    "renderer/source-shell/sector-data.js": {
+      "bytes": 172346,
+      "sha256": "914b1832a5d6ea00fdc09e81ff588e89e7a3b163ee8b1b4470e5ffb10246730e"
+    },
+    "renderer/source-shell/source-entry.html": {
+      "bytes": 9175,
+      "sha256": "16095cc5e71d49d50c7aa1a7d8c782d49203ad331c48ec61a88712ba96158ac0"
+    },
+    "renderer/source-shell/styles.css": {
+      "bytes": 294106,
+      "sha256": "de711a5f76a66e58b0d0cb77b564ebeea9e9187622c03ad9d19197b5b72dfc42"
+    },
+    "renderer/source-shell/topbar-status.js": {
+      "bytes": 100041,
+      "sha256": "021cacc2b2051ad0ed0f262071d6bb477ab962d906b50ef7117e3389e2142199"
+    },
+    "renderer/source-shell/us-sector-data.js": {
+      "bytes": 139888,
+      "sha256": "f3f5f43b5ff5e462b0386eac60b123d9c02c54b89e5dddaf10814b124a2cf9e9"
+    },
+    "renderer/source-shell/webai-bridge.js": {
+      "bytes": 129678,
+      "sha256": "3a26fa7e41ae13718a2a12b4ea03a83bdb1383a491811f8e556aa93b6fb02f7f"
+    },
+    "renderer/source-shell/replica-ui/panel-tabs.js": {
+      "bytes": 11902,
+      "sha256": "1e58c755d44bc3b2812dd7be8165d104838000c5b9b774a3eb408a2748e42cb7"
+    }
+  },
+  "sources": {
+    "lib/main.js": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/main.js",
+      "preimage": {
+        "bytes": 1111351,
+        "sha256": "68b7a44b39cb4125bc7732d5e04c97903558fe911205c09ce16a508d4859b948"
+      },
+      "replace": {
+        "from": "function desktopClientVersion() {\n\treturn \"0.2.2-rc.2\";",
+        "to": "function desktopClientVersion() {\n\treturn \"0.2.2-rc.3\";",
+        "count": 1
+      }
+    },
+    "lib/operation-report-worker.js": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/operation-report-worker.js",
+      "preimage": {
+        "bytes": 185600,
+        "sha256": "bce69b578f7f9f66788517a4b03c27634d6be25ec3ebebca0a8f9f33cd916d00"
+      }
+    },
+    "lib/preload-app.cjs": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/preload-app.cjs",
+      "preimage": {
+        "bytes": 148006,
+        "sha256": "cddbedc8eaadb35e394f81af904155ee69ef54db5431fa39205680ceeb0ad46d"
+      }
+    },
+    "lib/preload-mandatory.cjs": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/preload-mandatory.cjs",
+      "preimage": {
+        "bytes": 1033,
+        "sha256": "1d1df2edd1b50e051cae606019081731a5939ab7b4313567029fdaa97ee59273"
+      }
+    },
+    "lib/preload-platform-account.cjs": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/preload-platform-account.cjs",
+      "preimage": {
+        "bytes": 2083,
+        "sha256": "bf997c17dfc71885e8fa01e75c75a527c0863877ca995c6f7e943a288ea90f3c"
+      }
+    },
+    "lib/preload-update-dialog.cjs": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/preload-update-dialog.cjs",
+      "preimage": {
+        "bytes": 1108,
+        "sha256": "65856af44fbd11bca80df7ac065ac118611c6d060d745d39efa7d18544648483"
+      }
+    },
+    "lib/preload-welcome.cjs": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/preload-welcome.cjs",
+      "preimage": {
+        "bytes": 119229,
+        "sha256": "95ed9f11f2ff8dae9772f6b1b683ab65e762435f0b7ecb104e2aad5daf180dc0"
+      }
+    },
+    "lib/welcome/Montserrat-OFL.txt": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/welcome/Montserrat-OFL.txt",
+      "preimage": {
+        "bytes": 4400,
+        "sha256": "861d64229728cd65a98d119612c12769582574d1a092f0b63c8b0fd474e7065f"
+      }
+    },
+    "lib/welcome/brand-font.css": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/welcome/brand-font.css",
+      "preimage": {
+        "bytes": 554,
+        "sha256": "d0733ee69620e686561800ac788e54fc0bb9e02af5294c8b6f74c109132210cf"
+      }
+    },
+    "lib/welcome/design-platform.css": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/welcome/design-platform.css",
+      "preimage": {
+        "bytes": 29861,
+        "sha256": "3234f318769ea5065013793d58d98b235948486789d69ea16e850bd3713babcc"
+      }
+    },
+    "lib/welcome/montserrat-light.woff2": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/welcome/montserrat-light.woff2",
+      "preimage": {
+        "bytes": 61548,
+        "sha256": "da25f1327eb1dcc70c193897b5d7e00d31821d9518c0a49e073ff50d97a3f10a"
+      }
+    },
+    "lib/welcome/montserrat-medium.woff2": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/welcome/montserrat-medium.woff2",
+      "preimage": {
+        "bytes": 62148,
+        "sha256": "8a81ca6f05cb6831d5487e4b287ce5a625a718c39226b736f155900adc394166"
+      }
+    },
+    "lib/welcome/montserrat-regular.woff2": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/welcome/montserrat-regular.woff2",
+      "preimage": {
+        "bytes": 62008,
+        "sha256": "0f4a15e29a9535af580a64db967929a8d6b202fad9a467be390619a591d2c4c5"
+      }
+    },
+    "lib/welcome/welcome.css": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/welcome/welcome.css",
+      "preimage": {
+        "bytes": 43121,
+        "sha256": "fdbd0027db58c83b5118da31e76d28c0ab44db0302287efaf8da915de1a40ca0"
+      }
+    },
+    "lib/deepseek-account-bootstrap.mjs": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/deepseek-account-bootstrap.mjs",
+      "preimage": {
+        "bytes": 40004,
+        "sha256": "d35815eaf7b411133963dd7ad96edb2b1e12c39bb43441d876fa7c8d49ed7a03"
+      }
+    },
+    "lib/doubao-account-bootstrap.mjs": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/doubao-account-bootstrap.mjs",
+      "preimage": {
+        "bytes": 27032,
+        "sha256": "4f5a4a467408c199b7bc2acbf404d277368540cf8207d1869e6d96b883464d56"
+      }
+    },
+    "lib/fixed-account-entry-probe-r2.mjs": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/fixed-account-entry-probe-r2.mjs",
+      "preimage": {
+        "bytes": 14971,
+        "sha256": "0913ca57be60240892bc1969591fccf39d8f7443c3fb2b0cfc782f8d016c0f22"
+      }
+    },
+    "lib/main-location-validator.mjs": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/main-location-validator.mjs",
+      "preimage": {
+        "bytes": 333571,
+        "sha256": "7c44601ef31709571c913e03f463ed5caca49454c039b033be6ac5337bf14fb5"
+      }
+    },
+    "lib/tradeloom-source-shell/source-core-controller.mjs": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/tradeloom-source-shell/source-core-controller.mjs",
+      "preimage": {
+        "bytes": 89501,
+        "sha256": "0636255c17e62f1bf30211b34d8663f316c543adbec4edc7643883a849e4dd6b"
+      }
+    },
+    "lib/tradeloom-source-shell/source-preload.cjs": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/tradeloom-source-shell/source-preload.cjs",
+      "preimage": {
+        "bytes": 10146,
+        "sha256": "b4d3c2e01ac0e849c6a149bcb549beb75dd5ddd2d59304c447511a7f2b7cede6"
+      }
+    },
+    "lib/tradeloom-source-shell/source-shell-controller.mjs": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/tradeloom-source-shell/source-shell-controller.mjs",
+      "preimage": {
+        "bytes": 157897,
+        "sha256": "beb3d46ee88fde83f5594ab61900ee3edda5a823b7d5a0c9130579103a41b654"
+      }
+    },
+    "lib/tradeloom-source-shell/surface-owner.mjs": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/tradeloom-source-shell/surface-owner.mjs",
+      "preimage": {
+        "bytes": 4927,
+        "sha256": "f59a854677872d4b8919e1c47a468cb85d59e212b311fcd368e2bcfc092fa6a8"
+      }
+    },
+    "lib/tradeloom/bootstrap-core.mjs": {
+      "source": "apps/tradeloom-launcher/bootstrap-core.mjs",
+      "preimage": {
+        "bytes": 16820,
+        "sha256": "c5c8d2d5957060c6c2774a0441203479e0be478ff96952df13e1b58a918550a7"
+      }
+    },
+    "lib/tradeloom/bootstrap-entry.mjs": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/tradeloom/bootstrap-entry.mjs",
+      "preimage": {
+        "bytes": 7487,
+        "sha256": "3033d5308626946ae2999dd65ca5dda1c69704fd80c41e6d1b1ac77b979acfa4"
+      }
+    },
+    "lib/tradeloom/core.mjs": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/tradeloom/core.mjs",
+      "preimage": {
+        "bytes": 15170,
+        "sha256": "5177d356626b1659a0a4e3306dc025609b8b95d7014f20077895127e0a5be194"
+      }
+    },
+    "lib/tradeloom/desktop-receipt.mjs": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/tradeloom/desktop-receipt.mjs",
+      "preimage": {
+        "bytes": 8896,
+        "sha256": "9560e2f94fa32c7aaa243b1393edb019bf977a70ca6b2bbfcfc9d7783711ab59"
+      }
+    },
+    "lib/tradeloom/installed-bootstrap.mjs": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/tradeloom/installed-bootstrap.mjs",
+      "preimage": {
+        "bytes": 51844,
+        "sha256": "eddaa4b6607ddefb333a3abeb36c2aaae911f33e9e36db48dd799ec509cd8ded"
+      }
+    },
+    "lib/tradeloom/plugin-seed.mjs": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/tradeloom/plugin-seed.mjs",
+      "preimage": {
+        "bytes": 14648,
+        "sha256": "a5bc5347bd79855c9a402e7133f535dd7cb667d53cf9a53affaeaf51baf7a222"
+      }
+    },
+    "lib/tradeloom/prepare-profile.mjs": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/tradeloom/prepare-profile.mjs",
+      "preimage": {
+        "bytes": 10752,
+        "sha256": "0e6592a1738234b2c76fca6cdcfc805ef155a65e434df2674d17ad2c97ff29dd"
+      }
+    },
+    "lib/tradeloom/receipt-writer.mjs": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/tradeloom/receipt-writer.mjs",
+      "preimage": {
+        "bytes": 3439,
+        "sha256": "958035500235b0e764e905842f320fa14224302d5cea0421f1ed11c16bd2a90d"
+      }
+    },
+    "lib/webai-account-trigger-main-r2.mjs": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/webai-account-trigger-main-r2.mjs",
+      "preimage": {
+        "bytes": 4725,
+        "sha256": "4d2f7954073aef0466cd2b4e59ca5c74380a865c7232b385d193cb6b170b3766"
+      }
+    },
+    "lib/webai-account-trigger-probe-r2.mjs": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/webai-account-trigger-probe-r2.mjs",
+      "preimage": {
+        "bytes": 21601,
+        "sha256": "db97d21c222739a452451451654fa5a12276fe42e91d7cb75542938a02d15b26"
+      }
+    },
+    "renderer/source-shell/account-window.css": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/account-window.css",
+      "preimage": {
+        "bytes": 3007,
+        "sha256": "80e933dafb77ef4519e169e3c891d9a864f5661f8d1b2f3f92e6a13a5eafafb9"
+      }
+    },
+    "renderer/source-shell/account-window.html": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/account-window.html",
+      "preimage": {
+        "bytes": 1513,
+        "sha256": "5b66ec1d4802a4e65d90bb61c94465c44a4ec24d0bb77cef1f703e4d06c8ff37"
+      }
+    },
+    "renderer/source-shell/account-window.js": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/account-window.js",
+      "preimage": {
+        "bytes": 11545,
+        "sha256": "aa7c369e237027ae951bd6047ca74071633e935101f6992d00e1ce585b52584c"
+      }
+    },
+    "renderer/source-shell/assets/bilibili-icon.ico": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/assets/bilibili-icon.ico",
+      "preimage": {
+        "bytes": 4286,
+        "sha256": "2681561eb24e7435fea1acf26f3af95e4efc9f7d451587b58bef62f030f337e9"
+      }
+    },
+    "renderer/source-shell/assets/bilibili-icon.png": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/assets/bilibili-icon.png",
+      "preimage": {
+        "bytes": 2833,
+        "sha256": "9a931e013b9e049e92f2f6ed8f0da8c1c1110241c95267eb268c3741f7497b91"
+      }
+    },
+    "renderer/source-shell/assets/bilibili-icon.svg": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/assets/bilibili-icon.svg",
+      "preimage": {
+        "bytes": 1923,
+        "sha256": "dbbdb511357980f234e65f71301713d64c65a4b8fb1e65b611fad817e705e945"
+      }
+    },
+    "renderer/source-shell/assets/blender-icon.png": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/assets/blender-icon.png",
+      "preimage": {
+        "bytes": 1311,
+        "sha256": "5643979402711bb06b48a53449f6cb26ddb10e022bcbaf8b89c439b25b77c872"
+      }
+    },
+    "renderer/source-shell/assets/boot-video-720p.mp4": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/assets/boot-video-720p.mp4",
+      "preimage": {
+        "bytes": 2594993,
+        "sha256": "1d6b3b618008bc4f6bcb8708d55dc51c33316e2ab69203a6de57bca61ed2a801"
+      }
+    },
+    "renderer/source-shell/assets/boot-video.mp4": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/assets/boot-video.mp4",
+      "preimage": {
+        "bytes": 13364807,
+        "sha256": "fc9555880082904a1ad1b5f5168cf37d4620b1a75a15c8c80a720d93eac78693"
+      }
+    },
+    "renderer/source-shell/assets/danghui.png": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/assets/danghui.png",
+      "preimage": {
+        "bytes": 13975,
+        "sha256": "8c3f5efbf62fcadfa9bfb57acd7a358bf1560fd30a42c2bf2376e9a519924865"
+      }
+    },
+    "renderer/source-shell/assets/deepseek-whale.png": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/assets/deepseek-whale.png",
+      "preimage": {
+        "bytes": 6370,
+        "sha256": "cba0168e484cf74016847e09aff47c839f4198000a52f19e76f44a73dafe24e4"
+      }
+    },
+    "renderer/source-shell/assets/douyin-icon.png": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/assets/douyin-icon.png",
+      "preimage": {
+        "bytes": 821,
+        "sha256": "65eeadaba260aae870a0a8402e02be52090c1edc23ba48006e0f7904adc9bc2f"
+      }
+    },
+    "renderer/source-shell/assets/hithink-icon.png": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/assets/hithink-icon.png",
+      "preimage": {
+        "bytes": 961,
+        "sha256": "9dfae1ba3f7dd6b387ec042bd3204306c41505091f04692b47c3076ae299904d"
+      }
+    },
+    "renderer/source-shell/assets/ideal-emblem.png": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/assets/ideal-emblem.png",
+      "preimage": {
+        "bytes": 17044,
+        "sha256": "b91aa6c37c045eff07917c9528e996b839ce22e109d700fe11d247e023781857"
+      }
+    },
+    "renderer/source-shell/assets/stock-icon-96.png": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/assets/stock-icon-96.png",
+      "preimage": {
+        "bytes": 9599,
+        "sha256": "4d7415976befd652033f01ae1ef8c5efa7e319e14d439fe1a0efde794a183fa2"
+      }
+    },
+    "renderer/source-shell/assets/webai/chatglm.png": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/assets/webai/chatglm.png",
+      "preimage": {
+        "bytes": 2217,
+        "sha256": "94e48956654f0b02d7a113628cdea50819579c6bccecec8888928f321c0f997d"
+      }
+    },
+    "renderer/source-shell/assets/webai/deepseek.png": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/assets/webai/deepseek.png",
+      "preimage": {
+        "bytes": 7384,
+        "sha256": "547ead56dcb71424315ba53bf8f4c35e745efeaece106b9fb7e4dcdfa19c1a7a"
+      }
+    },
+    "renderer/source-shell/assets/webai/doubao.png": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/assets/webai/doubao.png",
+      "preimage": {
+        "bytes": 8216,
+        "sha256": "f4467b1b14a9588a40ccf2f312c2a2c9d285d69d9f7ab8c20eea375a547d5ea5"
+      }
+    },
+    "renderer/source-shell/assets/webai/kimi.png": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/assets/webai/kimi.png",
+      "preimage": {
+        "bytes": 21645,
+        "sha256": "6c14f9c3062e953b3ed57ae3e19db931c1c1bba38d4d8d55550544f31d55e469"
+      }
+    },
+    "renderer/source-shell/assets/webai/tongyi.png": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/assets/webai/tongyi.png",
+      "preimage": {
+        "bytes": 1658,
+        "sha256": "cd9390bc4209c319121d111f3a1f535b3c7dd909b8f860d41acc9744138d58df"
+      }
+    },
+    "renderer/source-shell/customer-start.js": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/customer-start.js",
+      "preimage": {
+        "bytes": 1894,
+        "sha256": "52d21812adeda9472b0adfef4d83e69680b4d8d278e030f5e2a62f247e9c5c16"
+      }
+    },
+    "renderer/source-shell/index.html": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/index.html",
+      "preimage": {
+        "bytes": 9227,
+        "sha256": "c22a7e00ee608e7ff2195c974b315e55590a4c9078145d80dd4bfc3e3350a186"
+      }
+    },
+    "renderer/source-shell/mcp-panel.js": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/mcp-panel.js",
+      "preimage": {
+        "bytes": 29850,
+        "sha256": "842bdb3c4cd3ef3ddc2e473ed1e6da4158cf5a98b1981a426fadc41d835cde69"
+      }
+    },
+    "renderer/source-shell/public-clean.js": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/public-clean.js",
+      "preimage": {
+        "bytes": 1347,
+        "sha256": "77788918a1ebf2ddce4dbf3f32b3b1aae9c51655073481dc79d80bcec3717955"
+      }
+    },
+    "renderer/source-shell/public-links.js": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/public-links.js",
+      "preimage": {
+        "bytes": 1234,
+        "sha256": "2995eb621aec5511fae18f7e0ab87157d93095237c4752d19cfbf1f46dcdfc13"
+      }
+    },
+    "renderer/source-shell/renderer.js": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/renderer.js",
+      "preimage": {
+        "bytes": 74299,
+        "sha256": "7e7beb5a8aa57b5e850e91b7b2be2d3b1bb8a0e6459e27964f4d9c695c1978a6"
+      }
+    },
+    "renderer/source-shell/renderers.js": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/renderers.js",
+      "preimage": {
+        "bytes": 1097913,
+        "sha256": "bd998b648beda22b279d68823b9b8c284098fc9202b7bd16e333801f1a425679"
+      }
+    },
+    "renderer/source-shell/replica-ui/assets/deepseek.svg": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/assets/deepseek.svg",
+      "preimage": {
+        "bytes": 3642,
+        "sha256": "90d7e400ca261d28dfb7982bfade335912b3a27a620faee9a787f8a52164fd43"
+      }
+    },
+    "renderer/source-shell/replica-ui/assets/doubao.png": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/assets/doubao.png",
+      "preimage": {
+        "bytes": 6520,
+        "sha256": "967f66980a35f2187841193d625693d233d7c451774ecffaebfa19e8884c3257"
+      }
+    },
+    "renderer/source-shell/replica-ui/assets/tradeloom-mark.svg": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/assets/tradeloom-mark.svg",
+      "preimage": {
+        "bytes": 961,
+        "sha256": "7e2cdb6592de4456295d455056a1d5ca500cf8ef3c759aef90ceba66c76b5849"
+      }
+    },
+    "renderer/source-shell/replica-ui/business-bridge.css": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/business-bridge.css",
+      "preimage": {
+        "bytes": 4171,
+        "sha256": "27d58b0546dd6bf0509c37e11b6dc3e3a6ec65de707d2e17579a0230b4987e5d"
+      }
+    },
+    "renderer/source-shell/replica-ui/business-bridge.js": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/business-bridge.js",
+      "preimage": {
+        "bytes": 93974,
+        "sha256": "4c4f54165b715fbc5650e8a4e00b3d9161efaed8defe6799680e2d9ab4d95b99"
+      }
+    },
+    "renderer/source-shell/replica-ui/business-file-bridge.js": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/business-file-bridge.js",
+      "preimage": {
+        "bytes": 13570,
+        "sha256": "05157d2f2d231306f4c80a8a013e626925e66d5821b753c07971365c15c38435"
+      }
+    },
+    "renderer/source-shell/replica-ui/index.html": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/index.html",
+      "preimage": {
+        "bytes": 4327,
+        "sha256": "cf91222612b28c43cbf6b275fc9f9957ec68846266d8c3d5ab46d1d3f2f37695"
+      }
+    },
+    "renderer/source-shell/replica-ui/native-account-controls.css": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/native-account-controls.css",
+      "preimage": {
+        "bytes": 2180,
+        "sha256": "33d43ca494dabc88143c085a5429e17365fd7c901e7e67a896bcc15c5a1cabc4"
+      }
+    },
+    "renderer/source-shell/replica-ui/native-account-controls.js": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/native-account-controls.js",
+      "preimage": {
+        "bytes": 9310,
+        "sha256": "6d4001ed9fee59af5a209eedd25f035136431e866557fcb41cf1d2390e8e6c45"
+      }
+    },
+    "renderer/source-shell/replica-ui/palette-tokens.css": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/palette-tokens.css",
+      "preimage": {
+        "bytes": 13570,
+        "sha256": "2f9de244fe9347040227e444e51b8ab7f3d25f6796dd9d2dc37fe0660d2ba240"
+      }
+    },
+    "renderer/source-shell/replica-ui/palette.css": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/palette.css",
+      "preimage": {
+        "bytes": 7541,
+        "sha256": "79c8eb54adcbaea1022084a2273d16e88bf22e7f9c1885211fcc25537c7b3c88"
+      }
+    },
+    "renderer/source-shell/replica-ui/panel-interactions.css": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/panel-interactions.css",
+      "preimage": {
+        "bytes": 4755,
+        "sha256": "145dd57540b879c6ea3984d657a7bb3735a375cb371378e1c1a4b9ccf8508869"
+      }
+    },
+    "renderer/source-shell/replica-ui/panel-interactions.js": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/panel-interactions.js",
+      "preimage": {
+        "bytes": 120239,
+        "sha256": "9a84e456de97e5e56dcd467f9bd8fb79fbf4350f4f80f71fc23528802d18b8c2"
+      }
+    },
+    "renderer/source-shell/replica-ui/renderer.js": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/renderer.js",
+      "preimage": {
+        "bytes": 125789,
+        "sha256": "99cb5944992554f1d21cb20247699ec68ca57474a42af6e42cab5af3f2bdf5c4"
+      }
+    },
+    "renderer/source-shell/replica-ui/replica-adapter.js": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/replica-adapter.js",
+      "preimage": {
+        "bytes": 111663,
+        "sha256": "a8af143109690c507ba01080711df3dad41692e040de090ee631bcc4b0bc58b0"
+      }
+    },
+    "renderer/source-shell/replica-ui/scenes-data.js": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/scenes-data.js",
+      "preimage": {
+        "bytes": 6327,
+        "sha256": "b4bbb780f982887a03cfd11764e433478cab13d49465b939aafacfb3813bee03"
+      }
+    },
+    "renderer/source-shell/replica-ui/scenes.json": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/scenes.json",
+      "preimage": {
+        "bytes": 5894,
+        "sha256": "1855228680120c458bfa0695bb47f92f8d6f31c1bd776cb55f5b48866334c34f"
+      }
+    },
+    "renderer/source-shell/replica-ui/style.css": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/style.css",
+      "preimage": {
+        "bytes": 40013,
+        "sha256": "53b3c39ba1dc9583af3a455122bebde42b390572d2227dcedfc2dfbf3a3b9f0d"
+      }
+    },
+    "renderer/source-shell/replica-ui/tradeloom-mark.svg": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/tradeloom-mark.svg",
+      "preimage": {
+        "bytes": 961,
+        "sha256": "7e2cdb6592de4456295d455056a1d5ca500cf8ef3c759aef90ceba66c76b5849"
+      }
+    },
+    "renderer/source-shell/sector-data.js": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/sector-data.js",
+      "preimage": {
+        "bytes": 172346,
+        "sha256": "914b1832a5d6ea00fdc09e81ff588e89e7a3b163ee8b1b4470e5ffb10246730e"
+      }
+    },
+    "renderer/source-shell/source-entry.html": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/source-entry.html",
+      "preimage": {
+        "bytes": 9175,
+        "sha256": "16095cc5e71d49d50c7aa1a7d8c782d49203ad331c48ec61a88712ba96158ac0"
+      }
+    },
+    "renderer/source-shell/styles.css": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/styles.css",
+      "preimage": {
+        "bytes": 294106,
+        "sha256": "de711a5f76a66e58b0d0cb77b564ebeea9e9187622c03ad9d19197b5b72dfc42"
+      }
+    },
+    "renderer/source-shell/topbar-status.js": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/topbar-status.js",
+      "preimage": {
+        "bytes": 100041,
+        "sha256": "021cacc2b2051ad0ed0f262071d6bb477ab962d906b50ef7117e3389e2142199"
+      }
+    },
+    "renderer/source-shell/us-sector-data.js": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/us-sector-data.js",
+      "preimage": {
+        "bytes": 139888,
+        "sha256": "f3f5f43b5ff5e462b0386eac60b123d9c02c54b89e5dddaf10814b124a2cf9e9"
+      }
+    },
+    "renderer/source-shell/webai-bridge.js": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/webai-bridge.js",
+      "preimage": {
+        "bytes": 129678,
+        "sha256": "3a26fa7e41ae13718a2a12b4ea03a83bdb1383a491811f8e556aa93b6fb02f7f"
+      }
+    },
+    "renderer/source-shell/replica-ui/panel-tabs.js": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/panel-tabs.js",
+      "preimage": {
+        "bytes": 11902,
+        "sha256": "1e58c755d44bc3b2812dd7be8165d104838000c5b9b774a3eb408a2748e42cb7"
+      }
+    }
+  },
+  "finalOverlay": {
+    "patch": "host-bridge-rc3.patch",
+    "preimages": {
+      "lib/main.js": {
+        "bytes": 1111351,
+        "sha256": "25044c011858380c5bca15a9ffeea845b13a9d79e3ff9a1ab682c3460cc1fc80"
+      }
+    },
+    "postimages": {
+      "lib/main.js": {
+        "bytes": 1111387,
+        "sha256": "46909ff52dd7065562fe2c1a2b2efef09b85fc13e73a80d65ddf9e8234dc2d79"
+      }
+    }
+  }
+}

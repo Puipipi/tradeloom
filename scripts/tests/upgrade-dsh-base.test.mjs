@@ -3,7 +3,9 @@ import assert from 'node:assert/strict'
 import { mkdtemp, mkdir, readFile, writeFile, cp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { createRequire } from 'node:module'
+import { runInNewContext } from 'node:vm'
 import { promisify } from 'node:util'
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -228,4 +230,68 @@ test('truncation repair cannot change a file outside the recipe image pins', asy
   await mkdir(join(path, '..'), { recursive: true })
   await writeFile(path, '>\nexport const upstream = true;\n')
   await assert.rejects(invoke(root, source, '--dry-run'), /untracked_truncation_repair/)
+})
+
+
+const rc3ReplayRoot = process.env.TL_RC3_REPLAY_ROOT
+test('rc.3 generated Host bridge resolves its actual SDK and rejects unsupported peers', {
+  skip: !rc3ReplayRoot && 'requires actual rc.3 strict replay output',
+}, async () => {
+  const source = await readFile(join(rc3ReplayRoot, 'desktop/lib/main.js'), 'utf8')
+  const start = source.indexOf('function resolveDesktopHostBridge(runtimeDir) {')
+  const end = source.indexOf('\nfunction isDesktopHostEvent(', start)
+  assert.ok(start >= 0 && end > start)
+
+  const runtimeDirectory = join(rc3ReplayRoot, 'sdk/dsh')
+  const actualRequire = createRequire(pathToFileURL(join(runtimeDirectory, 'package.json')))
+  const managerPackage = '@deepseek-ai/dsh-plugin-manager/package.json'
+  const managerDiagnostic = '@deepseek-ai/dsh-plugin-manager/diagnostic'
+  const diagnostic = actualRequire(managerDiagnostic)
+  assert.equal(actualRequire('./package.json').version, '0.2.2-rc.3')
+  assert.equal(actualRequire(managerPackage).version, '0.2.2-rc.3')
+  assert.equal(typeof diagnostic.parsePluginOperationRecord, 'function')
+
+  const resolveWith = requireFactory => runInNewContext(
+    source.slice(start, end) + '\nresolveDesktopHostBridge',
+    { createRequire: requireFactory, pathToFileURL, join },
+  )(runtimeDirectory)
+  const bridge = resolveWith(createRequire)
+  assert.equal(bridge.parseRecord, diagnostic.parsePluginOperationRecord)
+  assert.equal(bridge.isRunId('097bf652-27a6-4b98-a720-da9ce8b641b4'), true)
+  assert.equal(bridge.isRunId('not-a-uuid'), false)
+
+  const controlled = (version, managerVersion = version, parser = diagnostic) => resolveWith(() => name => {
+    if (name === './package.json') return { version }
+    if (name === managerPackage) return { version: managerVersion }
+    if (name === managerDiagnostic) return parser
+    return actualRequire(name)
+  })
+  for (const version of ['0.2.2-rc.1', '0.2.2-rc.2']) {
+    assert.equal(controlled(version).parseRecord, diagnostic.parsePluginOperationRecord)
+  }
+  assert.equal(controlled('0.2.1-rc.3').parseRecord, undefined)
+  assert.throws(() => controlled('0.2.2-rc.4'), /runtime version is not covered/)
+  assert.throws(() => controlled('0.2.2-rc.3', '0.2.2-rc.2'), /manager version does not match/)
+  assert.throws(() => controlled('0.2.2-rc.3', '0.2.2-rc.3', {}), /public operation diagnostic parser is unavailable/)
+})
+
+test('rc.3 backend manifest stages a standalone native artifact validator', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'tradeloom-artifact-validator-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const repo = new URL('../../', import.meta.url)
+  const { backendSources } = JSON.parse(await readFile(new URL(
+    'apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.3/program-recipe.json', repo), 'utf8'))
+  const validator = 'workbench/native_artifact_validator.mjs'
+  for (const relative of backendSources.filter(path => path === validator || path.startsWith('packages/tradeloom-shell/'))) {
+    await mkdir(join(root, relative, '..'), { recursive: true })
+    await cp(new URL(relative, repo), join(root, relative))
+  }
+
+  const env = Object.fromEntries(['SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP']
+    .filter(key => process.env[key] !== undefined).map(key => [key, process.env[key]]))
+  const child = run(process.execPath, [join(root, validator)], { cwd: root, env })
+  child.child.stdin.end('{}')
+  const { stdout, stderr } = await child
+  assert.deepEqual(JSON.parse(stdout), { ok: false, code: 'source_unverified' })
+  assert.equal(stderr, '')
 })

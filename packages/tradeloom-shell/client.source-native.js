@@ -4,8 +4,8 @@ window.__ModuleLoader__.load({
   factory(require) {
     const React = require('react'), h = React.createElement
     const gatewayApi = require('@deepseek-ai/dsh-api-gateway/client')
-    const valid = d => d && typeof d.sceneId === 'string' && typeof d.panelId === 'string' && typeof d.sessionId === 'string' && d.sessionId && ['chat','files'].includes(d.surface) && Number.isSafeInteger(d.generation)
-    const same = (a,b) => valid(a) && valid(b) && ['sceneId','panelId','sessionId','surface','generation'].every(k => a[k] === b[k])
+    const valid = d => d && d.kind === 'role' && typeof d.roleId === 'string' && d.roleId && typeof d.bindingRevision === 'string' && /^(0|[1-9][0-9]{0,63})$/.test(d.bindingRevision) && typeof d.sceneId === 'string' && typeof d.panelId === 'string' && typeof d.sessionId === 'string' && d.sessionId && ['chat','files'].includes(d.surface) && Number.isSafeInteger(d.generation)
+    const same = (a,b) => valid(a) && valid(b) && Object.keys(a).length === Object.keys(b).length && Object.keys(b).every(k => a[k] === b[k])
     const reportRoleGuestPhase = (descriptor, phase) => {
       if (!valid(descriptor)) return
       try { console.info(`TL-ROLE-GUEST-PHASE|${phase}|${descriptor.surface}`) } catch {}
@@ -15,6 +15,15 @@ window.__ModuleLoader__.load({
     // attributes and composer-local class names, never CSS-module hashes or
     // the old webview script. Local-name selectors stay inside the owned card.
     const nativeChatStyles = `
+      .tl-bound-skills {
+        width:min(480px,calc(100vw - 32px));max-height:70vh;box-sizing:border-box;padding:14px;
+        color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-1);
+        border:1px solid var(--dsw-alias-border-l2);border-radius:9px;
+        font:inherit;font-size:var(--tl-font-compact,12px);
+      }
+      .tl-bound-skills > header { display:flex;align-items:center;justify-content:space-between;gap:12px; }
+      .tl-bound-skills ul { list-style:none;padding:0;display:grid;gap:12px; }
+      .tl-bound-skills p { color:var(--dsw-alias-label-secondary);white-space:pre-wrap; }
       [data-source-native-root] {
         --dsw-font-family:var(--tl-font-family,"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif);
         font-family:var(--dsw-font-family);container-type:size;
@@ -55,6 +64,13 @@ window.__ModuleLoader__.load({
       [data-source-native-root] [data-composer-card] :is(button[class$="_add"],button[class*="_add "],button[class$="_primary"],button[class*="_primary "]) { width:26px;height:26px; }
       [data-source-native-root] [data-composer-card] :is([class$="_select"],[class*="_select "],[class$="_tools"] button,[class*="_tools "] button,[class$="_modes"] button,[class*="_modes "] button,[class$="_trailing"] button,[class*="_trailing "] button,[class$="_trailing"] select,[class*="_trailing "] select) { height:26px; }
       [data-source-native-root] [data-composer-card] :is([class$="_standardControls"],[class*="_standardControls "]) :is(button,select) { height:26px;font-size:11px; }
+      @media (hover:hover) and (pointer:fine) {
+        [data-source-native-root] .cm-btn.cm-stat-entry { min-height:initial; }
+        /* Two native 34px menu rows + 8px padding + 4px anchor gap. */
+        [data-source-native-root] [data-composer-seat]:has([data-trigger-menu]) {
+          --dsh-composer-text-max-height:max(var(--dsh-composer-input-min-height),calc(var(--dsh-composer-input-max-height) - 80px));
+        }
+      }
       @container (height<=380px) {
         [data-source-native-root] [data-composer-seat] {
           --dsh-composer-input-min-height:max(28px,calc(28px + var(--dsh-content-font-delta,0px)));
@@ -115,28 +131,100 @@ window.__ModuleLoader__.load({
       void refresh()
       return ()=>{live=false;sequence++;waitForBounds(false);stop();disable()}
     }
-    function register(ctx, initial, bridge) {
+    // Same official per-session path as dsh-client-ui-skill rc2
+    // src/client/index.ts:115-132: retain/using -> remote.skills.list(sessionId).
+    // This controller reads only; configuration stays in the account UI.
+    function createBoundSkillCatalogue(ctx, bridge, expected, publish) {
+      let disposed = false, sequence = 0, abort
+      const close = () => { sequence++; abort?.abort(); abort = undefined; if (!disposed) publish(undefined) }
+      const open = async request => {
+        if (disposed || request?.action !== 'session-skills' || !same(request.descriptor, expected)) return
+        close()
+        const ticket = sequence, active = new AbortController(); abort = active
+        try {
+          if (!same(await bridge.nativeSurfaceDescriptor(), expected) || disposed || ticket !== sequence) return
+          if (ctx.sessions.binding(expected.sessionId) === undefined) throw Error('bound session not retained')
+          publish({ phase: 'loading' })
+          const skills = await ctx.sessions.using(expected.sessionId, { source: 'sourceNativeSkills', signal: active.signal }, async reference => {
+            active.signal.throwIfAborted()
+            if (reference.binding.session.getSnapshot().openState !== 'open') throw Error('bound session not open')
+            const result = await ctx.remote.skills.list({ sessionId: expected.sessionId }, active.signal)
+            active.signal.throwIfAborted()
+            if (result?.ok !== true || !Array.isArray(result.value?.skills)) throw Error('bound skill catalogue unavailable')
+            return result.value.skills
+          })
+          if (disposed || ticket !== sequence || active.signal.aborted || !same(await bridge.nativeSurfaceDescriptor(), expected)) return
+          publish({ phase: 'ready', skills })
+        } catch {
+          if (!disposed && ticket === sequence && !active.signal.aborted) publish({ phase: 'error' })
+        } finally { if (abort === active) abort = undefined }
+      }
+      const offIntent = bridge.onNativeUtilityRequested(open)
+      const offOwner = bridge.onNativeSurfaceChanged(next => { if (!same(next, expected)) close() })
+      return { close, dispose() { close(); disposed = true; offIntent(); offOwner() } }
+    }
+    async function register(ctx, initial, bridge) {
       if (!valid(initial) || typeof bridge?.nativeSurfaceMounted !== 'function' || typeof bridge?.onNativeSurfaceChanged !== 'function') throw Error('invalid native surface contract')
+      const factoryHost = ctx.slots.hostFace()
+      const extensions = []
+      if (initial.kind === 'role' && initial.surface === 'chat') {
+        extensions.push(await require.async('./client.scene-memory.js'))
+        extensions.push(await require.async('./client.scene-drafts.js'))
+        extensions.push(await require.async('./client.session-audio.js'))
+        extensions.push(await require.async('./client.mcp-runtime.js'))
+      }
       function SourceNative({ SessionProvider, renderFactorySlot }) {
         const [descriptor,setDescriptor] = React.useState(initial), [state,setState] = React.useState({phase:'loading'}), [notice,setNotice] = React.useState('')
         const latest = React.useRef(descriptor), request = React.useRef(0)
+        const [extensionFailure, setExtensionFailure] = React.useState()
+        const [identityConfirmed, setIdentityConfirmed] = React.useState(false)
+        const [identityProbe, setIdentityProbe] = React.useState(0)
+        const [skillCatalogue, setSkillCatalogue] = React.useState()
+        const skillsControl = React.useRef(), skillDialog = React.useRef()
+        React.useEffect(() => {
+          if (descriptor.surface !== 'chat' || state.phase !== 'ready') return
+          const control = createBoundSkillCatalogue(ctx, bridge, descriptor, setSkillCatalogue)
+          skillsControl.current = control
+          return () => { if (skillsControl.current === control) skillsControl.current = undefined; control.dispose() }
+        }, [descriptor, state.phase])
+        React.useEffect(() => { if (skillCatalogue && skillDialog.current && !skillDialog.current.open) skillDialog.current.showModal() }, [skillCatalogue])
+        const announcedGeneration = React.useRef(descriptor.generation)
         latest.current = descriptor
+        React.useEffect(() => {
+          let live = true
+          const releases = []
+          void Promise.resolve().then(async () => {
+            for (const extension of extensions) {
+              if (!live || !same(await bridge.nativeSurfaceDescriptor(), descriptor)) return
+              const release = await extension.register(ctx, descriptor, bridge, message => { if (live && same(latest.current, descriptor)) setNotice(message) })
+              if (!live || !same(await bridge.nativeSurfaceDescriptor(), descriptor)) { release?.(); return }
+              if (typeof release === 'function') releases.push(release)
+            }
+          }).catch(error => { if (live) setExtensionFailure(() => error) })
+          return () => { live = false; for (const release of releases.reverse()) release() }
+        }, [descriptor])
         React.useEffect(() => descriptor.surface==='chat' ? installNativeChatStyles() : undefined, [descriptor.surface])
         React.useEffect(() => descriptor.surface==='chat' ? installWhaleAutoBasis(bridge,descriptor.sceneId,descriptor.panelId) : undefined, [descriptor.sceneId,descriptor.panelId,descriptor.surface])
         React.useEffect(() => {
           let live=true
-          const refreshDescriptor = () => {
+          const refreshDescriptor = hint => {
             const token=++request.current
+            if (valid(hint)) announcedGeneration.current=Math.max(announcedGeneration.current,hint.generation)
+            // A trusted newer identity cancels input activities immediately.
+            // Repeated layout/status notifications with the same full tuple
+            // must not unmount a composer, its draft or its in-memory uploads.
+            if (!same(hint, latest.current)) setIdentityConfirmed(false)
             Promise.resolve(bridge.nativeSurfaceDescriptor()).then(next=>{
               if (!live || token!==request.current) return
-              if (!valid(next)) { setNotice('原生面板身份不可用，当前上下文未确认。'); return }
-              setNotice(''); setDescriptor(next)
-            }).catch(()=>{ if(live && token===request.current) setNotice('原生面板身份不可用，当前上下文未确认。') })
+              if (!valid(next) || next.generation < announcedGeneration.current) { setIdentityConfirmed(false); setNotice('原生面板身份暂未确认；当前输入已暂停，内容保留。'); return }
+              if (same(next, latest.current)) { setIdentityConfirmed(true); setNotice(''); return }
+              setIdentityConfirmed(true); setState({phase:'loading'}); setNotice(''); setDescriptor(next)
+            }).catch(()=>{ if(live && token===request.current) { setIdentityConfirmed(false); setNotice('原生面板身份暂未确认；当前输入已暂停，内容保留。') } })
           }
           const stop=bridge.onNativeSurfaceChanged(refreshDescriptor)
           refreshDescriptor()
           return () => { live=false; request.current++; stop() }
-        }, [])
+        }, [identityProbe])
         React.useEffect(() => {
           let live=true, reference
           const waitAbort = new AbortController()
@@ -247,34 +335,56 @@ window.__ModuleLoader__.load({
           }
           void open().catch(()=>{if(live){reportRoleGuestPhase(descriptor,'terminal-error');setState({phase:'error',message:'无法连接绑定的原生会话。'})}})
           return () => { live=false;waitAbort.abort();reference?.release() }
-        }, [descriptor.sessionId])
+        }, [descriptor])
         let slot=null
         const factoryName=descriptor.surface==='chat'?'conversation.content':'sidebar.surface'
-        const subscribeFactory=React.useCallback(listener=>ctx.slots.subscribeFactory(factoryName,listener),[factoryName])
-        const getFactoryVersion=React.useCallback(()=>ctx.slots.getFactoryVersion(factoryName),[factoryName])
+        const subscribeFactory=React.useCallback(listener=>factoryHost.subscribeFactory(factoryName,listener),[factoryName])
+        const getFactoryVersion=React.useCallback(()=>factoryHost.getFactoryVersion(factoryName),[factoryName])
         React.useSyncExternalStore(subscribeFactory,getFactoryVersion,getFactoryVersion)
-        const available=ctx.slots.snapshot?.().some(entry=>entry.type==='factory' && entry.name===factoryName) === true
+        const available=factoryHost.factoryOf(factoryName)!==undefined
         React.useEffect(()=>{reportRoleGuestPhase(descriptor,available?'slot-available':'slot-unavailable')},[available,descriptor.surface])
         if (state.phase==='ready' && state.sessionId===descriptor.sessionId && available && typeof SessionProvider==='function' && typeof renderFactorySlot==='function') {
           slot=descriptor.surface==='chat' ? renderFactorySlot('conversation.content',{variant:'embedded',phase:'active',hero:false}) : renderFactorySlot('sidebar.surface',{ownerId:`${descriptor.sceneId}:${descriptor.panelId}`,active:true,initialKind:'files'})
         }
         const mounted = slot !== null && slot !== undefined && slot !== false
         React.useEffect(() => {
-          if(!mounted) return undefined
+          if(!mounted || !identityConfirmed) return undefined
           let live=true; const expected=descriptor
           reportRoleGuestPhase(expected, 'mounted-start')
           void Promise.resolve(bridge.nativeSurfaceDescriptor()).then(current=>{
             if(live && same(current,expected) && same(latest.current,expected)) return Promise.resolve(bridge.nativeSurfaceMounted(expected)).then(()=>{if(live)reportRoleGuestPhase(expected, 'mounted-end')})
           }).catch(()=>{if(live){reportRoleGuestPhase(expected, 'mounted-error');setNotice('原生面板确认失败，当前上下文未确认。')}})
           return () => {live=false}
-        }, [descriptor.sceneId,descriptor.panelId,descriptor.sessionId,descriptor.surface,descriptor.generation,mounted])
+        }, [descriptor.sceneId,descriptor.panelId,descriptor.sessionId,descriptor.surface,descriptor.generation,mounted,identityConfirmed])
+        if(extensionFailure) throw extensionFailure
         if(state.phase==='error') return h('div',{role:'alert'},state.message)
         if(state.phase!=='ready') return h('div',{role:'status'},'正在连接原生会话…')
         if(!mounted) return h('div',{role:'alert'},'原生面板组件不可用。')
         const content=descriptor.surface==='chat' ? h('div',{'data-source-native-root':'','data-conversation-density':'compact',style:{height:'100%',minHeight:0,minWidth:0,display:'flex',flexDirection:'column'}},slot) : slot
-        return h(React.Fragment,null,h(SessionProvider,{session:state.reference},content),notice ? h('div',{role:'alert'},notice) : null)
+        return h(React.Fragment,null,
+          h('div', { inert: identityConfirmed ? undefined : '', 'aria-busy': !identityConfirmed, style:{height:'100%',minHeight:0,minWidth:0},
+            onKeyDownCapture:event=>{if(!identityConfirmed){event.preventDefault();event.stopPropagation()}},
+            onPointerDownCapture:event=>{if(!identityConfirmed){event.preventDefault();event.stopPropagation()}} },
+            h(SessionProvider,{key:JSON.stringify(descriptor),session:state.reference},content)),
+          notice ? h('div',{role:'alert'},notice, !identityConfirmed ? h('button',{type:'button',onClick:()=>setIdentityProbe(value=>value+1)},'重新确认当前面板') : null) : null,
+          skillCatalogue ? h('dialog', { ref: skillDialog, className: 'tl-bound-skills', 'aria-label': '当前助手技能', onCancel: () => skillsControl.current?.close() },
+            h('header', null, h('strong', null, '当前助手技能'), h('button', { type: 'button', onClick: () => skillsControl.current?.close(), 'aria-label': '关闭技能目录' }, '关闭')),
+            h('p', null, '仅显示本会话技能；管理请使用左上角原生全局界面。'),
+            skillCatalogue.phase === 'loading' ? h('p', { role: 'status' }, '正在读取当前助手技能…')
+              : skillCatalogue.phase === 'error' ? h('p', { role: 'alert' }, '当前助手技能暂不可读，请稍后重试。')
+              : skillCatalogue.skills.length ? h('ul', null, ...skillCatalogue.skills.map((skill, index) => h('li', { key: index }, h('strong', null, skill.name), h('p', null, skill.description))))
+                : h('p', null, '当前助手没有返回可用技能。')) : null)
       }
-      ctx.slots.inject('main',()=>ctx.slots.register({name:'main',key:'source-native',children:{'source-native.session-area':{kind:'single',scope:'session'}}},SourceNative))
+      function RoleSurfaceFactory({ renderSlot }) { return renderSlot('tradeloom.role.surface', {}) }
+      function RoleSurfaceCaller({ renderFactorySlot }) { return renderFactorySlot('tradeloom.role.surface-factory', {}) }
+      function RoleRootPresenter({ renderFactorySlot }) {
+        return h('div', { 'data-source-owned-role': '', style: { position: 'relative', height: '100%', minHeight: 0, minWidth: 0 } },
+          renderFactorySlot('tradeloom.role.surface-factory', {}))
+      }
+      ctx.slots.registerFactory({name:'tradeloom.role.surface-factory',scope:'root',children:{'tradeloom.role.surface':{kind:'single',scope:'root'}}},RoleSurfaceFactory)
+      ctx.slots.inject('tradeloom.role.surface',()=>ctx.slots.register({name:'tradeloom.role.surface',children:{'source-native.session-area':{kind:'single',scope:'session'}}},SourceNative))
+      ctx.slots.inject('main',()=>ctx.slots.register({name:'main',key:'source-native'},RoleSurfaceCaller))
+      if (initial.surface === 'chat') ctx.slots.inject('root', () => ctx.slots.register({ name: 'root', priority: -1 }, RoleRootPresenter))
       ctx.layout.selectPanel('source-native')
     }
     function registerAccountInventory(ctx, bridge) {

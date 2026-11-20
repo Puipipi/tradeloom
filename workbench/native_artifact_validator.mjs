@@ -1,4 +1,4 @@
-import { projectNativeWorkflowRun } from '../packages/tradeloom-shell/workflow-native-ui.js'
+import { projectNativeWorkflowRun } from '../packages/tradeloom-shell/workflow-native-run-projection.js'
 const MAX = 2 * 1024 * 1024 + 4096
 let size = 0
 const chunks = []

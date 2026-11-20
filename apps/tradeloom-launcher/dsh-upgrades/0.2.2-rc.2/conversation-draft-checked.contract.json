@@ -1,0 +1,51 @@
+{
+  "entry": "dsh/node_modules/@deepseek-ai/dsh-client-ui-conversation/lib/client.js",
+  "provenance": "prior pinned actual P3 ASAR584f unmodified conversation entry; official base verifies it again during later replay",
+  "preimage": {
+    "bytes": 704147,
+    "sha256": "2c3c39fddb37df9ee1168c279259aebb7cf484651a7e978ce9baaaf24d142a60"
+  },
+  "authoredPostimage": {
+    "bytes": 706033,
+    "sha256": "445b05906cb8a1d60502b585eea8f950c80b4ded17e8b492f090a02f422f8ed1"
+  },
+  "patch": {
+    "bytes": 648928,
+    "sha256": "a0ade113733895f7acad8659045f3dda01d265f5faa0785dd866a1bb1d924326"
+  },
+  "fragments": [
+    {
+      "before": "persistDraft:()=>{this.persistCurrentDraft()},",
+      "after": "persistDraft:()=>{this.persistCurrentDraft()},persistDraftVerified:async sessionId=>this.persistVerifiedDraft(sessionId),discardDraftVerified:async sessionId=>this.discardVerifiedDraft(sessionId),",
+      "uniqueOccurrences": 1
+    },
+    {
+      "before": "disposed=false;persistDraft;pendingCommand;",
+      "after": "disposed=false;persistDraft;persistSessionId;pendingCommand;",
+      "uniqueOccurrences": 1
+    },
+    {
+      "before": "persistCurrentDraft(){this.persistDraft?.(this.draftSnapshot)}requestDraftInitialization",
+      "after": "persistCurrentDraft(){this.persistDraft?.(this.draftSnapshot)}persistVerifiedDraft(sessionId){const fail=code=>Object.assign(new Error(code),{code});if(this.disposed||typeof sessionId!==`string`||sessionId===``||sessionId!==this.deps.sessionId||this.persistSessionId!==sessionId||typeof this.persistDraft!==`function`)throw fail(`draft_persistence_unbound`);if(typeof localStorage===`undefined`)throw fail(`draft_persistence_storage_unavailable`);const writer=this.persistDraft,draft=this.draftSnapshot,revision=this.rev;try{writer(draft)}catch{throw fail(`draft_persistence_write_failed`)}if(this.disposed||this.persistDraft!==writer||this.persistSessionId!==sessionId||this.rev!==revision)throw fail(`draft_persistence_binding_changed`);let raw;try{raw=localStorage.getItem(`${CONVERSATION_STORE_KEY}.${sessionId}`)}catch{throw fail(`draft_persistence_storage_unavailable`)}if(raw===null)throw fail(`draft_persistence_missing`);let stored;try{stored=JSON.parse(raw)}catch{throw fail(`draft_persistence_invalid`)}if(stored===null||typeof stored!==`object`||!Object.prototype.hasOwnProperty.call(stored,`draft`))throw fail(`draft_persistence_missing`);if(JSON.stringify(stored.draft)!==JSON.stringify(draft))throw fail(`draft_persistence_mismatch`);return{persisted:true,sessionId,draftRevision:revision}}discardVerifiedDraft(sessionId){this.persistVerifiedDraft(sessionId);const previous=this.draftSnapshot;try{this.setDraft(``);return this.persistVerifiedDraft(sessionId)}catch(error){try{this.setDraft(previous);this.persistCurrentDraft()}catch{throw Object.assign(new Error(`draft_persistence_restore_failed`),{code:`draft_persistence_restore_failed`})}throw error}}requestDraftInitialization",
+      "uniqueOccurrences": 1
+    },
+    {
+      "before": "bindDraftPersistence(write){this.persistDraft=write;return()=>{if(this.persistDraft===write)this.persistDraft=void 0}}",
+      "after": "bindDraftPersistence(write,sessionId){this.persistDraft=write;this.persistSessionId=sessionId;return()=>{if(this.persistDraft===write){this.persistDraft=void 0;this.persistSessionId=void 0}}}",
+      "uniqueOccurrences": 1
+    },
+    {
+      "before": "new SessionInputShell({actx,submissionState:",
+      "after": "new SessionInputShell({actx,sessionId:session.sessionId,submissionState:",
+      "uniqueOccurrences": 1
+    },
+    {
+      "before": "bindDraftPersistence:write=>inputHub.shell(sessionId).bindDraftPersistence(write),",
+      "after": "bindDraftPersistence:write=>inputHub.shell(sessionId).bindDraftPersistence(write,sessionId),",
+      "uniqueOccurrences": 1
+    }
+  ],
+  "inverseSourceBytesExact": true,
+  "replayExecuted": false,
+  "userStorageRead": false
+}

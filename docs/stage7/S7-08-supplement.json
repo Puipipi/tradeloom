@@ -1,0 +1,416 @@
+{
+  "schemaVersion": 1,
+  "status": "supplementRecorded",
+  "matrix": {
+    "S5-01": "native-bundle-toggle-rootinclude-applied-and-navigation-reopen",
+    "S5-02": "center-product-center-roundtrip-proven-history-unverified",
+    "S5-03": "same-center-assistant-system-light-mismatch-observed-in-r3-and-final",
+    "S5-04": "final-archify-observed",
+    "S5-05": "fee-and-draft-input-clear-proven-cross-scene-unverified",
+    "S5-06": "toolbar-endpoints-and-scene-close-proven-center-popout-close-unverified",
+    "S5-07": "two-window-entry-observed-login-unverified",
+    "S5-08": "five-panels-proven-no-complete-safe-local-mock-run",
+    "S5-09": "width-and-restore-proven-scroll-unconfirmed",
+    "S5-10": "native-entry-visible-automation-empty-voice-dependency-required",
+    "S5-11": "accepted-historical-boundary-manual-entry-reachable",
+    "S5-14": "final-apply-and-backup-proven-prior-actual-rollbacks-s701"
+  },
+  "productCommit": "125850f9d0409537859e2580c7f2e80f352706b8",
+  "previousVerificationCommit": "2ef384ffe776fdefcfb470b2751b801d4010645e",
+  "plugin": {
+    "package": "dsh-whale-widget",
+    "version": "0.4.2",
+    "journalPath": "[local-path-redacted]",
+    "journalSegmentsObservedInitially": 0,
+    "historicalS5ReceiptSha256": "da16c911e4d49e13a8c7f2389082ff9c1abfc01f1b175067823ef7cd4f0edd2c",
+    "historicalR3RootIdentity": {
+      "pid": 9804,
+      "count": 6,
+      "timeFirst": "2026-11-18T15:04:06.661Z",
+      "timeLast": "2026-11-18T15:04:29.145Z",
+      "positiveRootInclude": true
+    },
+    "supplementRootIncludeReloadProven": true,
+    "whaleBubbleConfigRoundTrip": {
+      "result": "configuration-reopened-and-restored",
+      "beforeChecked": "77aaa4be",
+      "toggledUnchecked": "acf8e7b3",
+      "reopenUnchecked": "9c3089b2",
+      "restoredChecked": "487bd734",
+      "pluginBundleToggleProven": false,
+      "refreshOrColdStartPersistenceProven": false,
+      "operationJournalFoundForThisAction": false
+    },
+    "bundleNativeObservations": [
+      "75d8103f",
+      "9df0fbae",
+      "cf190e30",
+      "da2edc64",
+      "f58a7f99",
+      "545c9fa2"
+    ],
+    "nativeOperationJournal": "[local-path-redacted]",
+    "nativeOperationRows": [
+      {
+        "time": "2026-11-18T16:01:37.194Z",
+        "phase": "started",
+        "stage": "enable",
+        "reason": "bundle",
+        "target": "dsh-whale-widget",
+        "enabled": false
+      },
+      {
+        "time": "2026-11-18T16:01:37.696Z",
+        "phase": "settled",
+        "stage": "enable",
+        "reason": "bundle",
+        "target": "dsh-whale-widget",
+        "enabled": false,
+        "application": "applied",
+        "changed": true
+      },
+      {
+        "time": "2026-11-18T16:02:55.856Z",
+        "phase": "started",
+        "stage": "enable",
+        "reason": "bundle",
+        "target": "dsh-whale-widget",
+        "enabled": true
+      },
+      {
+        "time": "2026-11-18T16:02:56.391Z",
+        "phase": "settled",
+        "stage": "enable",
+        "reason": "bundle",
+        "target": "dsh-whale-widget",
+        "enabled": true,
+        "application": "applied",
+        "changed": true
+      }
+    ],
+    "rootIdentityJournal": "[local-path-redacted]",
+    "rootIdentityRows": [
+      {
+        "time": "2026-11-18T16:01:37.407Z",
+        "pid": 44256,
+        "rootIncludePresent": true,
+        "ownerMatched": true,
+        "ownerRootMatchesBootRoot": true,
+        "appBootModuleInstanceMatches": true
+      },
+      {
+        "time": "2026-11-18T16:01:39.970Z",
+        "pid": 44256,
+        "rootIncludePresent": true,
+        "ownerMatched": true,
+        "ownerRootMatchesBootRoot": true,
+        "appBootModuleInstanceMatches": true
+      },
+      {
+        "time": "2026-11-18T16:02:56.078Z",
+        "pid": 44256,
+        "rootIncludePresent": true,
+        "ownerMatched": true,
+        "ownerRootMatchesBootRoot": true,
+        "appBootModuleInstanceMatches": true
+      },
+      {
+        "time": "2026-11-18T16:02:58.609Z",
+        "pid": 44256,
+        "rootIncludePresent": true,
+        "ownerMatched": true,
+        "ownerRootMatchesBootRoot": true,
+        "appBootModuleInstanceMatches": true
+      }
+    ],
+    "disabledAcrossColdStartProven": false,
+    "restoredEnabledAcrossColdStartObservation": "9717367e"
+  },
+  "credentials": {
+    "testFileExists": true,
+    "contentsRead": false,
+    "inMemoryRealAppPathConfirmed": false,
+    "officialReferenceMethods": [
+      "describe",
+      "set",
+      "unset"
+    ],
+    "installedCliStdinMethodConfirmed": false,
+    "windowsStoreProtectionAutomaticallyEstablished": false,
+    "isolatedProviderCandidateRequiresAclAndPathProof": true,
+    "realCredentialOperationPerformed": false,
+    "syntheticProbe": {
+      "path": "[local-path-redacted]",
+      "exitCode": 0,
+      "checks": {
+        "initiallyUnconfigured": true,
+        "writableAndStored": true,
+        "watchingInstanceSawWrite": true,
+        "noExtraFilesAfterSet": true,
+        "writerCleared": true,
+        "watchingInstanceSawUnset": true,
+        "noExtraFilesAfterUnset": true,
+        "noSyntheticValueInDocument": true
+      }
+    },
+    "qaCredentialStoreAcl": {
+      "ownerOnlyGatePassed": false,
+      "otherReadDataGroups": [
+        "Authenticated Users",
+        "BUILTIN Users"
+      ],
+      "inherited": true,
+      "appliesToFile": true,
+      "inheritOnly": false,
+      "storeContentRead": false,
+      "originalReferenceChecked": false
+    }
+  },
+  "draft": {
+    "costObservation": "b8303993",
+    "unsentInputObservation": "169af9e2",
+    "valueClearSucceeded": false,
+    "wholeTextSelectedObservation": "faf98c4f",
+    "backspaceRestoredPlaceholderObservation": "8139af40",
+    "draftSent": false,
+    "crossScenePersistenceProven": false
+  },
+  "theme": {
+    "r3Comparison": {
+      "role": "交付助手",
+      "mainDarkImage": "shot-1795007483221.png",
+      "mainResolvedSystemLightImage": "shot-1795007500791.png",
+      "popoutDarkImage": "shot-1795007569219.png",
+      "popoutLightImage": "shot-1795007599373.png",
+      "popoutCaptionAndBodyLight": true
+    },
+    "finalComparison": {
+      "role": "中心助手",
+      "mainResolvedSystemLightObservation": "a07adbfd",
+      "popoutCaptionLightBodyDarkObservation": "5b866d91",
+      "fixedLightBodyStillDark": true,
+      "fixedDarkRestored": true,
+      "samePopoutCloseObserved": false,
+      "composerMode": "empty-goal-mode"
+    },
+    "nativeThemePathByteIdentical": true,
+    "cause": "undetermined",
+    "r3SameRoleComparison": {
+      "role": "中心助手",
+      "newIsolatedData": true,
+      "darkMain": "4dce25a2",
+      "darkPopout": "16edc0f3",
+      "lightMainSystem": "66f79742",
+      "lightCaptionButDarkBody": "b1255806",
+      "sameObservedMismatchAsFinal": true,
+      "mainPid": 30920,
+      "listenerPids": {
+        "3088": 29808,
+        "3090": 20336,
+        "55432": 68492
+      },
+      "listenersOwnedByR3ComparisonProgram": true,
+      "dataOwned": true,
+      "composerMode": "empty-normal-composer"
+    },
+    "goalSubmittedInComparison": false,
+    "allConditionsIdentical": false
+  },
+  "finalCandidateRelaunch": {
+    "originalPid": 44256,
+    "originalHostClosedUtc": "2026-11-18T16:11:56.241Z",
+    "coldStateConfirmedUtc": "2026-11-18T16:12:21.386Z",
+    "originalProcessCountAfterClose": 0,
+    "originalStandardListenerCountAfterClose": 0,
+    "newPid": 77320,
+    "hostReadyUtc": "2026-11-18T16:12:56.314Z",
+    "mainShownUtc": "2026-11-18T16:13:00.970Z",
+    "darkAndWidgetObservation": "eb1af708",
+    "restoredPluginEnabledInDirectoryObservation": "9717367e",
+    "hostClosedUtc": "2026-11-18T16:15:25.475Z",
+    "doubleProgramAndListenersColdUtc": "2026-11-18T16:15:56.832Z"
+  },
+  "voiceInput": {
+    "observation": "3ed27cce",
+    "firstUseDependencyPrompt": true,
+    "installedDependency": false,
+    "audioRecorded": false
+  },
+  "r3ComparisonPreparation": {
+    "record": "[local-path-redacted]",
+    "purpose": "R3 same-role theme comparison",
+    "sourceManifestSha256": "35f415d135aed13a830ffff6429ff10030478a5167b61eeb891283fd318a0008",
+    "sourceProgramTree": {
+      "files": 39822,
+      "bytes": 2286996730,
+      "sha256": "b7ab60c588bf7e5fc074b77c275776f6c62c19f71d556938db1a0d39ceca739f"
+    },
+    "verifiedSourcePathCount": 39822,
+    "program": "[local-path-redacted]",
+    "data": "[local-path-redacted]",
+    "dataEmpty": true,
+    "onlyModifiedAfterVerification": "launcher.json",
+    "launcher": {
+      "bytes": 147,
+      "sha256": "19e85aa932185ccd0d8fd5d9a3e3a498d3ad45c0e9d9022da5a706e6085c0617"
+    },
+    "ports": [
+      3088,
+      3090,
+      55432
+    ],
+    "asar": {
+      "bytes": 228830378,
+      "sha256": "0079bb6476ac89649af100961c33ca0c60b9feb99d86039b77602bcdf54e4700"
+    },
+    "wrapper": {
+      "bytes": 23040,
+      "sha256": "e087dd9619ac9a143329fededd168fb174c5180f3c0ed666ad7ab8d2495e68b5"
+    },
+    "localManifestSha256": "4a39b5948d4629ed1df3f71b0694818f7f41975563a6db4b041c7763279e42e6",
+    "launched": false
+  },
+  "roleRoundTrip": {
+    "route": [
+      "中心助手",
+      "商品专家",
+      "中心助手"
+    ],
+    "productExpertObservation": "4be678a0",
+    "centerReturnObservation": "42439b45",
+    "historicalSessionIdentityProven": false
+  },
+  "automation": {
+    "observation": "7aa10fe3",
+    "enabledTasks": 0
+  },
+  "localWorkflow": {
+    "safeCompleteInputOutputPathFound": false,
+    "executed": false,
+    "downloaded": false
+  },
+  "scopedDesktopBatchCompleted": true,
+  "allFeaturesExecuted": false,
+  "screenshotEvidence": {
+    "whale-initial-enabled": {
+      "source": "[local-path-redacted]",
+      "path": "[local-path-redacted]",
+      "bytes": 723380,
+      "sha256": "5ade52746d8b216407ba3ceeeffeb95a95eaa3e9308c46d07c1cfa3b06a1f8a6",
+      "observation": "9df0fbae"
+    },
+    "whale-disabled": {
+      "source": "[local-path-redacted]",
+      "path": "[local-path-redacted]",
+      "bytes": 723272,
+      "sha256": "6043671173a2de96daf429e236066dd80adc15a3236e0b2a6a153bf72d9d1ef4",
+      "observation": "cf190e30"
+    },
+    "whale-reopened-disabled": {
+      "source": "[local-path-redacted]",
+      "path": "[local-path-redacted]",
+      "bytes": 678783,
+      "sha256": "40b61eb6066d2ab5a87e590489084b5b80d6c6c5cf7d4538220e4d0596dfd884",
+      "observation": "da2edc64"
+    },
+    "whale-restored": {
+      "source": "[local-path-redacted]",
+      "path": "[local-path-redacted]",
+      "bytes": 723396,
+      "sha256": "d55a223797e96f284bf26be71906eaa5d1948198fa033ff677a10d18b0fb5721",
+      "observation": "545c9fa2"
+    },
+    "whale-cold-enabled": {
+      "source": "[local-path-redacted]",
+      "path": "[local-path-redacted]",
+      "bytes": 723267,
+      "sha256": "e5e3c558fe7883758866c4a9a6bce3a2ee7374b5471c6cf6e016db11369f247d",
+      "observation": "9717367e"
+    },
+    "final-system-light-main": {
+      "source": "[local-path-redacted]",
+      "path": "[local-path-redacted]",
+      "bytes": 186649,
+      "sha256": "b4e2b6d86f52da87da8634921858c4788818c984c5c9291dd37ca84271850344",
+      "observation": "a07adbfd"
+    },
+    "final-system-light-center-assistant": {
+      "source": "[local-path-redacted]",
+      "path": "[local-path-redacted]",
+      "bytes": 116009,
+      "sha256": "1dad44726d393af8dc278935e17fb4fa6bee9a5a211f28408edcb3f5de5e63e0",
+      "observation": "5b866d91"
+    },
+    "final-fixed-light-main": {
+      "source": "[local-path-redacted]",
+      "path": "[local-path-redacted]",
+      "bytes": 186170,
+      "sha256": "8cd595a23b1f72156b44443c18051921c14de9a25abd20099441e47c4572ea0f"
+    },
+    "final-fixed-light-center-assistant": {
+      "source": "[local-path-redacted]",
+      "path": "[local-path-redacted]",
+      "bytes": 116009,
+      "sha256": "1dad44726d393af8dc278935e17fb4fa6bee9a5a211f28408edcb3f5de5e63e0"
+    },
+    "final-fixed-dark-main": {
+      "source": "[local-path-redacted]",
+      "path": "[local-path-redacted]",
+      "bytes": 193466,
+      "sha256": "0381581fac35bc5187e6f831b9a1f394c533c99ff577eac817bc67e697c555eb"
+    },
+    "final-fixed-dark-center-assistant": {
+      "source": "[local-path-redacted]",
+      "path": "[local-path-redacted]",
+      "bytes": 116407,
+      "sha256": "5fd8d05510a5c45c6d211027894fe72cb833a8e2f584a1c8b626c7c17a86ff44"
+    },
+    "r3-fixed-dark-main": {
+      "source": "[local-path-redacted]",
+      "path": "[local-path-redacted]",
+      "bytes": 190549,
+      "sha256": "ebe79f4d7549aeaba5a890e4b82be88e51ea1cf67c19702baa7817d923dee1ac",
+      "observation": "4dce25a2"
+    },
+    "r3-fixed-dark-center-assistant": {
+      "source": "[local-path-redacted]",
+      "path": "[local-path-redacted]",
+      "bytes": 39618,
+      "sha256": "888f354b6b5d5e5f6c65b8eac6053deecfbce7cbfbbbeefefb0a9627a09a7dcb",
+      "observation": "16edc0f3"
+    },
+    "r3-system-light-main": {
+      "source": "[local-path-redacted]",
+      "path": "[local-path-redacted]",
+      "bytes": 145011,
+      "sha256": "eb0e7a755e9f84ac78da74310eb0065a5d21d808ce60c2ed76867bdd40f258a4",
+      "observation": "66f79742"
+    },
+    "r3-system-light-center-assistant": {
+      "source": "[local-path-redacted]",
+      "path": "[local-path-redacted]",
+      "bytes": 38109,
+      "sha256": "013ba2f3acda23f6e3f092c2eaaa43bf557b5ba63a01b5df16589d9d1ed481d0",
+      "observation": "b1255806"
+    }
+  },
+  "finalIndependentExit": {
+    "r3MainPid": 30920,
+    "r3NormalMainClose": true,
+    "r3WindowsAfterClose": 0,
+    "r3HostCloseUtc": "2026-11-18T16:20:26.933Z",
+    "r3RestoredDarkObservation": "185276cca1f34aa583f1e28f09d0c708",
+    "desktopFormalFinishUtc": "2026-11-18T16:20:40.366Z",
+    "owner": null,
+    "occupied": 0,
+    "desktopPaused": false,
+    "independentColdReadbackUtc": "2026-11-18T16:21:09.569Z",
+    "finalAndR3ProcessCount": 0,
+    "listeners": {
+      "3088": 0,
+      "3090": 0,
+      "55432": 0
+    },
+    "bothIsolatedDataOwned": true
+  }
+}

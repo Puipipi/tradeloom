@@ -1,0 +1,60 @@
+{
+  "entry": "dsh/node_modules/@deepseek-ai/dsh-experimental-client-ui-voice-input/lib/client.js",
+  "preimage": {
+    "bytes": 137993,
+    "sha256": "e286192475f0912767d9f7c136ecaa22c55276ec874f9945fbe07878e17553a9"
+  },
+  "authoredPostimage": {
+    "bytes": 140449,
+    "sha256": "a348bc40ab44827475abd9f02477364b377d69f5f897e54ae6db997b26963995"
+  },
+  "patch": {
+    "bytes": 278786,
+    "sha256": "f6164af7a86b935f5af5dd24683c8ef2db9a378568109dda864c27248353d162"
+  },
+  "fragments": [
+    {
+      "before": "const current=(0,react.useRef)(),generation=(0,react.useRef)(0);",
+      "after": "const current=(0,react.useRef)(),generation=(0,react.useRef)(0);const nativeBinding=(0,react.useRef)();const sameNative=(left,right)=>left===null&&right===null||!!left&&!!right&&Object.keys(left).length===Object.keys(right).length&&Object.keys(left).every(key=>left[key]===right[key]);const readNative=async expected=>{if(expected===null)return null;const bridge=window.dshDesktop;if(bridge===void 0||bridge===null){if(expected)throw Error(`native_binding_unconfirmed`);return null}if(typeof bridge.nativeSurfaceDescriptor!==`function`)throw Error(`native_binding_unconfirmed`);const value=await bridge.nativeSurfaceDescriptor();if(!value||typeof value!==`object`||!Number.isSafeInteger(value.generation)||value.generation<0)throw Error(`native_binding_unconfirmed`);const nonRole=value.kind===`account`&&value.businessNavigation===`shell`||value.kind===`account-sidebar`&&Number.isSafeInteger(value.accountGeneration)||value.kind===`scene-component`&&typeof value.componentKey===`string`&&value.componentKey!==``&&typeof value.sceneId===`string`&&value.sceneId!==``&&typeof value.panelId===`string`&&value.panelId!==``;if(!expected&&nonRole)return null;if(value.kind!==`role`||value.surface!==`chat`||value.sessionId!==sessionId||typeof value.sceneId!==`string`||value.sceneId===``||typeof value.panelId!==`string`||value.panelId===``||typeof value.roleId!==`string`||value.roleId===``||typeof value.bindingRevision!==`string`||!/^(0|[1-9][0-9]{0,63})$/.test(value.bindingRevision))throw Error(`native_binding_unconfirmed`);return{...value}};const confirmNative=async expected=>{try{if(!sameNative(await readNative(expected),expected))throw Error(`native_binding_changed`)}catch(error){cancel();throw error}};",
+      "uniqueOccurrences": 1
+    },
+    {
+      "before": "const cancel=()=>{generation.current++;",
+      "after": "const cancel=()=>{nativeBinding.current=void 0;generation.current++;",
+      "uniqueOccurrences": 1
+    },
+    {
+      "before": ";(0,react.useEffect)(()=>{setPending(``);setMessage(``);setPhase(`idle`);setSetupOpen(false);const blur=",
+      "after": ";(0,react.useEffect)(()=>{const bridge=window.dshDesktop;if(typeof bridge?.onNativeSurfaceChanged!==`function`)return;return bridge.onNativeSurfaceChanged(value=>{if(nativeBinding.current&&!sameNative(value,nativeBinding.current))cancel()})},[sessionId]);(0,react.useEffect)(()=>{setPending(``);setMessage(``);setPhase(`idle`);setSetupOpen(false);const blur=",
+      "uniqueOccurrences": 1
+    },
+    {
+      "before": "if(!inputActions.insertText(result.value.text,active.span))",
+      "after": "await confirmNative(active.nativeOwner);if(run!==generation.current)return;if(!inputActions.insertText(result.value.text,active.span))",
+      "uniqueOccurrences": 1
+    },
+    {
+      "before": "if(!inputActions.insertText(result.value.text,active.span)){setPending(result.value.text);feedback(t(`conflict`));return}setPhase(`idle`)",
+      "after": "if(!inputActions.insertText(result.value.text,active.span)){setPending(result.value.text);feedback(t(`conflict`));return}await confirmNative(active.nativeOwner);if(run!==generation.current)return;setPhase(`idle`)",
+      "uniqueOccurrences": 1
+    },
+    {
+      "before": "const run=++generation.current;const active={capture:createRecording(),",
+      "after": "const run=++generation.current;let nativeOwner;try{nativeOwner=await readNative()}catch{feedback(t(`failed`,{message:`native_binding_unconfirmed`}));return}if(run!==generation.current||locked)return;nativeBinding.current=nativeOwner;const active={nativeOwner,capture:createRecording(),",
+      "uniqueOccurrences": 1
+    },
+    {
+      "before": "if(run!==generation.current||current.current!==active)return;active.phase=`recording`;",
+      "after": "await confirmNative(active.nativeOwner);if(run!==generation.current||current.current!==active)return;active.phase=`recording`;",
+      "uniqueOccurrences": 1
+    },
+    {
+      "before": "onClick:()=>{if(inputActions.insertText(pending,inputActions.captureInsertion())){setPending(``);setPhase(`idle`)}}",
+      "after": "onClick:async()=>{const run=generation.current;try{await confirmNative(nativeBinding.current);if(run===generation.current&&inputActions.insertText(pending,inputActions.captureInsertion())){setPending(``);setPhase(`idle`)}}catch{cancel()}}",
+      "uniqueOccurrences": 1
+    }
+  ],
+  "inverseSourceBytesExact": true,
+  "replayExecuted": false,
+  "provenance": "frozen actual rc2 voice entry, official pinned tag composition; no device/model execution"
+}

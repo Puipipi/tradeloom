@@ -68,6 +68,9 @@ export function createExecutionOriginAuthority({ stateStore, isSessionLive, isSe
   const requestReplayByOperation = new Map()
   let requestReplayResponseBytes = 0
   const active = new Map()
+  // Preserve the Main-verified frame tuple privately. Existing serialized
+  // operation DTOs remain byte-compatible with the backend origin protocol.
+  const originSources = new WeakMap()
   const originWork = new Map()
   const activeToolExecutions = new WeakSet()
   const currentToolExecution = new AsyncLocalStorage()
@@ -343,6 +346,7 @@ export function createExecutionOriginAuthority({ stateStore, isSessionLive, isSe
         peerPrincipal,
         activeUntil: now() + ACTIVE_TTL_MS,
       })
+      originSources.set(origin, grant.issuer)
       let readyResolve
       let readyReject
       const readyPromise = new Promise((resolveReady, rejectReady) => { readyResolve = resolveReady; readyReject = rejectReady })
@@ -578,8 +582,21 @@ export function createExecutionOriginAuthority({ stateStore, isSessionLive, isSe
     async transactSceneMemory(origin, action, sceneId, value) {
       const record = assertActive(origin)
       if (action === 'read') return await memory.read(record.origin, sceneId)
+      if (action === 'snapshot') return await memory.snapshot(record.origin, sceneId)
       if (action === 'write') return await memory.write(record.origin, sceneId, value)
       throw new SceneMemoryOriginError('invalid_scene_memory_action')
+    },
+
+    async updateSceneMemory(origin, sceneId, expectedRevision, transform) {
+      const record = assertActive(origin)
+      return memory.update(record.origin, sceneId, expectedRevision, transform)
+    },
+
+    sourceForOrigin(origin) {
+      const record = assertActive(origin)
+      const source = originSources.get(record.origin)
+      if (!source) throw new SceneMemoryOriginError('unowned_guest')
+      return source
     },
 
     async revoke(origin) {

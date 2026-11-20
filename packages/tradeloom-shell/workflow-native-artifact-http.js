@@ -81,21 +81,27 @@ export function createNativeArtifactHandler(ctx, dependencies={}) {
     if(expected && (run.bindingRevision!==expected.run.bindingRevision || run.definitionRevision!==expected.run.definitionRevision)) throw fail('unavailable')
     return {parent,run,projection}
   }
-  function item(context,input) {
+  function findJournalDeclaration(context,input) {
     const node=context.projection.nodes.find(n=>n.id===input.nodeId && n.attempt===input.attempt)
     if(!node?.settled || node.terminalReceipt?.source!=='subagent/end' || node.artifactState!=='declared') throw fail('source_unavailable')
     const matches=node.artifactEvidence.declarations.filter(d=>d.sourceSessionSeq===input.sourceSessionSeq && d.fileIndex===input.fileIndex)
     if(matches.length!==1) throw fail('source_unavailable')
     return {node, declaration:matches[0]}
   }
-  async function verifyEvent(context,input,signal) {
-    const {node,declaration}=item(context,input), query=get('sessionQuery'); if(!query?.readEvent) throw fail('service_unavailable')
+  async function readPresentedDeclaration(context,input,signal) {
+    const {node,declaration}=findJournalDeclaration(context,input), query=get('sessionQuery'); if(!query?.readEvent) throw fail('service_unavailable')
     const result=await query.readEvent({sessionId:node.childId,seq:input.sourceSessionSeq,before:0,after:0},signal)
     if(signal.aborted || disposed || !sameService(get('sessionQuery'),query)) throw fail('unavailable')
     const data=result?.target?.data, file=data?.files?.[input.fileIndex]
     if(result?.target?.seq!==input.sourceSessionSeq || result?.session?.id!==node.childId || result?.target?.type!=='deliverables/presented' || data?.callId!==declaration.presentCallId || data?.turn!==declaration.sourceTurn || file?.path!==declaration.path || (file?.description ?? null)!==(declaration.description ?? null)) throw fail('source_unavailable')
     return {node,declaration,session:result.session}
   }
+  function assertSamePresentedDeclaration(previous, current) {
+    if (JSON.stringify(previous.declaration) !== JSON.stringify(current.declaration)
+      || previous.node.childId !== current.node.childId
+      || previous.session?.cwd !== current.session?.cwd) throw fail('source_unavailable')
+  }
+
   async function handle(req,res) {
     if(typeof ctx.connection?.requestRejection !== 'function'){json(res,503,{ok:false,reason:'unavailable'});return}
     const rejection=ctx.connection.requestRejection(req); if(rejection!==undefined){json(res,rejection,{ok:false,reason:'unavailable'});return}
@@ -107,14 +113,14 @@ export function createNativeArtifactHandler(ctx, dependencies={}) {
       if(collection && req.method==='POST') {
         const input=await body(req)
         if(!input || Object.keys(input).sort().join(',')!=='attempt,fileIndex,nodeId,runId,sourceSessionSeq' || !UUID.test(input.runId ?? '') || typeof input.nodeId!=='string' || !input.nodeId || !Number.isSafeInteger(input.attempt) || input.attempt<1 || !Number.isSafeInteger(input.sourceSessionSeq) || input.sourceSessionSeq<0 || !Number.isSafeInteger(input.fileIndex) || input.fileIndex<0) throw fail('invalid_input')
-        let state=await owned(input.runId,signal), first=await verifyEvent(state,input,signal); state=await owned(input.runId,signal,state)
+        let state=await owned(input.runId,signal), first=await readPresentedDeclaration(state,input,signal); state=await owned(input.runId,signal,state)
         const picker=get('directoryPicker'), fs=get('fs'), files=get('workspaceFiles'); const capability=picker?.capability?.()
         if(capability?.kind!=='native' || typeof capability.pick!=='function' || !fs?.resolve || !fs?.processPathFromHostPath || !files?.stat || !files?.readBytes) throw fail('service_unavailable')
         const fresh=()=>{if(signal.aborted || disposed || !sameService(get('directoryPicker'),picker) || !sameService(get('fs'),fs) || !sameService(get('workspaceFiles'),files)) throw fail('unavailable')}
         const chosen=await capability.pick(signal); if(!chosen) throw fail('cancelled')
         fresh()
-        state=await owned(input.runId,signal,state); fresh(); const second=await verifyEvent(state,input,signal)
-        if(JSON.stringify(first.declaration)!==JSON.stringify(second.declaration) || first.node.childId!==second.node.childId || first.session?.cwd!==second.session?.cwd) throw fail('source_unavailable')
+        state=await owned(input.runId,signal,state); fresh(); const second=await readPresentedDeclaration(state,input,signal)
+        assertSamePresentedDeclaration(first, second)
         const root=await mapped(fs,chosen,signal); state=await owned(input.runId,signal,state); fresh()
         const cwd=second.session?.cwd ?? get('sandboxPolicy')?.workspaceRoot
         const nativeCwd=await mapped(fs,cwd,signal); state=await owned(input.runId,signal,state); fresh()
@@ -127,9 +133,9 @@ export function createNativeArtifactHandler(ctx, dependencies={}) {
           presentCallId:second.declaration.presentCallId,sourceTurn:second.declaration.sourceTurn,
           parentAgentId:state.parent.id,parentSessionId:state.parent.session.id,root,file}),signal)
         if(consent !== 'allowed-once') throw fail('authorization_unavailable')
-        fresh(); state=await owned(input.runId,signal,state); fresh(); const confirmed=await verifyEvent(state,input,signal)
-        if(JSON.stringify(confirmed.declaration)!==JSON.stringify(first.declaration) || confirmed.node.childId!==first.node.childId || confirmed.session?.cwd!==first.session?.cwd
-          || !same(await mapped(fs,candidate,signal),file) || !same(await mapped(fs,chosen,signal),root)) throw fail('source_unavailable')
+        fresh(); state=await owned(input.runId,signal,state); fresh(); const confirmed=await readPresentedDeclaration(state,input,signal)
+        assertSamePresentedDeclaration(confirmed, first)
+        if(!same(await mapped(fs,candidate,signal),file) || !same(await mapped(fs,chosen,signal),root)) throw fail('source_unavailable')
         fresh(); state=await owned(input.runId,signal,state); fresh(); const scope={sessionId:second.node.childId,workspaceRoot:cwd}
         const before=await files.stat(scope,second.declaration.path,signal)
         if(!before || !same(before.absolutePath,file) || typeof before.version!=='string' || (before.bytes !== undefined && (!Number.isSafeInteger(before.bytes) || before.bytes<0 || before.bytes>MAX))) throw fail(before?.bytes>MAX?'too_large':'file_unavailable')
@@ -138,15 +144,15 @@ export function createNativeArtifactHandler(ctx, dependencies={}) {
         if(!(bytes?.data instanceof Uint8Array) || !bytes.eof || bytes.offset!==0 || (before.bytes !== undefined && bytes.data.length!==before.bytes) || (bytes.bytes !== undefined && bytes.bytes!==bytes.data.length) || bytes.data.length>MAX || bytes.version!==before.version || !same(bytes.absolutePath,file)) throw fail('file_unavailable')
         state=await owned(input.runId,signal,state); fresh(); const after=await files.stat(scope,second.declaration.path,signal)
         if(!after || after.version!==before.version || (before.bytes !== undefined && after.bytes !== undefined && after.bytes!==before.bytes) || (after.bytes !== undefined && after.bytes!==bytes.data.length) || !same(after.absolutePath,file) || !same(await mapped(fs,candidate,signal),file) || !same(await mapped(fs,chosen,signal),root)) throw fail('file_unavailable')
-        fresh(); state=await owned(input.runId,signal,state); fresh(); const last=await verifyEvent(state,input,signal)
-        if(JSON.stringify(last.declaration)!==JSON.stringify(first.declaration) || last.node.childId!==first.node.childId || last.session?.cwd!==first.session?.cwd) throw fail('source_unavailable')
+        fresh(); state=await owned(input.runId,signal,state); fresh(); const last=await readPresentedDeclaration(state,input,signal)
+        assertSamePresentedDeclaration(last, first)
         const grant={sessionId:first.node.childId,runId:input.runId,nodeId:input.nodeId,attempt:input.attempt,sourceSessionSeq:input.sourceSessionSeq,fileIndex:input.fileIndex,authorized:true,rootScope:createHash('sha256').update(root,'utf8').digest('hex')}
         const meta=JSON.stringify({...input,grant}), boundary=`tradeloom-${randomUUID()}`
         const payload=Buffer.concat([Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="metadata"\r\n\r\n${meta}\r\n--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="artifact"\r\nContent-Type: application/octet-stream\r\n\r\n`),Buffer.from(bytes.data),Buffer.from(`\r\n--${boundary}--\r\n`)])
         fresh(); state=await owned(input.runId,signal,state); fresh()
         const response=await send('POST','/api/native-artifacts',payload,`multipart/form-data; boundary=${boundary}`,signal,64*1024)
-        state=await owned(input.runId,signal,state); fresh(); const finalEvent=await verifyEvent(state,input,signal)
-        if(JSON.stringify(finalEvent.declaration)!==JSON.stringify(first.declaration) || finalEvent.node.childId!==first.node.childId || finalEvent.session?.cwd!==first.session?.cwd) throw fail('source_unavailable')
+        state=await owned(input.runId,signal,state); fresh(); const finalEvent=await readPresentedDeclaration(state,input,signal)
+        assertSamePresentedDeclaration(finalEvent, first)
         if(![200,201].includes(response.status)) throw fail('service_unavailable')
         fresh(); const value=JSON.parse(response.data.toString('utf8'))
         if(value.nodeId!==input.nodeId || value.attempt!==input.attempt || value.source?.sessionId!==first.node.childId || value.source?.seq!==input.sourceSessionSeq || value.source?.index!==input.fileIndex || value.source?.callId!==first.declaration.presentCallId || value.source?.turn!==first.declaration.sourceTurn || value.byteSize!==bytes.data.length || value.sha256!==createHash('sha256').update(bytes.data).digest('hex')) throw fail('service_unavailable')

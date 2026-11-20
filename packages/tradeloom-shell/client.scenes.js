@@ -14,10 +14,11 @@ window.__ModuleLoader__.load({
     const pendingPopoutRestoreByScene = new Map()
     const dockviewApis = new Map()
     const pendingScenePanelFocus = new Map()
+    const pendingClosedPanelPositions = new Map()
     const dockviewRenderers = new Map()
     const narrowListeners = new Map()
     const asyncRequire = typeof require.async === 'function' ? require.async.bind(require) : null
-    let dockviewRequest
+    let dockviewChunkRequest
     let workflowRequest
     let businessViewIntentRevision = 0
     let dockSaveQueue = Promise.resolve()
@@ -72,7 +73,7 @@ window.__ModuleLoader__.load({
       } catch { return '' }
     }
 
-    function comparableDockview(dockview, panelId) {
+    function serializeDockGridWithoutPanel(dockview, panelId) {
       if (!dockview?.grid?.root || !dockview.panels) return null
       const stripPanel = (node, root = false) => {
         if (node.type === 'leaf') {
@@ -97,31 +98,26 @@ window.__ModuleLoader__.load({
       return JSON.stringify({ grid, panels: Object.keys(dockview.panels).filter(id => id !== panelId).sort() })
     }
 
-    function serializedGroupForPanel(root, panelId) {
+    function findSerializedGridLeaf(root, matchesGroup) {
       if (!root) return null
-      if (root.type === 'leaf') return root.data?.views?.includes(panelId) ? root.data : null
+      if (root.type === 'leaf') return matchesGroup(root.data) ? root : null
       for (const child of root.data ?? []) {
-        const found = serializedGroupForPanel(child, panelId)
+        const found = findSerializedGridLeaf(child, matchesGroup)
         if (found) return found
       }
       return null
     }
 
-    function serializedGridHasPanel(root, panelId) {
-      if (!root) return false
-      if (root.type === 'leaf') return Boolean(root.data?.views?.includes(panelId))
-      return (root.data ?? []).some(child => serializedGridHasPanel(child, panelId))
+    function findSerializedLeafForPanel(root, panelId) {
+      return findSerializedGridLeaf(root, group => group?.views?.includes(panelId))
     }
 
-    function serializedLeafByGroup(root, groupId) {
-      if (!root) return null
-      if (root.type === 'leaf') return root.data?.id === groupId ? root : null
-      for (const child of root.data ?? []) { const found = serializedLeafByGroup(child, groupId); if (found) return found }
-      return null
+    function findSerializedLeafByGroupId(root, groupId) {
+      return findSerializedGridLeaf(root, group => group?.id === groupId)
     }
 
     // Build a storage-only grid from the current tree; the live Dockview stays untouched.
-    function projectFloatingLayout(layout, origins) {
+    function projectFloatingGroupsIntoSavedGrid(layout, origins) {
       const copy = JSON.parse(JSON.stringify(layout))
       const floating = copy.floatingGroups ?? []
       if (floating.length !== origins.size || copy.grid?.root?.type !== 'branch') return null
@@ -129,7 +125,7 @@ window.__ModuleLoader__.load({
       for (const [panelId, origin] of origins) {
         const external = floating.find(item => item.data?.views?.length === 1 && item.data.views[0] === panelId)
         if (!external || !copy.panels?.[panelId]) return null
-        const target = serializedLeafByGroup(copy.grid.root, origin.groupId)
+        const target = findSerializedLeafByGroupId(copy.grid.root, origin.groupId)
         if (target) {
           const current = target.data.views
           const at = origin.views.indexOf(panelId)
@@ -177,14 +173,15 @@ window.__ModuleLoader__.load({
       return copy
     }
 
-    function floatingReturnAnchor(grid, panelId) {
+    function captureFloatingPanelReturnAnchor(grid, panelId) {
       let found = null
       const firstLeaf = node => node?.type === 'leaf' ? node : (node?.data ?? []).map(firstLeaf).find(Boolean)
       const visit = (node, orientation) => {
         if (node?.type !== 'branch') return
         const children = node.data ?? []
         for (let i = 0; i < children.length; i++) {
-          if (serializedGridHasPanel(children[i], panelId) && children[i].type === 'leaf') {
+          const child = children[i]
+          if (child?.type === 'leaf' && child.data?.views?.includes(panelId)) {
             const siblingIndex = i ? i - 1 : i + 1
             const anchor = firstLeaf(children[siblingIndex])
             if (anchor?.data?.id) {
@@ -195,14 +192,15 @@ window.__ModuleLoader__.load({
                 slotWeight: total > 0 ? children[i].size / total : 0,
                 siblings: children.map((child, index) => ({index, id:firstLeaf(child)?.data?.id, weight:total > 0 ? child.size / total : 0})).filter(item => item.index !== i && item.id), index:i }
             }
-          } else visit(children[i], orientation === 'HORIZONTAL' ? 'VERTICAL' : 'HORIZONTAL')
+          } else visit(child, orientation === 'HORIZONTAL' ? 'VERTICAL' : 'HORIZONTAL')
         }
       }
       visit(grid?.root, grid?.orientation)
       return found
     }
 
-    function mergePopoutIntoGridSnapshot(layout, restore) {
+    // A popout can leave an empty return group in its opener; rebuild that group in the return snapshot.
+    function reconstructPopoutReturnLayout(layout, restore) {
       const targetId = restore?.returnGroupId
       const panelIds = restore?.returnPanelIds
       if (!layout?.grid?.root || !layout.panels || !targetId || !Array.isArray(panelIds)
@@ -217,7 +215,7 @@ window.__ModuleLoader__.load({
           if (node.data?.id !== targetId) return node
           const existingViews = Array.isArray(node.data.views) ? node.data.views : []
           if (existingViews.length) return node
-          const missingViews = livePanelIds.filter(id => !serializedGridHasPanel(layout.grid.root, id))
+          const missingViews = livePanelIds.filter(id => !findSerializedLeafForPanel(layout.grid.root, id))
           if (!existingViews.length && !missingViews.length) return node
           targetFound = true
           returnedCount = missingViews.length
@@ -576,6 +574,15 @@ window.__ModuleLoader__.load({
       return { ...layouts, [sceneId]: { ...(layouts[sceneId] ?? {}), ...layout } }
     }
 
+    function isStandardWorkflowScene(config, scene) {
+      const route = config?.businessRoutes?.['/agent-center']
+      if (route?.sceneId !== 'agent-center' || route.panelId !== 'business-main'
+        || (scene?.templateSceneId ?? scene?.id) !== route.sceneId) return false
+      return ['business-main', 'business-plan'].every(id => scene.panels.some(panel =>
+        panel.id === id && panel.type === 'business-iframe' && panel.path === '/agent-center'
+        && panel.optional !== true && panel.frontendTabs === undefined))
+    }
+
     function normalizeSceneBusinessPath(scene, path) {
       if (path === '/artifacts' && ['deliverables', 'user-profile'].includes(scene?.id)) {
         return scene.defaultBusinessPath ?? path
@@ -595,20 +602,33 @@ window.__ModuleLoader__.load({
       }
     }
 
-    function requestDockview() {
+    // The generated chunk provides the Dockview adapter and CSS through the Host module loader.
+    function loadDockviewChunk() {
       if (!asyncRequire) return Promise.reject(new Error('dockview-loader-unavailable'))
-      if (!dockviewRequest) {
-        dockviewRequest = asyncRequire('./client.dockview.js').then(value => {
+      if (!dockviewChunkRequest) {
+        dockviewChunkRequest = asyncRequire('./client.dockview.js').then(value => {
           const module = value?.default ?? value
           if (!module || typeof module.DockviewReact !== 'object' && typeof module.DockviewReact !== 'function'
             || typeof module.dockviewCss !== 'string') throw new Error('dockview-asset-unavailable')
           return module
-        }).catch(error => { dockviewRequest = undefined; throw error })
+        }).catch(error => { dockviewChunkRequest = undefined; throw error })
       }
-      return dockviewRequest
+      return dockviewChunkRequest
     }
 
-    function dockRecordFor(sceneId, dockview) {
+    function captureClosedPanelPosition(grid, panelId) {
+      const group = findSerializedLeafForPanel(grid?.root, panelId)?.data
+      if (!group) return undefined
+      const index = group.views.indexOf(panelId)
+      const tabNeighbors = group.views.filter(id => id !== panelId)
+      if (tabNeighbors.length) return { direction: 'within', neighbors: tabNeighbors, index }
+      const anchor = captureFloatingPanelReturnAnchor(grid, panelId)
+      const neighbors = findSerializedLeafByGroupId(grid.root, anchor?.anchorId)?.data.views
+      if (neighbors?.length) return { direction: anchor.direction, neighbors }
+      return undefined
+    }
+
+    function buildDockLayoutRecord(sceneId, dockview) {
       const scene = snapshot.config?.scenes.find(item => item.id === sceneId)
       if (!scene || !dockview || typeof dockview !== 'object') return undefined
       const previous = snapshot.dockLayouts?.scenes?.[sceneId]
@@ -624,21 +644,28 @@ window.__ModuleLoader__.load({
           panels[panel.id] = { ...panels[panel.id], title: panel.roleId ? assistantLabel(panel.roleId) : panel.title }
         }
       }
+      const closedPanelIds = scene.panels.filter(panel => !Object.hasOwn(openPanels, panel.id)).map(panel => panel.id)
+      const positions = pendingClosedPanelPositions.get(sceneId) ?? previous?.closedPanelPositions ?? {}
+      const closedPanelPositions = Object.fromEntries(Object.entries(positions).filter(([id]) => closedPanelIds.includes(id)))
       return {
         version: 2,
         dockview: { ...dockview, panels },
-        closedPanelIds: scene.panels.filter(panel => !Object.prototype.hasOwnProperty.call(openPanels, panel.id)).map(panel => panel.id),
+        closedPanelIds,
+        ...(Object.keys(closedPanelPositions).length ? { closedPanelPositions } : {}),
         ...(floatingRestore ? { floatingRestore } : {}),
+        ...(previous?.preset ? { preset: previous.preset } : {}),
         legacyV1Snapshot: previous?.legacyV1Snapshot ?? null,
         migration: previous?.migration ?? { status: 'default', reason: 'client-layout-change' },
       }
     }
 
-    function queueDockLayoutSave(sceneId, dockview) {
-      const record = dockRecordFor(sceneId, dockview)
+    function queueDockLayoutSave(sceneId, dockview, preset) {
+      const record = buildDockLayoutRecord(sceneId, dockview)
       if (!record) return Promise.resolve(false)
+      if (preset) record.preset = preset
       let failureMessage = '布局保存失败（网络错误），请重试。'
       const nextScenes = { ...(snapshot.dockLayouts?.scenes ?? {}), [sceneId]: record }
+      pendingClosedPanelPositions.delete(sceneId)
       publish({ dockLayouts: { version: 2, scenes: nextScenes }, dockSaveErrors: { ...snapshot.dockSaveErrors, [sceneId]: '' } })
       dockRevision++
       const requested = dockRevision
@@ -701,13 +728,29 @@ window.__ModuleLoader__.load({
       if (panel.optional === true && !snapshot.sessionBindings[panelRoleId]) return false
       const existing = api.getPanel(panelId)
       if (existing) { existing.api.setActive(); return true }
-      const reference = api.getPanel('business-main') ?? api.getPanels?.()[0]
+      const positions = pendingClosedPanelPositions.get(sceneId) ?? snapshot.dockLayouts?.scenes?.[sceneId]?.closedPanelPositions
+      const candidates = [positions?.[panelId]]
+      if (!panel.optional) candidates.push(captureClosedPanelPosition(snapshot.dockDefaults?.[sceneId]?.dockview?.grid, panelId))
+      let position
+      for (const anchor of candidates) {
+        const neighbor = anchor?.neighbors.map(id => api.getPanel(id)).find(item => item?.api.location?.type === 'grid')
+        if (!neighbor) continue
+        position = { referencePanel: neighbor.id, direction: anchor.direction }
+        if (anchor.direction === 'within') position.index = Math.min(anchor.index, neighbor.api.group.panels.length)
+        break
+      }
+      const gridPanels = api.panels.filter(item => item.api.location?.type === 'grid')
+      const reference = (panel.optional && gridPanels.find(item => item.id === 'native-chat'))
+        || gridPanels.find(item => item.id === 'business-main') || gridPanels[0]
+      if (!position && reference) position = { referencePanel: reference.id,
+        direction: panel.id === 'business-plan' && (scene.templateSceneId ?? scene.id) === 'agent-center' ? 'left'
+          : panel.optional ? 'right' : 'within' }
       api.addPanel({
         id: panel.id, component: panel.type,
         title: panel.type === 'native-chat' ? assistantLabel(panelRoleId) : panel.title,
         renderer: 'always',
         params: { panelId: panel.id },
-        ...(reference ? { position: { referencePanel: panel.optional ? 'native-chat' : reference.id, direction: panel.optional ? 'right' : 'within' } } : {}),
+        ...(position ? { position } : {}),
       })
       api.getPanel(panelId)?.api.setActive()
       return true
@@ -727,6 +770,7 @@ window.__ModuleLoader__.load({
         id: scene.id,
         label: scene.label,
         icon: typeof scene.icon === 'string' && scene.icon ? scene.icon : scene.label.slice(0, 1),
+        ...(scene.templateSceneId ? { templateSceneId: scene.templateSceneId } : {}),
         route: scene.defaultBusinessRoute ?? null,
         navigationGroup: scene.navigationGroup ?? 'business',
       }))
@@ -777,18 +821,20 @@ window.__ModuleLoader__.load({
       publish({ sceneTabPreferenceError: error, sceneTabPreferenceRevision: (snapshot.sceneTabPreferenceRevision ?? 0) + 1 })
     }
 
+    const sceneIcons = Object.freeze({
+      center: 'M3 3h5v5H3zM12 3h5v5h-5zM3 12h5v5H3zM12 12h5v5h-5z',
+      products: 'm10 2.5 7 4v7l-7 4-7-4v-7l7-4ZM3 6.5l7 4 7-4M10 10.5v7',
+      'agent-center': 'M7 3.5H5a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-12a1 1 0 0 0-1-1h-2M7 2.5h6v3H7zM7 8h6M7 11h6M7 14h4',
+      deliverables: 'M3 4.5h14v3H3zM4 7.5v9h12v-9M8 11h4m-2-2v5m-2-2 2 2 2-2',
+      runs: 'M17.5 10a7.5 7.5 0 1 1-15 0 7.5 7.5 0 0 1 15 0ZM10 5.5v5l3.5 2',
+      'user-profile': 'M13 6.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0ZM3.5 17c.7-3.1 3.1-4.8 6.5-4.8s5.8 1.7 6.5 4.8',
+      erpnext: 'M3 4a1.5 1.5 0 0 1 1.5-1.5h11A1.5 1.5 0 0 1 17 4v12a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 16ZM6 6h8M6 9h8M6 12h3M11.5 12H14M6 15h3M11.5 15H14',
+    })
     function sceneIcon(sceneId) {
-      const common = { viewBox: '0 0 20 20', fill: 'none', stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': 'true' }
-      const shape = {
-        center: [h('rect', { x: 2.5, y: 2.5, width: 6, height: 6, rx: 1 }), h('rect', { x: 11.5, y: 2.5, width: 6, height: 6, rx: 1 }), h('rect', { x: 2.5, y: 11.5, width: 6, height: 6, rx: 1 }), h('rect', { x: 11.5, y: 11.5, width: 6, height: 6, rx: 1 })],
-        products: [h('path', { d: 'm10 2.5 7 4v7l-7 4-7-4v-7l7-4Z' }), h('path', { d: 'm3 6.5 7 4 7-4M10 10.5v7' })],
-        'agent-center': [h('rect', { x: 4, y: 3.5, width: 12, height: 14, rx: 1.5 }), h('path', { d: 'M7 3.5v-1h6v1M7 8h6M7 11h6M7 14h4' })],
-        deliverables: [h('path', { d: 'M3 4.5h14v3H3zM4 7.5v9h12v-9M8 11h4m-2-2v5m-2-2 2 2 2-2' })],
-        runs: [h('circle', { cx: 10, cy: 10, r: 7.5 }), h('path', { d: 'M10 5.5v5l3.5 2' })],
-        'user-profile': [h('circle', { cx: 10, cy: 6.5, r: 3 }), h('path', { d: 'M3.5 17c.7-3.1 3.1-4.8 6.5-4.8s5.8 1.7 6.5 4.8' })],
-        erpnext: [h('rect', { x: 3, y: 2.5, width: 14, height: 15, rx: 1.5 }), h('path', { d: 'M6 6h8M6 9h8M6 12h3M11.5 12H14M6 15h3M11.5 15H14' })],
-      }[sceneId]
-      return h('svg', common, ...(shape ?? [h('circle', { cx: 10, cy: 10, r: 6 })]))
+      const common = { viewBox: '0 0 20 20', fill: 'none', stroke: 'currentColor', strokeWidth: 1.5,
+        strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': 'true', focusable: 'false' }
+      const shape = Object.hasOwn(sceneIcons, sceneId) ? sceneIcons[sceneId] : 'M16 10a6 6 0 1 1-12 0 6 6 0 0 1 12 0Z'
+      return h('svg', common, h('path', { d: shape }))
     }
 
     function updatePanelLayout(layout, panelId, action) {
@@ -905,10 +951,11 @@ window.__ModuleLoader__.load({
           .tl-dock-binding-details-content dd { margin:0 0 var(--tl-space-2); }
           .tl-dock-binding-details-content p { margin:0; }
           .tl-dock-binding-details-content header { display:flex; align-items:center; justify-content:space-between; gap:var(--tl-space-2); }
-          .tl-dock-binding-details-content button { flex:none; font:inherit; color:inherit; background:transparent; border:1px solid var(--tl-shell-line,var(--tl-theme-border)); border-radius:var(--tl-corner-radius); cursor:pointer; min-width:var(--tl-control-height); min-height:var(--tl-control-height); }
+          .tl-dock-binding-details-content button { display:inline-grid; place-items:center; flex:none; font:inherit; color:inherit; background:transparent; border:1px solid var(--tl-shell-line,var(--tl-theme-border)); border-radius:var(--tl-corner-radius); cursor:pointer; min-width:var(--tl-control-height); min-height:var(--tl-control-height); }
+          .tl-dock-binding-details-content button svg { display:block; width:var(--tl-icon-size,15px); height:var(--tl-icon-size,15px); }
         `),
         h('div', { className: 'tl-dock-binding-details-content', role: 'group', 'aria-label': '角色会话绑定详情' },
-          h('header', null, h('strong', null, '角色会话绑定'), h('button', { type: 'button', 'aria-label': '关闭绑定详情', onClick: () => { root.current.open = false; root.current.querySelector('summary').focus() } }, '×')),
+          h('header', null, h('strong', null, '角色会话绑定'), h('button', { type: 'button', 'aria-label': '关闭绑定详情', onClick: () => { root.current.open = false; root.current.querySelector('summary').focus() } }, actionIcon(closeActionPath))),
           h('dl', null, h('dt', null, '角色'), h('dd', null, `${roleLabel(roleId)} · ${roleId}`),
             h('dt', null, '会话 ID'), h('dd', null, status.sessionId || '未绑定'), h('dt', null, '工作区 ID'), h('dd', null, status.workspaceId || '未知'),
             h('dt', null, '归档'), h('dd', null, { archived: '已归档', unarchived: '未归档', unknown: '未知' }[status.archiveState]),
@@ -960,7 +1007,10 @@ window.__ModuleLoader__.load({
     }
 
     function defaultDockRecord(scene) {
-      const visiblePanels = scene.panels.filter(panel => panel.optional !== true)
+      const workflow = (scene.templateSceneId ?? scene.id) === 'agent-center'
+      const visiblePanels = scene.panels.filter(panel => panel.optional !== true && (!workflow || panel.id !== 'business-plan'))
+      const byId = new Map(visiblePanels.map(panel => [panel.id, panel]))
+      const hasPlan = byId.has('business-plan')
       const chat = visiblePanels.filter(panel => panel.type === 'native-chat')
       const business = visiblePanels.filter(panel => panel.type !== 'native-chat')
       const makeLeaf = (id, panels, size) => ({
@@ -970,16 +1020,17 @@ window.__ModuleLoader__.load({
       let orientation = 'HORIZONTAL'
       let activeGroup = '1'
       if (chat.length > 0 && business.length > 0 && scene.layoutProfile?.kind === 'collaboration_grid'
-        && ['business-main', 'files', 'preview', 'native-chat'].every(id => visiblePanels.some(panel => panel.id === id))) {
-        const byId = new Map(visiblePanels.map(panel => [panel.id, panel]))
+        && byId.size === (hasPlan ? 5 : 4)
+        && ['business-main', 'files', 'preview', 'native-chat'].every(id => byId.has(id))) {
         const leaf = (groupId, panelId, size) => makeLeaf(groupId, [byId.get(panelId)], size)
-        const row = (id, size, leftId, leftSize, rightId, rightSize) => ({
-          type: 'branch', size,
-          data: [leaf(`${id}a`, leftId, leftSize), leaf(`${id}b`, rightId, rightSize)],
-        })
+        const row = (size, ...data) => ({ type: 'branch', size, data })
         root = { type: 'branch', size: 100, data: [
-          row('top', 60, 'business-main', 75, 'files', 25),
-          row('bottom', 40, 'preview', 40, 'native-chat', 60),
+          row(hasPlan ? 50 : 60,
+            ...(hasPlan ? [leaf('top-plan', 'business-plan', 25)] : []),
+            leaf('topa', 'business-main', hasPlan ? 50 : 75), leaf('topb', 'files', 25)),
+          row(hasPlan ? 50 : 40,
+            leaf('bottoma', 'preview', hasPlan ? 25 : workflow ? 50 : 40),
+            leaf('bottomb', 'native-chat', hasPlan ? 75 : workflow ? 50 : 60)),
         ] }
         orientation = 'VERTICAL'
         activeGroup = 'topa'
@@ -987,9 +1038,9 @@ window.__ModuleLoader__.load({
         const split = scene.layoutProfile?.kind === 'assistant_lead' ? [32, 68] : [72, 28]
         root = { type: 'branch', data: [makeLeaf('1', business, split[0]), makeLeaf('2', chat, split[1])], size: 100 }
         if (scene.layoutProfile?.kind === 'assistant_lead') activeGroup = '2'
-      } else root = { type: 'branch', data: [makeLeaf('1', scene.panels, 100)], size: 100 }
+      } else root = { type: 'branch', data: [makeLeaf('1', visiblePanels, 100)], size: 100 }
       return {
-        version: 2, closedPanelIds: scene.panels.filter(panel => panel.optional === true).map(panel => panel.id), legacyV1Snapshot: null,
+        version: 2, closedPanelIds: scene.panels.filter(panel => !visiblePanels.includes(panel)).map(panel => panel.id), legacyV1Snapshot: null,
         migration: { status: 'default', reason: 'client-reset-default' },
         dockview: {
           grid: { root, width: 100, height: 100, orientation },
@@ -1025,6 +1076,13 @@ window.__ModuleLoader__.load({
               for (const panel of scene.panels) {
                 if (!['business-iframe', 'placeholder', 'native-chat', 'native-workspace', 'erpnext-status'].includes(panel.type)) throw new Error('scene-panel-type-unknown')
                 if (typeof panel.id !== 'string' || !panel.id || typeof panel.title !== 'string') throw new Error('scene-config-invalid')
+                if (Object.hasOwn(panel, 'componentId') && !config.componentCatalog?.some(component =>
+                  component.id === panel.componentId
+                  && (/^component-[a-z0-9-]{1,38}$/.test(panel.id)
+                    ? component.allowStandalone === true && typeof scene.templateSceneId === 'string' && scene.templateSceneId !== scene.id
+                    : component.templateSceneId === scene.templateSceneId && component.panelId === panel.id)
+                  && component.type === panel.type && component.path === panel.path
+                  && component.category === panel.category)) throw new Error('scene-component-invalid')
               }
             }
             return { ...config, sessionBindings: config.sessionBindings ?? {} }
@@ -1046,7 +1104,17 @@ window.__ModuleLoader__.load({
           if (current) {
             saved = { ...saved, activeSceneId: current.activeSceneId, roleByScene: { ...saved.roleByScene, ...current.roleByScene }, layouts: { ...saved.layouts, ...current.layouts },
               businessPath: current.businessPath, businessPathsByScene: { ...saved.businessPathsByScene, ...current.businessPathsByScene } }
-            savedDockLayouts = { ...savedDockLayouts, scenes: { ...savedDockLayouts.scenes, ...current.dockLayouts.scenes } }
+            const previousScenes = new Map(current.config.scenes.map(scene => [scene.id, scene]))
+            savedDockLayouts = { ...savedDockLayouts, scenes: Object.fromEntries(config.scenes.map(scene => {
+              const incoming = savedDockLayouts.scenes[scene.id]
+              const previous = current.dockLayouts.scenes[scene.id]
+              if (!previous || JSON.stringify(previousScenes.get(scene.id)?.panels) !== JSON.stringify(scene.panels)) {
+                return [scene.id, incoming]
+              }
+              const { preset, ...layout } = previous
+              const retainedPreset = dockPersistedRevision < dockRevision ? preset : incoming?.preset
+              return [scene.id, { ...layout, ...(retainedPreset ? { preset: retainedPreset } : {}) }]
+            })) }
           }
           if (!config.scenes.some(scene => scene.id === saved.activeSceneId)) throw new Error()
           const sceneIds = new Set(config.scenes.map(scene => scene.id))
@@ -1191,7 +1259,12 @@ window.__ModuleLoader__.load({
       publish(next)
       if (options?.select !== false) {
         layoutApi?.selectPanel('scene-workbench')
-        requestScenePanelFocus(target.sceneId, target.panelId)
+        if (workflowEntry && isStandardWorkflowScene(snapshot.config, scene)) {
+          const panelId = proposalHref ? 'business-plan' : target.panelId
+          if (!dockRenderContexts.get(target.sceneId)?.selectPanel?.(panelId)) {
+            requestScenePanelFocus(target.sceneId, panelId)
+          }
+        } else requestScenePanelFocus(target.sceneId, target.panelId)
       }
       void persistState(next)
       return true
@@ -1445,7 +1518,7 @@ window.__ModuleLoader__.load({
             if (typeof onSceneSelect === 'function') onSceneSelect(scene.id)
             else navigateScene(scene.id)
           },
-        }, h('span', { className: 'tl-scene-tab-icon' }, sceneIcon(scene.id)),
+        }, h('span', { className: 'tl-scene-tab-icon' }, sceneIcon(scene.templateSceneId ?? scene.id)),
         h('span', { className: 'tl-scene-tab-label' }, scene.label))))),
         tabMenu ? h('div', { ref: tabMenuRoot, className: 'tl-scene-tab-menu', role: 'menu', 'aria-label': '场景标签操作' },
           h('button', { type: 'button', role: 'menuitem', onClick: () => {
@@ -1454,6 +1527,13 @@ window.__ModuleLoader__.load({
             setTabMenu(null); tabMenu.trigger.focus?.()
           } }, pinned.includes(tabMenu.sceneId) ? '取消固定' : '固定标签'),
           h('button', { type: 'button', role: 'menuitem', disabled: true, title: '待桌面提供完整场景窗口能力；当前仅支持单面板浮出。' }, '独立打开场景'),
+          ...(dockRenderContexts.get(tabMenu.sceneId)?.closedPanels ?? []).map(panel => h('button', {
+            key: panel.id, type: 'button', role: 'menuitem', onClick: () => {
+              dockRenderContexts.get(tabMenu.sceneId)?.selectPanel(panel.id)
+              setTabMenu(null)
+              tabMenu.trigger.focus?.()
+            },
+          }, `恢复面板：${panel.title}`)),
           h('p', null, '独立场景窗口能力尚未提供。')) : null,
         sceneNavigationItems(state.config).some(scene => scene.navigationGroup === 'tools') ? h(React.Fragment, null,
           h('button', { type: 'button', className: 'tl-scene-layout-trigger', 'aria-label': '工具', 'aria-haspopup': 'true',
@@ -1479,7 +1559,10 @@ window.__ModuleLoader__.load({
           h('div', { id: layoutMenuId, className: 'tl-layout-menu-popover', popover: 'auto', role: 'group', 'aria-label': '工作区布局',
             onToggle: event => setLayoutMenuOpen(event.newState === 'open') },
             h('span', { className: 'tl-layout-menu-title' }, '工作区布局'),
-            h('button', { type: 'button', onClick: runLayoutAction(layoutContext.resetLayout) }, '应用推荐布局'),
+            h('button', { type: 'button', onClick: runLayoutAction(layoutContext.saveLayoutPreset) }, '保存当前为预设'),
+            h('button', { type: 'button', disabled: !state.dockLayouts?.scenes?.[state.activeSceneId]?.preset,
+              onClick: runLayoutAction(layoutContext.applyLayoutPreset) }, '使用已保存预设'),
+            h('button', { type: 'button', onClick: runLayoutAction(layoutContext.resetLayout) }, '恢复默认预设'),
             ...['business', 'resources', 'assistant'].flatMap(category => {
               const panels = (state.config?.scenes.find(scene => scene.id === state.activeSceneId)?.panels ?? [])
                 .filter(panel => (panel.category ?? (panel.type === 'native-chat' ? 'assistant' : panel.type === 'native-workspace' || ['files', 'preview'].includes(panel.id) ? 'resources' : 'business')) === category && (panel.optional !== true || panel.type === 'native-workspace'))
@@ -1958,7 +2041,7 @@ window.__ModuleLoader__.load({
       return workflowRequest
     }
 
-    function WorkflowCanvasPane() {
+    function WorkflowCanvasPane({ refreshRequest } = {}) {
       const modelGroups = useRoleModelGroups('center')
       const [revision, setRevision] = React.useState(0)
       const [module, setModule] = React.useState({ status: 'loading', Component: null })
@@ -1978,7 +2061,7 @@ window.__ModuleLoader__.load({
       return h('div', { className: 'tl-workflow-canvas-pane', 'data-workflow-canvas': 'true' },
         modelGroups.length ? null : h('p', { className: 'tl-workflow-model-hint', role: 'status' },
           '中心助手尚无可用模型目录；请选择已连接的中心助手模型，不会自动创建会话。'),
-        h(module.Component, { modelGroups }))
+        h(module.Component, { modelGroups, refreshRequest }))
     }
 
     function BusinessPaneTabs({ panel, path, proposalHref, refreshKey, sceneId, viewIntent, fitContainer = false }) {
@@ -2813,7 +2896,7 @@ window.__ModuleLoader__.load({
           h('span', null, '拖放文件以添加到会话草稿')) : null,
         fileDropStatus ? h('div', { className: `tl-chat-file-drop-status${fileDropStatus.ok ? ' is-success' : ' is-error'}`,
           role: fileDropStatus.ok ? 'status' : 'alert', 'aria-live': 'polite' },
-        h('span', null, fileDropStatus.text), h('button', { type: 'button', 'aria-label': '关闭文件导入提示', onClick: () => setFileDropStatus(null) }, '×')) : null)
+        h('span', null, fileDropStatus.text), h('button', { type: 'button', 'aria-label': '关闭文件导入提示', onClick: () => setFileDropStatus(null) }, actionIcon(closeActionPath))) : null)
     }
 
     function retainRoleSession(sessions, roleId, sessionId) {
@@ -3228,6 +3311,14 @@ window.__ModuleLoader__.load({
       for (const listener of dockActionListeners.get(sceneId) ?? []) listener()
     }
 
+    const closeActionPath = 'M6 6l12 12M18 6L6 18'
+    function actionIcon(path) {
+      return h('svg', {
+        viewBox: '0 0 24 24', 'aria-hidden': 'true', focusable: 'false', fill: 'none',
+        stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round', strokeLinejoin: 'round',
+      }, h('path', { d: path }))
+    }
+
     function DockGroupActions({ sceneId, ...groupProps }) {
       const state = useSnapshot()
       const [, setRevision] = React.useState(0)
@@ -3246,7 +3337,6 @@ window.__ModuleLoader__.load({
         action?.()
       }
       const stopGroupActivation = event => event?.stopPropagation?.()
-      const actionIcon = path => h('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true', fill: 'none', stroke: 'currentColor', strokeWidth: 1.5 }, h('path', { d: path }))
       const openPanelCount = (() => {
         const dockApi = dockviewApis.get(sceneId)
         const panelsRecord = dockApi?.toJSON?.()?.panels
@@ -3262,7 +3352,7 @@ window.__ModuleLoader__.load({
           'aria-label': context.isPanelMaximized?.(panel.id) ? `还原${label}` : `展开${label}`,
           onPointerDown: stopGroupActivation, onMouseDown: stopGroupActivation,
           onClick: runWithoutActivatingGroup(() => context.toggleMaximize?.(panel.id)),
-        }, actionIcon(context.isPanelMaximized?.(panel.id) ? 'M8 8V4h12v12h-4M4 8h12v12H4z' : 'M4 10V4h6M14 4h6v6M20 14v6h-6M10 20H4v-6'), context.isPanelMaximized?.(panel.id) ? '还原' : '展开') : null,
+        }, actionIcon(context.isPanelMaximized?.(panel.id) ? 'M4 10h6V4M14 4v6h6M20 14h-6v6M10 20v-6H4' : 'M4 10V4h6M14 4h6v6M20 14v6h-6M10 20H4v-6'), context.isPanelMaximized?.(panel.id) ? '还原' : '展开') : null,
         !context.narrow ? h('button', {
           type:'button', 'data-pane-action':'local-expand', title:context.isPanelLocallyExpanded?.(panel.id) ? `收起局部展开${label}` : `局部展开${label}`,
           'aria-label':context.isPanelLocallyExpanded?.(panel.id) ? `收起局部展开${label}` : `局部展开${label}`,
@@ -3287,10 +3377,10 @@ window.__ModuleLoader__.load({
             const view = panel?.ownerDocument?.defaultView ?? window
             view.dispatchEvent(new view.CustomEvent('tradeloom:open-agent-capabilities', { detail: { roleId: chatRoleId ?? '' } }))
           }) }, actionIcon('M12 3l2.4 5 5.6.8-4 3.9.9 5.5-4.9-2.6-4.9 2.6.9-5.5-4-3.9 5.6-.8z'), '助手能力') : null,
-        openPanelCount > 1 ? h('button', { type:'button', 'data-pane-action':'close',
+        openPanelCount > 1 && !floatingPanel ? h('button', { type:'button', 'data-pane-action':'close',
           title:`关闭${label}`, 'aria-label':`关闭${label}`,
           onPointerDown: stopGroupActivation, onMouseDown: stopGroupActivation,
-          onClick: runWithoutActivatingGroup(() => context.closePanel?.(panel.id)) }, actionIcon('M6 6l12 12M18 6L6 18'), '关闭面板') : null,
+          onClick: runWithoutActivatingGroup(() => context.closePanel?.(panel.id)) }, actionIcon(closeActionPath), '关闭面板') : null,
         ...(context.closedPanels ?? []).map(closed => h('button', { key: `restore-${closed.id}`, type:'button',
           'data-pane-action': `restore-${closed.id}`, title: `恢复${closed.title}`, 'aria-label': `恢复${closed.title}`,
           onPointerDown: stopGroupActivation, onMouseDown: stopGroupActivation,
@@ -3321,7 +3411,7 @@ window.__ModuleLoader__.load({
                 left: `${Math.max(8, Math.min(rect.right - bounds.width, viewport.innerWidth - bounds.width - 8))}px`,
               })
             })
-          } }, '⋯'),
+          } }, actionIcon('M5 12h1m5 0h1m5 0h1')),
         h('div', { id: overflowId, className: 'tl-dock-overflow-menu', popover: 'auto', 'aria-label': `${label}面板操作菜单`,
           onClick: event => { if (event.target.closest('button')) event.currentTarget.hidePopover() } }, ...actions),
         chatRoleId ? h(RoleBindingDetails, { state, roleId: chatRoleId }) : null)
@@ -3486,7 +3576,9 @@ window.__ModuleLoader__.load({
       let content = null
       if (panel.type === 'business-iframe') {
         const path = panel.id === 'business-main' ? state.businessPathsByScene?.[sceneId] ?? panel.path : panel.path
-        const proposalHref = path === '/agent-center' && panel.id === 'business-main' ? state.proposalHrefsByScene?.[sceneId] ?? '' : ''
+        const standardWorkflow = isStandardWorkflowScene(state.config, scene)
+        const proposalPanelId = standardWorkflow ? 'business-plan' : 'business-main'
+        const proposalHref = path === '/agent-center' && panel.id === proposalPanelId ? state.proposalHrefsByScene?.[sceneId] ?? '' : ''
         if (panel.id === 'preview' && selection?.kind === 'artifact' && selection.previewMime === 'text/markdown') {
           content = h(ArtifactMarkdownPreview, { key: `${sceneId}:${selectionGeneration}:${selection.id}`,
             sceneId, selection, generation: selectionGeneration, activeScene,
@@ -3494,6 +3586,8 @@ window.__ModuleLoader__.load({
             requestFileFocus: context.requestFileFocus,
             openFilesPanel: context.openFilesPanel,
             closePanel: () => context.closePanel?.(panel.id) })
+        } else if (standardWorkflow && panel.id === 'business-main' && path === '/agent-center') {
+          content = h(WorkflowCanvasPane, { refreshRequest: refreshKey })
         } else content = Array.isArray(panel.frontendTabs) && panel.frontendTabs.some(tab => tab.view === 'workflow-canvas')
           ? h(BusinessPaneTabs, { panel, path, proposalHref, refreshKey, sceneId, viewIntent: state.businessViewIntentsByScene?.[sceneId] })
           : h(BusinessFrame, { panel, path, proposalHref, refreshKey })
@@ -3558,6 +3652,7 @@ window.__ModuleLoader__.load({
       const dropIntentObserverRef = React.useRef(null)
       const maximizeRestoreLayoutRef = React.useRef(null)
       const lastWideLayoutRef = React.useRef(null)
+      const savingPresetRef = React.useRef(false)
       const layoutTransitionRef = React.useRef(false)
       const initialGeometryPendingRef = React.useRef(null)
       const [width, setWidth] = React.useState(0)
@@ -3845,7 +3940,7 @@ window.__ModuleLoader__.load({
             if (neighbor && saved.flat && saved.slotWeight > 0 && saved.slotWeight < 1) {
               const dimension = saved.dimension
               const direction = dimension === 'width' ? (neighbor.index < saved.index ? 'right' : 'left') : (neighbor.index < saved.index ? 'below' : 'above')
-              const groupSize = item => serializedLeafByGroup(api.toJSON().grid?.root, item.group.id)?.size ?? 0
+              const groupSize = item => findSerializedLeafByGroupId(api.toJSON().grid?.root, item.group.id)?.size ?? 0
               const total = siblings.reduce((sum, item) => sum + groupSize(item), 0)
               const absentWeight = saved.siblings.filter(item => !groups.some(group => group.id === item.id)).reduce((sum, item) => sum + item.weight, 0)
               const effectiveWeight = saved.slotWeight / (1 - absentWeight)
@@ -3865,7 +3960,7 @@ window.__ModuleLoader__.load({
               const {dimension,weight,siblings,total} = origin.resize
               const groups = [panel.api.group, ...siblings.map(item => item.group)]
               const weights = [weight, ...siblings.map(item => (1 - weight) * item.size / total)]
-              const currentSizes = () => groups.map(item => serializedLeafByGroup(api.toJSON().grid?.root, item.id)?.size ?? NaN)
+              const currentSizes = () => groups.map(item => findSerializedLeafByGroupId(api.toJSON().grid?.root, item.id)?.size ?? NaN)
               const available = currentSizes().reduce((sum, size) => sum + size, 0)
               const targets = weights.map(weight => available * weight)
               // Splitview distributes its inter-group margins evenly across visible views.
@@ -3902,9 +3997,9 @@ window.__ModuleLoader__.load({
         if (panel.api.location?.type !== 'grid') { setError('请先收回独立窗口。'); return }
         const liveLayout = api.toJSON()
         const layout = origins.size ? origins.values().next().value.layout : liveLayout
-        const group = serializedGroupForPanel(layout.grid?.root, panel.id)
+        const group = findSerializedLeafForPanel(layout.grid?.root, panel.id)?.data
         if (!group) { setError('无法确定面板原位置。'); return }
-        const origin = {groupId:group.id, views:[...group.views], anchor:floatingReturnAnchor(layout.grid,panel.id), layout:JSON.parse(JSON.stringify(layout)), phase:'open'}
+        const origin = {groupId:group.id, views:[...group.views], anchor:captureFloatingPanelReturnAnchor(layout.grid,panel.id), layout:JSON.parse(JSON.stringify(layout)), phase:'open'}
         origins.set(panel.id, origin); floatingOriginsByScene.set(scene.id, origins)
         try { api.addFloatingGroup(panel); if (panel.api.location?.type !== 'floating') throw new Error('float incomplete'); origin.openGrid = JSON.stringify(api.toJSON().grid) }
         catch { origins.delete(panel.id); if (!origins.size) floatingOriginsByScene.delete(scene.id); setError('无法悬浮面板，请重试。') }
@@ -3927,8 +4022,8 @@ window.__ModuleLoader__.load({
         }
         if (panel.api.location?.type === 'floating') {
           const restore = snapshot.dockLayouts?.scenes?.[scene.id]?.floatingRestore
-          if (restore?.dockview && comparableDockview(currentApi.toJSON(), panel.id)
-            === comparableDockview(restore.dockview, panel.id)) {
+          if (restore?.dockview && serializeDockGridWithoutPanel(currentApi.toJSON(), panel.id)
+            === serializeDockGridWithoutPanel(restore.dockview, panel.id)) {
             try {
               currentApi.fromJSON(restore.dockview, { reuseExistingPanels: true })
               syncClosedPanels(currentApi)
@@ -3947,7 +4042,7 @@ window.__ModuleLoader__.load({
         const width = Math.round(Math.min(window.innerWidth * 0.56, window.innerWidth - 24))
         const height = Math.round(Math.min(window.innerHeight * 0.94, window.innerHeight - 16))
         const original = currentApi.toJSON()
-        const returnGroup = serializedGroupForPanel(original.grid?.root, panel.id)
+        const returnGroup = findSerializedLeafForPanel(original.grid?.root, panel.id)?.data
         pendingPopoutRestoreByScene.set(scene.id, {
           panelId: panel.id,
           dockview: JSON.parse(JSON.stringify(original)),
@@ -3976,7 +4071,7 @@ window.__ModuleLoader__.load({
         })).then(opened => {
           if (opened !== false) {
             const restore = pendingPopoutRestoreByScene.get(scene.id)
-            if (restore) restore.openLayout = comparableDockview(currentApi.toJSON(), panel.id)
+            if (restore) restore.openLayout = serializeDockGridWithoutPanel(currentApi.toJSON(), panel.id)
           }
           if (opened === false && pendingPopoutRestoreByScene.has(scene.id)) {
             pendingPopoutRestoreByScene.delete(scene.id)
@@ -3996,12 +4091,12 @@ window.__ModuleLoader__.load({
             || currentApi.getPopouts?.().length || !activeWideViewport()) return
           pendingPopoutRestoreByScene.delete(scene.id)
           try {
-            const mergedReturnLayout = mergePopoutIntoGridSnapshot(restore.returnLayout, restore)
+            const mergedReturnLayout = reconstructPopoutReturnLayout(restore.returnLayout, restore)
             // Hidden placeholder sizes are not the original split ratios: its
             // visible sibling expands while the pane is outside the window.
             // Restore the original snapshot only when the remaining layout is
             // exactly the post-open baseline (including the live panel set).
-            const unchanged = restore.openLayout && restore.openLayout === comparableDockview(restore.returnLayout, restore.panelId)
+            const unchanged = restore.openLayout && restore.openLayout === serializeDockGridWithoutPanel(restore.returnLayout, restore.panelId)
             const returnLayout = unchanged ? restore.dockview : mergedReturnLayout
             if (returnLayout && !unchanged) {
               // An empty hidden slot has a cached size while its siblings fill
@@ -4052,8 +4147,9 @@ window.__ModuleLoader__.load({
           if (event.target?.matches?.('iframe[data-tradeloom-business-frame]')) notifyBusinessPopoutFramesChanged()
         }
         if (messageHandler) popoutWindow.addEventListener('message', messageHandler)
+        popoutWindow.document.addEventListener('click', onDockTabClose, true)
         popoutWindow.document.addEventListener('load', onFrameLoad, true)
-        popoutListenersRef.current.set(popoutWindow, { messageHandler, onFrameLoad })
+        popoutListenersRef.current.set(popoutWindow, { messageHandler, onDockTabClose, onFrameLoad })
         syncPopoutDocumentTheme(popoutWindow)
         scheduleOwnerDocumentRefresh(popoutWindow)
         notifyBusinessPopoutFramesChanged()
@@ -4063,6 +4159,7 @@ window.__ModuleLoader__.load({
         const listeners = popoutListenersRef.current.get(popoutWindow)
         if (!listeners) return
         try { if (listeners.messageHandler) popoutWindow.removeEventListener('message', listeners.messageHandler) } catch { /* Closed window. */ }
+        try { popoutWindow.document.removeEventListener('click', listeners.onDockTabClose, true) } catch { /* Closed window. */ }
         try { popoutWindow.document.removeEventListener('load', listeners.onFrameLoad, true) } catch { /* Closed window. */ }
         popoutListenersRef.current.delete(popoutWindow)
         scheduleOwnerDocumentRefresh(window)
@@ -4098,7 +4195,9 @@ window.__ModuleLoader__.load({
           && panel.roleId !== roleId && closedPanelIds.includes(panel.id) && Boolean(state.sessionBindings[panel.roleId])),
         saveError: state.dockSaveErrors?.[scene.id], error,
         refresh: panelId => refreshScenePanel(scene.id, panelId),
-        resetLayout: () => resetLayout(), selectPanel: panelId => selectPanel(panelId),
+        resetLayout: () => applyLayoutPreset(snapshot.dockDefaults?.[scene.id]), selectPanel: panelId => selectPanel(panelId),
+        saveLayoutPreset,
+        applyLayoutPreset: () => applyLayoutPreset(snapshot.dockLayouts?.scenes?.[scene.id]?.preset),
         addAssistantPanel: panelId => addAssistantPanel(panelId),
         retrySave: () => { void persistCurrentLayout() },
         isPanelMaximized: panelId => {
@@ -4118,10 +4217,7 @@ window.__ModuleLoader__.load({
           const panel = currentApi?.getPanel(panelId)
           toggleDockPanel(panel)
         },
-        closePanel: panelId => {
-          if (localPanelExpansionRef.current?.activePanelId === panelId) localPanelExpansionRef.current.restore()
-          return apiRef.current?.getPanel(panelId)?.api?.close?.()
-        },
+        closePanel,
         openFilesPanel: () => selectPanel('files'),
       })
 
@@ -4264,7 +4360,7 @@ window.__ModuleLoader__.load({
           || !activeWideViewport() || narrowRef.current || currentApi.hasMaximizedGroup?.()) return Promise.resolve(false)
         const origins = floatingOriginsByScene.get(scene.id)
         if (origins?.size) {
-          const projected = projectFloatingLayout(currentApi.toJSON(), origins)
+          const projected = projectFloatingGroupsIntoSavedGrid(currentApi.toJSON(), origins)
           if (!projected) { setError('布局已变化，无法安全保存悬浮面板；请先收回后重试。'); return Promise.resolve(false) }
           return queueDockLayoutSave(scene.id, projected)
         }
@@ -4743,15 +4839,60 @@ window.__ModuleLoader__.load({
         }
       }
 
+      function saveNarrowDockChange(currentApi) {
+        const dockview = currentApi.toJSON()
+        if (!dockview.floatingGroups?.length && !dockview.popoutGroups?.length) {
+          lastWideLayoutRef.current = dockview
+          void queueDockLayoutSave(scene.id, dockview)
+        }
+        rememberRestorableLayout(currentApi)
+      }
+
+      function closePanel(panelId) {
+        const currentApi = apiRef.current
+        const current = currentApi?.getPanel(panelId)
+        if (current?.api.location?.type !== 'grid'
+          || currentApi.panels.filter(panel => panel.api.location?.type === 'grid').length <= 1) return
+        localPanelExpansionRef.current?.restore()
+        if (currentApi.hasMaximizedGroup()) restoreMaximizedLayout(currentApi)
+        const panel = currentApi.getPanel(panelId)
+        const position = captureClosedPanelPosition(currentApi.toJSON().grid, panelId)
+        const record = snapshot.dockLayouts?.scenes?.[scene.id]
+        const positions = pendingClosedPanelPositions.get(scene.id) ?? record?.closedPanelPositions
+        if (position) pendingClosedPanelPositions.set(scene.id, { ...positions, [panelId]: position })
+        panel?.api.close()
+        if (narrowRef.current) {
+          saveNarrowDockChange(currentApi)
+          const activePanel = currentApi.activePanel
+          activePanel?.api.maximize()
+        }
+      }
+
+      function onDockTabClose(event) {
+        if (!event.target?.closest?.('.dv-default-tab-action')) return
+        const panelId = event.target.closest('[data-tab-panel-id]')?.dataset.tabPanelId
+        if (!panelId) return
+        event.preventDefault()
+        event.stopPropagation()
+        closePanel(panelId)
+      }
+
       function selectPanel(panelId) {
         const currentApi = apiRef.current
         if (!currentApi) return false
-        if (!currentApi.getPanel(panelId)) reopenScenePanel(scene.id, panelId)
+        const reopening = !currentApi.getPanel(panelId)
+        if (reopening) {
+          if (currentApi.hasMaximizedGroup()) restoreMaximizedLayout(currentApi)
+          reopenScenePanel(scene.id, panelId)
+        }
         const panel = currentApi.getPanel(panelId)
         if (!panel) return false
         panel.api.setActive()
         setActivePanelId(panelId)
-        if (narrowRef.current) currentApi.maximizeGroup(panel)
+        if (narrowRef.current) {
+          if (reopening) saveNarrowDockChange(currentApi)
+          currentApi.maximizeGroup(panel)
+        }
         return true
       }
 
@@ -4761,25 +4902,67 @@ window.__ModuleLoader__.load({
         return reopenScenePanel(scene.id, panelId)
       }
 
-      function resetLayout() {
+      function prepareLayoutPreset() {
         const currentApi = apiRef.current
-        const defaultRecord = snapshot.dockDefaults?.[scene.id]
-        if (!currentApi || !defaultRecord) return
-        localPanelExpansionRef.current?.restore()
-        maximizeRestoreLayoutRef.current = null
-        if (currentApi.hasMaximizedGroup()) currentApi.exitMaximizedGroup()
-        narrowRef.current = narrow
-        try { currentApi.fromJSON(defaultRecord.dockview) }
-        catch { setError('推荐布局无法应用，请重试。'); return }
-        syncClosedPanels(currentApi)
-        setError('')
-        const selected = currentApi.activePanel ?? currentApi.getPanel(scene.panels[0]?.id)
-        if (selected) {
-          selected.api.setActive()
-          setActivePanelId(selected.id)
-          if (narrowRef.current) currentApi.maximizeGroup(selected)
+        if (!currentApi || !restoredRef.current || !activeViewport() || layoutTransitionRef.current) return undefined
+        if (pendingPopoutRestoreByScene.has(scene.id) || currentApi.getPopouts?.().length
+          || currentApi.toJSON().floatingGroups?.length || floatingOriginsByScene.get(scene.id)?.size) {
+          setError('请先收回悬浮面板和独立窗口，再使用布局预设。')
+          return undefined
         }
-        if (!narrow) void persistCurrentLayout()
+        localPanelExpansionRef.current?.restore()
+        return currentApi
+      }
+
+      async function saveLayoutPreset() {
+        if (savingPresetRef.current) return
+        const currentApi = prepareLayoutPreset()
+        if (!currentApi) return
+        const dockview = currentApi.hasMaximizedGroup() && maximizeRestoreLayoutRef.current || currentApi.toJSON()
+        const current = buildDockLayoutRecord(scene.id, dockview)
+        const { closedPanelIds, closedPanelPositions, preset: previousPreset } = current
+        const preset = { dockview: current.dockview, closedPanelIds, ...(closedPanelPositions ? { closedPanelPositions } : {}) }
+        savingPresetRef.current = true
+        try {
+          if (await queueDockLayoutSave(scene.id, dockview, preset)) { setError(''); return }
+          const scenes = snapshot.dockLayouts?.scenes
+          if (scenes?.[scene.id]?.preset === preset) {
+            const record = { ...scenes[scene.id] }
+            if (previousPreset) record.preset = previousPreset
+            else delete record.preset
+            publish({ dockLayouts: { version: 2, scenes: { ...scenes, [scene.id]: record } } })
+          }
+        } finally { savingPresetRef.current = false }
+      }
+
+      function applyLayoutPreset(preset) {
+        if (!preset?.dockview || savingPresetRef.current) return
+        const currentApi = prepareLayoutPreset()
+        if (!currentApi) return
+        const wasMaximized = currentApi.hasMaximizedGroup()
+        const previous = wasMaximized && maximizeRestoreLayoutRef.current || currentApi.toJSON()
+        let applied = false
+        layoutTransitionRef.current = true
+        try {
+          if (wasMaximized) currentApi.exitMaximizedGroup()
+          currentApi.fromJSON(preset.dockview, { reuseExistingPanels: true })
+          applied = true
+        } catch {
+          currentApi.fromJSON(previous, { reuseExistingPanels: true })
+          setError('布局预设无法应用，已保留当前布局。')
+        } finally { layoutTransitionRef.current = false }
+        if (applied) {
+          pendingClosedPanelPositions.set(scene.id, preset.closedPanelPositions ?? {})
+          syncClosedPanels(currentApi)
+          setError('')
+          lastWideLayoutRef.current = currentApi.toJSON()
+          void queueDockLayoutSave(scene.id, lastWideLayoutRef.current)
+        }
+        maximizeRestoreLayoutRef.current = null
+        if (narrowRef.current || wasMaximized && !applied) {
+          rememberRestorableLayout(currentApi, narrowRef.current)
+          currentApi.activePanel?.api.maximize()
+        }
       }
 
       const panels = scene.panels
@@ -4794,7 +4977,7 @@ window.__ModuleLoader__.load({
             onChange: event => selectPanel(event.currentTarget.value),
           }, panels.map(panel => h('option', { key: panel.id, value: panel.id }, `${panel.title}${closedPanels.some(item => item.id === panel.id) ? '（已关闭）' : ''}`)))) : null,
           toolbarError ? h('span', { role: 'alert', className: 'tl-dock-layout-error' }, toolbarError) : null) : null,
-        h('div', { className: 'tl-dockview-host', ref: hostRef }, h(DockviewReact, {
+        h('div', { className: 'tl-dockview-host', ref: hostRef, onClickCapture: onDockTabClose }, h(DockviewReact, {
           components: Components,
           rightHeaderActionsComponent: stableDockGroupActions(scene.id),
           onReady,
@@ -4808,7 +4991,9 @@ window.__ModuleLoader__.load({
             smallWidthBoundary: 160,
             smallHeightBoundary: 130,
           } : undefined,
-          getTabContextMenuItems: () => [],
+          getTabContextMenuItems: () => scene.panels
+            .filter(panel => panel.optional !== true && !apiRef.current?.getPanel(panel.id))
+            .map(panel => ({ label: `恢复面板：${panel.title}`, action: () => selectPanel(panel.id) })),
           className: 'tl-dockview-theme dockview-spaced',
           proportionalLayout: true,
           theme: dockviewTheme(activeColorScheme),
@@ -4965,7 +5150,7 @@ window.__ModuleLoader__.load({
       React.useEffect(() => {
         void loadConfig().catch(() => {})
         let live = true
-        void requestDockview().then(module => { if (live) setDockviewModule(module) })
+        void loadDockviewChunk().then(module => { if (live) setDockviewModule(module) })
           .catch(() => { if (live) setDockviewError('工作区组件暂时无法加载，请重试。') })
         return () => { live = false }
       }, [])
@@ -4974,7 +5159,7 @@ window.__ModuleLoader__.load({
         h('button', { type: 'button', onClick: () => { void loadConfig(true).catch(() => {}) } }, '重试读取场景'))
       if (!dockviewModule) return h('main', { className: 'tl-workbench-loading', 'aria-label': '工作场景' },
         h('p', { role: dockviewError ? 'alert' : 'status' }, dockviewError || '正在准备工作区组件…'),
-        dockviewError ? h('button', { type: 'button', onClick: () => { setDockviewError(''); void requestDockview().then(setDockviewModule).catch(() => setDockviewError('工作区组件暂时无法加载，请重试。')) } }, '重试加载') : null)
+        dockviewError ? h('button', { type: 'button', onClick: () => { setDockviewError(''); void loadDockviewChunk().then(setDockviewModule).catch(() => setDockviewError('工作区组件暂时无法加载，请重试。')) } }, '重试加载') : null)
       const scene = state.config.scenes.find(item => item.id === state.activeSceneId)
       const visited = new Set([...(state.visitedScenes ?? []), scene.id])
       const sceneLabel = scene.label
@@ -5164,7 +5349,7 @@ window.__ModuleLoader__.load({
           .tl-dock-group-actions button svg { display:none; width:var(--tl-icon-size); height:var(--tl-icon-size); flex:none; }
           .tl-dock-group-actions button { box-sizing:border-box; min-height:var(--tl-control-height); min-width:var(--tl-control-height); padding:var(--tl-space-1) var(--tl-space-2); border:1px solid transparent; border-radius:var(--tl-corner-radius); background:transparent; color:var(--tl-muted); font-family:inherit; font-size:var(--tl-font-compact); font-weight:inherit; line-height:1.2; cursor:pointer; }
           .tl-dock-inline-actions button { display:inline-flex; align-items:center; justify-content:center; width:calc(var(--tl-dock-tab-height) - 4px); height:calc(var(--tl-dock-tab-height) - 4px); min-width:0; min-height:0; padding:2px; font-size:0; }
-          .tl-dock-inline-actions button svg { display:block; }
+          .tl-dock-inline-actions button svg, .tl-dock-group-actions .tl-dock-overflow-trigger svg { display:block; }
           @container (max-width: 440px) {
             .tl-dock-group-actions, .tl-dock-inline-actions { gap:0; padding-inline:0; }
             .tl-dock-inline-actions button { display:inline-flex; align-items:center; justify-content:center; font-size:0; padding:var(--tl-space-1); }
@@ -5418,7 +5603,8 @@ window.__ModuleLoader__.load({
           .tl-chat-file-drop-overlay { position:absolute; z-index:30; inset:var(--tl-space-4); display:grid; place-items:center; border:2px dashed var(--tl-accent); border-radius:var(--tl-corner-radius); background:color-mix(in srgb, var(--tl-accent) 12%, var(--tl-surface) 82%); color:var(--tl-ink); font-size:var(--tl-font-body); font-weight:600; pointer-events:none; }
           .tl-chat-file-drop-status { position:absolute; z-index:31; inset:auto var(--tl-space-4) var(--tl-space-4); display:flex; align-items:center; justify-content:space-between; gap:var(--tl-space-4); padding:var(--tl-space-3) var(--tl-space-4); border:1px solid var(--tl-border); border-radius:var(--tl-corner-radius); background:var(--tl-surface-raised, var(--tl-surface)); color:var(--tl-ink); box-shadow:0 5px 16px rgb(0 0 0 / 20%); font-size:var(--tl-font-compact); }
           .tl-chat-file-drop-status.is-error { border-color:var(--tl-danger); }
-          .tl-chat-file-drop-status button { min-width:var(--tl-control-height); min-height:var(--tl-control-height); border:0; border-radius:var(--tl-corner-radius); background:transparent; color:inherit; cursor:pointer; }
+          .tl-chat-file-drop-status button { display:inline-grid; place-items:center; flex:none; min-width:var(--tl-control-height); min-height:var(--tl-control-height); border:0; border-radius:var(--tl-corner-radius); background:transparent; color:inherit; cursor:pointer; }
+          .tl-chat-file-drop-status button svg { display:block; width:var(--tl-icon-size,15px); height:var(--tl-icon-size,15px); }
           .tl-chat-file-drop-status button:hover,.tl-chat-file-drop-status button:focus-visible { background:var(--tl-surface-soft); outline:2px solid var(--tl-accent); outline-offset:1px; }
           .tl-native-conversation, .tl-dock-panel[data-panel-type="native-workspace"] {
               --dsh-ui-scale: var(--tl-ui-scale, 1);
@@ -5636,6 +5822,7 @@ window.__ModuleLoader__.load({
           dockviewApis.clear()
           pendingPopoutRestoreByScene.clear()
           pendingScenePanelFocus.clear()
+          pendingClosedPanelPositions.clear()
           dockviewRenderers.clear()
           dockGroupRenderers.clear()
           dockRenderContexts.clear()

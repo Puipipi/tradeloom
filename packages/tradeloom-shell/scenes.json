@@ -253,26 +253,24 @@
         {
           "id": "business-main",
           "type": "business-iframe",
-          "title": "工作流",
+          "title": "工作流画布",
+          "path": "/agent-center",
+          "col": 2,
+          "row": 1,
+          "w": 2,
+          "h": 2,
+          "category": "business"
+        },
+        {
+          "id": "business-plan",
+          "type": "business-iframe",
+          "title": "业务计划",
           "path": "/agent-center",
           "col": 1,
           "row": 1,
-          "w": 3,
+          "w": 1,
           "h": 2,
-          "category": "business",
-          "frontendTabs": [
-            {
-              "id": "plans",
-              "label": "业务计划",
-              "view": "business"
-            },
-            {
-              "id": "canvas",
-              "label": "工作流画布",
-              "view": "workflow-canvas"
-            }
-          ],
-          "defaultFrontendTab": "canvas"
+          "category": "business"
         },
         {
           "id": "files",

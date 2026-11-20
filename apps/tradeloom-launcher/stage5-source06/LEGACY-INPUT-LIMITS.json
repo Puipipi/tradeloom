@@ -1,0 +1,79 @@
+{
+  "status": "inherited-source06-recipe-input-mismatch-not-fixed",
+  "inputs": [
+    {
+      "path": "package.json",
+      "recipeExpected": {
+        "bytes": 5355,
+        "sha256": "1811b29ffbe2c917dfea5ebd8c268cad6c4ac49d0d50db90ff00885d4a36a186"
+      },
+      "source06Actual": {
+        "bytes": 5355,
+        "sha256": "1811b29ffbe2c917dfea5ebd8c268cad6c4ac49d0d50db90ff00885d4a36a186"
+      },
+      "match": true
+    },
+    {
+      "path": "client.js",
+      "recipeExpected": {
+        "bytes": 242288,
+        "sha256": "0c4f181045a247e51a170e689a50a519076cbae7cde3a5ca1a2de876ce4527b8"
+      },
+      "source06Actual": {
+        "bytes": 242305,
+        "sha256": "877612167e6928c330d84c332fe42338b1492e7368823e7d73514e94b6e54a65"
+      },
+      "match": false
+    },
+    {
+      "path": "client.source-native.js",
+      "recipeExpected": {
+        "bytes": 33617,
+        "sha256": "69097eb952fe74be9a36ba679f3dfc5cf530ce1d395c77b13898c1f136bd2a3e"
+      },
+      "source06Actual": {
+        "bytes": 38465,
+        "sha256": "ceca00dae49f9ca9943b439433f53e3ab67794ce522cc43f3b75fd33eb371901"
+      },
+      "match": false
+    },
+    {
+      "path": "workflow-native-command-attribution.js",
+      "recipeExpected": {
+        "bytes": 12300,
+        "sha256": "54fe20e739802310af50abd65de424e6dfd95b446a73dd691823b5f0b76e301c"
+      },
+      "source06Actual": {
+        "bytes": 12300,
+        "sha256": "54fe20e739802310af50abd65de424e6dfd95b446a73dd691823b5f0b76e301c"
+      },
+      "match": true
+    },
+    {
+      "path": "client.replica-palette.js",
+      "recipeExpected": {
+        "bytes": 7434,
+        "sha256": "ba85fdfa59ead0ddf2b69049ae87d4963dab3a06e17e78f11fd3fae33d530f22"
+      },
+      "source06Actual": {
+        "bytes": 7434,
+        "sha256": "ba85fdfa59ead0ddf2b69049ae87d4963dab3a06e17e78f11fd3fae33d530f22"
+      },
+      "match": true
+    },
+    {
+      "path": "agent-configuration.js",
+      "recipeExpected": {
+        "bytes": 55004,
+        "sha256": "957726de523b6cce3a5e0b35b8ee7feac99f704048b9061cedbc1c942320c939"
+      },
+      "source06Actual": {
+        "bytes": 55004,
+        "sha256": "957726de523b6cce3a5e0b35b8ee7feac99f704048b9061cedbc1c942320c939"
+      },
+      "match": true
+    }
+  ],
+  "meaning": "Two exact source06 source files already differ from old recipe preimage pins. Relocating their exact bytes does not repair or introduce this mismatch. Final accepted runtime postimages and inventory remain independently exact. Existing recipe is not claimed runnable to completion from this source snapshot.",
+  "noExpectedPinChanges": true
+}

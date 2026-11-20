@@ -1,11 +1,36 @@
+import { createHash } from 'node:crypto'
 import { ROLE_IDS } from './roles.js'
+
+// The saved configuration is owned by the Host state transaction, not a renderer
+// file. Hash the complete validated document so concurrent editors cannot silently
+// overwrite each other; role/session bindings remain separate state.
+export function resolveSceneConfiguration(defaults, state) {
+  return validateSceneConfig(structuredClone(state?.sceneConfiguration?.value ?? defaults))
+}
+
+export function sceneConfigurationRevision(config) {
+  const stable = value => Array.isArray(value) ? value.map(stable)
+    : value && typeof value === 'object'
+      ? Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])])) : value
+  return createHash('sha256').update(JSON.stringify(stable(validateSceneConfig(config)))).digest('hex')
+}
 
 export const BUSINESS_ROUTE_PATHS = Object.freeze(['/home', '/products', '/agent-center', '/artifacts', '/runs'])
 export const PANEL_TYPES = Object.freeze(['business-iframe', 'placeholder', 'native-chat', 'native-workspace', 'erpnext-status'])
+export const SCENE_COMPONENT_CATALOG = Object.freeze([
+  Object.freeze({ id: 'artifact-files', label: '文件', templateSceneId: 'runs', panelId: 'reference',
+    type: 'business-iframe', path: '/artifacts#files', category: 'resources', defaultPath: '/artifacts', defaultLabel: '资料', allowStandalone: true }),
+  Object.freeze({ id: 'product-catalog', label: '商品', templateSceneId: 'runs', panelId: 'auxiliary',
+    type: 'business-iframe', path: '/products', category: 'business', defaultPath: '/agent-center', defaultLabel: '任务', allowStandalone: true }),
+])
 const ROLE_ID_SET = new Set(ROLE_IDS)
 const BUSINESS_PATHS = new Set(BUSINESS_ROUTE_PATHS)
 const BUSINESS_PATH_VARIANTS = new Set(['/artifacts#sources', '/artifacts#deliverables', '/artifacts#files', '/artifacts#preview'])
 const isBusinessPagePath = value => BUSINESS_PATHS.has(value) || BUSINESS_PATH_VARIANTS.has(value)
+const SHARED_COMPONENT_PATHS = new Set([...BUSINESS_ROUTE_PATHS, '/artifacts#deliverables', '/artifacts#files', '/artifacts#preview'])
+const SHARED_COMPONENT_SLOTS = new Set(['runs/reference', 'runs/auxiliary'])
+const COMPONENT_FIELDS = 'category,defaultLabel,defaultPath,id,label,panelId,path,templateSceneId,type'
+export const isComponentInstanceId = id => typeof id === 'string' && /^component-[a-z0-9-]{1,38}$/.test(id)
 const DOCK_LAYOUT_PROFILES = Object.freeze({
   assistant_lead: [1000, 360],
   collaboration_grid: [960, 560],
@@ -15,6 +40,30 @@ const DOCK_LAYOUT_PROFILES = Object.freeze({
 function fail(message) { throw new Error(`invalid scene configuration: ${message}`) }
 function object(value) { return value !== null && typeof value === 'object' && !Array.isArray(value) }
 function integer(value) { return Number.isInteger(value) }
+
+export function validateSceneComponentCatalog(catalog, defaults) {
+  if (!Array.isArray(catalog)) fail('component catalog must be an array')
+  const ids = new Set()
+  const targets = new Set()
+  for (const component of catalog) {
+    if (!object(component) || Object.keys(component).filter(key => key !== 'allowStandalone').sort().join(',') !== COMPONENT_FIELDS
+      || Object.hasOwn(component, 'allowStandalone') && typeof component.allowStandalone !== 'boolean'
+      || typeof component.id !== 'string' || !/^[a-z0-9-]{1,48}$/.test(component.id)
+      || ids.has(component.id) || typeof component.label !== 'string' || !component.label.trim() || component.label.length > 100
+      || typeof component.templateSceneId !== 'string' || typeof component.panelId !== 'string'
+      || component.type !== 'business-iframe' || !SHARED_COMPONENT_PATHS.has(component.path)) fail('component catalog entry is invalid')
+    const slot = `${component.templateSceneId}/${component.panelId}`
+    const target = `${slot}:${component.path}`
+    const panel = defaults.scenes.find(scene => scene.id === component.templateSceneId)?.panels.find(item => item.id === component.panelId)
+    if (!SHARED_COMPONENT_SLOTS.has(slot) || !panel || panel.optional === true
+      || panel.type !== component.type || panel.category !== component.category
+      || panel.path !== component.defaultPath || panel.title !== component.defaultLabel
+      || component.path === panel.path || targets.has(target)) fail('component catalog slot or default is invalid')
+    ids.add(component.id)
+    targets.add(target)
+  }
+  return catalog
+}
 
 export function validateSceneConfig(config, panelTypes = PANEL_TYPES) {
   if (!object(config) || config.version !== 1 || !object(config.grid)
@@ -49,9 +98,26 @@ export function validateSceneConfig(config, panelTypes = PANEL_TYPES) {
       for (const key of ['col', 'row', 'w', 'h']) if (!integer(panel[key]) || panel[key] < 1 || panel[key] > 4) fail('panel grid coordinates must be integers from 1 to 4')
       if (panel.col + panel.w - 1 > 4 || panel.row + panel.h - 1 > 4) fail('panel is outside the 4x4 grid')
       if (panel.type === 'business-iframe' && (typeof panel.path !== 'string' || !isBusinessPagePath(panel.path))) fail('business iframe path is not allowlisted')
+      if (Object.hasOwn(panel, 'componentId')) {
+        const component = SCENE_COMPONENT_CATALOG.find(value => value.id === panel.componentId)
+        const standalone = isComponentInstanceId(panel.id)
+        const placement = standalone ? component?.allowStandalone === true && typeof scene.templateSceneId === 'string'
+          && scene.templateSceneId !== scene.id
+          : scene.templateSceneId === component?.templateSceneId && scene.id !== component?.templateSceneId && panel.id === component?.panelId
+        if (!component || !placement || panel.type !== component.type || panel.path !== component.path
+          || panel.category !== component.category || Object.keys(panel).some(key =>
+            !['id', 'type', 'title', 'path', 'col', 'row', 'w', 'h', 'category', 'componentId'].includes(key))) fail('scene component declaration is invalid')
+      }
+      if (isComponentInstanceId(panel.id) && !Object.hasOwn(panel, 'componentId')) fail('component instance has no registration')
       if (panel.type === 'placeholder' && (typeof panel.text !== 'string' || panel.text.length > 500)) fail('placeholder text is invalid')
     }
-    if (scene.panels.filter(panel => panel.type === 'native-chat' && panel.optional !== true).length < 1) fail('each scene must define at least one required native chat panel')
+    const activePanels = scene.panels.filter(panel => panel.optional !== true)
+    for (const instance of activePanels.filter(panel => isComponentInstanceId(panel.id))) {
+      if (activePanels.some(panel => panel !== instance && (panel.path === instance.path
+        || instance.col < panel.col + panel.w && panel.col < instance.col + instance.w
+        && instance.row < panel.row + panel.h && panel.row < instance.row + instance.h))) fail('component instance overlaps a panel or repeats its path')
+    }
+    if (activePanels.every(panel => panel.type !== 'native-chat')) fail('each scene must define at least one required native chat panel')
     if (scene.defaultBusinessRoute !== undefined
       && (!BUSINESS_PATHS.has(scene.defaultBusinessRoute) || config.businessRoutes?.[scene.defaultBusinessRoute]?.sceneId !== scene.id)) {
       fail('scene default business route is not mapped to that scene')
@@ -75,7 +141,7 @@ export function validateSceneConfig(config, panelTypes = PANEL_TYPES) {
   return config
 }
 
-function normalizePanel(scene, panel, saved) {
+function normalizeLegacyPanelPlacement(scene, panel, saved) {
   const value = saved ?? {}
   if (!object(value) || Object.keys(value).some(key => !['col', 'row', 'w', 'h', 'visible'].includes(key))) fail('saved panel layout contains unsupported fields')
   const normalized = {
@@ -83,7 +149,7 @@ function normalizePanel(scene, panel, saved) {
     row: value.row ?? panel.row,
     w: value.w ?? panel.w,
     h: value.h ?? panel.h,
-    visible: value.visible ?? true,
+    visible: value.visible ?? (object(saved) || panel.id !== 'business-plan' || (scene.templateSceneId ?? scene.id) !== 'agent-center'),
   }
   if (!['col', 'row', 'w', 'h'].every(key => integer(normalized[key]) && normalized[key] >= 1 && normalized[key] <= 4)
     || normalized.col + normalized.w - 1 > 4 || normalized.row + normalized.h - 1 > 4
@@ -96,17 +162,16 @@ export function normalizeSceneLayout(scene, savedLayout = {}) {
   const inputPanels = savedLayout.panels ?? {}
   if (!object(inputPanels)) fail('saved panels must be an object')
   const savedPanels = { ...inputPanels }
-  const configuredPanelIds = new Set(scene.panels.map(panel => panel.id))
+  const panelIds = new Set(scene.panels.map(panel => panel.id))
   // Keep pre-files/preview v1 layouts readable only in scenes that adopted the new IDs.
-  if (configuredPanelIds.has('files') && !Object.hasOwn(savedPanels, 'files') && Object.hasOwn(savedPanels, 'auxiliary')) {
+  if (panelIds.has('files') && !Object.hasOwn(savedPanels, 'files') && Object.hasOwn(savedPanels, 'auxiliary')) {
     savedPanels.files = savedPanels.auxiliary
     delete savedPanels.auxiliary
   }
-  if (configuredPanelIds.has('preview') && !Object.hasOwn(savedPanels, 'preview') && Object.hasOwn(savedPanels, 'reference')) {
+  if (panelIds.has('preview') && !Object.hasOwn(savedPanels, 'preview') && Object.hasOwn(savedPanels, 'reference')) {
     savedPanels.preview = savedPanels.reference
     delete savedPanels.reference
   }
-  const panelIds = configuredPanelIds
   const unknownPanels = Object.keys(savedPanels).filter(id => !panelIds.has(id))
   if (unknownPanels.length) fail(`saved layout contains an unknown panel in ${scene.id}: ${unknownPanels.join(',')}`)
   const expandedPanel = savedLayout.expandedPanel === 'auxiliary' && panelIds.has('files') ? 'files'
@@ -114,7 +179,7 @@ export function normalizeSceneLayout(scene, savedLayout = {}) {
   if (expandedPanel !== '' && !panelIds.has(expandedPanel)) fail('expanded panel is unknown')
   return {
     expandedPanel,
-    panels: Object.fromEntries(scene.panels.map(panel => [panel.id, normalizePanel(scene, panel, savedPanels[panel.id])])),
+    panels: Object.fromEntries(scene.panels.map(panel => [panel.id, normalizeLegacyPanelPlacement(scene, panel, savedPanels[panel.id])])),
   }
 }
 

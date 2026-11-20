@@ -3,7 +3,7 @@ import { isIPv4 } from 'node:net'
 import { ROLE_PRESETS } from './roles.js'
 
 export const name = '@tradeloom/dsh-business-shell/business-tools'
-export const inject = ['tools', 'webServer', 'agents', 'sceneMemoryOriginAuthority']
+export const inject = ['tools', 'webServer', 'agents', 'sceneMemoryOriginAuthority', 'workflowFileAuthority']
 
 const DJANGO_HOST = '127.0.0.1'
 function djangoPort() {
@@ -86,6 +86,7 @@ const TOOL_ACCESS = Object.freeze({
   tradeloom_erpnext_read_quotation_draft_operation: new Set([ROLE_PRESETS.center]),
   tradeloom_intake_sources: new Set([ROLE_PRESETS.center, ROLE_PRESETS.product, ROLE_PRESETS.delivery]),
   tradeloom_narrative_sources: new Set([ROLE_PRESETS.center]),
+  tradeloom_workflow_files: new Set([ROLE_PRESETS.center]),
   tradeloom_narrative_excerpt: new Set([ROLE_PRESETS.center]),
   tradeloom_intake_candidates: new Set([ROLE_PRESETS.center, ROLE_PRESETS.product, ROLE_PRESETS.delivery]),
   tradeloom_intake_candidate: new Set([ROLE_PRESETS.center, ROLE_PRESETS.product, ROLE_PRESETS.delivery]),
@@ -1247,6 +1248,21 @@ export function registerBusinessTools(ctx, config = {}, dependencies = {}) {
   const allowedTools = KNOWN_PRESETS.has(preset) ? TOOL_ACCESS : null
   if (!allowedTools) return () => {}
   const tools = [
+    {
+      name: 'tradeloom_workflow_files',
+      description: 'Browse the desktop workflow directory authorized by the user. Use current to list entries, enter with a returned folder ID, or up to return to its parent within the authorized root. Ask the user to open a directory in the workflow files panel if access is unavailable.',
+      parameters: schema({
+        operation: { type: 'string', enum: ['current', 'enter', 'up'] },
+        id: wireString('Folder ID from the current authorized directory.'),
+      }, ['operation']),
+      async execute(args, exec) {
+        if (!exactArgs(args, ['operation', 'id'], ['operation'])) return failure('invalid_arguments')
+        try {
+          const result = await ctx.get?.('workflowFileAuthority')?.tool(args, exec)
+          return result ? success(result) : failure('workflow_directory_unavailable')
+        } catch { return failure('workflow_directory_unavailable') }
+      },
+    },
     {
       name: 'tradeloom_scene_memory_read',
       description: 'Read the current scene memory through the verified owner operation carried by this execution.',

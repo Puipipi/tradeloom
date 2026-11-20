@@ -1,0 +1,459 @@
+{
+  "schemaVersion": 1,
+  "stage": "S7-08",
+  "status": "runtimeEvidenceRecorded",
+  "finalExitVerified": true,
+  "product": {
+    "commit": "125850f9d0409537859e2580c7f2e80f352706b8",
+    "tree": "81e7fbe225dca10c2a6a05924c17b9257ca6cd39",
+    "pins": {
+      "programZip": {
+        "path": "[local-path-redacted]",
+        "bytes": 819388733,
+        "sha256": "31c528b25ed5315182f57bdf2f655a4ce2c8184a576d614b53708cd96162a694"
+      },
+      "sourceZip": {
+        "path": "[local-path-redacted]",
+        "bytes": 19640696,
+        "sha256": "f732413d2bb68d73f47e74e5f27133ca3eaa0dd1a312e7254aa291e0d5ef38db"
+      },
+      "programManifest": {
+        "path": "[local-path-redacted]",
+        "bytes": 14670309,
+        "sha256": "74f67e3aef9202793ee5f67ed0714953f5a8732ecce902e1b6bd3a00b5788cff"
+      },
+      "sourceManifest": {
+        "path": "[local-path-redacted]",
+        "bytes": 114645,
+        "sha256": "be17e792481a6ad9dbd8dbb05cf0a1cd170f6fe52f96191f5926b42612a6496d"
+      },
+      "asarManifest": {
+        "path": "[local-path-redacted]",
+        "bytes": 12691560,
+        "sha256": "52e3648b43b43ea3707463c07f73352c0c2917648e6cf35fabc1976a09efe15a"
+      },
+      "buildReceipt": {
+        "path": "[local-path-redacted]",
+        "bytes": 2135,
+        "sha256": "08533251aafb03eb40103cc607c7fed1acfe4f8b300a257b6977dcf121d9d352"
+      },
+      "asar": {
+        "path": "[local-path-redacted]",
+        "bytes": 228830030,
+        "sha256": "2c062d456069a6bdad4177509cfb84001f8b839d4125148fdd7b7be8ab819d0f"
+      }
+    },
+    "programTree": {
+      "files": 39822,
+      "bytes": 2286996082,
+      "sha256": "543f29c0b6839abbfafbf73b4c63e1d3b7cfffe193c2bd89f966f80b2a2037de"
+    },
+    "sourceFileCount": 354,
+    "sourceFilesSha256": "1abb6602e8683057bfca80cdd042f516e7f13265aefbb021da1d34a02adf8767",
+    "sourcePhysicalEolDifferences": [
+      {
+        "path": "apps/tradeloom-launcher/engine-recovery-worker.cjs",
+        "commitSha256": "f448dda44d57f99f38dc6db7d95afed81b90691791793980f6432fc5971faef1",
+        "physicalSha256": "e4c3df349d4b4e3065ef234c8f6f36788e7b1f5aa5957c27e5c5acdfc1a37b31"
+      },
+      {
+        "path": "apps/tradeloom-launcher/production-origin/browser-transport-adapter.mjs",
+        "commitSha256": "38c7d2f9f37621b8e9896db697d444e0113d827d159b2c7b01eaca7fc7ebdc7d",
+        "physicalSha256": "e8846e4a897a807d786b7705671b80d25c08d3e5eca6de5f7ff54642ba9f0623"
+      },
+      {
+        "path": "apps/tradeloom-launcher/scripts/write-n01-origin-candidate.py",
+        "commitSha256": "629f7676a90030958d2da7da4bf57af4d0175cc69c9c0c237127b428c48270f0",
+        "physicalSha256": "7ef0709fe521e933a53c75ab8c4e8b8bfd4b449b78d789edda1537e7cd8d636b"
+      },
+      {
+        "path": "integrations/dsh/patches/desktop-branding.patch",
+        "commitSha256": "5f4a9181fde0a0e9b3ebd83063bbb5b3692473cd0ff7867edd66d4ac2cf187c5",
+        "physicalSha256": "0e5c221375c98f48052fde5720d3d8e685ac374adb8d0b32f570d0c2e2eaad9f"
+      }
+    ]
+  },
+  "automated": {
+    "sdkAndBoundary": {
+      "passed": 24,
+      "total": 24,
+      "exitCode": 0,
+      "log": "[local-path-redacted]"
+    },
+    "boundaryGuard": {
+      "exitCode": 0,
+      "problems": 0,
+      "log": "[local-path-redacted]"
+    },
+    "officialAcquisition": {
+      "passed": 6,
+      "total": 6,
+      "exitCode": 0
+    },
+    "buildContracts": {
+      "passed": 4,
+      "total": 4,
+      "exitCode": 0
+    },
+    "applyContracts": {
+      "passed": 10,
+      "total": 10,
+      "exitCode": 0
+    },
+    "legacyProfileContract": {
+      "failed": 2,
+      "reason": "历史 rc.2 运行时路径不存在",
+      "log": "[local-path-redacted]"
+    },
+    "strictReplay": {
+      "status": "fixed 0.2.2-rc.3 replay exact",
+      "exitCode": 0,
+      "log": "[local-path-redacted]"
+    },
+    "nativeFs": {
+      "status": "passed",
+      "record": "[local-path-redacted]"
+    }
+  },
+  "qa": {
+    "p": "[local-path-redacted]",
+    "d": "[local-path-redacted]",
+    "w": "[local-path-redacted]",
+    "baseline": {
+      "candidate": "S7-01 R3",
+      "coldStartObservation": "fcdf0e7a",
+      "independentWorkflowPanelsObservation": "f51bd536",
+      "explicitDarkSettingObservation": "accc1abe",
+      "initialMainPid": 9804,
+      "normalMainClose": true,
+      "windowCountAfterClose": 0
+    },
+    "apply": {
+      "record": "[local-path-redacted]",
+      "command": "[local-path-redacted]",
+      "stdout": "[local-path-redacted]",
+      "stderr": "[local-path-redacted]",
+      "phase": "complete",
+      "exitCode": 0,
+      "leaseReleased": true,
+      "installedManifest": "[local-path-redacted]",
+      "installedManifestPin": {
+        "bytes": 15035905,
+        "sha256": "b44d251da69a1916bd0dec802aed84683ebc2a0cde2c1732f75fa2463db6fc9b"
+      },
+      "appAsar": {
+        "bytes": 228830030,
+        "sha256": "2c062d456069a6bdad4177509cfb84001f8b839d4125148fdd7b7be8ab819d0f"
+      },
+      "backupAsar": {
+        "bytes": 228830378,
+        "sha256": "0079bb6476ac89649af100961c33ca0c60b9feb99d86039b77602bcdf54e4700"
+      },
+      "business": {
+        "fileCount": 77,
+        "bytes": 3037873,
+        "sha256": "874761fe0739dc091fd2075fa5ed3b7a809fd19a83f4aac63e8fd41dae7a9686"
+      },
+      "launcher": {
+        "bytes": 145,
+        "sha256": "b655ecaef1dfd4a57deb056e82f7978a8f33e4c3669af758bda9b41e42bc6bb7"
+      },
+      "dataRoot": "[local-path-redacted]",
+      "dataOwnedMarker": {
+        "bytes": 22,
+        "sha256": "c9d1f13f3bb80bcf70daada3df183e182826056492d7fe6590caef5f89975303"
+      },
+      "dataReadCopiedOrMigrated": false,
+      "samePaths": 39822,
+      "expectedChangedPaths": [
+        "app/resources/app.asar",
+        "app/resources/tradeloom/backend/workbench/execution_plans/api.py",
+        "app/resources/tradeloom/backend/workbench/execution_plans/service.py",
+        "app/resources/tradeloom/backend/workbench/static/workbench/agent-run-receipts.js",
+        "app/resources/tradeloom/backend/workbench/static/workbench/customers.js",
+        "app/resources/tradeloom/business-shell/client.mcp-runtime.js",
+        "app/resources/tradeloom/business-shell/client.scene-memory.js",
+        "app/resources/tradeloom/business-shell/client.scenes.js",
+        "app/resources/tradeloom/business-shell/client.session-audio.js",
+        "app/resources/tradeloom/business-shell/client.workflow.js",
+        "app/resources/tradeloom/business-shell/dock-layout.js",
+        "app/resources/tradeloom/business-shell/mcp-runtime.js",
+        "app/resources/tradeloom/business-shell/scene-layout.js",
+        "app/resources/tradeloom/business-shell/scene-memory-graph.js",
+        "app/resources/tradeloom/business-shell/scene-memory.js",
+        "app/resources/tradeloom/business-shell/session-speech.js",
+        "app/resources/tradeloom/business-shell/workflow-native-artifact-http.js",
+        "app/resources/tradeloom/business-shell/workflow-native-service.js",
+        "app/resources/tradeloom/business-shell/workflow-run-journal.js",
+        "app/resources/tradeloom/deployment.json",
+        "app/resources/tradeloom/engine-recovery-tools/apps/tradeloom-launcher/dsh-upgrades/0.2.2-rc.3/recipe.json",
+        "app/resources/tradeloom/engine-recovery-tools/runtime-inputs.json",
+        "launcher.json",
+        "启动工作台.exe"
+      ],
+      "fullBackupByteReadback": false,
+      "fullInstalledByteReadback": false
+    },
+    "backup": {
+      "record": "[local-path-redacted]",
+      "backupAppBytesVerified": true,
+      "backupAppFileCount": 39820,
+      "backupWrapper": {
+        "bytes": 23040,
+        "sha256": "e087dd9619ac9a143329fededd168fb174c5180f3c0ed666ad7ab8d2495e68b5"
+      },
+      "backupLauncher": {
+        "bytes": 145,
+        "sha256": "b655ecaef1dfd4a57deb056e82f7978a8f33e4c3669af758bda9b41e42bc6bb7"
+      },
+      "targetManifest": {
+        "bytes": 15036042,
+        "sha256": "bf2a01d11812e3e3bbfb5f44a905e981036eddbb6044557234460b1c2f507b80"
+      }
+    },
+    "finalColdStart": {
+      "result": "passed",
+      "windowVisibleUtc": "2026-11-18T15:22:37.056Z",
+      "hostReadyUtc": "2026-11-18T15:22:32.062Z",
+      "authenticatedUtc": "2026-11-18T15:22:32.664Z",
+      "mainPid": 71684,
+      "listenerPids": {
+        "3088": 69868,
+        "3090": 59424,
+        "55432": 71268
+      },
+      "listenersOwnedByQaProgram": true,
+      "dataRootPreserved": true,
+      "launcherSha256": "b655ecaef1dfd4a57deb056e82f7978a8f33e4c3669af758bda9b41e42bc6bb7",
+      "profileBusinessInventory": {
+        "fileCount": 77,
+        "bytes": 3037873,
+        "sha256": "874761fe0739dc091fd2075fa5ed3b7a809fd19a83f4aac63e8fd41dae7a9686"
+      }
+    },
+    "finalExit": {
+      "normalMainClose": true,
+      "mainPid": 71684,
+      "windowCountAfterClose": 0,
+      "webWindowsClosed": 2,
+      "hostCloseEndUtc": "2026-11-18T15:41:35.916Z",
+      "desktopControlReleasedUtc": "2026-11-18T15:42:01.816Z",
+      "controlOwner": null,
+      "occupied": 0,
+      "desktopPaused": false,
+      "independentReadbackUtc": "2026-11-18T15:43:54.070Z",
+      "qaProgramProcessCount": 0,
+      "listeners": {
+        "3088": 0,
+        "3090": 0,
+        "55432": 0
+      },
+      "dataOwned": true,
+      "transactionPhase": "complete",
+      "activationLockPresent": false,
+      "newCrashFiles": 0
+    }
+  },
+  "observations": {
+    "darkSettingPersisted": {
+      "outcome": "passed",
+      "themeChangedAfterFinalColdStart": false,
+      "sameFiveIndependentWorkflowPanelsVisible": true,
+      "evidence": [
+        "R3_SET_DARK",
+        "FINAL_COLD_DARK"
+      ]
+    },
+    "goalMode": {
+      "outcome": "reachable",
+      "submitted": false,
+      "evidence": "FINAL_GOAL_VISIBLE"
+    },
+    "customers": {
+      "outcome": "reachable",
+      "state": "empty",
+      "evidence": "FINAL_CUSTOMERS_EMPTY"
+    },
+    "narrowAndIndependentWindow": {
+      "independentRunHistoryWindowHwnd": 91560228,
+      "mainWindowHwnd": 25562028,
+      "captureOnlyBackgroundCount": 3,
+      "captureOnlyBackgroundWithIndependentWindowInFront": true,
+      "cause": "undetermined",
+      "sameMainRecoveredAfterNormalChildClose": true,
+      "recoveryObservation": "7ca62d6a1df9418ebab87737089b8876",
+      "recoveryEvidence": "MAIN_RECOVERED",
+      "narrowObservation": "4b723d9cceab45aea48cf1b9b346054d",
+      "narrowEvidence": "MAIN_NARROW_VISIBLE",
+      "windowOuterPixels": [
+        1100,
+        1000
+      ],
+      "dwmVisiblePixels": [
+        1082,
+        991
+      ],
+      "dpi": 144,
+      "visiblePanels": 4,
+      "singleScrollObservation": "ee2ff4fc",
+      "scrollDisplacementConfirmed": false,
+      "restoreWidthObservation": "0f67de7fdedf4b9282fcf74cf25a6ff7",
+      "restoredWidthNormal": true,
+      "fpsMeasured": false,
+      "asarLogicalEntriesCompared": 21788,
+      "changedAsarMembers": [
+        "lib/tradeloom/bootstrap-core.mjs"
+      ],
+      "nativeMainControllerPreloadSurfaceOwnerAndReplicaRendererBridgeStyleByteIdentical": true
+    },
+    "coverageBoundaries": {
+      "windowEndpoints": {
+        "observed": true,
+        "fpsMeasured": false
+      },
+      "pluginManagement": {
+        "actualTogglePerformed": false
+      },
+      "workflow": {
+        "localMockOutputNodeObserved": false,
+        "executionPerformed": false,
+        "downloadPerformed": false
+      },
+      "model": {
+        "selectorReachable": true,
+        "modelList": "empty",
+        "externalModelRequestPerformed": false
+      },
+      "web": {
+        "DeepSeek": "risk-page",
+        "Doubao": "not-signed-in",
+        "siteSignInPerformed": false,
+        "questionAttachmentSaveVerified": false
+      },
+      "voice": {
+        "externalOrProductionAudioVerified": false
+      },
+      "restore": {
+        "s7FinalActualRollbackPerformed": false,
+        "s7FinalRollbackBackupVerified": true,
+        "s701ActualRollbacks": 2
+      }
+    },
+    "centerAssistantToolbar": {
+      "beforeRefresh": "5bf14630",
+      "afterRefresh": "e257be42",
+      "order": [
+        "刷新",
+        "独立窗",
+        "技能",
+        "放大",
+        "更多",
+        "关闭"
+      ],
+      "orderUnchanged": true,
+      "maximizeEndpoint": "bc92a246",
+      "restoreEndpoint": "eda2c8db",
+      "fpsMeasured": false,
+      "evidence": [
+        "CENTER_ASSISTANT_EXPANDED",
+        "CENTER_ASSISTANT_RESTORED"
+      ]
+    },
+    "nativeMenus": {
+      "currentAssistantSkill": {
+        "name": "archify",
+        "observation": "f1bc79c014c543958fcdba575c72770f"
+      },
+      "planItemsPartiallyVisible": true,
+      "permissions": {
+        "visibleSelection": "当前工作区内修改",
+        "observation": "139d389b"
+      },
+      "models": {
+        "state": "empty",
+        "observation": "41a99140"
+      },
+      "automation": {
+        "enabledTasks": 0,
+        "observation": "a06e176e"
+      },
+      "settingsChanged": false,
+      "tasksExecuted": false
+    },
+    "businessAndWebPages": {
+      "products": {
+        "state": "empty",
+        "observation": "6c83e2f9"
+      },
+      "deliverables": {
+        "observation": "211088d2"
+      },
+      "runHistory": {
+        "observation": "61b44281"
+      },
+      "deepSeekIndependentWindow": {
+        "state": "risk-page",
+        "observation": "c7bb5c0b"
+      },
+      "doubaoIndependentWindow": {
+        "state": "not-signed-in",
+        "observation": "b2259b29"
+      }
+    }
+  },
+  "evidence": {
+    "R3_SET_DARK": {
+      "source": "[local-path-redacted]",
+      "path": "[local-path-redacted]",
+      "bytes": 202569,
+      "sha256": "d64a743705c50c1247dace53cb44129a0d75cb44bc4c46f26d796ab55f01a7ac"
+    },
+    "FINAL_COLD_DARK": {
+      "source": "[local-path-redacted]",
+      "path": "[local-path-redacted]",
+      "bytes": 202323,
+      "sha256": "fd0c734c98571fdd6bdd2389e05b0670d4f39fda870cf897bd23b22bc1620d9e"
+    },
+    "FINAL_GOAL_VISIBLE": {
+      "source": "[local-path-redacted]",
+      "path": "[local-path-redacted]",
+      "bytes": 189409,
+      "sha256": "e75a22fd00ec2d0d4a716bbc7b21ef5868a75513db8ac5755a67350f8d773c95"
+    },
+    "FINAL_CUSTOMERS_EMPTY": {
+      "source": "[local-path-redacted]",
+      "path": "[local-path-redacted]",
+      "bytes": 172714,
+      "sha256": "58eabc872a5ab5f97454922f2f2dd8dba1e207d496cf02272dd6d381e12c1d92"
+    },
+    "MAIN_RECOVERED": {
+      "source": "[local-path-redacted]",
+      "path": "[local-path-redacted]",
+      "bytes": 231168,
+      "sha256": "5126acfd6e12cf8de0018838067acdceb53f679003ee934856f8c90d61f9680f"
+    },
+    "MAIN_NARROW_VISIBLE": {
+      "source": "[local-path-redacted]",
+      "path": "[local-path-redacted]",
+      "bytes": 169449,
+      "sha256": "802d607acf5833abf645354db036ca2b047fd11dbb5887d673bb4e289f950931"
+    },
+    "CENTER_ASSISTANT_EXPANDED": {
+      "source": "[local-path-redacted]",
+      "path": "[local-path-redacted]",
+      "observation": "bc92a246",
+      "bytes": 87714,
+      "sha256": "50467cf75c0ce283b4d0219cfb8ea7890a049c72a26a6d622063520c10b16a88"
+    },
+    "CENTER_ASSISTANT_RESTORED": {
+      "source": "[local-path-redacted]",
+      "path": "[local-path-redacted]",
+      "observation": "eda2c8db",
+      "bytes": 191364,
+      "sha256": "f31b6001206c9a01eff78dc545e239a3a281fc9dd6abc898e39a3241ea9c2e90"
+    }
+  },
+  "allFeaturesExecuted": false,
+  "distribution": "local-artifacts",
+  "scopedDesktopBatchCompleted": true
+}

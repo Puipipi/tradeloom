@@ -130,6 +130,12 @@ export function validateInstalledManifest(manifest) {
       throw new Error('packaged manifest 缺少资源文件数、字节数或 SHA256。')
     }
   }
+  if (manifest.resources.engineRecovery !== undefined) {
+    const item = manifest.resources.engineRecovery
+    if (!item || Object.keys(item).sort().join(',') !== 'bytes,fileCount,root,sha256'
+      || item.root !== 'resources/tradeloom/engine-recovery-tools' || !Number.isSafeInteger(item.fileCount) || item.fileCount < 1
+      || !Number.isSafeInteger(item.bytes) || item.bytes < 1 || !/^[a-f0-9]{64}$/.test(item.sha256 ?? '')) throw new Error('packaged manifest engine recovery identity 无效。')
+  }
   if (manifest.resources.pythonDependencies.version !== '3.12.14' || manifest.resources.postgresql.version !== '17.11') throw new Error('packaged manifest Python/PostgreSQL 版本不受支持。')
   if (!Array.isArray(manifest.resources.business.files) || !Array.isArray(manifest.resources.postgresql.entrypoints)) throw new Error('packaged manifest 缺少业务 allowlist 或 PostgreSQL entrypoints。')
   const businessNames = new Set(manifest.resources.business.files.map(item => safeRelative(item.path, '业务文件')))
@@ -565,6 +571,9 @@ export async function bootstrapInstalledDesktop({ env = process.env, processEnv 
   const manifestPath = path.join(manifestRoot, 'deployment.json')
   await assertOrdinaryPath(manifestRoot, manifestPath, fs)
   const rawManifest = validateInstalledManifest(JSON.parse(await fs.readFile(manifestPath, 'utf8')))
+  if (rawManifest.resources.engineRecovery) await verifyResourceTree(
+    resolvePackagedPath(resourcesPath, rawManifest.resources.engineRecovery.root, 'engine recovery'),
+    '', rawManifest.resources.engineRecovery, fs, 'Engine recovery resources')
   const manifest = { ...rawManifest,
     runtimeRoot: resolvePackagedPath(resourcesPath, rawManifest.runtime.root, 'primary runtime'),
     python: resolvePackagedPath(resourcesPath, rawManifest.runtime.python, 'primary Python'),
@@ -788,4 +797,4 @@ export async function bootstrapInstalledDesktop({ env = process.env, processEnv 
   }
 }
 
-export { digestInventory, resolvePackagedPath, runCommandFile, runControllerFile, pythonRunArgs }
+export { digestInventory, verifyResourceTree, resolvePackagedPath, runCommandFile, runControllerFile, pythonRunArgs }
