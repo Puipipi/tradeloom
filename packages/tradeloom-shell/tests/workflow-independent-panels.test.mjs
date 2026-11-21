@@ -598,7 +598,7 @@ test('selected files preserve the native slot and the business bridge requires t
   fileBridgeMounts:new Map(),window:{addEventListener(){},removeEventListener(){},TradeLoomBusinessFileBridge:{
    create(options){registered.push(options);return Object.assign(()=>{}, {requestFileExport(){},requestFileFocus(){}})}
   }}})
- vm.runInContext(['routeForPath','renderBusinessPanel','findCompanionPath','releaseFileCompanion','mountFileCompanion','renderCompanion']
+ vm.runInContext(['routeForPath','renderBusinessPanel','findCompanionPath','releaseFileCompanion','mountFileCompanion','isLocalWorkflowCompanion','renderCompanion']
   .map(name=>fn(bridgeSource,name)).join('\n'),f.c)
  const content=element(),cleanup=f.c.renderCompanion(meta,content,'files')
  assert.equal(registered[0].scene.id,copied.id)
