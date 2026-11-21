@@ -974,10 +974,10 @@ window.__ModuleLoader__.load({
 
       const toolbar = h('div', { className: 'tl-wf-toolbar', role: 'toolbar', 'aria-label': '工作流操作', inert: draft ? '' : undefined },
         h('div', { className: 'tl-wf-primary' },
-        h('button', { type: 'button', onClick: newWorkflow, disabled: editingRun }, '新建'),
+        h('button', { type: 'button', className: 'tl-wf-new-workflow', 'aria-label': '新建工作流', title: '新建工作流', onClick: newWorkflow, disabled: editingRun }, '+'),
         h('button', { type: 'button', onClick: prepareNative, disabled: nativeBusy || Boolean(nativeEligibility), title: nativeEligibility || '准备真实原生执行，核对后显式确认', ref: nativeTrigger }, '开始…'),
         h('button', { type: 'button', onClick: save, disabled: editingRun }, dirty ? '保存*' : '保存'),
-        h('button', { type: 'button', onClick: listNative, disabled: nativeBusy, title: '查询真实原生运行记录' }, '历史'),
+        h('button', { type: 'button', className: 'tl-wf-history', onClick: listNative, disabled: nativeBusy, title: '查询真实原生运行记录' }, '历史'),
         h('button', { type: 'button', onClick: refreshCanvas, disabled: refreshDisabled,
           title: savedCanvas ? '读取已保存画布，保留视图位置' : '保存后可以刷新画布' }, '刷新画布'),
         h('details', { className: 'tl-wf-doc-menu', onToggle: placeToolbarMenu },
@@ -1006,6 +1006,11 @@ window.__ModuleLoader__.load({
         h('div', { className: 'tl-wf-categories', role: 'group', 'aria-label': '业务节点分类' },
           (catalog?.kinds ?? []).map(kind => h('details', {
             key: kind.kind, className: 'tl-wf-category', onToggle: placeToolbarMenu,
+            onMouseEnter: event => { event.currentTarget.open = true },
+            onMouseLeave: event => {
+              const category = event.currentTarget
+              if (!category.contains(category.ownerDocument.activeElement)) category.open = false
+            },
             onBlur: event => { if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false },
             onKeyDown: event => {
               if (event.key !== 'Escape' || !event.currentTarget.open) return
@@ -1196,6 +1201,7 @@ window.__ModuleLoader__.load({
       .tl-wf-artifact-card summary { font-size:.85em; }
       .tl-wf-toolbar { flex:none; display:flex; flex-wrap:wrap; align-items:center; gap:4px; padding:4px 6px; border-bottom:1px solid var(--tl-border,#cbd5e2); }
       .tl-wf-primary { display:flex; flex:1 1 100%; flex-wrap:wrap; align-items:center; min-width:0; gap:4px; }
+      .tl-wf-history { margin-inline-start:auto; }
       .tl-wf-tabs { display:flex; flex:1 1 100%; gap:.3em; min-width:0; overflow-x:auto; padding:2px; }
       .tl-wf-tabs > button { flex:none; max-inline-size:min(20em,100%); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
       .tl-wf-tabs > [aria-selected="true"] { border-color:var(--tl-accent,#356fc4); background:var(--tl-surface-soft,#eef3f9); }

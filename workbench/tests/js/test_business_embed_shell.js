@@ -36,6 +36,10 @@ function renderPage({ configuredForEmbed, insideFrame }) {
         <p class="inline-alert warning" role="alert" data-testid="product-filter-error">筛选条件无效，请调整后重试。</p>
         <p class="timezone-note">时间均为上海时间（UTC+8）。</p>
       </section></main>
+      <section class="panel intro-panel">
+        <div class="panel-heading"><div><h2>从来源核对到交付检查</h2><p>核对来源、确认要求、检查交付。</p></div></div>
+        <div class="empty-state file-preview-empty"><h3>尚未选择文件</h3><p>在文件面板选择条目后查看可用预览。</p></div>
+      </section>
     </div></div></body></html>`, {
     url: pageUrl,
     pretendToBeVisual: true,
@@ -79,6 +83,14 @@ test('embedded iframe omits the desktop header and compacts product content', ()
   assert.equal(document.querySelector('[data-testid="product-summary"]')?.textContent.includes('4 个产品匹配当前筛选 · 3 个已有最新版本 · 1 个存在缺项。'), true)
   assert.equal(dom.window.getComputedStyle(document.querySelector('.panel-heading h2')).fontSize, 'var(--wb-font-lg)')
   assert.equal(dom.window.getComputedStyle(document.querySelector('.detail-heading h2')).fontSize, 'var(--wb-font-lg)')
+  const overviewTitle = dom.window.getComputedStyle(document.querySelector('.intro-panel .panel-heading h2'))
+  const overviewDescription = dom.window.getComputedStyle(document.querySelector('.intro-panel .panel-heading p'))
+  const previewTitle = dom.window.getComputedStyle(document.querySelector('.file-preview-empty h3'))
+  const previewDescription = dom.window.getComputedStyle(document.querySelector('.file-preview-empty p'))
+  assert.equal(overviewTitle.fontSize, previewTitle.fontSize)
+  assert.equal(overviewDescription.fontSize, previewDescription.fontSize)
+  assert.equal(overviewTitle.lineHeight, previewTitle.lineHeight)
+  assert.equal(overviewDescription.lineHeight, previewDescription.lineHeight)
   const summaryStyle = dom.window.getComputedStyle(document.querySelector('[data-testid="product-summary"]'))
   assert.equal(summaryStyle.fontSize, 'var(--wb-font-body)')
   assert.equal(summaryStyle.marginTop, 'calc(3px * var(--wb-ui-scale))')

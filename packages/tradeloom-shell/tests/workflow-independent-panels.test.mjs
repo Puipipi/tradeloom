@@ -177,11 +177,18 @@ test('actual WorkflowCanvas exposes native prepare/save/history and catalog cate
  const f=loadWorkflow(),toolbar=all(f.tree).find(n=>n.props?.role==='toolbar')
  const primary=toolbar.children.find(n=>n.props.className==='tl-wf-primary')
  const buttons=primary.children.filter(n=>n.type==='button')
- assert.deepEqual(buttons.slice(0,4).map(label),['新建','开始…','保存','历史'])
+ assert.deepEqual(buttons.slice(0,4).map(label),['+','开始…','保存','历史'])
+ assert.equal(buttons[0].props['aria-label'],'新建工作流')
+ assert.equal(buttons[3].props.className,'tl-wf-history','history is aligned at the right edge of the primary toolbar')
  const categories=all(toolbar).filter(n=>n.type==='details'&&n.props.className==='tl-wf-category')
  assert.equal(categories.length,f.catalog.kinds.length)
- assert.equal(categories[0].props.onMouseEnter,undefined)
- assert.equal(categories[0].props.onMouseLeave,undefined)
+ assert.equal(typeof categories[0].props.onMouseEnter,'function')
+ assert.equal(typeof categories[0].props.onMouseLeave,'function')
+ const hoverMenu={open:false,ownerDocument:{activeElement:null},contains:()=>false}
+ categories[0].props.onMouseEnter({currentTarget:hoverMenu});assert.equal(hoverMenu.open,true,'hover opens the node submenu')
+ categories[0].props.onMouseLeave({currentTarget:hoverMenu});assert.equal(hoverMenu.open,false,'leaving the category closes an unfocused submenu')
+ hoverMenu.open=true;hoverMenu.ownerDocument.activeElement={};hoverMenu.contains=()=>true
+ categories[0].props.onMouseLeave({currentTarget:hoverMenu});assert.equal(hoverMenu.open,true,'keyboard focus keeps the submenu open after pointer exit')
  assert.deepEqual(all(categories[1]).filter(n=>n.type==='button').map(label),f.catalog.agents.map(item=>`${item.icon} ${item.label}`))
  const calls=[];f.context.onFetch=async(url,options)=>{calls.push({url,body:options.body&&JSON.parse(options.body)});return{ok:true,status:200,json:async()=>({workflow:f.doc,catalog:f.catalog,workflows:[f.doc],schemaVersion:1,ok:true,executionMode:'native_dsh',action:'list',runs:[]})}}
  await buttons[2].props.onClick();assert.equal(calls[0].body.action,'save')

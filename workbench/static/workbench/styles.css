@@ -2168,6 +2168,16 @@ html[data-business-iframe="true"] .detail-heading p {
   line-height: 1.5;
 }
 
+html[data-business-iframe="true"] .intro-panel .panel-heading h2 {
+  font-size: var(--wb-font-body);
+  line-height: var(--wb-line-height);
+}
+
+html[data-business-iframe="true"] .intro-panel .panel-heading p {
+  font-size: var(--wb-font-compact);
+  line-height: var(--wb-line-height);
+}
+
 .button-row,
 .detail-actions,
 .edit-actions {
