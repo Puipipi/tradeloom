@@ -963,14 +963,14 @@
     "patch": "host-bridge-rc3.patch",
     "preimages": {
       "lib/main.js": {
-        "bytes": 1111351,
-        "sha256": "25044c011858380c5bca15a9ffeea845b13a9d79e3ff9a1ab682c3460cc1fc80"
+        "bytes": 1111818,
+        "sha256": "b905f120335c7f2e11d0457989ee4ea88fed319d6a0316fc495bc1e30f132b2d"
       }
     },
     "postimages": {
       "lib/main.js": {
-        "bytes": 1111387,
-        "sha256": "46909ff52dd7065562fe2c1a2b2efef09b85fc13e73a80d65ddf9e8234dc2d79"
+        "bytes": 1111854,
+        "sha256": "05657537a778d347d99706ab11a873c56a41d3846e6bcb81ac5d5c878cab197b"
       }
     }
   }
