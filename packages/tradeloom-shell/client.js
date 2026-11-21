@@ -3288,14 +3288,13 @@ window.__ModuleLoader__.load({
                 return slot ?? h('div', { role: 'alert' }, '原生面板组件不可用。')
               }
               ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: 'source-native', inject: () => ({}) }, SourceSceneComponent))
-              if (descriptor.componentKey === 'workflow-canvas-native') {
-                function SourceWorkflowRootPresenter({ renderFactorySlot }) {
-                  return h('div', { 'data-source-owned-workflow': '', style: { position: 'relative', height: '100%', minHeight: 0, minWidth: 0 } },
-                    h('style', null, 'body:has([data-source-owned-workflow]) .dshwv-root { display: none; }'),
-                    h(SourceSceneComponent, { renderFactorySlot }))
-                }
-                ctx.slots.inject('root', () => ctx.slots.register({ name: 'root', priority: -1 }, SourceWorkflowRootPresenter))
+              function SourceSceneRootPresenter({ renderFactorySlot }) {
+                return h('div', { 'data-source-owned-scene-component': descriptor.componentKey,
+                  style: { position: 'relative', height: '100%', minHeight: 0, minWidth: 0 } },
+                  h('style', null, 'body:has([data-source-owned-scene-component]) .dshwv-root { display: none; }'),
+                  h(SourceSceneComponent, { renderFactorySlot }))
               }
+              ctx.slots.inject('root', () => ctx.slots.register({ name: 'root', priority: -1 }, SourceSceneRootPresenter))
               ctx.layout.selectPanel('source-native')
               return
             }
