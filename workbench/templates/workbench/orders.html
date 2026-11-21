@@ -3,16 +3,23 @@
 {% block page_eyebrow %}订单与生产 · 只读跟进{% endblock %}
 {% block page_title %}订单与生产{% endblock %}
 {% block content %}
-<section class="panel" aria-labelledby="orders-heading" data-testid="orders-page">
-  <div class="panel-heading"><div><p class="eyebrow">订单跟进</p><h2 id="orders-heading">按订单来源编号查询</h2></div></div>
-  <p>使用完整的来源订单编号精确匹配 commercial_source.document_reference 和 production_instruction.source_order_reference。人工候选关联会保留其待确认或已确认状态。</p>
-  <form id="order-followup-form" class="filter-form" role="search">
-    <label for="order-key">来源订单编号</label>
-    <input id="order-key" name="order_key" maxlength="140" required autocomplete="off" data-testid="order-key-input">
-    <button class="button primary" type="submit" data-testid="order-search">查询订单</button>
+<section class="panel orders-page" aria-labelledby="orders-heading" data-testid="orders-page">
+  <div class="panel-heading orders-heading"><div><p class="eyebrow">订单跟进</p><h2 id="orders-heading">查找一笔订单</h2><p>输入完整订单编号，查看来源、生产进度与出货回款记录。</p></div></div>
+  <form id="order-followup-form" class="filter-form orders-search" role="search">
+    <label for="order-key">订单编号</label>
+    <input id="order-key" name="order_key" maxlength="140" required autocomplete="off" placeholder="输入销售订单或来源订单编号" data-testid="order-key-input">
+    <button class="button primary" type="submit" data-testid="order-search">查询</button>
   </form>
-  <p id="order-followup-status" role="status" aria-live="polite"></p>
-  <div id="order-followup-results" data-testid="order-followup-results"></div>
+  <p id="order-followup-status" class="orders-status" role="status" aria-live="polite"></p>
+  <div id="order-followup-results" class="order-results" data-testid="order-followup-results">
+    <div class="order-empty" data-testid="order-empty-state">
+      <div class="order-empty-mark" aria-hidden="true">↗</div>
+      <div><h3>从订单编号开始</h3><p>查询结果会按业务阶段整理。编号按完整内容精确匹配；候选关联仍会标明待确认状态。</p></div>
+      <div class="order-stage-guide" aria-label="可查看的订单阶段">
+        <div><span>01</span><strong>来源与询报价</strong></div><div><span>02</span><strong>核料与采购</strong></div><div><span>03</span><strong>到料与生产</strong></div><div><span>04</span><strong>出货与回款</strong></div>
+      </div>
+    </div>
+  </div>
 </section>
 {% endblock %}
 {% block scripts %}<script src="{% business_path '/static/workbench/orders.js' %}" defer></script>{% endblock %}

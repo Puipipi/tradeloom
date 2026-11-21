@@ -24,10 +24,11 @@
   }
   const showOrder = order => {
     results.replaceChildren()
-    const heading = node('h3', `订单 ${order.order_key}`)
-    const match = node('p', `来源匹配：${stateLabel(order.match_status)}`)
-    results.append(heading, match)
-    const candidates = node('section')
+    results.classList.add('has-order-results')
+    const summary = node('header', undefined, 'order-result-head')
+    summary.append(node('h3', `订单 ${order.order_key}`), node('span', `来源匹配：${stateLabel(order.match_status)}`, 'order-match'))
+    results.append(summary)
+    const candidates = node('section', undefined, 'order-section order-source-section')
     candidates.append(node('h4', '来源候选'))
     if (!order.candidates.length) candidates.append(node('p', '没有精确匹配的来源候选。'))
     else {
@@ -38,7 +39,7 @@
       candidates.append(list)
     }
     results.append(candidates)
-    const inquirySection = node('section')
+    const inquirySection = node('section', undefined, 'order-section order-source-section')
     inquirySection.append(node('h4', '询报价与商业来源'))
     if (!order.inquiries.length) inquirySection.append(node('p', '暂无匹配的商业来源记录。'))
     else {
@@ -51,7 +52,7 @@
     results.append(inquirySection)
     for (const [key, label] of Object.entries(labels)) {
       const group = order[key]
-      const section = node('section')
+      const section = node('section', undefined, `order-section order-stage-${key}`)
       section.append(node('h4', `${label} · ${stateLabel(group.status)}`))
       if (!group.records.length) section.append(node('p', '暂无记录。'))
       else {
@@ -69,7 +70,7 @@
       results.append(section)
     }
     const erp = order.erpnext
-    const erpSection = node('section')
+    const erpSection = node('section', undefined, 'order-section order-erp-section')
     erpSection.append(node('h4', `ERPNext · ${stateLabel(erp.status)}`))
     erpSection.append(node('p', `此读取适配器支持：${erp.supported_doctypes.join('、')}。`))
     erpSection.append(node('p', `当前适配器不支持：${erp.unsupported_doctypes.join('、')}；不会生成跳转链接。`))
