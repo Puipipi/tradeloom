@@ -18,7 +18,7 @@
   "additions": {
     "lib/main.js": {
       "bytes": 1113204,
-      "sha256": "d977d08e2dfdeef4dc4d79508e6d7dbd893fadde7d652b52fb4d568c3227aaec"
+      "sha256": "a3a31096be135435698ee0d009c6375fd9d0a596b59c91419a8536d6c69909cd"
     },
     "lib/operation-report-worker.js": {
       "bytes": 185600,
@@ -121,8 +121,8 @@
       "sha256": "9560e2f94fa32c7aaa243b1393edb019bf977a70ca6b2bbfcfc9d7783711ab59"
     },
     "lib/tradeloom/installed-bootstrap.mjs": {
-      "bytes": 51844,
-      "sha256": "eddaa4b6607ddefb333a3abeb36c2aaae911f33e9e36db48dd799ec509cd8ded"
+      "bytes": 53650,
+      "sha256": "59589a14a456a7373570cf25d90df7c9f7181a45b893430959191cc9128d4433"
     },
     "lib/tradeloom/plugin-seed.mjs": {
       "bytes": 14648,
@@ -1191,6 +1191,10 @@
     "renderer/source-shell/replica-ui/vendor/pdfjs-dist/wasm/quickjs-eval.wasm": {
       "bytes": 469105,
       "sha256": "7bcacc9f22cacf7e9b23866d2a6d1639693d40c7f144e41b7c69ed37ba9cbe8f"
+    },
+    "lib/tradeloom/erpnext-config.mjs": {
+      "bytes": 4336,
+      "sha256": "e7adb8265323c51c894c27616f33cbbcee0805e1c9a447ab7e59ae5453b41c33"
     }
   },
   "sources": {
@@ -1384,8 +1388,8 @@
     "lib/tradeloom/installed-bootstrap.mjs": {
       "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/tradeloom/installed-bootstrap.mjs",
       "preimage": {
-        "bytes": 51844,
-        "sha256": "eddaa4b6607ddefb333a3abeb36c2aaae911f33e9e36db48dd799ec509cd8ded"
+        "bytes": 53650,
+        "sha256": "59589a14a456a7373570cf25d90df7c9f7181a45b893430959191cc9128d4433"
       }
     },
     "lib/tradeloom/plugin-seed.mjs": {
@@ -3256,6 +3260,13 @@
         "bytes": 469105,
         "sha256": "7bcacc9f22cacf7e9b23866d2a6d1639693d40c7f144e41b7c69ed37ba9cbe8f"
       }
+    },
+    "lib/tradeloom/erpnext-config.mjs": {
+      "source": "apps/tradeloom-launcher/erpnext-config.mjs",
+      "preimage": {
+        "bytes": 4336,
+        "sha256": "e7adb8265323c51c894c27616f33cbbcee0805e1c9a447ab7e59ae5453b41c33"
+      }
     }
   },
   "finalOverlay": {
@@ -3263,13 +3274,13 @@
     "preimages": {
       "lib/main.js": {
         "bytes": 1113204,
-        "sha256": "d977d08e2dfdeef4dc4d79508e6d7dbd893fadde7d652b52fb4d568c3227aaec"
+        "sha256": "a3a31096be135435698ee0d009c6375fd9d0a596b59c91419a8536d6c69909cd"
       }
     },
     "postimages": {
       "lib/main.js": {
         "bytes": 1140133,
-        "sha256": "d879395b2a32c99f9e5c1fa3e22f303fcd365b7d0f7f7f907fb989c8df02a657"
+        "sha256": "ad8f5087653703869535e0efbbf9f9f49a26e50f313b56bcb4445352027a470b"
       }
     }
   }
