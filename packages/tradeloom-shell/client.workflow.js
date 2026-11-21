@@ -1403,7 +1403,7 @@ window.__ModuleLoader__.load({
         .tl-wf-overflow-zoom { display:flex; flex-direction:column; gap:.25em; }
         .tl-wf-view-level { display:inline; }
       }
-      .tl-wf-execution-menu, .tl-wf-view-menu { position:relative; flex:none; }
+      .tl-wf-execution-menu, .tl-wf-view-menu, .tl-wf-template-menu { position:relative; flex:none; }
       .tl-wf-execution-actions, .tl-wf-view-actions { position:absolute; z-index:24; top:calc(100% + 4px); left:0; box-sizing:border-box; min-width:10em; max-width:calc(100cqw - 16px); display:flex; flex-direction:column; gap:.25em; padding:.4em; border:1px solid var(--tl-border,#cbd5e2); border-radius:var(--tl-corner-radius,6px); background:var(--tl-surface,#fff); box-shadow:0 8px 24px #0003; }
       .tl-wf-execution-actions > button, .tl-wf-view-actions > button { text-align:left; white-space:normal; }
       .tl-wf :is(.tl-wf-doc-actions,.tl-wf-execution-actions,.tl-wf-view-actions,.tl-wf-kind-menu,.tl-wf-status-list) { box-sizing:border-box; overflow:auto; overscroll-behavior:contain; scrollbar-gutter:stable; }

@@ -225,6 +225,8 @@ test('clear resets only an unsaved workflow to its canonical input after confirm
 test('template selection creates a new unsaved review delivery graph and confirms dropping dirty edits', () => {
  const f=loadWorkflow(), original=structuredClone(f.doc), requests=[], confirmations=[]
  f.context.onFetch=async (...args)=>{requests.push(args);throw new Error('template selection must not call the workflow service')}
+ const css=all(f.tree).find(node=>node.type==='style').children[0]
+ assert.match(css,/\.tl-wf-execution-menu, \.tl-wf-view-menu, \.tl-wf-template-menu \{ position:relative; flex:none; \}/,'template disclosure shares the containing-block rule used by the existing menu placer')
  const apply=button(f.tree,'人工核对交付')
  assert.ok(apply)
  assert.equal(apply.props.disabled,false)
