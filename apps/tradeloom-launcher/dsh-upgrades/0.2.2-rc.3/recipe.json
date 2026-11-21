@@ -819,7 +819,7 @@
   "expectedAsar": {
     "logicalEntries": 21999,
     "unpackedFiles": 1666,
-    "bytes": 235050194,
-    "sha256": "1e35e3450acdcfa41d9cb351b873cd24faedbff62ff5670f17f9446870e05e61"
+    "bytes": 235050926,
+    "sha256": "991a108af59548ae2a172d4fed78afdd67e9033e99f2ad1cfe9cc1225e87346a"
   }
 }
