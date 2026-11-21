@@ -667,6 +667,40 @@ window.__ModuleLoader__.load({
       }
       function show(text, issues = []) { setMessage({ text, issues }) }
 
+      function markdownValue(value) {
+        return String(value ?? '').replace(/\\/g, '\\\\').replace(/[|`*_{}\[\]<>#]/g, '\\$&')
+          .replace(/\r\n?/g, '\n').replace(/\n/g, '<br>')
+      }
+      function workflowMarkdown() {
+        const nodesById = new Map(doc.nodes.map(node => [node.id, node]))
+        const lines = [`# ${markdownValue(doc.title)}`, '', '## 节点']
+        if (doc.nodes.length === 0) lines.push('- （空）')
+        for (const node of doc.nodes) {
+          const type = appearance(catalog, node).label
+          lines.push(`- **${markdownValue(node.title)}**（${markdownValue(type)}）`)
+          if (node.instruction) lines.push(`  - 说明：${markdownValue(node.instruction)}`)
+        }
+        lines.push('', '## 连线与依赖')
+        if (doc.edges.length === 0) lines.push('- （空）')
+        for (const edge of doc.edges) {
+          const from = nodesById.get(edge.from), to = nodesById.get(edge.to)
+          const fromName = from?.title ?? edge.from
+          const toName = to?.title ?? edge.to
+          lines.push(`- ${markdownValue(fromName)} → ${markdownValue(toName)}`)
+        }
+        return lines.join('\n')
+      }
+      async function copyWorkflowMarkdown() {
+        try {
+          const clipboard = root.current?.ownerDocument?.defaultView?.navigator?.clipboard
+          if (typeof clipboard?.writeText !== 'function') throw new Error('当前窗口未提供剪贴板写入能力')
+          await clipboard.writeText(workflowMarkdown())
+          show('工作流 Markdown 已复制到剪贴板。')
+        } catch (error) {
+          show(`复制工作流 Markdown 失败：${error?.message || '剪贴板不可用'}`)
+        }
+      }
+
       async function act(label, task) {
         actionsPending.current++
         try { await task(); show(label) } catch (error) { show(`${label}失败：${error.message}`, error.issues ?? []) }
@@ -1088,7 +1122,7 @@ window.__ModuleLoader__.load({
           h('details', { className: 'tl-wf-status-menu', onToggle: placeToolbarMenu },
             h('summary', { className: 'tl-wf-view-action', title: '查看当前真实节点状态数', 'aria-label': '节点状态统计' }, '◷ 状态'),
             h('div', { className: 'tl-wf-status-list', role: 'status', 'aria-label': '节点状态统计' }, Object.entries(STATUS_LABEL).map(([status, label]) => h('span', { key: status }, `${label}：${doc.nodes.filter(node => (nodeState(node.id)?.status ?? 'pending') === status).length}`)))),
-          h('button', { type: 'button', className: 'tl-wf-view-action is-unavailable', disabled: true, title: '当前工作流没有 Markdown 导出能力。', 'aria-label': 'Markdown：当前未实现' }, '⧉ Markdown'),
+          h('button', { type: 'button', className: 'tl-wf-view-action', onClick: copyWorkflowMarkdown, title: '复制当前工作流名称、节点说明和连线为 Markdown。', 'aria-label': '复制工作流 Markdown' }, '⧉ Markdown'),
           h('button', { type: 'button', className: 'tl-wf-view-action is-unavailable', disabled: true, title: '当前工作流没有清空节点的操作；删除工作流会删除整张业务记录，因此不代替清空。', 'aria-label': '清空：当前未实现' }, '▤ 清空'),
           h('button', { type: 'button', className: 'tl-wf-view-action is-unavailable', disabled: true, title: '当前工作流没有内置模板功能。', 'aria-label': '模板：当前未实现' }, '▤ 模板'),
           h('details', { className: 'tl-wf-view-menu', onToggle: placeToolbarMenu },

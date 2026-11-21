@@ -38,7 +38,7 @@ function loadWorkflow({addSecondCanvas=false, activeRun}={}){
  const catalog=workflowCatalog()
  const render=props=>{index=0;refIndex=0;effects.length=0;return exported.WorkflowCanvas({initial:{doc,list,catalog,editing:false,run:activeRun},...props})}
  const tree=render()
- return{tree,state,effects,doc,second,list,catalog,context,render}
+ return{tree,state,effects,refs,doc,second,list,catalog,context,render}
 }
 function all(node){return node&&typeof node==='object'?[node,...(node.children||[]).flatMap(all)]:[]}
 function label(node){return typeof node==='string'?node:(node?.children||[]).map(label).join('')}
@@ -150,6 +150,32 @@ test('refresh reads the selected saved canvas and its list, without replacing ed
  assert.equal(f.state[2].title,'Server title')
  assert.equal(f.state[2].nodes.length,2)
  assert.equal(button(f.render(),'刷新画布').props.disabled,true)
+})
+test('Markdown toolbar copies only displayed workflow details and real edges on explicit click', async () => {
+ const f=loadWorkflow(), writes=[]
+ const requests=[]
+ f.context.onFetch=async (...args)=>{requests.push(args);throw new Error('copy must not call the workflow service')}
+ f.doc.title='Flow # `A`'
+ f.doc.nodes=[
+  {id:'a',kind:'input',title:'Start *now*',instruction:'line one\nline two'},
+  {id:'b',kind:'review',title:'Review',instruction:'Check | result'},
+ ]
+ f.doc.edges=[{from:'a',to:'b'},{from:'b',to:'a'}]
+ f.refs[2].current={ownerDocument:{defaultView:{navigator:{clipboard:{writeText:async value=>writes.push(value)}}}}}
+ const markdown=button(f.tree,'⧉ Markdown')
+ assert.equal(markdown.props.disabled,undefined)
+ assert.deepEqual(writes,[],'rendering does not access the clipboard')
+ await markdown.props.onClick()
+ assert.deepEqual(writes,[
+  '# Flow \\# \\`A\\`\n\n## 节点\n- **Start \\*now\\***（输入）\n  - 说明：line one<br>line two\n- **Review**（人工确认）\n  - 说明：Check \\| result\n\n## 连线与依赖\n- Start \\*now\\* → Review\n- Review → Start \\*now\\*',
+ ])
+ assert.equal(f.state[9].text,'工作流 Markdown 已复制到剪贴板。')
+ assert.equal(f.state[3],false,'copying does not mark the workflow dirty')
+ assert.deepEqual(requests,[],'copying does not dispatch workflow or external requests')
+ const unavailable=loadWorkflow()
+ unavailable.refs[2].current={ownerDocument:{defaultView:{navigator:{}}}}
+ await button(unavailable.tree,'⧉ Markdown').props.onClick()
+ assert.match(unavailable.state[9].text,/复制工作流 Markdown 失败：当前窗口未提供剪贴板写入能力/)
 })
 test('refresh stays unavailable in the editor, during a run, or while a write is pending', async () => {
  const f=loadWorkflow(), requests=[]
