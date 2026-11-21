@@ -483,8 +483,8 @@
         "sha256": "e279172f4e053cb0247a446e8209ce6fe22c76f40d17b7f903cc76416fbb7d4d"
       },
       "workflow-files.js": {
-        "bytes": 11686,
-        "sha256": "26944f74ed78d0f516084f705869107305e647a7b55fcf898709ca84f2b68fe7"
+        "bytes": 11745,
+        "sha256": "9b3d26676175510bf01fc8dc3e39b2170ccd855c356d1b5e00d64ad87b547bab"
       }
     },
     "postimages": {
@@ -801,14 +801,14 @@
         "sha256": "e279172f4e053cb0247a446e8209ce6fe22c76f40d17b7f903cc76416fbb7d4d"
       },
       "workflow-files.js": {
-        "bytes": 11686,
-        "sha256": "26944f74ed78d0f516084f705869107305e647a7b55fcf898709ca84f2b68fe7"
+        "bytes": 11745,
+        "sha256": "9b3d26676175510bf01fc8dc3e39b2170ccd855c356d1b5e00d64ad87b547bab"
       }
     },
     "inventory": {
       "fileCount": 79,
-      "bytes": 3076048,
-      "sha256": "936b2d2decd3375fb1ee97dfedbb710afb59dec29982e4b1d1b5844aa9d15a01"
+      "bytes": 3076107,
+      "sha256": "8232ee932fe502da27969bb44e34c93e1c4a50150a0d7277df6921cda5c4602e"
     },
     "validatorInput": {
       "source": "apps/tradeloom-launcher/installed-bootstrap.mjs",
@@ -819,7 +819,7 @@
   "expectedAsar": {
     "logicalEntries": 21789,
     "unpackedFiles": 1666,
-    "bytes": 228923773,
-    "sha256": "e5b719e8b1b19a63714252fa28bddb3d6c17ca16ed75908e307c6924a1dec1f3"
+    "bytes": 228925493,
+    "sha256": "033b8c2fc8a12a458ed195c9919e75ff4271dd062727a68e420b9e9f59ef916b"
   }
 }
