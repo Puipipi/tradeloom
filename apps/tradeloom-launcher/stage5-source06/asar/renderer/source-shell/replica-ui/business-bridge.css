@@ -61,11 +61,18 @@
 .business-native-placement:focus-visible { outline: 2px solid var(--focus-edge); outline-offset: 1px; }
 .business-native-placement svg { display: block; width: 14px; height: 14px; }
 .business-native-placement[hidden] { display: none; }
-.panel-header:has(.business-assistant-tabs) .panel-title,
-.panel-header:has(.business-assistant-tabs) .panel-sub { display: none; }
-.panel-header:has(.business-assistant-tabs) .panel-identity { flex: none; }
-.panel-header:has(.business-assistant-tabs) .panel-controls { flex: 0 0 auto; }
-.business-assistant-tabs { display:flex; flex:1 1 auto; min-width:0; overflow:hidden; align-items:center; gap:2px; touch-action:auto; }
+.business-assistant-tab-row {
+  display:flex;
+  flex:0 0 var(--ui-panel-header-height, 28px);
+  align-items:center;
+  width:100%;
+  min-width:0;
+  padding:0 8px;
+  border-bottom:1px solid var(--line);
+  background:var(--panel-header);
+}
+.business-assistant-tab-row[hidden] { display:none; }
+.business-assistant-tabs { display:flex; flex:1 1 auto; width:100%; min-width:0; overflow:hidden; align-items:center; gap:2px; touch-action:auto; }
 .business-assistant-tabs > button,
 .business-assistant-tab-current > button,
 .business-assistant-tab > button { flex:0 1 auto; min-width:28px; max-width:6em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; background:transparent; color:inherit; font:inherit; border:0; border-bottom:2px solid transparent; padding:2px 4px; cursor:pointer; }
@@ -77,11 +84,16 @@
 .business-assistant-tabs button[aria-selected="true"] { border-bottom-color:var(--accent); }
 .business-assistant-tabs button:focus-visible { outline:2px solid var(--focus-edge); outline-offset:-2px; }
 .business-assistant-tab-close {
-  flex: 0 0 20px !important;
-  min-width:20px !important;
-  width:20px;
-  padding: 2px 3px !important;
+  display:inline-flex;
+  flex:0 0 24px !important;
+  align-items:center;
+  justify-content:center;
+  min-width:24px !important;
+  width:24px;
+  height:24px;
+  padding:0 !important;
   border-bottom-color: transparent !important;
+  line-height:1;
   opacity: .72;
 }
 .business-assistant-tab-close:hover,

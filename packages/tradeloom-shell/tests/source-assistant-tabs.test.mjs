@@ -31,14 +31,37 @@ class Element {
     this.className = ''
     this.offsetHeight = 30
     this.offsetWidth = 140
+    this.parentNode = null
   }
   setAttribute(name, value) { this.attributes.set(name, String(value)) }
   getAttribute(name) { return this.attributes.get(name) }
   addEventListener(name, fn) { this.handlers.set(name, fn) }
-  append(...nodes) { this.children.push(...nodes) }
-  replaceChildren(...nodes) { this.children = nodes }
-  remove() { this.isConnected = false }
+  append(...nodes) { for (const node of nodes) { node.parentNode = this; node.isConnected = this.isConnected; this.children.push(node) } }
+  replaceChildren(...nodes) {
+    for (const child of this.children) { child.parentNode = null; child.isConnected = false }
+    this.children = []
+    this.append(...nodes)
+  }
+  insertBefore(node, before) {
+    const index = before ? this.children.indexOf(before) : -1
+    node.parentNode = this
+    node.isConnected = this.isConnected
+    this.children.splice(index < 0 ? this.children.length : index, 0, node)
+  }
+  remove() {
+    this.isConnected = false
+    if (this.parentNode) this.parentNode.children = this.parentNode.children.filter(child => child !== this)
+    this.parentNode = null
+  }
   contains(target) { return target === this || this.children.some(child => child.contains?.(target)) }
+  querySelector(selector) {
+    const matches = node => selector.startsWith('.') ? node.className.split(/\s+/).includes(selector.slice(1))
+      : selector === '.panel-header' ? node.className === 'panel-header'
+        : selector === '.panel-content' ? node.className === 'panel-content'
+          : false
+    const visit = node => { for (const child of node.children) { if (matches(child)) return child; const nested = visit(child); if (nested) return nested } }
+    return visit(this)
+  }
   showPopover() {}
   hidePopover() {}
   focus() { this.focused = true }
@@ -68,17 +91,20 @@ for (const scenario of [
   test(`${scenario.sceneId} assistant fixed tab survives add, switch, and close`, async () => {
     const panel = new Element('section')
     const header = new Element('header')
+    header.className = 'panel-header'
+    const title = new Element('strong')
+    title.className = 'panel-title'
+    title.textContent = scenario.fixedLabel
     const controls = new Element('div')
+    controls.className = 'panel-controls'
+    header.append(title, controls)
     header.querySelector = selector => selector === '.panel-controls' ? controls : null
-    header.insertBefore = (node, before) => {
-      const index = before ? header.children.indexOf(before) : -1
-      header.children.splice(index < 0 ? header.children.length : index, 0, node)
-      node.isConnected = true
-    }
-    panel.querySelector = selector => selector === '.panel-header' ? header : null
+    const content = new Element('main')
+    content.className = 'panel-content'
+    panel.append(header, content)
     const note = new Element('div')
     const interactionCalls = []
-    const record = { panel, content: new Element('main'), note, revision: 1, uiSceneId: scenario.sceneId,
+    const record = { panel, content, note, revision: 1, uiSceneId: scenario.sceneId,
       created: true, status: 'context-mounted', visible: true, placement: 'docked', syncRevision: 0,
       target: { sceneId: scenario.sceneId, panelId: scenario.panelId, roleId: scenario.fixedRole } }
     const { api, calls } = fixtureApi()
@@ -106,8 +132,8 @@ for (const scenario of [
     const group = record.assistantTabs
     assert.equal(group.fixedLabel, scenario.fixedLabel)
     assert.equal(group.activeRoleId, scenario.fixedRole)
-    assert.equal(group.bar.children.length, 1)
-    assert.equal(group.bar.children[0].textContent, scenario.fixedLabel)
+    assert.equal(group.row, undefined, 'a single fixed assistant keeps the original panel title')
+    assert.equal(header.contains(title), true)
 
     await funcs.openAssistantTabChooser(panel)
     const menu = body.children[0]
@@ -119,10 +145,13 @@ for (const scenario of [
     assert.equal(group.tabs.has(scenario.addedRole), true)
     assert.equal(group.activeRoleId, scenario.addedRole)
     assert.equal(record.status, 'context-mounted')
+    assert.equal(group.row.parentNode, panel)
+    assert.equal(panel.children.indexOf(group.row), panel.children.indexOf(content) - 1)
+    assert.equal(header.contains(group.row), false, 'the tab row is a panel sibling between header and content')
+    assert.equal(group.row.contains(group.bar), true)
     assert.equal(group.bar.children[0].textContent, scenario.fixedLabel, 'fixed helper remains first and has no close button')
     assert.equal(group.bar.children[0].dataset.assistantFixed, 'true')
-    const closeControl = group.bar.children[1].children[1]
-    assert.equal(closeControl.className, 'business-assistant-tab-close')
+    assert.equal(group.bar.children[1].children[1].className, 'business-assistant-tab-close')
 
     await funcs.selectAssistantTab(record, scenario.fixedRole)
     assert.equal(group.activeRoleId, scenario.fixedRole)
@@ -130,8 +159,11 @@ for (const scenario of [
     await funcs.selectAssistantTab(record, scenario.addedRole)
     assert.equal(group.activeRoleId, scenario.addedRole)
     assert.equal(group.bar.children[1].children[0].dataset.assistantTabRole, scenario.addedRole,
-      'the selected tab stays in the pinned header lane beside its close control')
+      'the selected tab stays beside its close control in the dedicated row')
     assert.equal(group.bar.children[1].children[0].getAttribute('aria-selected'), 'true')
+    const closeControl = group.bar.children[1].children[1]
+    assert.equal(closeControl.type, 'button')
+    assert.equal(closeControl.getAttribute('aria-label'), `关闭${scenario.addedLabel}`)
     const alias = `assistant-tab:${scenario.panelId}:${scenario.addedRole}`
     assert.ok(calls.some(call => call[0] === 'create' && call[2] === alias))
 
@@ -139,26 +171,32 @@ for (const scenario of [
     assert.equal(group.tabs.has(scenario.addedRole), false)
     assert.equal(group.activeRoleId, scenario.fixedRole)
     assert.equal(record.target.panelId, scenario.panelId)
-    assert.equal(group.bar.children[0].textContent, scenario.fixedLabel)
+    assert.equal(group.row.hidden, true, 'closing the final added tab hides the now-empty row')
+    assert.equal(group.bar.children.length, 0)
+    assert.equal(header.contains(title), true)
     assert.ok(calls.some(call => call[0] === 'visible' && call[2] === alias && call[3] === false))
     assert.equal(calls.some(call => call[0] === 'delete-session'), false, 'closing a tab does not remove its existing session')
   })
 }
 
-test('narrow assistant header keeps fixed, selected, and close lanes constrained', () => {
+test('dedicated assistant row gives fixed, selected, and close controls a full-width lane', () => {
   const css = readFileSync(resolve(sourceRoot, 'replica-ui/business-bridge.css'), 'utf8')
-  assert.match(css, /\.business-assistant-tabs\s*\{[^}]*min-width:0[^}]*overflow:hidden/)
+  assert.match(css, /\.business-assistant-tab-row\s*\{[^}]*width:100%[^}]*min-width:0/)
+  assert.match(css, /\.business-assistant-tab-row\[hidden\]\s*\{\s*display:none/)
+  assert.match(css, /\.business-assistant-tabs\s*\{[^}]*width:100%[^}]*min-width:0/)
   assert.match(css, /\.business-assistant-tabs > button,\s*\.business-assistant-tab-current > button,\s*\.business-assistant-tab > button\s*\{[^}]*min-width:28px/)
   assert.match(css, /\.business-assistant-tabs > button\[data-assistant-fixed\]\s*\{[^}]*flex:0 1 5em/)
   assert.match(css, /\.business-assistant-tab-current\s*\{[^}]*min-width:48px/)
-  assert.match(css, /\.business-assistant-tab-close\s*\{[^}]*flex:\s*0 0 20px !important/)
+  assert.match(css, /\.business-assistant-tab-close\s*\{[^}]*width:24px[^}]*height:24px/)
   assert.match(css, /\.business-assistant-tabs-scroll\s*\{[^}]*min-width:0[^}]*overflow-x:auto/)
 })
 
 test('production source entry loads the business bridge that owns assistant tabs', () => {
+  const renderer = readFileSync(resolve(sourceRoot, 'replica-ui/renderer.js'), 'utf8')
   assert.match(entrySource, /<script src="replica-ui\/business-bridge\.js"><\/script>/)
   assert.doesNotMatch(entrySource, /<script[^>]+replica-adapter\.js/)
-  assert.match(readFileSync(resolve(sourceRoot, 'replica-ui/renderer.js'), 'utf8'), /window\.businessBridge\.renderRolePanel\(panel, content\)/)
+  assert.match(renderer, /window\.businessBridge\.renderRolePanel\(panel, content\)/)
+  assert.match(renderer, /wrap\.append\(head, content\)/, 'the fixture follows the actual header/content sibling structure')
   const interactions = readFileSync(resolve(sourceRoot, 'replica-ui/panel-interactions.js'), 'utf8')
   assert.match(interactions, /businessBridge\?\.openAssistantTabChooser/)
   assert.match(interactions, /openChooser\(ownerPanel\)/)
@@ -229,12 +267,16 @@ test('real assistant chooser survives adoption and closes on outside click or Es
   window.sourcePanelInteractions = menuApi
 
   const panel = new Element('section')
+  const header = new Element('header')
+  header.className = 'panel-header'
+  const content = new Element('main')
+  content.className = 'panel-content'
+  panel.append(header, content)
   const note = new Element('div')
-  const bar = new Element('div')
-  const record = { panel, content: new Element('main'), note, revision: 1, uiSceneId: 'product-scene', disposed: false,
+  const record = { panel, content, note, revision: 1, uiSceneId: 'product-scene', disposed: false,
     assistantTabs: { sceneId: 'product-scene', hostPanelId: 'product-chat', fixedRoleId: 'product', fixedLabel: '商品助手',
       fixedTarget: { sceneId: 'product-scene', panelId: 'product-chat', roleId: 'product' }, activeRoleId: 'product',
-      tabs: new Map(), switchGeneration: 0, chooserGeneration: 0, bar } }
+      tabs: new Map(), switchGeneration: 0, chooserGeneration: 0 } }
   const api = { assistantTabCatalog: async () => [] }
   const bridgeContext = { document, window, app: { harnessSurface: api },
     state: { roleRecord: record, sceneTransitionPending: false, tearingDown: false },
@@ -257,6 +299,6 @@ test('real assistant chooser survives adoption and closes on outside click or Es
   menuApi.onMenuKey({ key: 'Escape', preventDefault() { prevented = true } })
   assert.equal(prevented, true)
   assert.equal(second.isConnected, false)
-  assert.equal(bar.focused, true)
+  assert.equal(header.focused, true)
   assert.equal(listeners.size, 0)
 })

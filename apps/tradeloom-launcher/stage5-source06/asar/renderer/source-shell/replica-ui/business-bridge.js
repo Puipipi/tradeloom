@@ -801,18 +801,33 @@
   function renderAssistantTabBar(record) {
     const group = record.assistantTabs
     if (!group || !isCurrentRole(record)) return
+    const panel = record.panel
     const header = record.panel?.querySelector('.panel-header')
-    if (!header) return
+    const content = record.panel?.querySelector('.panel-content') || record.content
+    if (!panel || !header || !content) return
+    if (!group.tabs.size) {
+      if (group.row) {
+        group.row.hidden = true
+        group.bar?.replaceChildren()
+      }
+      return
+    }
+    let row = group.row
     let bar = group.bar
-    if (!bar?.isConnected) {
+    if (!row?.isConnected || !bar?.isConnected) {
+      row = document.createElement('div')
+      row.className = 'business-assistant-tab-row'
+      row.setAttribute('role', 'presentation')
       bar = document.createElement('div')
       bar.className = 'business-assistant-tabs'
       bar.setAttribute('role', 'tablist')
       bar.setAttribute('aria-label', '助手标签')
-      const controls = header.querySelector('.panel-controls')
-      header.insertBefore(bar, controls || null)
+      row.append(bar)
+      panel.insertBefore(row, content)
+      group.row = row
       group.bar = bar
     }
+    row.hidden = false
     const makeTabButton = (tab, fixed = false) => {
       const button = document.createElement('button')
       button.type = 'button'
@@ -974,12 +989,12 @@
     }
     document.body.append(menu)
     try { menu.showPopover?.() } catch {}
-    const anchor = group.bar?.getBoundingClientRect() ?? panel.getBoundingClientRect()
+    const anchor = group.bar?.getBoundingClientRect() ?? record.panel.querySelector('.panel-header')?.getBoundingClientRect() ?? panel.getBoundingClientRect()
     menu.style.top = `${Math.max(8, Math.min(anchor.bottom + 5, window.innerHeight - menu.offsetHeight - 8))}px`
     menu.style.left = `${Math.max(8, Math.min(anchor.left, window.innerWidth - menu.offsetWidth - 8))}px`
     if (candidates.length) menu.querySelector?.('button')?.focus?.()
     else { menu.setAttribute('tabindex', '-1'); menu.focus?.() }
-    window.sourcePanelInteractions?.adoptMenu?.(menu, group.bar, panel)
+    window.sourcePanelInteractions?.adoptMenu?.(menu, group.row || record.panel.querySelector('.panel-header'), panel)
   }
 
   function initializeAssistantTabs(record, roleId, target) {
@@ -994,6 +1009,7 @@
 
   function disposeAssistantTabs(record) {
     if (record.assistantTabs) record.assistantTabs.switchGeneration++
+    record.assistantTabs?.row?.remove()
     record.assistantTabs?.bar?.remove()
     for (const menu of document.querySelectorAll('.business-assistant-menu')) {
       const interactions = window.sourcePanelInteractions
