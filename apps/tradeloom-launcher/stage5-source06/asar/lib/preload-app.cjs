@@ -2174,6 +2174,13 @@ onNativeAccountOverlayState(listener) {
   return () => electron.ipcRenderer.off('source-shell:account-overlay-state', receive);
 },
 workflowCanvasToolbarState: (value) => electron.ipcRenderer.invoke('source-shell:workflowCanvasToolbarState', value),
+workflowProjectFolder: (request) => {
+	if (!request || typeof request !== "object" || Array.isArray(request)
+		|| Object.keys(request).sort().join(",") !== "operation,workflowId"
+		|| !["pick", "open", "status"].includes(request.operation)
+		|| typeof request.workflowId !== "string" || !/^wf-[A-Za-z0-9_-]{1,120}$/.test(request.workflowId)) return Promise.reject(new Error("invalid workflow project folder request"));
+	return electron.ipcRenderer.invoke("source-shell:workflowProjectFolder", request);
+},
 onWorkflowCanvasToolbarActionRequested(listener) {
   const receive = (_event, value) => {
     const descriptor = value?.descriptor;

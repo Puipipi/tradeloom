@@ -1,6 +1,6 @@
 import { cpus, totalmem, freemem } from 'node:os'
 import { appendFile, mkdir, statfs } from 'node:fs/promises'
-import { join } from 'node:path'
+import { basename, isAbsolute, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { createSurfaceOwner } from './surface-owner.mjs'
 const SOURCE_URL = 'dsh-app://app/source-shell/renderer/source-entry.html'
@@ -32,7 +32,7 @@ function validPanelGeometryRecord(value) {
   }
   return true
 }
-export function createSourceShellController({ BrowserWindow, WebContentsView, ipcMain, appPreload, sourcePreload, ownedPartition, getConfig, saveConfig, confirmConfigurationChange, engineGenerationAction, onNativeDescriptorChanged = () => {}, resolveBinding, sceneRotationPreview = async () => { throw Error('scene rotation unavailable') }, sceneRotationConfirm = async () => { throw Error('scene rotation unavailable') }, sceneRotationStatus = async () => { throw Error('scene rotation unavailable') }, sceneRotationResume = async () => { throw Error('scene rotation unavailable') }, sceneRotationCancel = async () => { throw Error('scene rotation unavailable') }, sceneRotationAbandon = async () => { throw Error('scene rotation unavailable') }, installProtocol, primaryWindow, getNativeCaptionFallback, resolveNativeTheme, subscribeNativeTheme, hasNativeModal = () => false, pickWorkflowDirectory, requestWorkflowFiles, openWorkflowFile, updateOwnership = () => {}, createRegistry = createSurfaceOwner, loadUiScale = async () => 1, saveUiScale = async () => { throw Error('UI scale persistence unavailable') }, loadSceneOrder = async () => ({saved:false,ids:[]}), saveSceneOrder = async () => { throw Error('scene order persistence unavailable') }, inventoryTimeoutMs = 5000, systemInfo = { cpus, totalmem, freemem }, diskStat = statfs, getKnownFolders, openKnownFolder, attachAccountShortcuts, resetAccountShortcuts, observeFailure = () => {}, observePhase = () => {}, writeUi18Diagnostic = appendFile }) {
+export function createSourceShellController({ BrowserWindow, WebContentsView, ipcMain, appPreload, sourcePreload, ownedPartition, getConfig, saveConfig, confirmConfigurationChange, engineGenerationAction, onNativeDescriptorChanged = () => {}, resolveBinding, sceneRotationPreview = async () => { throw Error('scene rotation unavailable') }, sceneRotationConfirm = async () => { throw Error('scene rotation unavailable') }, sceneRotationStatus = async () => { throw Error('scene rotation unavailable') }, sceneRotationResume = async () => { throw Error('scene rotation unavailable') }, sceneRotationCancel = async () => { throw Error('scene rotation unavailable') }, sceneRotationAbandon = async () => { throw Error('scene rotation unavailable') }, installProtocol, primaryWindow, getNativeCaptionFallback, resolveNativeTheme, subscribeNativeTheme, hasNativeModal = () => false, pickWorkflowDirectory, requestWorkflowFiles, openWorkflowFile, loadWorkflowProjectFolders = async () => ({}), saveWorkflowProjectFolders = async () => { throw Error('workflow project folder persistence unavailable') }, updateOwnership = () => {}, createRegistry = createSurfaceOwner, loadUiScale = async () => 1, saveUiScale = async () => { throw Error('UI scale persistence unavailable') }, loadSceneOrder = async () => ({saved:false,ids:[]}), saveSceneOrder = async () => { throw Error('scene order persistence unavailable') }, inventoryTimeoutMs = 5000, systemInfo = { cpus, totalmem, freemem }, diskStat = statfs, getKnownFolders, openKnownFolder, attachAccountShortcuts, resetAccountShortcuts, observeFailure = () => {}, observePhase = () => {}, writeUi18Diagnostic = appendFile }) {
   if (!appPreload || !sourcePreload || !ownedPartition || typeof getConfig !== 'function' || typeof resolveBinding !== 'function' || typeof installProtocol !== 'function' || typeof resolveNativeTheme !== 'function' || typeof subscribeNativeTheme !== 'function') throw new Error('missing trusted desktop configuration')
   let initialSourcePaint;
   let configurationQueue = Promise.resolve(), configurationEpoch = 0
@@ -840,6 +840,85 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
     }
     return result
   }
+  async function workflowProjectFolderRequest(event, request) {
+    if (!request || Object.keys(request).sort().join(',') !== 'operation,workflowId'
+      || !['pick', 'open', 'status'].includes(request.operation)
+      || typeof request.workflowId !== 'string' || !/^wf-[A-Za-z0-9_-]{1,120}$/.test(request.workflowId)) throw Error('invalid workflow project folder request')
+    const workflowId = request.workflowId
+    const owned = controller.resolveGuest(event.sender, event.senderFrame)
+    const item = sceneComponent
+    if (!owned || owned.scope !== 'scene-component' || owned.componentKey !== 'workflow-canvas-native'
+      || !item || owned.view !== item.view || owned.window !== item.parent || item.status !== 'context-mounted'
+      || request.operation !== 'status' && item.visible !== true || componentPlacement(item) !== 'docked') throw Error('workflow project folder owner rejected')
+    const window = owned.window, frame = event.senderFrame, epoch = configurationEpoch
+    const componentGeneration = item.generation
+    const route = workflowCanvasRoute(), current = scene(route.sceneId)
+    if (!requestWorkflowFiles || closed || route.sceneId !== 'agent-center' || route.panelId !== item.panelId
+      || owned.panelId !== item.panelId || item.sceneId !== route.sceneId || item.parent !== workflowDockOwner()
+      || !['files', 'preview'].every(id => current.panels.some(panel => panel.id === id && panel.type === 'business-iframe' && panel.path === '/artifacts#' + id))) throw Error('workflow project folder owner rejected')
+    const chats = current.panels.filter(panel => panel.type === 'native-chat' && (panel.roleId ?? current.roleId) === 'center')
+    if (chats.length !== 1) throw Error('workflow center unavailable')
+    const target = { sceneId: route.sceneId, panelId: chats[0].id }
+    const binding = await resolveBinding(target)
+    if (binding?.bindingStatus !== 'bound' || binding.roleId !== 'center' || binding.sceneId !== target.sceneId
+      || binding.panelId !== target.panelId || typeof binding.sessionId !== 'string' || typeof binding.bindingRevision !== 'string') throw Error('workflow center unavailable')
+    const assertOwner = () => {
+      const latest = controller.resolveGuest(event.sender, event.senderFrame)
+      if (closed || configurationEpoch !== epoch || event.senderFrame !== frame || event.senderFrame !== item.view.webContents.mainFrame
+        || latest?.scope !== 'scene-component' || latest.componentKey !== 'workflow-canvas-native' || latest.view !== item.view
+        || latest.window !== window || sceneComponent !== item || item.status !== 'context-mounted'
+        || request.operation !== 'status' && item.visible !== true
+        || componentPlacement(item) !== 'docked' || item.generation !== componentGeneration || item.sceneId !== route.sceneId || item.panelId !== route.panelId
+        || item.parent !== workflowDockOwner()) throw Error('workflow project folder owner rejected')
+    }
+    const assertBinding = async () => {
+      assertOwner()
+      const latest = await resolveBinding({ ...target, expectedSessionId: binding.sessionId })
+      assertOwner()
+      if (latest?.bindingStatus !== 'bound' || latest.roleId !== 'center' || latest.sceneId !== target.sceneId
+        || latest.panelId !== target.panelId || latest.sessionId !== binding.sessionId || latest.bindingRevision !== binding.bindingRevision) throw Error('workflow center changed')
+    }
+    await assertBinding()
+    if (request.operation === 'status') {
+      const folders = await loadWorkflowProjectFolders()
+      await assertBinding()
+      const folder = folders?.[workflowId]
+      return typeof folder === 'string' && isAbsolute(folder) && folder.length <= 32767
+        ? { saved: true, name: basename(folder) } : { saved: false }
+    }
+    if (request.operation === 'pick') {
+      if (!pickWorkflowDirectory) throw Error('workflow directory picker unavailable')
+      const chosen = await pickWorkflowDirectory(window)
+      await assertBinding()
+      if (chosen === null) return null
+      if (typeof chosen !== 'string' || !isAbsolute(chosen) || chosen.length > 32767) throw Error('workflow project folder unavailable')
+      const selected = await requestWorkflowFiles({ operation: 'pick', chosen, sessionId: binding.sessionId, bindingRevision: binding.bindingRevision })
+      await assertBinding()
+      if (!selected || typeof selected.path !== 'string' || !isAbsolute(selected.path) || selected.path.length > 32767) throw Error('workflow project folder unavailable')
+      const saved = await loadWorkflowProjectFolders()
+      await assertBinding()
+      const folders = Object.create(null)
+      if (saved && typeof saved === 'object' && !Array.isArray(saved)) {
+        for (const [id, value] of Object.entries(saved)) {
+          if (/^wf-[A-Za-z0-9_-]{1,120}$/.test(id) && typeof value === 'string' && isAbsolute(value) && value.length <= 32767) folders[id] = value
+        }
+      }
+      folders[workflowId] = selected.path
+      await saveWorkflowProjectFolders(folders)
+      await assertBinding()
+      controller.workflowFilesChanged({ openPreview: true })
+      return { saved: true, name: basename(selected.path) }
+    }
+    const folders = await loadWorkflowProjectFolders()
+    await assertBinding()
+    const expectedPath = folders?.[workflowId]
+    if (typeof expectedPath !== 'string' || !isAbsolute(expectedPath) || expectedPath.length > 32767) throw Error('workflow project folder not saved')
+    const view = await requestWorkflowFiles({ operation: 'open-root', expectedPath, sessionId: binding.sessionId, bindingRevision: binding.bindingRevision })
+    await assertBinding()
+    if (view?.path !== expectedPath) throw Error('workflow project folder authorization changed')
+    controller.workflowFilesChanged({ openPreview: true })
+    return { opened: true, name: basename(expectedPath) }
+  }
   const componentDockOwner = item => item?.componentKey==='workflow-canvas-native' ? windows.get(item.sceneId) ?? main : main
   const componentForKey = componentKey => componentKey==='workflow-canvas-native'?sceneComponent:componentKey==='erpnext-status-native'?erpNextStatusComponent:undefined
   const componentPlacement = item => item && componentPopouts.get(item.componentKey)===item.parent?'popped-out':'docked'
@@ -1200,6 +1279,7 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
         })
       })
       bind('workflowFiles', workflowFileRequest)
+      bind('workflowProjectFolder', workflowProjectFolderRequest)
       bind('workflowCanvasMount', async event => {
         const dockOwner=workflowDockOwner()
         if(assertWindow(event)!==dockOwner)throw Error('workflow canvas owner rejected')
@@ -1620,11 +1700,11 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
       contents.send('dsh-desktop:native-utility-request', { action, descriptor: expected })
       return { delivered: true }
     },
-    workflowFilesChanged() {
+    workflowFilesChanged(options = {}) {
       if (closed || config?.businessRoutes?.['/agent-center']?.sceneId !== 'agent-center') return
       const window = workflowDockOwner()
       if (window && !window.isDestroyed() && !window.webContents.isDestroyed()) {
-        window.webContents.send('source-shell:workflow-files-changed')
+        window.webContents.send('source-shell:workflow-files-changed', options?.openPreview === true ? { openPreview: true } : undefined)
       }
     },
     trustedSourceShellWindow(event) {

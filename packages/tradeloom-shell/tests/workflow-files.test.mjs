@@ -304,6 +304,7 @@ async function desktop(t, fixture, configuration = defaults) {
   }, () => { throw Error('unowned native picker') })(() => primary, () => undefined, () => true)
   const wire = await privateControl(mainSource, fixture.authority, () => controller.workflowFilesChanged())
   let delayedFileReply
+  let projectFolders = Object.create(null)
   const openedFiles = []
   const controller = createSourceShellController({
     BrowserWindow: class {},
@@ -332,6 +333,8 @@ async function desktop(t, fixture, configuration = defaults) {
       }
       return result
     },
+    loadWorkflowProjectFolders: async () => projectFolders,
+    saveWorkflowProjectFolders: async value => { projectFolders = structuredClone(value) },
     openWorkflowFile: async (operation, resolved, authorize) => { await authorize(); openedFiles.push({ operation, resolved }) },
     resolveBinding: async ({ sceneId, panelId, expectedSessionId }) => {
       const sessionId = fixture.state.roles.center.sessionId
@@ -406,6 +409,12 @@ async function desktop(t, fixture, configuration = defaults) {
   }
   t.after(disposeInitial)
   return { app, files, preview, contents, handlers, downloads, objectUrls, bridge: window.businessBridge,
+    projectFolders: () => projectFolders,
+    projectFolderRequest(request) {
+      const view = primary.contentView.children.find(item => item.webContents.mainFrame.url === 'dsh-app://app/')
+      assert.ok(view, 'the live workflow canvas is mounted in its own WebContentsView')
+      return handlers.get('source-shell:workflowProjectFolder')({ sender: view.webContents, senderFrame: view.webContents.mainFrame }, request)
+    },
     disposeInitial, nativeMenus, openedFiles,
     canvasView: () => primary.contentView.children[0],
     delayFileReply(operation) {
@@ -644,6 +653,62 @@ test('normal workflow panes and the center tool consume one actual temporary-dir
   assert.equal((await f.tool({ operation: 'current' })).ok, false)
   assert.equal(nodes(d.files).find(node => node.tag === 'iframe'), undefined, 'closing the local directory does not mount the business files iframe')
   assert.equal(nodes(d.preview).find(node => node.tag === 'iframe'), undefined, 'closing the local directory does not mount the business preview iframe')
+})
+
+test('saved project folders stay workflow-bound and open only the matching current center grant', async t => {
+  const f = await scope(t)
+  const d = await desktop(t, f)
+  await d.bridge.start()
+  d.disposeInitial()
+  const scene = defaults.scenes.find(item => item.id === 'agent-center')
+  d.bridge.sceneSelected(scene)
+  const canvas = new Node('div')
+  canvas.panel = new Node('section')
+  const cleanup = d.bridge.renderWorkflowPanel({ ...scene.panels.find(panel => panel.id === 'workflow-main'), sceneId: scene.id }, canvas)
+  t.after(cleanup)
+  await timeout(() => d.canvasView())
+  const view = d.canvasView()
+  d.acknowledgeCanvas(view)
+  await timeout(() => view.visible === true)
+  const call = value => d.projectFolderRequest(value)
+  await assert.rejects(call({ operation: 'pick', workflowId: 'wf-a', path: f.root }), /invalid workflow project folder request/)
+  d.chosen(f.root)
+  assert.deepEqual(await call({ operation: 'pick', workflowId: 'wf-a' }), { saved: true, name: path.basename(f.root) })
+  assert.deepEqual(await call({ operation: 'status', workflowId: 'wf-a' }), { saved: true, name: path.basename(f.root) })
+  assert.deepEqual(await call({ operation: 'status', workflowId: 'wf-b' }), { saved: false })
+  assert.equal(d.projectFolders()['wf-a'], f.root)
+
+  d.chosen(f.nested)
+  assert.deepEqual(await call({ operation: 'pick', workflowId: 'wf-b' }), { saved: true, name: path.basename(f.nested) })
+  await assert.rejects(call({ operation: 'open', workflowId: 'wf-a' }), /workflow files unavailable/)
+  assert.equal((await f.desktop({ operation: 'current' })).path, f.nested, 'a mismatched bookmark does not navigate the current grant')
+
+  d.chosen(null)
+  assert.equal(await call({ operation: 'pick', workflowId: 'wf-a' }), null, 'cancel leaves the prior bookmark intact')
+  assert.equal(d.projectFolders()['wf-a'], f.root)
+  d.chosen(f.root)
+  assert.deepEqual(await call({ operation: 'pick', workflowId: 'wf-a' }), { saved: true, name: path.basename(f.root) })
+  assert.deepEqual(await call({ operation: 'open', workflowId: 'wf-a' }), { opened: true, name: path.basename(f.root) })
+  assert.equal((await d.app.workflowFiles({ operation: 'current' })).path, f.root, 'the matching root becomes the existing files and preview view')
+
+  await d.app.workflowFiles({ operation: 'revoke' })
+  await assert.rejects(call({ operation: 'open', workflowId: 'wf-a' }), /workflow files unavailable/)
+  assert.deepEqual(await call({ operation: 'status', workflowId: 'wf-a' }), { saved: true, name: path.basename(f.root) })
+  await assert.rejects(d.app.workflowFiles({ operation: 'open-root', expectedPath: f.root }), /invalid workflow files request/)
+})
+
+test('open-root validates a saved root without accepting an arbitrary target path', async t => {
+  const f = await scope(t)
+  const root = await f.desktop({ operation: 'pick', chosen: f.root })
+  const folder = root.entries.find(item => item.name === 'next')
+  await f.desktop({ operation: 'enter', id: folder.id })
+  await assert.rejects(f.desktop({ operation: 'open-root', expectedPath: f.outside }), /工作流目录不可用/)
+  assert.equal((await f.desktop({ operation: 'current' })).path, f.nested)
+  const opened = await f.desktop({ operation: 'open-root', expectedPath: f.root })
+  assert.equal(opened.path, f.root)
+  assert.equal(opened.canGoUp, false)
+  assert.equal((await f.desktop({ operation: 'current' })).path, f.root)
+  assert.equal((await f.tool({ operation: 'open-root', expectedPath: f.root })).ok, false, 'the assistant tool cannot use the desktop root operation')
 })
 
 test('authorized PDF previews require the PDF signature and stay within the preview byte limit', async t => {

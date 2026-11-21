@@ -82,7 +82,7 @@ window.__ModuleLoader__.load({
       const [draft, setDraft] = React.useState(() => initial?.editing === false ? null : initial?.doc?.nodes.find(node => node.id === initial?.selected) ?? null)
       const [fontSize, setFontSize] = React.useState(14)
       const [editorLayout, setEditorLayout] = React.useState(null)
-      const [message, setMessage] = React.useState({ text: '', issues: [] })
+      const [message, setMessage] = React.useState({ text: '', issues: [], projectFolder: initial?.projectFolder ?? { saved: false, name: '' }, projectFolderBusy: false })
       const [linking, setLinking] = React.useState(null)
       const [view, setView] = React.useState({ x: 0, y: 0, scale: 1 })
       const drag = React.useRef(null)
@@ -553,7 +553,7 @@ window.__ModuleLoader__.load({
         } catch (error) {
           if (generation !== openGeneration.current) return
           opening.current = false
-          setMessage({ text: `打开工作流失败：${error.message}`, issues: [] })
+          setMessage(current => ({ ...current, text: `打开工作流失败：${error.message}`, issues: [] }))
         }
       }, [])
 
@@ -561,8 +561,28 @@ window.__ModuleLoader__.load({
         if (initial) return
         const generation = openGeneration.current
         refreshList().then(items => { if (generation === openGeneration.current) return items[0] ? open(items[0].id) : setDoc(emptyWorkflow()) })
-          .catch(error => setMessage({ text: `工作流服务不可用：${error.message}`, issues: [] }))
+          .catch(error => setMessage(current => ({ ...current, text: `工作流服务不可用：${error.message}`, issues: [] })))
       }, [])
+
+      React.useEffect(() => {
+        let live = true
+        let timer
+        let attempt = 0
+        const bridge = window.dshDesktop?.workflowProjectFolder
+        setMessage(current => ({ ...current, projectFolder: { saved: false, name: '' }, projectFolderBusy: false }))
+        const workflowId = doc?.id
+        if (typeof bridge === 'function' && workflowId) {
+          const load = () => Promise.resolve(bridge({ operation: 'status', workflowId })).then(value => {
+            if (live && currentDoc.current === workflowId && value?.saved === true && typeof value.name === 'string') {
+              setMessage(current => ({ ...current, projectFolder: { saved: true, name: value.name } }))
+            }
+          }).catch(() => {
+            if (live && ++attempt < 4) timer = setTimeout(load, 350)
+          })
+          void load()
+        }
+        return () => { live = false; clearTimeout(timer) }
+      }, [doc?.id])
 
       // 运行中快速轮询节点状态；空闲时慢速同步，接住中心 agent 提交的草稿或发起的运行。
       const active = run && !run.finishedAt
@@ -666,7 +686,7 @@ window.__ModuleLoader__.load({
         }) })
         show('节点已整理到本地草稿，尚未保存。')
       }
-      function show(text, issues = []) { setMessage({ text, issues }) }
+      function show(text, issues = []) { setMessage(current => ({ ...current, text, issues })) }
 
       function markdownValue(value) {
         return String(value ?? '').replace(/\\/g, '\\\\').replace(/[|`*_{}\[\]<>#]/g, '\\$&')
@@ -808,6 +828,35 @@ window.__ModuleLoader__.load({
       const editingRun = Boolean(active)
       const nativeBusy = ['preparing', 'submitting', 'listing', 'cancelling', 'preparing-resume', 'resuming'].includes(native.phase)
       const savedCanvas = list.some(item => item.id === doc?.id)
+      async function projectFolderAction(operation) {
+        const bridge = window.dshDesktop?.workflowProjectFolder
+        if (typeof bridge !== 'function') { show('当前工作流场景的项目文件夹入口不可用。'); return }
+        if (!savedCanvas || dirty || draft) { show('请先保存当前工作流并关闭节点草稿，再关联项目文件夹。'); return }
+        if (message.projectFolderBusy || actionsPending.current > 0) return
+        const workflowId = doc.id
+        actionsPending.current++
+        setMessage(current => ({ ...current, projectFolderBusy: true }))
+        try {
+          const result = await bridge({ operation, workflowId })
+          if (currentDoc.current !== workflowId) return
+          if (operation === 'pick') {
+            if (result === null) { show('已取消选择，原有关联保持不变。'); return }
+            if (result?.saved !== true || typeof result.name !== 'string') throw new Error('选择结果无法核验')
+            setMessage(current => ({ ...current, projectFolder: { saved: true, name: result.name } }))
+            show(`已保存项目文件夹关联：${result.name}`)
+          } else {
+            if (result?.opened !== true) throw new Error('当前授权与已保存的项目文件夹不匹配')
+            show(`已在资料与预览面板打开项目文件夹：${result.name}`)
+          }
+        } catch {
+          if (currentDoc.current === workflowId) show(operation === 'open'
+            ? '当前中心授权不可用或目录已变化。请重新选择项目文件夹以授权。'
+            : '无法保存项目文件夹关联；请检查目录授权后重试。')
+        } finally {
+          actionsPending.current--
+          if (currentDoc.current === workflowId) setMessage(current => ({ ...current, projectFolderBusy: false }))
+        }
+      }
       function graphEditBlockedNow() {
         const currentNative = nativeRef.current
         const busy = ['preparing', 'submitting', 'listing', 'cancelling', 'preparing-resume', 'resuming'].includes(currentNative.phase)
@@ -1120,6 +1169,17 @@ window.__ModuleLoader__.load({
           WORKFLOW_NODE_GROUPS.map(group => {
             const kinds = group.kinds.map(kindId => (catalog?.kinds ?? []).find(kind => kind.kind === kindId)).filter(Boolean)
             const style = { '--tl-wf-group-color': group.color }
+            if (kinds.length === 0 && group.id === 'place') return h('details', {
+              key: group.id, className: 'tl-wf-category', style, onToggle: placeToolbarMenu,
+              onMouseEnter: event => { event.currentTarget.open = true },
+              onMouseLeave: event => { const category = event.currentTarget; if (!category.contains(category.ownerDocument.activeElement)) category.open = false },
+              onBlur: event => { if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false },
+              onKeyDown: event => { if (event.key !== 'Escape' || !event.currentTarget.open) return; event.preventDefault(); event.stopPropagation(); event.currentTarget.open = false; event.currentTarget.querySelector('summary')?.focus() },
+            }, h('summary', { title: '项目文件夹', 'aria-label': '添加位置节点' }, `＋ ${group.label} ▾`),
+            h('div', { className: 'tl-wf-kind-menu', role: 'group', 'aria-label': '位置节点' },
+              h('button', { type: 'button', disabled: message.projectFolderBusy || editingRun,
+                onClick: event => { event.currentTarget.closest('details').open = false; void projectFolderAction('pick') },
+                title: '关联当前已保存工作流的项目文件夹' }, '📁 项目文件夹')))
             if (kinds.length === 0) return h('button', {
               key: group.id, type: 'button', className: 'tl-wf-category is-unavailable', style,
               disabled: true, title: group.unavailable, 'aria-label': `${group.label}：${group.unavailable}`,
@@ -1155,6 +1215,14 @@ window.__ModuleLoader__.load({
             }, h('summary', { title: `添加${group.label}`, 'aria-label': `添加${group.label}` }, `＋ ${group.label} ▾`),
             h('div', { className: 'tl-wf-kind-menu', role: 'group', 'aria-label': group.label }, entries))
           })),
+        message.projectFolder.saved && h('div', { className: 'tl-wf-project-folder', role: 'group', 'aria-label': '当前工作流项目文件夹' },
+          h('div', { className: 'tl-wf-project-folder-card', role: 'button', tabIndex: 0,
+            'aria-label': `项目文件夹 ${message.projectFolder.name}`, title: `双击打开项目文件夹：${message.projectFolder.name}`,
+            onDoubleClick: () => void projectFolderAction('open'),
+            onKeyDown: event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); void projectFolderAction('open') } },
+          }, `📁 ${message.projectFolder.name}`),
+          h('button', { type: 'button', disabled: message.projectFolderBusy || editingRun, onClick: () => void projectFolderAction('open'), title: '使用当前中心授权打开已关联目录' }, '打开'),
+          h('button', { type: 'button', disabled: message.projectFolderBusy || editingRun, onClick: () => void projectFolderAction('pick'), title: '更换项目文件夹' }, '更改')),
         h('div', { className: 'tl-wf-view-tools', role: 'group', 'aria-label': '画布视图与操作' },
           h('button', { type: 'button', className: 'tl-wf-view-action', onClick: fit, title: '适应全部节点（主动缩放）', 'aria-label': '适应全部节点' }, '⤢ 适应'),
           h('button', { type: 'button', className: 'tl-wf-view-action', onClick: arrange, disabled: editingRun, title: '按现有连线整理节点；保存后持久化', 'aria-label': '整理节点' }, '⇥ 整理'),
@@ -1378,6 +1446,9 @@ window.__ModuleLoader__.load({
       .tl-wf-title { width:12em; min-width:0; }
       .tl-wf-kinds, .tl-wf-category, .tl-wf-status-menu { position:relative; }
       .tl-wf-categories { display:flex; flex:0 1 auto; flex-wrap:wrap; align-items:center; min-width:0; gap:.3em; }
+      .tl-wf-project-folder { display:flex; flex:0 1 auto; align-items:center; gap:.25em; min-width:0; max-width:18em; padding:.1em .25em; border:1px solid var(--tl-border,#cbd5e2); border-radius:6px; color:var(--tl-muted,#68778c); font-size:.84em; }
+      .tl-wf-project-folder-card { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer; }
+      .tl-wf-project-folder-card:focus-visible { outline:2px solid var(--tl-accent,#356fc4); outline-offset:1px; }
       .tl-wf-toolbar :is(button,select,summary) { font:inherit; min-height:initial; }
       .tl-wf-category > .tl-wf-kind-menu { top:100%; padding-top:.4em; }
       .tl-wf-category > summary { color:color-mix(in srgb,var(--tl-wf-group-color,var(--tl-ink)) 42%,var(--tl-ink)); border-color:color-mix(in srgb,var(--tl-wf-group-color,var(--tl-border)) 65%,var(--tl-border)); white-space:nowrap; }

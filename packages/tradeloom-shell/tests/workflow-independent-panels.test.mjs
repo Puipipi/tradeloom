@@ -27,16 +27,16 @@ test('workflow keeps an independently registered plan closed by default without 
  const canvas=scene.panels.find(p=>p.id==='workflow-main');assert.equal(canvas.type,'canvas');assert.equal(canvas.tabs,undefined)
  const cells=new Set();for(const p of scene.panels.filter(p=>!p.optional))for(let y=p.row;y<p.row+p.h;y++)for(let x=p.col;x<p.col+p.w;x++){const key=x+','+y;assert.ok(!cells.has(key));cells.add(key)}
 })
-function loadWorkflow({addSecondCanvas=false, activeRun, noDocument=false}={}){
+function loadWorkflow({addSecondCanvas=false, activeRun, noDocument=false, projectFolderApi, projectFolder}={}){
  let exported; const state=[],effects=[],refs=[];let index=0,refIndex=0
  const React={createElement:(type,props,...children)=>({type,props:props||{},children:children.flat(Infinity).filter(Boolean)}),useState:v=>{const i=index++;if(!Object.hasOwn(state,i))state[i]=typeof v==='function'?v():v;return[state[i],n=>{state[i]=typeof n==='function'?n(state[i]):n}]},useRef:v=>{const i=refIndex++;return refs[i]??=( {current:v})},useEffect:f=>effects.push(f),useMemo:f=>f(),useCallback:f=>f,useId:()=>':test:',Fragment:'fragment'}
- const context={window:{crypto:globalThis.crypto,__ModuleLoader__:{load:m=>{exported=m.factory(()=>React)}}},console,AbortController,clearTimeout,setTimeout,crypto:globalThis.crypto,fetch:(...args)=>context.onFetch(...args)}
+ const context={window:{crypto:globalThis.crypto,...(projectFolderApi?{dshDesktop:{workflowProjectFolder:projectFolderApi}}:{}),__ModuleLoader__:{load:m=>{exported=m.factory(()=>React)}}},console,AbortController,clearTimeout,setTimeout,crypto:globalThis.crypto,fetch:(...args)=>context.onFetch(...args)}
  vm.runInNewContext(fs.readFileSync(new URL('../client.workflow.js',import.meta.url),'utf8'),context)
  const doc={version:1,id:'wf-test',title:'Test',confirmed:true,source:'manual',nodes:[{id:'a',kind:'agent',agent:'product',title:'A',instruction:'',position:{x:0,y:0}}],edges:[]}
  const second={...doc,id:'wf-second',title:'Second',confirmed:false}
  const list=addSecondCanvas ? [doc,second] : [doc]
  const catalog=workflowCatalog()
- const render=props=>{index=0;refIndex=0;effects.length=0;return exported.WorkflowCanvas({initial:{doc:noDocument?null:doc,list,catalog,editing:false,run:activeRun},...props})}
+ const render=props=>{index=0;refIndex=0;effects.length=0;return exported.WorkflowCanvas({initial:{doc:noDocument?null:doc,list,catalog,editing:false,run:activeRun,projectFolder},...props})}
  const tree=render()
  return{tree,state,effects,refs,doc,second,list,catalog,context,render}
 }
@@ -291,8 +291,8 @@ test('actual WorkflowCanvas exposes the reference header and canvas controls in 
  assert.deepEqual(header.children.filter(n=>n.type==='button').map(label),['▶ 开始','刷新画布'])
  assert.ok(all(f.tree).some(n=>n.props.className==='tl-wf-tabs-row'))
  const categories=all(toolbar).filter(n=>n.props.className==='tl-wf-category'||n.props.className==='tl-wf-category is-unavailable')
- assert.deepEqual(categories.map(n=>label(n.type==='details'?n.children[0]:n)),['＋ 内容节点 ▾','＋ 方式节点 ▾','＋ 工具节点 ▾','＋ 看板节点','＋ 位置节点'])
- assert.deepEqual(categories.map(n=>n.type),['details','details','details','button','button'])
+ assert.deepEqual(categories.map(n=>label(n.type==='details'?n.children[0]:n)),['＋ 内容节点 ▾','＋ 方式节点 ▾','＋ 工具节点 ▾','＋ 看板节点','＋ 位置节点 ▾'])
+ assert.deepEqual(categories.map(n=>n.type),['details','details','details','button','details'])
  assert.deepEqual(categories.slice(0,3).map(n=>n.props.style['--tl-wf-group-color']),['#4f8cff','#c084fc','#34c98f'])
  const workflowCss=all(f.tree).find(n=>n.type==='style').children[0]
  assert.match(workflowCss,/--tl-ink:var\(--tl-theme-text,/,'workflow foreground follows the active light or dark theme')
@@ -305,9 +305,10 @@ test('actual WorkflowCanvas exposes the reference header and canvas controls in 
  assert.deepEqual(tabRow.children.slice(0,2).map(n=>n.props.className),['tl-wf-tabs','tl-wf-new-workflow'])
  assert.equal(label(tabRow.children[1]),'+')
  assert.equal(typeof tabRow.children[1].props.onClick,'function')
- assert.deepEqual(categories.slice(3).map(n=>n.props.disabled),[true,true])
+ assert.equal(categories[3].props.disabled,true)
  assert.match(categories[3].props.title,/没有可用的看板节点类型/)
- assert.match(categories[4].props.title,/没有可用的位置节点类型/)
+ assert.equal(label(categories[4].children[0]),'＋ 位置节点 ▾')
+ assert.equal(label(all(categories[4]).find(n=>n.type==='button')),'📁 项目文件夹')
  const actualKinds=kind=>f.catalog.kinds.find(item=>item.kind===kind)
  assert.deepEqual(all(categories[0]).filter(n=>n.type==='button').map(label),[actualKinds('input'),actualKinds('output')].map(item=>`${item.icon} ${item.label}`))
  assert.deepEqual(all(categories[1]).filter(n=>n.type==='button').map(label),[`${actualKinds('review').icon} ${actualKinds('review').label}`])
@@ -335,6 +336,28 @@ test('actual WorkflowCanvas exposes the reference header and canvas controls in 
  const add=all(categories[2]).find(n=>n.type==='button');add.props.onClick({currentTarget:{closest:()=>menu}})
  assert.equal(menu.open,false);assert.equal(focusCount,2)
  assert.equal(f.state[2].nodes.length,before+1);assert.equal(f.state[2].nodes.at(-1).kind,'agent')
+})
+
+test('位置节点只为已保存工作流创建目录关联，卡片可双击打开', async()=>{
+ const calls=[]
+ const api=async request=>{calls.push(request);return request.operation==='pick'?{saved:true,name:'样例目录A'}:{opened:true,name:'样例目录A'}}
+ const f=loadWorkflow({projectFolderApi:api}),toolbar=all(f.tree).find(n=>n.props?.className==='tl-wf-toolbar')
+ f.context.onFetch=async()=>{throw new Error('project folder linking must not save the workflow definition')}
+ const originalNodes=JSON.stringify(f.doc.nodes),originalEdges=JSON.stringify(f.doc.edges)
+ const place=all(toolbar).find(n=>n.props?.className==='tl-wf-category'&&label(n.children[0])==='＋ 位置节点 ▾')
+ const picker=all(place).find(n=>n.type==='button'&&label(n)==='📁 项目文件夹')
+ picker.props.onClick({currentTarget:{closest:()=>({open:true})}})
+ await new Promise(resolve=>setTimeout(resolve,0))
+ assert.deepEqual(JSON.parse(JSON.stringify(calls)),[{operation:'pick',workflowId:'wf-test'}])
+ assert.equal(JSON.stringify(f.state[2].nodes),originalNodes)
+ assert.equal(JSON.stringify(f.state[2].edges),originalEdges)
+
+ const reopened=loadWorkflow({projectFolderApi:api,projectFolder:{saved:true,name:'样例目录A'}})
+ const card=all(reopened.tree).find(n=>n.props?.className==='tl-wf-project-folder-card')
+ assert.equal(card.props.tabIndex,0)
+ card.props.onDoubleClick()
+ await new Promise(resolve=>setTimeout(resolve,0))
+ assert.deepEqual(JSON.parse(JSON.stringify(calls[1])),{operation:'open',workflowId:'wf-test'})
 })
 function fn(source,name){const start=source.indexOf(`  function ${name}(`);assert.ok(start>=0,`missing ${name}`);const next=source.indexOf('\n  function ',start+12);return source.slice(start,next<0?undefined:next)}
 function element(){return{style:{},dataset:{},children:[],attributes:{},isConnected:true,hidden:false,setAttribute(name,value){this.attributes[name]=value},listeners:new Map(),addEventListener(type,fn){this.listeners.set(type,fn)},removeEventListener(type){this.listeners.delete(type)},remove(){this.isRemoved=true},append(...nodes){this.children.push(...nodes)},replaceChildren(...nodes){this.children=nodes},insertAdjacentElement(position,node){this.inserted={position,node}},contains(n){return this.children.includes(n)},closest(){return this.panel},getBoundingClientRect(){return{left:0,top:0,width:600,height:400}},querySelector(selector){return this.queries?.[selector]??null},classList:{toggle(){},add(){}}}}

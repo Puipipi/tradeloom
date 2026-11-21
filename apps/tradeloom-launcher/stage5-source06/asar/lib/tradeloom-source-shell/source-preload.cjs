@@ -57,7 +57,10 @@ contextBridge.exposeInMainWorld('app', Object.freeze({
   sourceTheme: Object.freeze({getSnapshot:()=>call('themeSnapshot'),setPreference:preference=>call('themePreference',preference),onChanged:callback=>{const listener=(_event,value)=>callback(value);ipcRenderer.on('source-shell:theme-event',listener);return()=>ipcRenderer.removeListener('source-shell:theme-event',listener)}}),
   workflowFiles: request => call('workflowFiles', request),
   onWorkflowFilesChanged: callback => {
-    const listener = () => callback()
+    const listener = (_event, value) => {
+      if (value === undefined) callback(false)
+      else if (value && Object.keys(value).sort().join(',') === 'openPreview' && value.openPreview === true) callback(true)
+    }
     ipcRenderer.on('source-shell:workflow-files-changed', listener)
     return () => ipcRenderer.removeListener('source-shell:workflow-files-changed', listener)
   },

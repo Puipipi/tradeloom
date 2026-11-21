@@ -121,8 +121,9 @@ function createWorkflowFiles() {
     await assertOwner()
     const operation = request?.operation
     const hasEntry = ['enter', 'preview', 'download', 'open', 'reveal'].includes(operation)
-    if (!['pick', 'current', 'revoke', 'up', 'enter', 'preview', 'download', 'open', 'reveal', 'open-directory'].includes(operation)
-      || Object.keys(request).sort().join(',') !== (hasEntry ? 'id,operation' : 'operation')
+    const opensRoot = operation === 'open-root'
+    if (!['pick', 'current', 'revoke', 'up', 'enter', 'preview', 'download', 'open', 'reveal', 'open-directory', 'open-root'].includes(operation)
+      || Object.keys(request).sort().join(',') !== (hasEntry ? 'id,operation' : opensRoot ? 'expectedPath,operation' : 'operation')
       || hasEntry && (typeof request.id !== 'string' || !uuid.test(request.id))) throw reject()
     if (operation === 'revoke') {
       scopes.delete(owner)
@@ -159,6 +160,13 @@ function createWorkflowFiles() {
       }
       const grant = record.grant, current = record.stack?.at(-1)
       if (!grant || !current) throw reject()
+      if (operation === 'open-root') {
+        if (request.expectedPath !== grant.root) throw reject()
+        const opened = await directory(grant, grant.root, grant.rootIdentity)
+        await fresh(owner, record, assertOwner)
+        record.stack = [opened]
+        return opened.view
+      }
       if (operation === 'open-directory') {
         const info = await verify(grant, current.target, current.identity)
         if (!info.isDirectory()) throw reject()
@@ -235,7 +243,7 @@ export function createWorkflowFileAuthority(ctx, readState = async () => (await 
       await check()
       if (current !== scope) throw reject()
     }, chosen)
-    if (['pick', 'revoke', 'enter', 'up'].includes(request.operation)) {
+    if (['pick', 'revoke', 'enter', 'up', 'open-root'].includes(request.operation)) {
       for (const listener of directoryListeners) listener()
     }
     return result
@@ -248,13 +256,16 @@ export function createWorkflowFileAuthority(ctx, readState = async () => (await 
     },
     async desktop(input) {
       const picking = input?.operation === 'pick'
+      const opensRoot = input?.operation === 'open-root'
       const hasEntry = ['enter', 'preview', 'download', 'open', 'reveal'].includes(input?.operation)
       const fields = picking ? 'bindingRevision,chosen,operation,sessionId'
+        : opensRoot ? 'bindingRevision,expectedPath,operation,sessionId'
         : hasEntry ? 'bindingRevision,id,operation,sessionId' : 'bindingRevision,operation,sessionId'
       if (!input || Object.keys(input).sort().join(',') !== fields
         || typeof input.sessionId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(input.sessionId)
         || typeof input.bindingRevision !== 'string' || !/^(?:0|[1-9][0-9]{0,63})$/.test(input.bindingRevision)
-        || picking && (typeof input.chosen !== 'string' || input.chosen.length > 32767)) throw reject()
+        || picking && (typeof input.chosen !== 'string' || input.chosen.length > 32767)
+        || opensRoot && (typeof input.expectedPath !== 'string' || input.expectedPath.length > 32767 || !path.isAbsolute(input.expectedPath))) throw reject()
       const { sessionId, bindingRevision, chosen, ...request } = input
       const expected = { sessionId, bindingRevision }
       return transact(expected, request, () => assertBinding(expected), chosen)

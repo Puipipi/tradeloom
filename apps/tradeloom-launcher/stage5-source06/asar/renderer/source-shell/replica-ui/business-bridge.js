@@ -1890,7 +1890,7 @@
     workflow.panes.add(render)
     render()
     if (firstPane) {
-      workflow.onFocus = () => { void request('current') }
+      workflow.onFocus = openPreview => { if (openPreview === true) workflow.previewOpen = true; void request('current') }
       window.addEventListener('focus', workflow.onFocus)
       workflow.offChanged = app.onWorkflowFilesChanged?.(workflow.onFocus)
       void request('current')
