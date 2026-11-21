@@ -27,7 +27,7 @@ test('workflow keeps an independently registered plan closed by default without 
  const canvas=scene.panels.find(p=>p.id==='workflow-main');assert.equal(canvas.type,'canvas');assert.equal(canvas.tabs,undefined)
  const cells=new Set();for(const p of scene.panels.filter(p=>!p.optional))for(let y=p.row;y<p.row+p.h;y++)for(let x=p.col;x<p.col+p.w;x++){const key=x+','+y;assert.ok(!cells.has(key));cells.add(key)}
 })
-function loadWorkflow({addSecondCanvas=false, activeRun}={}){
+function loadWorkflow({addSecondCanvas=false, activeRun, noDocument=false}={}){
  let exported; const state=[],effects=[],refs=[];let index=0,refIndex=0
  const React={createElement:(type,props,...children)=>({type,props:props||{},children:children.flat(Infinity).filter(Boolean)}),useState:v=>{const i=index++;if(!Object.hasOwn(state,i))state[i]=typeof v==='function'?v():v;return[state[i],n=>{state[i]=typeof n==='function'?n(state[i]):n}]},useRef:v=>{const i=refIndex++;return refs[i]??=( {current:v})},useEffect:f=>effects.push(f),useMemo:f=>f(),useCallback:f=>f,useId:()=>':test:',Fragment:'fragment'}
  const context={window:{crypto:globalThis.crypto,__ModuleLoader__:{load:m=>{exported=m.factory(()=>React)}}},console,AbortController,clearTimeout,setTimeout,crypto:globalThis.crypto,fetch:(...args)=>context.onFetch(...args)}
@@ -36,7 +36,7 @@ function loadWorkflow({addSecondCanvas=false, activeRun}={}){
  const second={...doc,id:'wf-second',title:'Second',confirmed:false}
  const list=addSecondCanvas ? [doc,second] : [doc]
  const catalog=workflowCatalog()
- const render=props=>{index=0;refIndex=0;effects.length=0;return exported.WorkflowCanvas({initial:{doc,list,catalog,editing:false,run:activeRun},...props})}
+ const render=props=>{index=0;refIndex=0;effects.length=0;return exported.WorkflowCanvas({initial:{doc:noDocument?null:doc,list,catalog,editing:false,run:activeRun},...props})}
  const tree=render()
  return{tree,state,effects,refs,doc,second,list,catalog,context,render}
 }
@@ -176,6 +176,87 @@ test('Markdown toolbar copies only displayed workflow details and real edges on 
  unavailable.refs[2].current={ownerDocument:{defaultView:{navigator:{}}}}
  await button(unavailable.tree,'⧉ Markdown').props.onClick()
  assert.match(unavailable.state[9].text,/复制工作流 Markdown 失败：当前窗口未提供剪贴板写入能力/)
+})
+test('clear resets only an unsaved workflow to its canonical input after confirmation', () => {
+ const f=loadWorkflow(), requests=[], confirmations=[]
+ f.list.length=0
+ f.state[2]={...f.doc,title:'Local delivery',nodes:[
+  {id:'in',kind:'input',title:'Existing input',instruction:'keep no old content',position:{x:1,y:2}},
+  {id:'review',kind:'review',title:'Review',instruction:'Check',position:{x:200,y:2}},
+  {id:'out',kind:'output',title:'Output',instruction:'',position:{x:400,y:2}},
+ ],edges:[{from:'in',to:'review'},{from:'review',to:'out'}]}
+ f.context.onFetch=async (...args)=>{requests.push(args);throw new Error('clear must not call the workflow service')}
+ f.context.window.confirm=message=>{confirmations.push(message);return false}
+ const clear=button(f.render(),'▤ 清空')
+ assert.equal(clear.props.disabled,false)
+ clear.props.onClick()
+ assert.equal(f.state[2].nodes.length,3,'cancel preserves the graph')
+ assert.equal(confirmations.length,1)
+ assert.match(confirmations[0],/不会保存或删除，也不会运行/)
+ f.context.window.confirm=message=>{confirmations.push(message);return true}
+ clear.props.onClick()
+ assert.equal(f.state[2].id,f.doc.id)
+ assert.equal(f.state[2].title,'Local delivery')
+ assert.deepEqual(JSON.parse(JSON.stringify(f.state[2].nodes)),[{id:'in',kind:'input',title:'输入',instruction:'',position:{x:40,y:60}}])
+ assert.deepEqual(JSON.parse(JSON.stringify(f.state[2].edges)),[])
+ assert.equal(f.state[3],true,'clearing remains a dirty local draft')
+ assert.equal(f.state[5],null,'selection is cleared')
+ assert.match(f.state[9].text,/尚未保存/)
+ assert.deepEqual(requests,[])
+ const saved=loadWorkflow()
+ saved.state[2]={...saved.doc,nodes:[...saved.doc.nodes,{id:'out',kind:'output',title:'Output',position:{x:200,y:60}}]}
+ assert.equal(button(saved.render(),'▤ 清空').props.disabled,true,'saved workflow is never clearable')
+ const customized=loadWorkflow()
+ customized.list.length=0
+ customized.state[2]={...customized.doc,nodes:[{id:'in',kind:'input',title:'Custom title',instruction:'Custom description',position:{x:80,y:90}}]}
+ assert.equal(button(customized.render(),'▤ 清空').props.disabled,false,'a customized single input remains clearable')
+ const running=loadWorkflow({activeRun:{id:'run-active',nodes:{}}})
+ running.list.length=0
+ running.state[2]={...running.doc,nodes:[...running.doc.nodes,{id:'out',kind:'output',title:'Output',position:{x:200,y:60}}]}
+ assert.equal(button(running.render(),'▤ 清空').props.disabled,true,'an active run blocks graph clearing')
+ const conflict=loadWorkflow()
+ conflict.list.length=0
+ conflict.state[2]={...conflict.doc,nodes:[...conflict.doc.nodes,{id:'out',kind:'output',title:'Output',position:{x:200,y:60}}]}
+ conflict.state[12].blocked=true
+ assert.equal(button(conflict.render(),'▤ 清空').props.disabled,true,'a native host conflict blocks graph clearing')
+ assert.equal(button(conflict.render(),'人工核对交付').props.disabled,true,'a native host conflict blocks template application')
+ assert.ok(all(loadWorkflow({noDocument:true}).tree).some(node=>node.props?.className==='tl-wf-empty'),'the initial null document renders its loading state safely')
+})
+test('template selection creates a new unsaved review delivery graph and confirms dropping dirty edits', () => {
+ const f=loadWorkflow(), original=structuredClone(f.doc), requests=[], confirmations=[]
+ f.context.onFetch=async (...args)=>{requests.push(args);throw new Error('template selection must not call the workflow service')}
+ const apply=button(f.tree,'人工核对交付')
+ assert.ok(apply)
+ assert.equal(apply.props.disabled,false)
+ apply.props.onClick()
+ assert.notEqual(f.state[2].id,original.id)
+ assert.equal(f.state[2].title,'人工核对交付')
+ assert.equal(f.state[2].confirmed,true)
+ assert.deepEqual(JSON.parse(JSON.stringify(f.state[2].nodes.map(({id,kind,title,position})=>({id,kind,title,position})))),[
+  {id:'in',kind:'input',title:'待交付内容',position:{x:40,y:60}},
+  {id:'review',kind:'review',title:'人工核对',position:{x:302,y:60}},
+  {id:'out',kind:'output',title:'交付结果',position:{x:564,y:60}},
+ ])
+ assert.deepEqual(JSON.parse(JSON.stringify(f.state[2].edges)),[{from:'in',to:'review'},{from:'review',to:'out'}])
+ assert.equal(f.state[3],true,'template remains an unsaved draft')
+ assert.deepEqual(f.list,[original],'the preexisting saved workflow remains unchanged')
+ assert.match(f.state[9].text,/尚未保存/)
+ assert.deepEqual(requests,[])
+
+ const dirty=loadWorkflow(), prior={...dirty.doc,title:'Unsaved edits'}
+ dirty.list.length=0; dirty.state[2]=prior; dirty.state[3]=true
+ dirty.context.window.confirm=message=>{confirmations.push(message);return false}
+ const cancelled=button(dirty.render(),'人工核对交付')
+ cancelled.props.onClick()
+ assert.equal(dirty.state[2],prior,'cancel preserves the unsaved workflow')
+ assert.equal(dirty.state[3],true)
+ assert.match(confirmations[0],/会放弃这些本地修改/)
+ dirty.context.window.confirm=message=>{confirmations.push(message);return true}
+ cancelled.props.onClick()
+ assert.notEqual(dirty.state[2].id,prior.id)
+ assert.equal(dirty.state[2].title,'人工核对交付')
+ assert.deepEqual(dirty.list,[])
+ assert.deepEqual(requests,[])
 })
 test('refresh stays unavailable in the editor, during a run, or while a write is pending', async () => {
  const f=loadWorkflow(), requests=[]

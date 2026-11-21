@@ -34,11 +34,12 @@ window.__ModuleLoader__.load({
     }
 
     const shortId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 5)
+    const standardInputNode = () => ({ id: 'in', kind: 'input', title: '输入', instruction: '', position: { x: 40, y: 60 } })
 
     function emptyWorkflow() {
       return {
         version: 1, id: `wf-${shortId()}`, title: '未命名工作流', description: '', source: 'manual', confirmed: true,
-        nodes: [{ id: 'in', kind: 'input', title: '输入', instruction: '', position: { x: 40, y: 60 } }], edges: [],
+        nodes: [standardInputNode()], edges: [],
       }
     }
 
@@ -588,8 +589,8 @@ window.__ModuleLoader__.load({
       }, [active, run?.id, doc?.id, Boolean(draft)])
 
       function edit(next) { dirtyRef.current = true; setDoc(next); setDirty(true) }
-      function newWorkflow() {
-        const next = emptyWorkflow()
+      function newWorkflow(workflow = emptyWorkflow()) {
+        const next = workflow
         ++openGeneration.current; opening.current = false
         currentDoc.current = next.id; currentRun.current = null
         closeEditor(); edit(next); setRun(null); setSelected(null)
@@ -807,6 +808,44 @@ window.__ModuleLoader__.load({
       const editingRun = Boolean(active)
       const nativeBusy = ['preparing', 'submitting', 'listing', 'cancelling', 'preparing-resume', 'resuming'].includes(native.phase)
       const savedCanvas = list.some(item => item.id === doc?.id)
+      function graphEditBlockedNow() {
+        const currentNative = nativeRef.current
+        const busy = ['preparing', 'submitting', 'listing', 'cancelling', 'preparing-resume', 'resuming'].includes(currentNative.phase)
+        return Boolean(run && !run.finishedAt) || Boolean(draftRef.current) || busy || Boolean(currentNative.blocked)
+          || Boolean(nativeFlight.current) || opening.current || actionsPending.current > 0 || drag.current?.type === 'node'
+      }
+      const graphEditBlocked = graphEditBlockedNow()
+      const clearDisabled = !doc || savedCanvas || graphEditBlocked
+        || doc.nodes.length === 1 && doc.nodes[0].kind === 'input'
+          && doc.nodes[0].title === '输入' && !(doc.nodes[0].instruction ?? '') && doc.edges.length === 0
+      function clearWorkflow() {
+        if (clearDisabled || graphEditBlockedNow() || list.some(item => item.id === doc.id)
+          || !window.confirm(`清空未保存工作流「${doc.title}」？\n\n将移除其他节点和全部连线，仅保留标准“输入”节点。当前画布不会保存或删除，也不会运行。`)) return
+        edit({ ...doc, nodes: [standardInputNode()], edges: [] })
+        setSelected(null)
+        show('已清空本地草稿，仅保留标准输入节点；尚未保存。')
+      }
+      const workflowTemplates = [{
+        id: 'manual-review-delivery', label: '人工核对交付',
+        title: '人工核对交付',
+        nodes: [
+          { id: 'in', kind: 'input', title: '待交付内容', instruction: '', position: { x: 40, y: 60 } },
+          { id: 'review', kind: 'review', title: '人工核对', instruction: '检查交付内容，确认无误后再继续。', position: { x: 302, y: 60 } },
+          { id: 'out', kind: 'output', title: '交付结果', instruction: '', position: { x: 564, y: 60 } },
+        ],
+        edges: [{ from: 'in', to: 'review' }, { from: 'review', to: 'out' }],
+      }]
+      function applyWorkflowTemplate(template) {
+        if (graphEditBlockedNow()) return
+        if (dirtyRef.current && !window.confirm(`当前工作流「${doc.title}」有未保存修改。切换到「${template.label}」会放弃这些本地修改。\n\n将新建另一张未保存的工作流草稿；原已保存工作流不变，也不会保存、确认或运行。继续吗？`)) return
+        const next = {
+          ...emptyWorkflow(), title: template.title, confirmed: true,
+          nodes: template.nodes.map(node => ({ ...node, position: { ...node.position } })),
+          edges: template.edges.map(edge => ({ ...edge })),
+        }
+        newWorkflow(next)
+        show(`已新建「${template.label}」工作流草稿；尚未保存。`)
+      }
       const refreshDisabled = !savedCanvas || dirty || Boolean(draft) || editingRun || nativeBusy
       nativeToolbarPermissions.current = { canStart: !nativeBusy && !nativeEligibility, canRefresh: !refreshDisabled }
 
@@ -1074,7 +1113,7 @@ window.__ModuleLoader__.load({
             tabIndex: index === activeTab ? 0 : -1,
             onClick: () => selectCanvas(item.id),
           }, `${item.source === 'agent' ? '🤖 ' : ''}${item.title}${item.id === doc.id && !savedCanvas ? '（未保存）' : item.confirmed ? '' : '（待确认）'}`))),
-        h('button', { type: 'button', className: 'tl-wf-new-workflow', 'aria-label': '新建工作流', title: '新建工作流', onClick: newWorkflow, disabled: editingRun }, '+'),
+        h('button', { type: 'button', className: 'tl-wf-new-workflow', 'aria-label': '新建工作流', title: '新建工作流', onClick: () => newWorkflow(), disabled: editingRun }, '+'),
         h('span', { className: 'tl-wf-tab-count', role: 'status', 'aria-label': '工作流页签数量' }, `第 ${Math.max(0, activeTab) + 1} / ${canvasTabs.length} 张`))
       const toolbar = h('div', { className: 'tl-wf-toolbar', role: 'toolbar', 'aria-label': '画布节点与视图操作', inert: draft ? '' : undefined },
         h('div', { className: 'tl-wf-categories', role: 'group', 'aria-label': '节点分类' },
@@ -1123,8 +1162,13 @@ window.__ModuleLoader__.load({
             h('summary', { className: 'tl-wf-view-action', title: '查看当前真实节点状态数', 'aria-label': '节点状态统计' }, '◷ 状态'),
             h('div', { className: 'tl-wf-status-list', role: 'status', 'aria-label': '节点状态统计' }, Object.entries(STATUS_LABEL).map(([status, label]) => h('span', { key: status }, `${label}：${doc.nodes.filter(node => (nodeState(node.id)?.status ?? 'pending') === status).length}`)))),
           h('button', { type: 'button', className: 'tl-wf-view-action', onClick: copyWorkflowMarkdown, title: '复制当前工作流名称、节点说明和连线为 Markdown。', 'aria-label': '复制工作流 Markdown' }, '⧉ Markdown'),
-          h('button', { type: 'button', className: 'tl-wf-view-action is-unavailable', disabled: true, title: '当前工作流没有清空节点的操作；删除工作流会删除整张业务记录，因此不代替清空。', 'aria-label': '清空：当前未实现' }, '▤ 清空'),
-          h('button', { type: 'button', className: 'tl-wf-view-action is-unavailable', disabled: true, title: '当前工作流没有内置模板功能。', 'aria-label': '模板：当前未实现' }, '▤ 模板'),
+          h('button', { type: 'button', className: 'tl-wf-view-action', onClick: clearWorkflow, disabled: clearDisabled,
+            title: savedCanvas ? '清空仅适用于未保存的工作流草稿。' : '仅保留标准输入节点；确认后仍需手动保存。', 'aria-label': '清空工作流草稿' }, '▤ 清空'),
+          h('details', { className: 'tl-wf-template-menu', onToggle: placeToolbarMenu },
+            h('summary', { className: 'tl-wf-view-action', 'aria-label': '工作流模板', title: '新建未保存的工作流模板草稿' }, '▤ 模板 ▾'),
+            h('div', { className: 'tl-wf-view-actions', role: 'group', 'aria-label': '工作流模板' },
+              workflowTemplates.map(template => h('button', { key: template.id, type: 'button', onClick: closeMenuAfter(() => applyWorkflowTemplate(template)),
+                disabled: graphEditBlocked, title: '新建另一张未保存草稿，不修改已保存工作流。' }, template.label)))),
           h('details', { className: 'tl-wf-view-menu', onToggle: placeToolbarMenu },
             h('summary', { 'aria-label': '更多画布操作', title: '缩放、整理、编辑节点与节点状态' }, '视图', h('span', { className: 'tl-wf-view-level' }, ` ${Math.round(view.scale * 100)}%`)),
             h('div', { className: 'tl-wf-view-actions', role: 'group', 'aria-label': '更多画布操作菜单' },
