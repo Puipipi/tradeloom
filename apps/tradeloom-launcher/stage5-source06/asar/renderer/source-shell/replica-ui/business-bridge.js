@@ -551,8 +551,14 @@
       || panelExpansionCovers(expanded.getBoundingClientRect(), panelRect))
   }
 
+  function sceneHasDraggingPanel(panel) {
+    const ownerGrid = panel?.closest?.('#grid') || byId('grid')
+    return Boolean(ownerGrid?.querySelector?.('.panel.dragging'))
+  }
+
   function nativePaneVisible(panel) {
     if (!panel?.isConnected || panel.hidden || panel.classList.contains('pi-tab-inactive') || getComputedStyle(panel).display === 'none') return false
+    if (sceneHasDraggingPanel(panel)) return false
     // The native account sidebar is a topmost overlay. It covers the left
     // portion of the workspace; hiding an entire chat pane would also remove
     // its visible area to the right of the sidebar.

@@ -1397,11 +1397,16 @@
 
   function roleSurfaceKey(sceneId, panelId) { return `${sceneId}\u0000${panelId}` }
 
+  function sceneHasDraggingPanel(panel) {
+    const ownerGrid = panel?.closest?.('#grid') || grid
+    return Boolean(ownerGrid?.querySelector?.('.panel.dragging'))
+  }
+
   function roleSurfaceVisible(record) {
     const rect = record.content?.getBoundingClientRect?.()
     return !state.disposed && record.content?.isConnected === true && record.sceneId === currentSceneId()
       && rect && rect.width > 0 && rect.height > 0 && record.panel?.isConnected === true
-      && !roleDragIsActive(record)
+      && !sceneHasDraggingPanel(record.panel)
       && !(state.accountChatMode && state.target?.sceneId === record.sceneId && state.target?.panelId === record.panelId)
       && getComputedStyle(record.panel).display !== 'none' && !record.panel.hidden
       && !modalVisible() && !menuVisible()
@@ -2130,7 +2135,10 @@
     try { state.offAccountChatRequest = app.onAccountChatRequested(value => showAccountChat(value)) } catch { /* Sidebar commands still remain in the account guest. */ }
   }
   if (grid && typeof window.MutationObserver === 'function') {
-    state.gridObserver = new window.MutationObserver(() => { syncGripListeners(); sync(); startGeometryFrames(); startRoleGeometryFrames() })
+    state.gridObserver = new window.MutationObserver(() => {
+      syncGripListeners(); sync(); startGeometryFrames(); startRoleGeometryFrames()
+      for (const record of state.roleSurfaces.values()) void syncRoleSurface(record)
+    })
     state.gridObserver.observe(grid, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] })
     syncGripListeners()
   }

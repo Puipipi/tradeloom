@@ -87,3 +87,22 @@ test('native role drag is recognized without a DOM ghost and hides the guest unt
   assert.equal(roleDragIsActive(record), true)
   assert.equal(roleSurfaceVisible(record), false)
 })
+
+test('any dragged panel suppresses same-scene native guests and mutation resync restores geometry', async () => {
+  const adapter = await readFile(adapterPath, 'utf8')
+  const bridgePath = new URL('business-bridge.js', sourceRoot)
+  const bridge = await readFile(bridgePath, 'utf8')
+  const grid = { querySelector: selector => selector === '.panel.dragging' ? {} : null }
+  const panel = { closest: selector => selector === '#grid' ? grid : null }
+  const adapterGate = loadFunction(sourceBetween(adapter,
+    'function sceneHasDraggingPanel(panel) {', 'function roleSurfaceVisible(record) {'), { grid })
+  const bridgeGate = loadFunction(sourceBetween(bridge,
+    'function sceneHasDraggingPanel(panel) {', 'function nativePaneVisible(panel) {'), {
+    byId: id => id === 'grid' ? grid : null,
+  })
+
+  assert.equal(adapterGate(panel), true)
+  assert.equal(bridgeGate(panel), true)
+  assert.match(adapter, /new window\.MutationObserver\(\(\) => \{[\s\S]*?for \(const record of state\.roleSurfaces\.values\(\)\) void syncRoleSurface\(record\)/)
+  assert.match(bridge, /const observer = new MutationObserver\(syncNativeVisibility\)/)
+})
