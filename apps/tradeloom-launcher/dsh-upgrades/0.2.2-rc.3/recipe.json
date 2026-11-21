@@ -211,8 +211,8 @@
         "sha256": "ba85fdfa59ead0ddf2b69049ae87d4963dab3a06e17e78f11fd3fae33d530f22"
       },
       "client.source-native.js": {
-        "bytes": 40591,
-        "sha256": "9a4a79a8e5388f135af3bcd4495078eeaa115961065626d14184d67c4ad7ef75"
+        "bytes": 41746,
+        "sha256": "a816a17830e10d383ac374077ffc46cb6fd738ea167e2d4a3043da20a97e7293"
       },
       "client.scenes.js": {
         "bytes": 411809,
@@ -529,8 +529,8 @@
         "sha256": "ba85fdfa59ead0ddf2b69049ae87d4963dab3a06e17e78f11fd3fae33d530f22"
       },
       "client.source-native.js": {
-        "bytes": 40591,
-        "sha256": "9a4a79a8e5388f135af3bcd4495078eeaa115961065626d14184d67c4ad7ef75"
+        "bytes": 41746,
+        "sha256": "a816a17830e10d383ac374077ffc46cb6fd738ea167e2d4a3043da20a97e7293"
       },
       "client.scenes.js": {
         "bytes": 411809,
@@ -807,8 +807,8 @@
     },
     "inventory": {
       "fileCount": 79,
-      "bytes": 3085704,
-      "sha256": "b1326797dd385e0afd63b0ff544107f31aa60ab146e8ed85350bafbaee6d2399"
+      "bytes": 3086859,
+      "sha256": "07d9f357bf79191b2613dcb4e32fa9beae06d49bb279da94038d1c8b5a85f3f0"
     },
     "validatorInput": {
       "source": "apps/tradeloom-launcher/installed-bootstrap.mjs",
