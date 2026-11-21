@@ -6,7 +6,7 @@ import test from 'node:test'
 import { createGatewayFixture } from '../../../apps/tradeloom-launcher/tests/session-list-failure-phase.test.mjs'
 
 const sourcePath = resolve(process.cwd(), 'packages/tradeloom-shell/client.source-native.js')
-const descriptor = { sceneId: 'fixture-scene', panelId: 'fixture-panel', sessionId: 'fixture-session-id', surface: 'files', generation: 7 }
+const descriptor = { kind: 'role', roleId: 'fixture-role', bindingRevision: '1', sceneId: 'fixture-scene', panelId: 'fixture-panel', sessionId: 'fixture-session-id', surface: 'files', generation: 7 }
 const turn = () => new Promise(resolveTurn => setTimeout(resolveTurn, 0))
 const deferred = () => {
   let resolvePromise, rejectPromise
@@ -14,7 +14,7 @@ const deferred = () => {
   return { promise, resolve: resolvePromise, reject: rejectPromise }
 }
 
-export async function mountSourceNative({ refresh = async () => {}, remoteList = async () => ({ ok: true, value: { items: [] } }), catalogPhase = 'pending', catalogIds = [], gatewayApi, initialDescriptor = descriptor } = {}) {
+export async function mountSourceNative({ refresh = async () => {}, onRefresh, remoteList = async () => ({ ok: true, value: { items: [] } }), catalogPhase = 'pending', catalogIds = [], gatewayApi, initialDescriptor = descriptor } = {}) {
   let definition, Component
   const effects = [], cleanups = [], messages = [], stateUpdates = [], refs = []
   let retainCount = 0, remoteListCount = 0
@@ -43,15 +43,17 @@ export async function mountSourceNative({ refresh = async () => {}, remoteList =
   const ctx = {
     slots: {
       inject: (_slot, callback) => callback(),
-      register: (_definition, component) => { Component = component; return component },
+      register: (definition, component) => { if (definition.name === 'tradeloom.role.surface') Component = component; return component },
+      registerFactory: () => () => {},
       snapshot: () => [],
       subscribeFactory: () => () => {},
-      getFactoryVersion: () => 0
+      getFactoryVersion: () => 0,
+      hostFace: () => ({ subscribeFactory: () => () => {}, getFactoryVersion: () => 0, factoryOf: () => undefined })
     },
     layout: { selectPanel: () => {} },
     sessions: {
       list: { getSnapshot: () => snapshot, subscribe: () => () => {} },
-      refresh,
+      refresh: async (...args) => { await refresh(...args); await onRefresh?.(snapshot); return snapshot },
       retain: () => {
         retainCount++
         if (snapshot.phase === 'ready') return { ready: Promise.resolve(), release() {} }
@@ -89,7 +91,7 @@ test('real SourceNative effect runs one non-blocking independent list probe afte
   const gate = deferred()
   const mounted = await mountSourceNative({ remoteList: () => gate.promise })
   await turn()
-  assert.equal(mounted.remoteListCount, 1, 'the pending post-refresh path starts exactly one independent request')
+  assert.equal(mounted.remoteListCount, 1, 'the pending post-retry path starts exactly one independent request')
   assert.ok(mounted.messages.some(message => message.includes('catalog-not-ready')), 'the original catalog phase remains unchanged')
   assert.ok(mounted.messages.some(message => message.includes('terminal-error')), 'the original terminal failure still occurs without waiting')
   assert.equal(mounted.retainCount, 0, 'pending catalog never reaches retain')
@@ -101,6 +103,35 @@ test('real SourceNative effect runs one non-blocking independent list probe afte
   await turn()
   assert.equal(mounted.messages.filter(message => message.includes('TL-ROLE-GUEST-LIST-PROBE|')).length, probeCount,
     'completion after cleanup is ignored')
+})
+
+test('SourceNative retries a pending catalog once and keeps the original retain path when it becomes ready', async () => {
+  let refreshCount = 0
+  const mounted = await mountSourceNative({
+    refresh: async () => { refreshCount++ },
+    onRefresh: snapshot => { if (refreshCount === 2) { snapshot.phase = 'ready'; snapshot.ids = [descriptor.sessionId] } }
+  })
+  await turn()
+  await turn()
+  assert.equal(refreshCount, 2, 'a pending catalog gets exactly one bounded refresh retry')
+  assert.equal(mounted.retainCount, 1, 'retain runs only after the refreshed catalog reports ready')
+  assert.ok(mounted.stateUpdates.some(value => value?.phase === 'ready' && value?.sessionId === descriptor.sessionId))
+  assert.equal(mounted.remoteListCount, 0, 'a successful retry does not take the error diagnostic path')
+  mounted.cleanup()
+})
+
+test('SourceNative preserves terminal error and diagnostic when the bounded retry remains pending', async () => {
+  let refreshCount = 0
+  const mounted = await mountSourceNative({ refresh: async () => { refreshCount++ } })
+  await turn()
+  await turn()
+  assert.equal(refreshCount, 2, 'the retry is bounded to one additional refresh')
+  assert.equal(mounted.retainCount, 0, 'a still-pending catalog never reaches retain')
+  assert.equal(mounted.remoteListCount, 1, 'existing independent diagnostic still runs after the retry fails')
+  assert.ok(mounted.messages.some(message => message.includes('catalog-not-ready')))
+  assert.ok(mounted.messages.some(message => message.includes('terminal-error')))
+  assert.ok(mounted.stateUpdates.some(value => value?.phase === 'error'))
+  mounted.cleanup()
 })
 
 test('SourceNative reports the phase from the same Gateway factory error object', async () => {

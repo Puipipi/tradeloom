@@ -288,6 +288,21 @@ window.__ModuleLoader__.load({
             if(connection.interactions==='none')catalog=await refreshCatalog()
             else if(catalog?.phase!=='ready' || (Array.isArray(catalog?.ids)&&!catalog.ids.includes(descriptor.sessionId)))catalog=await refreshCatalog()
             if(!liveNow()){reportRoleGuestPhase(descriptor,'not-live');return}
+            // A guest can finish binding before the shared session catalog has
+            // published its refresh. Give that same live surface one ordinary,
+            // bounded refresh retry before preserving the existing error path.
+            if(catalog?.phase!=='ready' && liveNow() && same(descriptor,latest.current)) {
+              await Promise.resolve()
+              if(!liveNow() || !same(descriptor,latest.current))return
+              if(connection.interactions==='answer' && connection.generation.getSnapshot()===undefined) {
+                reportRoleGuestPhase(descriptor,'generation-disconnected');return
+              }
+              if(!same(await bridge.nativeSurfaceDescriptor(),descriptor) || !liveNow() || !same(descriptor,latest.current))return
+              reportRoleGuestPhase(descriptor,'catalog-retry-start')
+              try { await sessions.refresh(); catalog=list.getSnapshot(); reportRoleGuestPhase(descriptor,'catalog-retry-end') }
+              catch(error) { reportRoleGuestPhase(descriptor,'catalog-retry-error'); throw error }
+            }
+            if(!liveNow() || !same(descriptor,latest.current))return
             if(catalog?.phase!=='ready') {
               if(!listProbeStarted && liveNow() && same(descriptor,latest.current)) {
                 listProbeStarted=true
