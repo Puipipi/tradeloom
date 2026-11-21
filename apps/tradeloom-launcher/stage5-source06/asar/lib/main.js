@@ -25469,6 +25469,29 @@ async function main() {
 				if (backend.host !== host) throw new Error("workflow files: Host changed");
 				return result;
 			},
+			openWorkflowFile: async (operation, resolved, authorize) => {
+				if (!['open', 'reveal'].includes(operation) || typeof authorize !== "function" || !resolved || typeof resolved.path !== "string"
+					|| !isAbsolute(resolved.path) || resolved.path.includes("\0")
+					|| !resolved.identity || Object.keys(resolved.identity).sort().join(",") !== "birthtimeNs,dev,ino,mtimeNs,size"
+					|| !Object.values(resolved.identity).every(value => typeof value === "string" && value.length > 0 && [...value].every(char => char >= "0" && char <= "9"))) {
+					throw new Error("workflow file target unavailable");
+				}
+				const [canonical, info] = await Promise.all([
+					fsPromises.realpath(resolved.path),
+					fsPromises.lstat(resolved.path, { bigint: true })
+				]);
+				const identity = resolved.identity;
+				if (canonical !== resolved.path || info.isSymbolicLink() || !info.isFile()
+					|| String(info.dev) !== identity.dev || String(info.ino) !== identity.ino
+					|| String(info.size) !== identity.size || String(info.mtimeNs) !== identity.mtimeNs
+					|| String(info.birthtimeNs) !== identity.birthtimeNs) throw new Error("workflow file changed");
+				await authorize();
+				if (operation === "reveal") shell.showItemInFolder(resolved.path);
+				else {
+					const error = await shell.openPath(resolved.path);
+					if (error) throw new Error("workflow file open failed");
+				}
+			},
 			resolveNativeTheme: (preference) => {
 				if (nativeTheme.themeSource !== preference) nativeTheme.themeSource = preference;
 				return nativeTheme.shouldUseDarkColors ? "dark" : "light";

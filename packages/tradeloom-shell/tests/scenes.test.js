@@ -26,19 +26,20 @@ test('scene JSON defines role-bound 4x4 grids and maps all known business routes
   assert.equal(config.version, 1)
   assert.deepEqual(config.grid, { cols: 4, rows: 4 })
   assert.deepEqual(config.scenes.map(scene => [scene.id, scene.label, scene.roleId]), [
-    ['center', '工作总览', 'center'],
+    ['center', '总览', 'center'],
+    ['user-profile', '资料与核对', 'user-profile'],
     ['products', '商品', 'product'],
+    ['order-production', '订单与生产', 'order-production'],
+    ['deliverables', '交付', 'delivery'],
     ['agent-center', '工作流', 'center'],
-    ['deliverables', '交付物', 'delivery'],
     ['runs', '运行记录', 'center'],
-    ['user-profile', '资料整理', 'user-profile'],
     ['erpnext', 'ERPNext', 'center'],
   ])
-  assert.deepEqual(config.scenes.map(scene => scene.icon), ['⌂', '▦', '◉', '⇩', '≋', '◈', '▤'],
+  assert.deepEqual(config.scenes.map(scene => scene.icon), ['⌂', '◈', '▦', '单', '⇩', '◉', '≋', '▤'],
     'each scene has a compact, accessible glyph for the unified navigation rail')
   assert.deepEqual(config.scenes.map(scene => [scene.id, scene.layoutProfile.kind, scene.layoutProfile.minimumWidth, scene.layoutProfile.minimumHeight]), [
-    ...['center', 'products', 'agent-center', 'deliverables'].map(id => [id, 'collaboration_grid', 960, 560]),
-    ['runs', 'business_lead', 1143, 360], ['user-profile', 'collaboration_grid', 960, 560], ['erpnext', 'business_lead', 1143, 360],
+    ...['center', 'user-profile', 'products', 'order-production', 'deliverables', 'agent-center'].map(id => [id, 'collaboration_grid', 960, 560]),
+    ['runs', 'business_lead', 1143, 360], ['erpnext', 'business_lead', 1143, 360],
   ], 'every scene uses the reviewed split profile and canvas fit threshold')
   const invalidProfile = structuredClone(config)
   invalidProfile.scenes[0].layoutProfile.minimumWidth++
@@ -47,35 +48,43 @@ test('scene JSON defines role-bound 4x4 grids and maps all known business routes
   assert.equal(erpScene.panels.find(panel => panel.id === 'auxiliary').text, '在此添加与当前业务相关的资料与任务。')
   assert.equal(erpScene.panels.find(panel => panel.id === 'reference').text, '在此配置当前业务的参考资料来源。')
   assert.ok(config.scenes.every(scene => ROLE_IDS.includes(scene.roleId)))
-  assert.deepEqual(config.scenes.map(scene => scene.navigationGroup), ['business', 'business', 'business', 'business', 'tools', 'business', 'tools'])
-  assert.deepEqual(Object.keys(config.businessRoutes).sort(), ['/agent-center', '/artifacts', '/home', '/products', '/runs'])
+  assert.deepEqual(config.scenes.map(scene => scene.navigationGroup), ['business', 'business', 'business', 'business', 'business', 'business', 'tools', 'tools'])
+  assert.deepEqual(Object.keys(config.businessRoutes).sort(), ['/agent-center', '/artifacts', '/home', '/orders', '/products', '/runs'])
   assert.deepEqual(config.businessRoutes['/agent-center'], { sceneId: 'agent-center', panelId: 'business-main' })
   assert.deepEqual(config.businessRoutes['/products'], { sceneId: 'products', panelId: 'business-main' })
+  assert.deepEqual(config.businessRoutes['/orders'], { sceneId: 'order-production', panelId: 'business-main' })
   assert.deepEqual(config.businessRoutes['/artifacts'], { sceneId: 'deliverables', panelId: 'business-main' })
   assert.deepEqual(config.businessRoutes['/runs'], { sceneId: 'runs', panelId: 'business-main' })
   const reviewedPanelLayouts = {
     center: [
-      ['business-main', 'business-iframe', 1, 1, 3, 2], ['files', 'business-iframe', 4, 1, 1, 2],
-      ['preview', 'business-iframe', 1, 3, 1, 2], ['native-chat', 'native-chat', 2, 3, 3, 2],
+      ['business-main', 'business-iframe', 1, 1, 3, 3], ['files', 'business-iframe', 4, 1, 1, 2],
+      ['preview', 'business-iframe', 4, 3, 1, 2], ['native-chat', 'native-chat', 1, 4, 3, 1],
       ['assistant-product', 'native-chat', 1, 3, 1, 2], ['assistant-delivery', 'native-chat', 1, 3, 1, 2],
       ['assistant-user-profile', 'native-chat', 1, 3, 1, 2], ['native-workspace', 'native-workspace', 1, 1, 2, 2],
     ],
     products: [
-      ['business-main', 'business-iframe', 1, 1, 3, 2], ['files', 'business-iframe', 4, 1, 1, 2],
-      ['preview', 'business-iframe', 1, 3, 1, 2], ['native-chat', 'native-chat', 2, 3, 3, 2],
+      ['business-main', 'business-iframe', 1, 1, 3, 3], ['files', 'business-iframe', 4, 1, 1, 2],
+      ['preview', 'business-iframe', 4, 3, 1, 2], ['native-chat', 'native-chat', 1, 4, 3, 1],
       ['assistant-center', 'native-chat', 1, 3, 1, 2], ['assistant-delivery', 'native-chat', 1, 3, 1, 2],
       ['assistant-user-profile', 'native-chat', 1, 3, 1, 2], ['native-workspace', 'native-workspace', 1, 1, 2, 2],
     ],
+    'order-production': [
+      ['business-main', 'business-iframe', 1, 1, 3, 3], ['files', 'business-iframe', 4, 1, 1, 2],
+      ['preview', 'business-iframe', 4, 3, 1, 2], ['native-chat', 'native-chat', 1, 4, 3, 1],
+      ['assistant-center', 'native-chat', 1, 3, 1, 2], ['assistant-product', 'native-chat', 1, 3, 1, 2],
+      ['assistant-delivery', 'native-chat', 1, 3, 1, 2], ['assistant-user-profile', 'native-chat', 1, 3, 1, 2],
+      ['native-workspace', 'native-workspace', 1, 1, 2, 2],
+    ],
     'agent-center': [
-      ['business-main', 'business-iframe', 2, 1, 2, 2], ['business-plan', 'business-iframe', 1, 1, 1, 2],
-      ['files', 'business-iframe', 4, 1, 1, 2],
-      ['preview', 'business-iframe', 1, 3, 1, 2], ['native-chat', 'native-chat', 2, 3, 3, 2],
+      ['business-main', 'business-iframe', 1, 1, 3, 2], ['business-plan', 'business-iframe', 4, 1, 1, 2],
+      ['files', 'business-iframe', 4, 3, 1, 2],
+      ['preview', 'business-iframe', 1, 3, 1, 2], ['native-chat', 'native-chat', 2, 3, 2, 2],
       ['assistant-product', 'native-chat', 1, 3, 1, 2], ['assistant-delivery', 'native-chat', 1, 3, 1, 2],
       ['assistant-user-profile', 'native-chat', 1, 3, 1, 2], ['native-workspace', 'native-workspace', 1, 1, 2, 2],
     ],
     deliverables: [
-      ['business-main', 'business-iframe', 1, 1, 3, 2], ['files', 'business-iframe', 4, 1, 1, 2],
-      ['preview', 'business-iframe', 1, 3, 1, 2], ['native-chat', 'native-chat', 2, 3, 3, 2],
+      ['business-main', 'business-iframe', 1, 1, 2, 2], ['files', 'business-iframe', 1, 3, 1, 2],
+      ['preview', 'business-iframe', 3, 1, 2, 4], ['native-chat', 'native-chat', 2, 3, 1, 2],
       ['assistant-center', 'native-chat', 1, 3, 1, 2], ['assistant-product', 'native-chat', 1, 3, 1, 2],
       ['assistant-user-profile', 'native-chat', 1, 3, 1, 2], ['native-workspace', 'native-workspace', 1, 1, 2, 2],
     ],
@@ -96,8 +105,9 @@ test('scene JSON defines role-bound 4x4 grids and maps all known business routes
       ['native-workspace', 'native-workspace', 1, 1, 2, 2],
     ],
   }
-  assert.deepEqual(config.scenes.map(scene => [scene.id, scene.panels.map(panel => [panel.id, panel.type, panel.col, panel.row, panel.w, panel.h])]),
-    Object.entries(reviewedPanelLayouts), 'each scene keeps its configured panel identities, types, and grid geometry')
+  for (const scene of config.scenes) assert.deepEqual(
+    scene.panels.map(panel => [panel.id, panel.type, panel.col, panel.row, panel.w, panel.h]),
+    reviewedPanelLayouts[scene.id], `scene ${scene.id} keeps its configured panel identities, types, and grid geometry`)
   for (const scene of config.scenes) {
     assert.deepEqual(new Set(scene.panels.map(panel => panel.id)).size, scene.panels.length)
     const business = scene.panels.find(panel => panel.id === 'business-main')
@@ -139,7 +149,7 @@ test('scene JSON defines role-bound 4x4 grids and maps all known business routes
   assert.equal(state.roleByScene['user-profile'], 'delivery')
   assert.equal(state.roleByScene.center, 'product')
   assert.equal(state.layouts.center.panels['business-main'].visible, false)
-  assert.equal(state.layouts.center.panels['native-chat'].col, 2)
+  assert.equal(state.layouts.center.panels['native-chat'].col, 1)
   assert.equal(state.layouts.center.expandedPanel, 'native-chat')
 })
 
@@ -166,12 +176,13 @@ test('scene client chunk exposes independent layout state and scene-to-role mapp
   assert.equal(exports.roleForScene(config, 'user-profile'), 'user-profile')
   assert.equal(exports.roleForScene(config, 'unknown'), undefined)
   assert.deepEqual(JSON.parse(JSON.stringify(exports.sceneNavigationItems(config))), [
-    { id: 'center', label: '工作总览', icon: '⌂', route: '/home', navigationGroup: 'business' },
+    { id: 'center', label: '总览', icon: '⌂', route: '/home', navigationGroup: 'business' },
+    { id: 'user-profile', label: '资料与核对', icon: '◈', route: null, navigationGroup: 'business' },
     { id: 'products', label: '商品', icon: '▦', route: '/products', navigationGroup: 'business' },
+    { id: 'order-production', label: '订单与生产', icon: '单', route: '/orders', navigationGroup: 'business' },
+    { id: 'deliverables', label: '交付', icon: '⇩', route: '/artifacts', navigationGroup: 'business' },
     { id: 'agent-center', label: '工作流', icon: '◉', route: '/agent-center', navigationGroup: 'business' },
-    { id: 'deliverables', label: '交付物', icon: '⇩', route: '/artifacts', navigationGroup: 'business' },
     { id: 'runs', label: '运行记录', icon: '≋', route: '/runs', navigationGroup: 'tools' },
-    { id: 'user-profile', label: '资料整理', icon: '◈', route: null, navigationGroup: 'business' },
     { id: 'erpnext', label: 'ERPNext', icon: '▤', route: null, navigationGroup: 'tools' },
   ])
   const current = { config, activeSceneId: 'center', businessPath: '/home', layouts: bothStates }
@@ -2495,8 +2506,8 @@ test('scene navigation exposes config reload after a failed request and refreshe
   assert.equal(buttons(tree).some(button => button.children.includes('刷新场景配置')), false,
     'scene config refresh is moved out of the scene tab strip into the shell tools menu')
   const sceneTabButtons = buttons(tree).filter(button => button.props?.className === 'tl-scene-tab')
-  assert.equal(sceneTabButtons.length, 5, 'the compact rail shows only scenes assigned to the business navigation group')
-  assert.deepEqual(sceneTabButtons.map(button => button.props['data-scene-tab-id']), ['center', 'products', 'agent-center', 'deliverables', 'user-profile'])
+  assert.equal(sceneTabButtons.length, 6, 'the compact rail shows only scenes assigned to the business navigation group')
+  assert.deepEqual(sceneTabButtons.map(button => button.props['data-scene-tab-id']), ['center', 'user-profile', 'products', 'order-production', 'deliverables', 'agent-center'])
   assert.equal(sceneTabButtons.some(button => button.props['aria-label'] === '运行记录' || button.props['aria-label'] === 'ERPNext'), false)
   assert.deepEqual(config.scenes.filter(scene => scene.navigationGroup === 'tools').map(scene => scene.id), ['runs', 'erpnext'])
   const toolsGroup = (function find(node) {
@@ -2508,7 +2519,7 @@ test('scene navigation exposes config reload after a failed request and refreshe
     }
   })(tree)
   assert.ok(toolsGroup, 'grouped scenes remain reachable in the tools menu')
-  for (const id of ['center', 'products', 'agent-center', 'deliverables', 'user-profile']) {
+  for (const id of ['center', 'user-profile', 'products', 'order-production', 'deliverables', 'agent-center']) {
     const item = sceneTabButtons.find(button => button.props['data-scene-tab-id'] === id)
     item.props.onClick({ detail: 0 })
   }
@@ -2518,7 +2529,7 @@ test('scene navigation exposes config reload after a failed request and refreshe
     assert.ok(item, `${id} is present in the tools menu`)
     item.props.onClick()
   }
-  assert.deepEqual(toolNavigations, ['center', 'products', 'agent-center', 'deliverables', 'user-profile', 'runs', 'erpnext'])
+  assert.deepEqual(toolNavigations, ['center', 'user-profile', 'products', 'order-production', 'deliverables', 'agent-center', 'runs', 'erpnext'])
   for (const button of sceneTabButtons) {
     assert.equal(button.children[0]?.children?.[0]?.type, 'svg', `${button.props['aria-label']} should use a recognizable inline icon`)
     assert.equal(button.children[1]?.props?.className, 'tl-scene-tab-label')

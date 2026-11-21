@@ -66,12 +66,12 @@ function buildRecommendation(scene, businessPanels, chatPanels) {
         dockview: {
           grid: {
             root: { type: 'branch', size: 100, data: [
-              row(hasPlan ? 50 : 60,
-                ...(hasPlan ? [leaf('top-plan', 'business-plan', 25)] : []),
-                leaf('topa', 'business-main', hasPlan ? 50 : 75), leaf('topb', 'files', 25)),
-              row(hasPlan ? 50 : 40,
-                leaf('bottoma', 'preview', hasPlan ? 25 : isWorkflowScene(scene) ? 50 : 40),
-                leaf('bottomb', 'native-chat', hasPlan ? 75 : isWorkflowScene(scene) ? 50 : 60)),
+              row(hasPlan ? 50 : scene.id === 'deliverables' ? 50 : 65,
+                ...(hasPlan ? [leaf('top-plan', 'business-plan', 20)] : []),
+                leaf('topa', 'business-main', hasPlan ? 60 : 75), leaf('topb', 'files', hasPlan ? 20 : 25)),
+              row(hasPlan ? 50 : scene.id === 'deliverables' ? 50 : 35,
+                leaf('bottoma', 'preview', hasPlan ? 20 : scene.id === 'deliverables' ? 60 : isWorkflowScene(scene) ? 50 : 25),
+                leaf('bottomb', 'native-chat', hasPlan ? 80 : scene.id === 'deliverables' ? 40 : isWorkflowScene(scene) ? 50 : 75)),
             ] },
             width: 100, height: 100, orientation: 'VERTICAL',
           },
@@ -86,6 +86,7 @@ function buildRecommendation(scene, businessPanels, chatPanels) {
 
 function recommendedDockLayout(scene, includePlan) {
   const activePanels = scene.panels.filter(panel => panel.optional !== true
+    && !(scene.id === 'center' && panel.id === 'native-chat')
     && (panel.id !== 'business-plan' || includePlan || !isWorkflowScene(scene)))
   const chatPanels = activePanels.filter(panel => panel.type === 'native-chat')
   const businessPanels = activePanels.filter(panel => panel.type !== 'native-chat')

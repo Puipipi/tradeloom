@@ -1,5 +1,5 @@
 import { getRoleBindingRevision } from './state.js'
-import { ROLE_PRESETS } from './roles.js'
+import { ROLE_PRESETS, WORKFLOW_AGENT_ROLE_IDS } from './roles.js'
 import { validateArtifactEvidence } from './workflow-artifact-source.js'
 import { verifiedWorkflowParent } from './workflow-local-nodes.js'
 import { verifiedReviewOutput } from './workflow-review.js'
@@ -187,7 +187,7 @@ export function createWorkflowNativeBindingResolver({ ctx, readState, loadRun } 
       || nodeState.attempt !== input.attempt) {
       throw fail('run_node_not_active')
     }
-    if (node.agent === 'center' || !Object.hasOwn(ROLE_PRESETS, node.agent)) {
+    if (!WORKFLOW_AGENT_ROLE_IDS.includes(node.agent)) {
       throw fail('run_node_role_not_allowed')
     }
     const agentPreset = ROLE_PRESETS[node.agent]

@@ -743,7 +743,8 @@ window.__ModuleLoader__.load({
       const reference = (panel.optional && gridPanels.find(item => item.id === 'native-chat'))
         || gridPanels.find(item => item.id === 'business-main') || gridPanels[0]
       if (!position && reference) position = { referencePanel: reference.id,
-        direction: panel.id === 'business-plan' && (scene.templateSceneId ?? scene.id) === 'agent-center' ? 'left'
+        direction: scene.id === 'center' && panel.id === 'native-chat' ? 'right'
+          : panel.id === 'business-plan' && (scene.templateSceneId ?? scene.id) === 'agent-center' ? 'left'
           : panel.optional ? 'right' : 'within' }
       api.addPanel({
         id: panel.id, component: panel.type,
@@ -1008,7 +1009,9 @@ window.__ModuleLoader__.load({
 
     function defaultDockRecord(scene) {
       const workflow = (scene.templateSceneId ?? scene.id) === 'agent-center'
-      const visiblePanels = scene.panels.filter(panel => panel.optional !== true && (!workflow || panel.id !== 'business-plan'))
+      const visiblePanels = scene.panels.filter(panel => panel.optional !== true
+        && !(scene.id === 'center' && panel.id === 'native-chat')
+        && (!workflow || panel.id !== 'business-plan'))
       const byId = new Map(visiblePanels.map(panel => [panel.id, panel]))
       const hasPlan = byId.has('business-plan')
       const chat = visiblePanels.filter(panel => panel.type === 'native-chat')
@@ -1025,12 +1028,12 @@ window.__ModuleLoader__.load({
         const leaf = (groupId, panelId, size) => makeLeaf(groupId, [byId.get(panelId)], size)
         const row = (size, ...data) => ({ type: 'branch', size, data })
         root = { type: 'branch', size: 100, data: [
-          row(hasPlan ? 50 : 60,
-            ...(hasPlan ? [leaf('top-plan', 'business-plan', 25)] : []),
-            leaf('topa', 'business-main', hasPlan ? 50 : 75), leaf('topb', 'files', 25)),
-          row(hasPlan ? 50 : 40,
-            leaf('bottoma', 'preview', hasPlan ? 25 : workflow ? 50 : 40),
-            leaf('bottomb', 'native-chat', hasPlan ? 75 : workflow ? 50 : 60)),
+          row(hasPlan ? 50 : scene.id === 'deliverables' ? 50 : 65,
+            ...(hasPlan ? [leaf('top-plan', 'business-plan', 20)] : []),
+            leaf('topa', 'business-main', hasPlan ? 60 : 75), leaf('topb', 'files', hasPlan ? 20 : 25)),
+          row(hasPlan ? 50 : scene.id === 'deliverables' ? 50 : 35,
+            leaf('bottoma', 'preview', hasPlan ? 20 : scene.id === 'deliverables' ? 60 : workflow ? 50 : 25),
+            leaf('bottomb', 'native-chat', hasPlan ? 80 : scene.id === 'deliverables' ? 40 : workflow ? 50 : 75)),
         ] }
         orientation = 'VERTICAL'
         activeGroup = 'topa'

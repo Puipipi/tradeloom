@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
-import { ROLE_PRESETS } from './roles.js'
+import { ROLE_PRESETS, WORKFLOW_AGENT_ROLE_IDS } from './roles.js'
 import { createConfirmedWorkflowDefinition } from './workflow-definition.js'
 import { createWorkflowRunJournal } from './workflow-run-journal.js'
 import { createWorkflowNativeBindingResolver, readAuthorizedCenterBinding } from './workflow-native-binding.js'
@@ -34,7 +34,7 @@ function expectedRevisions(input, definitionRevision, bindingRevision) {
 function nativeNodes(document) {
   const nodes = validateNativeWorkflowGraph(document)
   for (const node of nodes.filter(node => node.kind === 'agent')) {
-    if (node.agent === 'center' || !Object.hasOwn(ROLE_PRESETS, node.agent)) throw fail('run_node_role_not_allowed')
+    if (!WORKFLOW_AGENT_ROLE_IDS.includes(node.agent)) throw fail('run_node_role_not_allowed')
     if (typeof node.instruction !== 'string' || !node.instruction.trim()) throw fail('run_node_prompt_unavailable')
   }
   return nodes

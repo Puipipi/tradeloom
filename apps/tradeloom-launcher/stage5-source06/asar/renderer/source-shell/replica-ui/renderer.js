@@ -190,7 +190,7 @@ async function showSceneConfiguration() {
       document.scenes.push(next); selected = next; redraw(); closeClone()
     })
     remove.addEventListener('click', () => {
-      if (!selected.templateSceneId || Object.values(document.businessRoutes).some(route => route.sceneId === selected.id)) { note.textContent = '五个现有业务入口场景不能在此移除。'; return }
+      if (!selected.templateSceneId || Object.values(document.businessRoutes).some(route => route.sceneId === selected.id)) { note.textContent = '现有业务入口场景不能在此移除。'; return }
       document.scenes = document.scenes.filter(scene => scene !== selected); selected = document.scenes[0]; redraw()
     })
     const save = make('button', '', '保存并应用'), retry = make('button', '', '应用已保存配置')
@@ -2524,7 +2524,7 @@ async function boot() {
     mountAssistantCapabilities(document.body)
     return
   }
-  // The approved five-scene geometry is local UI state and must paint even if the
+  // The approved default geometry is local UI state and must paint even if the
   // Host config is slow or unavailable. The bridge loads/validates business data
   // independently and replaces only the contents of business-backed panels.
   await ensureBusinessBridge()

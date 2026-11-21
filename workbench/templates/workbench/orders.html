@@ -1,0 +1,18 @@
+{% extends "workbench/base.html" %}
+{% load static business_urls %}
+{% block page_eyebrow %}订单与生产 · 只读跟进{% endblock %}
+{% block page_title %}订单与生产{% endblock %}
+{% block content %}
+<section class="panel" aria-labelledby="orders-heading" data-testid="orders-page">
+  <div class="panel-heading"><div><p class="eyebrow">订单跟进</p><h2 id="orders-heading">按订单来源编号查询</h2></div></div>
+  <p>使用完整的来源订单编号精确匹配 commercial_source.document_reference 和 production_instruction.source_order_reference。人工候选关联会保留其待确认或已确认状态。</p>
+  <form id="order-followup-form" class="filter-form" role="search">
+    <label for="order-key">来源订单编号</label>
+    <input id="order-key" name="order_key" maxlength="140" required autocomplete="off" data-testid="order-key-input">
+    <button class="button primary" type="submit" data-testid="order-search">查询订单</button>
+  </form>
+  <p id="order-followup-status" role="status" aria-live="polite"></p>
+  <div id="order-followup-results" data-testid="order-followup-results"></div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{% business_path '/static/workbench/orders.js' %}" defer></script>{% endblock %}

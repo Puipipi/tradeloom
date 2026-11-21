@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
+import { runInNewContext } from 'node:vm'
 import test from 'node:test'
 import {
   defaultDockLayout,
@@ -8,10 +9,55 @@ import {
   validateDockviewLayout,
   validateDockLayouts,
 } from '../dock-layout.js'
+import { resolveSceneConfiguration, validateSceneConfig } from '../scene-layout.js'
 
 const config = JSON.parse(await readFile(new URL('../scenes.json', import.meta.url), 'utf8'))
 const center = config.scenes.find(scene => scene.id === 'center')
 const optionalClosedPanelIds = center.panels.filter(panel => panel.optional === true).map(panel => panel.id)
+
+test('business entry order preserves scene identities and exposes the new order route', async () => {
+  assert.strictEqual(validateSceneConfig(config), config)
+  assert.deepEqual(config.scenes.map(scene => scene.id), [
+    'center', 'user-profile', 'products', 'order-production', 'deliverables', 'agent-center', 'runs', 'erpnext',
+  ])
+  assert.deepEqual(config.businessRoutes['/orders'], { sceneId: 'order-production', panelId: 'business-main' })
+  assert.equal(config.scenes.find(scene => scene.id === 'order-production').roleId, 'order-production',
+    'the order scene uses its dedicated role')
+
+  let registration
+  const source = await readFile(new URL('../client.scenes.js', import.meta.url), 'utf8')
+  runInNewContext(source, { window: { __ModuleLoader__: { load(value) { registration = value } } } })
+  const exports = registration.factory(() => ({ createElement() {} }))
+  assert.deepEqual(JSON.parse(JSON.stringify(exports.sceneNavigationItems(config).map(({ id, label }) => [id, label]))).slice(0, 7), [
+    ['center', '总览'], ['user-profile', '资料与核对'], ['products', '商品'], ['order-production', '订单与生产'],
+    ['deliverables', '交付'], ['agent-center', '工作流'], ['runs', '运行记录'],
+  ])
+})
+
+test('legacy saved scene documents gain only the missing order route and default scene', () => {
+  const legacy = structuredClone(config)
+  legacy.scenes = legacy.scenes.filter(scene => scene.id !== 'order-production')
+  delete legacy.businessRoutes['/orders']
+  const product = legacy.scenes.find(scene => scene.id === 'products')
+  product.label = '已保存的商品入口'
+  product.panels.find(panel => panel.id === 'business-main').col = 2
+  const resolved = resolveSceneConfiguration(config, { sceneConfiguration: { value: legacy } })
+  assert.equal(resolved.scenes.find(scene => scene.id === 'products').label, '已保存的商品入口')
+  assert.equal(resolved.scenes.find(scene => scene.id === 'products').panels.find(panel => panel.id === 'business-main').col, 2)
+  assert.equal(resolved.scenes.findIndex(scene => scene.id === 'order-production'),
+    resolved.scenes.findIndex(scene => scene.id === 'products') + 1)
+  assert.deepEqual(resolved.businessRoutes['/orders'], config.businessRoutes['/orders'])
+  assert.deepEqual(resolved.scenes.find(scene => scene.id === 'order-production'), config.scenes.find(scene => scene.id === 'order-production'))
+  assert.deepEqual(Object.keys(resolved.businessRoutes).sort(), ['/agent-center', '/artifacts', '/home', '/orders', '/products', '/runs'])
+
+  const partial = structuredClone(legacy)
+  const orderScene = structuredClone(config.scenes.find(scene => scene.id === 'order-production'))
+  delete orderScene.roleId
+  partial.scenes.push(orderScene)
+  const repaired = resolveSceneConfiguration(config, { sceneConfiguration: { value: partial } })
+  assert.equal(repaired.scenes.find(scene => scene.id === 'order-production').roleId,
+    config.scenes.find(scene => scene.id === 'order-production').roleId)
+})
 test('chat-only scenes have one valid default group', () => {
   const scene = { id: 'chat-only', panels: [{ id: 'native-chat', type: 'native-chat', title: '中心助手' }] }
   const layout = defaultDockLayout(scene)
@@ -127,10 +173,10 @@ test('pinned Dockview api.toJSON trees validate, including one group and no open
 
   const result = defaultDockLayout(center)
   assert.equal(validateDockviewLayout(center, result.dockview, result.closedPanelIds), true)
-  assert.deepEqual(result.dockview.grid.root.data.map(group => group.size), [60, 40], 'center keeps the configured 60/40 collaboration rows')
-  assert.equal(result.dockview.activeGroup, 'topa', 'collaboration center opens on the main business panel')
-  assert.deepEqual(result.dockview.grid.root.data[0].data.map(group => group.data.views), [['business-main'], ['files']])
-  assert.deepEqual(result.dockview.grid.root.data[1].data.map(group => group.data.views), [['preview'], ['native-chat']])
+  assert.deepEqual(result.dockview.grid.root.data.map(group => group.size), [100], 'overview gives business panels the full default canvas')
+  assert.equal(result.dockview.activeGroup, '1', 'overview opens on the main business panels')
+  assert.deepEqual(result.dockview.grid.root.data[0].data.views, ['business-main', 'files', 'preview'])
+  assert.ok(result.closedPanelIds.includes('native-chat'), 'the overview assistant starts collapsed and remains reopenable')
   assert.ok(Object.values(result.dockview.panels).every(panel => panel.renderer === 'always'))
   assert.deepEqual(Object.entries(result.dockview.panels).map(([panelId, panel]) => [panelId, panel.params]),
     Object.keys(result.dockview.panels).map(panelId => [panelId, { panelId }]))
@@ -149,13 +195,19 @@ test('each configured scene gets its mapped recommendation while four-panel scen
     const recommendation = defaultDockLayout(scene)
     assert.equal(validateDockviewLayout(scene, recommendation.dockview, recommendation.closedPanelIds), true, scene.id)
     if (scene.layoutProfile.kind === 'collaboration_grid') {
+      if (scene.id === 'center') {
+        assert.deepEqual(recommendation.dockview.grid.root.data.map(group => group.size), [100])
+        assert.deepEqual(recommendation.dockview.grid.root.data[0].data.views, ['business-main', 'files', 'preview'])
+        assert.ok(recommendation.closedPanelIds.includes('native-chat'))
+        continue
+      }
       assert.equal(recommendation.dockview.grid.orientation, 'VERTICAL', scene.id)
       const [top, bottom] = recommendation.dockview.grid.root.data
       assert.equal(top.type, 'branch')
       assert.equal(bottom.type, 'branch')
       const describeGroups = row => row.data.map(group => [group.size, group.data.views, group.data.activeView])
       if (scene.id === 'agent-center') {
-        assert.deepEqual([top.size, bottom.size], [60, 40])
+        assert.deepEqual([top.size, bottom.size], [65, 35])
         assert.deepEqual(describeGroups(top), [[75, ['business-main'], 'business-main'], [25, ['files'], 'files']])
         assert.deepEqual(describeGroups(bottom), [[50, ['preview'], 'preview'], [50, ['native-chat'], 'native-chat']])
         assert.ok(recommendation.closedPanelIds.includes('business-plan'))
@@ -171,10 +223,14 @@ test('each configured scene gets its mapped recommendation while four-panel scen
         custom.dockview.grid.root.data[1].size = 55
         const existing = { version: 2, scenes: { 'agent-center': custom } }
         assert.deepEqual(normalizeDockLayouts(config, existing).scenes['agent-center'], custom)
-      } else {
-        assert.deepEqual([top.size, bottom.size], [60, 40])
+      } else if (scene.id === 'deliverables') {
+        assert.deepEqual([top.size, bottom.size], [50, 50])
         assert.deepEqual(describeGroups(top), [[75, ['business-main'], 'business-main'], [25, ['files'], 'files']])
-        assert.deepEqual(describeGroups(bottom), [[40, ['preview'], 'preview'], [60, ['native-chat'], 'native-chat']])
+        assert.deepEqual(describeGroups(bottom), [[60, ['preview'], 'preview'], [40, ['native-chat'], 'native-chat']])
+      } else {
+        assert.deepEqual([top.size, bottom.size], [65, 35])
+        assert.deepEqual(describeGroups(top), [[75, ['business-main'], 'business-main'], [25, ['files'], 'files']])
+        assert.deepEqual(describeGroups(bottom), [[25, ['preview'], 'preview'], [75, ['native-chat'], 'native-chat']])
       }
       if (scene.id === 'products') {
         collaborationCustom = structuredClone(recommendation)
@@ -214,8 +270,8 @@ test('unchanged v1 geometry upgrades to the wider dock default and keeps its fir
   assert.equal(migrated.migration.status, 'default_upgrade')
   assert.equal(migrated.migration.reason, 'matches-scene-default')
   assert.deepEqual(migrated.legacyV1Snapshot, snapshot)
-  assert.deepEqual(migrated.dockview.grid.root.data[0].data.map(group => group.data.views), [['business-main'], ['files']],
-    'legacy auxiliary/reference IDs migrate to files/preview while the original snapshot remains unchanged')
+  assert.deepEqual(migrated.dockview.grid.root.data[0].data.views, ['business-main', 'files', 'preview'],
+    'legacy auxiliary/reference IDs migrate to files/preview, the assistant starts collapsed, and the original snapshot remains unchanged')
 
   const edited = structuredClone(migrated)
   edited.legacyV1Snapshot.panels['business-main'].w = 1
@@ -270,21 +326,22 @@ test('dock layout validation rejects unknown panels and malformed serialized tre
 })
 
 test('normalization initializes dock layouts and legacy scene-layout writes do not replace them', () => {
-  const legacy = { center: legacyDefaults(center) }
+  const products = config.scenes.find(scene => scene.id === 'products')
+  const legacy = { products: legacyDefaults(products) }
   const first = normalizeDockLayouts(config, undefined, legacy)
   const saved = structuredClone(first)
-  saved.scenes.center.dockview.activeGroup = 'topb'
+  saved.scenes.products.dockview.activeGroup = 'topb'
   const normalized = validateDockLayouts(config, saved, { existingDockLayouts: first, legacySceneLayouts: legacy })
-  assert.equal(normalized.scenes.center.dockview.activeGroup, 'topb')
-  const later = normalizeDockLayouts(config, normalized, { center: legacyDefaults(center) })
-  assert.deepEqual(later.scenes.center, normalized.scenes.center)
-  assert.deepEqual(later.scenes.center.legacyV1Snapshot, legacy.center)
+  assert.equal(normalized.scenes.products.dockview.activeGroup, 'topb')
+  const later = normalizeDockLayouts(config, normalized, { products: legacyDefaults(products) })
+  assert.deepEqual(later.scenes.products, normalized.scenes.products)
+  assert.deepEqual(later.scenes.products.legacyV1Snapshot, legacy.products)
 
   const corrupted = structuredClone(normalized)
-  corrupted.scenes.center.dockview.grid.root.data[0].data[0].data.views.push('unknown-panel')
-  const changedLegacy = legacyDefaults(center)
+  corrupted.scenes.products.dockview.grid.root.data[0].data[0].data.views.push('unknown-panel')
+  const changedLegacy = legacyDefaults(products)
   changedLegacy.panels['business-main'].visible = false
-  const recovered = normalizeDockLayouts(config, corrupted, { center: changedLegacy })
-  assert.deepEqual(recovered.scenes.center.legacyV1Snapshot, legacy.center)
-  assert.equal(recovered.scenes.center.migration.reason, 'stored-layout-invalid')
+  const recovered = normalizeDockLayouts(config, corrupted, { products: changedLegacy })
+  assert.deepEqual(recovered.scenes.products.legacyV1Snapshot, legacy.products)
+  assert.equal(recovered.scenes.products.migration.reason, 'stored-layout-invalid')
 })

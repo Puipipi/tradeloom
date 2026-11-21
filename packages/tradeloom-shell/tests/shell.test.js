@@ -145,8 +145,8 @@ test('role workspace creation is contained and role mapping is closed', async t 
   assert.equal(path, join(home, 'tradeloom-workspaces', 'center'))
   await assert.rejects(roleWorkspacePath('../outside', env), /unknown TradeLoom role/)
   assert.deepEqual(Object.keys(ROLE_PRESETS), Object.keys(ROLE_LABELS))
-  assert.equal(BUSINESS_MENUS.length, 5)
-  assert.deepEqual(BUSINESS_MENUS.map(menu => menu.path), ['/home', '/products', '/agent-center', '/artifacts', '/runs'])
+  assert.equal(BUSINESS_MENUS.length, 6)
+  assert.deepEqual(BUSINESS_MENUS.map(menu => menu.path), ['/home', '/products', '/orders', '/agent-center', '/artifacts', '/runs'])
   assert.deepEqual(Object.keys(BUSINESS_ALIASES), ['business', 'business-api', 'business-static', 'business-media'])
 })
 

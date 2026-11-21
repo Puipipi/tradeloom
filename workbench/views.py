@@ -220,6 +220,11 @@ def home(request):
 
 
 @ensure_csrf_cookie
+def orders(request):
+    return render(request, "workbench/orders.html", _page_context("orders"))
+
+
+@ensure_csrf_cookie
 def products(request):
     q = request.GET.get("q", "").strip()
     state = request.GET.get("state", "").strip()

@@ -376,19 +376,24 @@
     return split([...rows.values()].map(row => split(row, 'x')), 'y')
   }
 
-  function defaultWorkflowTree(info, visible) {
-    if (!defaultClosedPanelIds(info).includes('workflow-plan') || visible.has('workflow-plan')) return null
+  function defaultSceneTree(info, visible) {
+    const leaf = id => ({ kind: 'leaf', id })
+    const split = (axis, boundary, ratio, first, second) => ({ kind: 'split', axis, boundary, ratio, first, second })
+    if (info.sceneId === 'center' && defaultClosedPanelIds(info).includes('center-chat') && !visible.has('center-chat')) {
+      const geometry = { overview: [1, 1, 3, 3], files: [4, 1, 1, 2], preview: [4, 3, 1, 2], 'center-chat': [1, 4, 3, 1] }
+      if (info.geometry.length !== Object.keys(geometry).length || !info.geometry.every(panel =>
+        geometry[panel.id]?.every((value, index) => value === [panel.col, panel.row, panel.w, panel.h][index]))) return null
+      return split('x', 3, .75, leaf('overview'), split('y', 2, .5, leaf('files'), leaf('preview')))
+    }
+    if (info.sceneId !== 'agent-center' || !defaultClosedPanelIds(info).includes('workflow-plan') || visible.has('workflow-plan')) return null
     const geometry = {
-      'workflow-plan': [1, 1, 1, 2], 'workflow-main': [2, 1, 2, 2], files: [4, 1, 1, 2],
-      preview: [1, 3, 1, 2], 'workflow-chat': [2, 3, 3, 2],
+      'workflow-plan': [4, 1, 1, 2], 'workflow-main': [1, 1, 3, 2], files: [4, 3, 1, 2],
+      preview: [1, 3, 1, 2], 'workflow-chat': [2, 3, 2, 2],
     }
     if (info.geometry.length !== Object.keys(geometry).length || !info.geometry.every(panel =>
       geometry[panel.id]?.every((value, index) => value === [panel.col, panel.row, panel.w, panel.h][index]))) return null
-    const leaf = id => ({ kind: 'leaf', id })
-    const split = (axis, boundary, ratio, first, second) => ({ kind: 'split', axis, boundary, ratio, first, second })
-    return split('y', 3, .6,
-      split('x', 4, .75, leaf('workflow-main'), leaf('files')),
-      split('x', 3, .5, leaf('preview'), leaf('workflow-chat')))
+    return split('y', 3, .5, leaf('workflow-main'),
+      split('x', 1, .25, leaf('preview'), split('x', 3, 2 / 3, leaf('workflow-chat'), leaf('files'))))
   }
 
   function activePanelSlots(info) {
@@ -420,7 +425,7 @@
     const legacyTree = defaultClosed.length && defaultClosed.every(id => !visible.has(id)) && validSplitTree(stored?.tree, baseIds)
       && stored.topology === treeTopology(stored.tree) ? stored.tree : null
     const fullTree = validSplitTree(source, info.geometry.map(panel => panel.id)) ? source : null
-    const baseTree = legacyTree ?? (!stored?.tree ? defaultWorkflowTree(info, visible) : null) ?? fullTree
+    const baseTree = legacyTree ?? (!stored?.tree ? defaultSceneTree(info, visible) : null) ?? fullTree
     const projection = validSplitTree(presetTree, [...visible]) ? presetTree
       : baseTree ? projectVisiblePanels(baseTree, visible)
         : compactVisiblePanelTree(info.geometry.filter(panel => visible.has(panel.id)))
@@ -659,6 +664,10 @@
       restorePanel(restorePanelId, ownerPanel?.closest?.('#grid') ?? document.getElementById('grid'))
       return
     }
+    if (label === '添加助手') {
+      ownerPanel?.dispatchEvent(new CustomEvent('source-assistant-add', { bubbles: true }))
+      return
+    }
     if (label === '关闭面板') {
       closePanel(ownerPanel)
       return
@@ -722,6 +731,7 @@
         : ['打开原生会话','轮换此角色会话','场景记忆','回复朗读控制'].includes(label) ? capabilities?.nativeConversation === true : true)
         .map(([label, explanation]) => ({ label, explanation }))
       : []
+    if (panel?.classList.contains('panel-chat')) entries.unshift({ label: '添加助手', explanation: '在当前助手区域打开另一个已绑定助手。' })
     const panelGrid = panel?.closest?.('#grid') ?? (point ? document.getElementById('grid') : null)
     const sceneKey = panel ? sceneKeyFor(panel) : (panelGrid ? sceneGridInfo(panelGrid)?.sceneId : '')
     entries.push(...restoreEntries(sceneKey, panelGrid, panel?.dataset?.panelId))

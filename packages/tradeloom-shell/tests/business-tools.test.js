@@ -138,7 +138,7 @@ test('registers bounded business tools with native ToolRuntime definitions and n
     const runtime = { ctx: {}, layers: { effect(_ctx, install) { return install({ tools: { insert(name, definition) { registrations.push({ name, definition }); return () => {} } } }) } } }
     for (const definition of tools.values()) {
       assertSupportedJsonSchema(definition.output.schema)
-      if (definition.name.startsWith('tradeloom_erpnext_') || definition.name.startsWith('tradeloom_intake_') || definition.name.startsWith('tradeloom_narrative_') || ['tradeloom_read_execution_plan', 'tradeloom_workflow_files'].includes(definition.name)) {
+      if (definition.name.startsWith('tradeloom_erpnext_') || definition.name.startsWith('tradeloom_intake_') || definition.name.startsWith('tradeloom_narrative_') || ['tradeloom_read_execution_plan', 'tradeloom_read_order_followup', 'tradeloom_workflow_files'].includes(definition.name)) {
         assertSupportedJsonSchema(definition.parameters)
         assert.equal(definition.parameters.type, 'object', `${definition.name} wire parameters must have an object root`)
       }
@@ -164,6 +164,7 @@ test('preset configuration limits registered tools to the center, product, and d
     ],
     'tradeloom-product': ['tradeloom_scene_memory_read', 'tradeloom_scene_memory_write', 'tradeloom_read_products', 'tradeloom_read_workflow_task', 'tradeloom_submit_native_workflow_advice', 'tradeloom_intake_sources', 'tradeloom_intake_candidates', 'tradeloom_intake_candidate', 'tradeloom_erpnext_status', 'tradeloom_erpnext_list', 'tradeloom_erpnext_detail', 'tradeloom_dispatch_create', 'tradeloom_dispatch_list', 'tradeloom_dispatch_claim', 'tradeloom_dispatch_receipt'],
     'tradeloom-delivery': ['tradeloom_scene_memory_read', 'tradeloom_scene_memory_write', 'tradeloom_read_workflow_task', 'tradeloom_read_deliverables', 'tradeloom_submit_native_workflow_advice', 'tradeloom_intake_sources', 'tradeloom_intake_candidates', 'tradeloom_intake_candidate', 'tradeloom_read_execution_plan', 'tradeloom_erpnext_status', 'tradeloom_erpnext_list', 'tradeloom_erpnext_detail', 'tradeloom_dispatch_create', 'tradeloom_dispatch_list', 'tradeloom_dispatch_claim', 'tradeloom_dispatch_receipt'],
+    'tradeloom-order-production': ['tradeloom_read_order_followup'],
   }
   for (const [preset, names] of Object.entries(expected)) {
     const registered = []
@@ -180,6 +181,34 @@ test('preset configuration limits registered tools to the center, product, and d
   apply({ tools: { register(definition) { unknown.push(definition.name); return () => {} } } }, { preset: 'tradeloom-quote-placeholder' })
   apply({ tools: { register(definition) { unknown.push(definition.name); return () => {} } } }, { preset: 'tradeloom-user-profile-demo' })
   assert.deepEqual(unknown, [])
+})
+
+test('order follow-up reader is read-only, exact-keyed, bounded, and restricted to the order-production role', async t => {
+  const { requests, tools } = await fixture(t, async (record, res) => {
+    if (record.path === '/') return defaultHandler(record, res)
+    res.writeHead(200, { 'content-type': 'application/json' })
+    res.end(JSON.stringify({ ok: true, order: {
+      schema_version: 'order-followup.v1', order_key: 'SO-1', inquiries: [], requirements: { status: 'missing', records: [] },
+      purchase_plans: { status: 'missing', records: [] },
+      material_receipts: { status: 'missing', records: [] }, production_handoff: { status: 'missing', records: [] },
+      shipment_payments: { status: 'missing', records: [] },
+      erpnext: { status: 'not_configured', supported_doctypes: ['Sales Order'], unsupported_doctypes: ['Work Order'], records: [] },
+    } }))
+  }, { preset: 'tradeloom-order-production' })
+  const reader = tools.get('tradeloom_read_order_followup')
+  assert.equal(reader.parameters.additionalProperties, false)
+  assert.deepEqual(reader.parameters.required, ['order_key'])
+  assert.equal((await reader.execute({ order_key: 'SO-1', extra: true }, agent('tradeloom-order-production'))).error_code, 'invalid_arguments')
+  assert.equal((await reader.execute({ order_key: ' SO-1' }, agent('tradeloom-order-production'))).error_code, 'invalid_arguments')
+  assert.equal(requests.length, 0)
+  assert.equal((await reader.execute({ order_key: 'SO-1' }, agent('tradeloom-product'))).error_code, 'role_not_authorized')
+  assert.equal(requests.length, 0)
+  const allowed = await reader.execute({ order_key: 'SO-1' }, agent('tradeloom-order-production'))
+  assert.equal(allowed.ok, true)
+  assert.equal(requests.length, 1)
+  assert.equal(requests[0].method, 'GET')
+  assert.equal(requests[0].path, '/api/orders?order_key=SO-1')
+  assert.equal(allowed.business_ui_url, '/business/orders?order_key=SO-1')
 })
 
 test('execution plan reader is bounded, read-only, role-gated before HTTP, and projects exact source refs only', async t => {

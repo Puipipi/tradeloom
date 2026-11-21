@@ -187,13 +187,37 @@
             name: '@tradeloom/dsh-business-shell/business-tools'
             config:
               preset: tradeloom-delivery
+    - id: tradeloom-order-production-preset
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: tradeloom-order-production
+        name: 订单与生产跟进
+        description: 按结构化订单号只读整理询价、生产要求、物料到料、交接和 ERPNext 支持状态。
+        order: 6
+        plugins:
+          - id: business-turn-limit
+            name: '@tradeloom/dsh-business-shell/step-policy'
+          - id: tradeloom-tool-policy
+            name: '@tradeloom/dsh-business-shell/tool-policy'
+            config:
+              deniedTools: []
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: |
+                你是订单跟进助手。只使用“订单与生产”只读入口与用户给出的合成或已授权订单号。先以完整、精确的 source_order_reference 查询；不把前缀相似或不同订单号当作精确命中。建议关联须标为待人工确认，只有现存的已确认人工关联才能标作已确认。清楚区分缺失、待人工确认、已确认和没有持久记录；页面上的“已确认”必须对应已有后端状态，不代表 ERP 或员工已审批。
+                你只能读取同单跟进结果；不得修改生产要求、PMC核料、到料、交接或收付款状态，不得创建/修改 ERPNext 记录，不得付款或对外发送。ShipmentPayment 只表示出货/回款记录，不是生产交接；若无真实交接记录，报告交接缺失。Purchase Order 可读取但没有可验证同单关系时不得显示为关联订单。Work Order、Delivery Note、Payment Entry 等未受支持的 DocType 要明确报告 API 缺口，不构造跳转链接。仅当后端返回了精确命中的 ERPNext DocType、name 和经过验证的站点链接时，才引用该链接。
+          - id: business-tools
+            name: '@tradeloom/dsh-business-shell/business-tools'
+            config:
+              preset: tradeloom-order-production
     - id: tradeloom-user-profile-preset
       name: '@deepseek-ai/dsh-agent-preset'
       config:
         id: tradeloom-user-profile-demo
         name: 用户资料（演示）
         description: 仅使用可编辑的演示资料占位。
-        order: 6
+        order: 7
         plugins:
           - id: business-turn-limit
             name: '@tradeloom/dsh-business-shell/step-policy'

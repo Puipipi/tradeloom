@@ -58,7 +58,7 @@ test('panel expansion slots follow current dock rectangles and keep multi-panel 
   const expansionCovers = loadFunction(functionSource(bridge,
     'function panelExpansionCovers(expandedRect, panelRect) {', 'function panelExpansionBlocksNativePane'))
   const blocksNativePane = loadFunction(functionSource(bridge,
-    'function panelExpansionBlocksNativePane(expandedPanels, panel, panelRect) {', 'function nativePaneVisible'), {
+    'function panelExpansionBlocksNativePane(expandedPanels, panel, panelRect) {', 'function sceneHasDraggingPanel'), {
     panelExpansionCovers: expansionCovers,
   })
   const makePanel = rect => ({ getBoundingClientRect: () => rect, classList: { contains: () => false } })
@@ -131,4 +131,76 @@ test('scene dock owns managed panel slot swaps before the renderer applies templ
   })
   ordinarySwap(ordinaryA, ordinaryB)
   assert.equal(fallbackApplications, 2, 'ordinary template-grid panels retain their established swap behavior')
+})
+
+test('overview assistant defaults closed while saved trees and explicit reopen state take precedence', async () => {
+  const scenePath = new URL('../stage5-source06/asar/renderer/source-shell/replica-ui/scenes-data.js', import.meta.url)
+  const interactionsPath = new URL('../stage5-source06/asar/renderer/source-shell/replica-ui/panel-interactions.js', import.meta.url)
+  const sceneData = await readFile(scenePath, 'utf8')
+  const interactions = await readFile(interactionsPath, 'utf8')
+  const scenes = { window: {} }
+  runInNewContext(sceneData, scenes)
+  const center = scenes.window.__SCENES__.scenes.find(scene => scene.id === 'center')
+  assert.equal(center.panels.find(panel => panel.id === 'center-chat').closedByDefault, true)
+
+  const info = {
+    sceneId: 'center', columns: 4, rows: 4,
+    panels: [{ dataset: { panelId: 'center-chat' }, __meta: center.panels.find(panel => panel.id === 'center-chat') }],
+    geometry: center.panels.map(({ id, col, row, w, h }) => ({ id, col, row, w, h })),
+  }
+  const state = { closed: {}, tree: { version: 2, scenes: {} }, savedTree: undefined, validPreset: false }
+  const grid = {}
+  const context = {
+    closedPanelStore: () => state.closed,
+    defaultClosedPanelIds: loadFunction(functionSource(interactions,
+      'function defaultClosedPanelIds(info) {', 'function closedPanelIdsFor(sceneKey)')),
+    document: { getElementById: () => grid },
+    sceneGridInfo: () => info,
+    readSplitTrees: () => state.tree,
+    savedTree: () => state.savedTree,
+    validPresetGeometry: () => state.validPreset,
+    persistClosedPanelStore: value => { state.persisted = structuredClone(value) },
+  }
+  const closedPanelIdsFor = loadFunction(functionSource(interactions,
+    'function closedPanelIdsFor(sceneKey) {', 'function recordClosedPanel('), context)
+  context.closedPanelIdsFor = closedPanelIdsFor
+  assert.deepEqual(Array.from(closedPanelIdsFor('center')), ['center-chat'])
+
+  state.savedTree = { tree: { kind: 'leaf', id: 'center-chat' } }
+  assert.deepEqual(Array.from(closedPanelIdsFor('center')), [], 'a saved split tree keeps its chosen open panels')
+  state.savedTree = undefined
+  state.tree.scenes.center = { fromPreset: true, geometry: info.geometry }
+  state.validPreset = true
+  assert.deepEqual(Array.from(closedPanelIdsFor('center')), [], 'a valid saved preset overrides the new default')
+  state.tree.scenes = {}
+  state.validPreset = false
+  state.closed.center = ['center-chat']
+  assert.deepEqual(Array.from(closedPanelIdsFor('center')), ['center-chat'], 'explicit user close state remains authoritative')
+  state.closed = {}
+
+  const recordClosedPanel = loadFunction(functionSource(interactions,
+    'function recordClosedPanel(sceneKey, panelId, closed) {', 'function applyClosedPanels(grid)'), context)
+  recordClosedPanel('center', 'center-chat', false)
+  assert.deepEqual(Array.from(state.closed.center), [], 'reopening the assistant persists an explicit open state')
+  assert.deepEqual(JSON.parse(JSON.stringify(state.persisted)), { center: [] })
+
+  const tree = loadFunction(functionSource(interactions,
+    'function defaultSceneTree(info, visible) {', 'function activePanelSlots(info)'), {
+    defaultClosedPanelIds: context.defaultClosedPanelIds,
+  })
+  const centerTree = tree(info, new Set(['overview', 'files', 'preview']))
+  assert.equal(centerTree.axis, 'x')
+  assert.equal(centerTree.ratio, .75, 'the overview business panel gets three quarters of the canvas')
+  const workflow = scenes.window.__SCENES__.scenes.find(scene => scene.id === 'agent-center')
+  const workflowInfo = {
+    sceneId: 'agent-center',
+    geometry: workflow.panels.map(({ id, col, row, w, h }) => ({ id, col, row, w, h })),
+    panels: workflow.panels.filter(panel => panel.closedByDefault).map(panel => ({ dataset: { panelId: panel.id }, __meta: panel })),
+  }
+  const workflowTree = tree(workflowInfo, new Set(['workflow-main', 'files', 'preview', 'workflow-chat']))
+  assert.equal(workflowTree.axis, 'y')
+  assert.equal(workflowTree.ratio, .5)
+  assert.equal(workflowTree.first.id, 'workflow-main')
+  assert.equal(workflowTree.second.first.id, 'preview')
+  assert.equal(workflowTree.second.second.first.id, 'workflow-chat')
 })

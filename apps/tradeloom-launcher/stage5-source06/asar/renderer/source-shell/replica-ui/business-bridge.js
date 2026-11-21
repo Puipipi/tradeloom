@@ -1,4 +1,4 @@
-/* Narrow bridge for the approved five-scene shell. Host-owned state stays in Main/Host. */
+/* Narrow bridge for the approved scene shell. Host-owned state stays in Main/Host. */
 (() => {
   'use strict'
 
@@ -7,6 +7,7 @@
   const routeByUiScene = Object.freeze({
     center: '/home',
     products: '/products',
+    'order-production': '/orders',
     'agent-center': '/agent-center',
     deliverables: '/artifacts',
     runs: '/runs',
@@ -14,6 +15,7 @@
   const roleByUiScene = Object.freeze({
     center: 'center',
     products: 'product',
+    'order-production': 'order-production',
     'agent-center': 'center',
     deliverables: 'delivery',
     runs: 'center',
@@ -446,7 +448,7 @@
       panelOverride = { sceneId: planScene.id, panelId: planOwner.id }
     }
     const panel = content.closest('.panel')
-    const routeId = ({ '/home': 'home', '/products': 'products', '/agent-center': 'agent-center', '/artifacts': 'artifacts', '/runs': 'runs' })[target.basePath]
+    const routeId = ({ '/home': 'home', '/products': 'products', '/orders': 'orders', '/agent-center': 'agent-center', '/artifacts': 'artifacts', '/runs': 'runs' })[target.basePath]
     if (panel) panel.dataset.businessRoute = routeId
     const frame = document.createElement('iframe')
     frame.title = typeof meta?.title === 'string' ? meta.title : '织贸业务'
@@ -1325,6 +1327,8 @@
         if (!isCurrent() || !workflow.panes.size || (operation === 'pick' && value === null)) return
         if (operation === 'download') download(value)
         else if (operation === 'preview') workflow.selected = { ...value, id }
+        else if (operation === 'open') workflow.error = '已请求系统打开所选文件。'
+        else if (operation === 'reveal') workflow.error = '已在文件夹中定位所选文件。'
         else {
           workflow.directory = value
           if (!value?.entries.some(item => item.id === workflow.selected?.id)) workflow.selected = null
@@ -1384,6 +1388,8 @@
       } else if (selected) {
         actions.append(button('重读', () => void request('preview', selected.id), workflow.busy))
         actions.append(button('复制路径', () => void copySelectedPath(), workflow.busy))
+        actions.append(button('系统打开', () => void request('open', selected.id), workflow.busy))
+        actions.append(button('在文件夹中显示', () => void request('reveal', selected.id), workflow.busy))
         actions.append(button('关闭预览', () => { workflow.selected = null; refresh() }, workflow.busy))
         actions.append(button('下载', () => void request('download', selected.id), workflow.busy))
       }

@@ -16,9 +16,10 @@
           <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
           <span class="brand-copy"><strong>织贸助手（TradeWeave）</strong><small>产品资料工作台</small></span>
         </a>
-        <nav class="main-nav" aria-label="五个主板块" data-testid="main-nav">
+        <nav class="main-nav" aria-label="主要业务板块" data-testid="main-nav">
           <a class="nav-link {% if page == 'home' %}active{% endif %}" href="{% business_path '/home' %}" data-testid="nav-home" {% if page == 'home' %}aria-current="page"{% endif %}>首页</a>
           <a class="nav-link {% if page == 'products' %}active{% endif %}" href="{% business_path '/products' %}" data-testid="nav-products" {% if page == 'products' %}aria-current="page"{% endif %}>产品资料</a>
+          <a class="nav-link {% if page == 'orders' %}active{% endif %}" href="{% business_path '/orders' %}" data-testid="nav-orders" {% if page == 'orders' %}aria-current="page"{% endif %}>订单与生产</a>
           <a class="nav-link {% if page == 'agent_center' %}active{% endif %}" href="{% business_path '/agent-center' %}" data-testid="nav-agent-center" {% if page == 'agent_center' %}aria-current="page"{% endif %}>工作流</a>
           <a class="nav-link {% if page == 'artifacts' %}active{% endif %}" href="{% business_path '/artifacts' %}" data-testid="nav-artifacts" {% if page == 'artifacts' %}aria-current="page"{% endif %}>交付物</a>
           <a class="nav-link {% if page == 'runs' %}active{% endif %}" href="{% business_path '/runs' %}" data-testid="nav-runs" {% if page == 'runs' %}aria-current="page"{% endif %}>运行记录</a>

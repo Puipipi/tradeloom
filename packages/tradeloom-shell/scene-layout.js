@@ -5,7 +5,8 @@ import { ROLE_IDS } from './roles.js'
 // file. Hash the complete validated document so concurrent editors cannot silently
 // overwrite each other; role/session bindings remain separate state.
 export function resolveSceneConfiguration(defaults, state) {
-  return validateSceneConfig(structuredClone(state?.sceneConfiguration?.value ?? defaults))
+  const saved = structuredClone(state?.sceneConfiguration?.value ?? defaults)
+  return validateSceneConfig(migrateLegacyOrderScene(saved, defaults))
 }
 
 export function sceneConfigurationRevision(config) {
@@ -15,7 +16,8 @@ export function sceneConfigurationRevision(config) {
   return createHash('sha256').update(JSON.stringify(stable(validateSceneConfig(config)))).digest('hex')
 }
 
-export const BUSINESS_ROUTE_PATHS = Object.freeze(['/home', '/products', '/agent-center', '/artifacts', '/runs'])
+export const BUSINESS_ROUTE_PATHS = Object.freeze(['/home', '/products', '/orders', '/agent-center', '/artifacts', '/runs'])
+const LEGACY_BUSINESS_ROUTE_PATHS = Object.freeze(['/home', '/products', '/agent-center', '/artifacts', '/runs'])
 export const PANEL_TYPES = Object.freeze(['business-iframe', 'placeholder', 'native-chat', 'native-workspace', 'erpnext-status'])
 export const SCENE_COMPONENT_CATALOG = Object.freeze([
   Object.freeze({ id: 'artifact-files', label: '文件', templateSceneId: 'runs', panelId: 'reference',
@@ -40,6 +42,22 @@ const DOCK_LAYOUT_PROFILES = Object.freeze({
 function fail(message) { throw new Error(`invalid scene configuration: ${message}`) }
 function object(value) { return value !== null && typeof value === 'object' && !Array.isArray(value) }
 function integer(value) { return Number.isInteger(value) }
+
+function migrateLegacyOrderScene(config, defaults) {
+  if (!object(config) || !object(config.businessRoutes) || !Array.isArray(config.scenes)
+    || JSON.stringify(Object.keys(config.businessRoutes).sort()) !== JSON.stringify([...LEGACY_BUSINESS_ROUTE_PATHS].sort())) return config
+  const defaultScene = defaults.scenes.find(scene => scene.id === 'order-production')
+  if (!defaultScene) return config
+  const migrated = structuredClone(config)
+  let scene = migrated.scenes.find(item => item.id === 'order-production')
+  if (!scene) {
+    scene = structuredClone(defaultScene)
+    const productIndex = migrated.scenes.findIndex(item => item.id === 'products')
+    migrated.scenes.splice(productIndex < 0 ? migrated.scenes.length : productIndex + 1, 0, scene)
+  } else if (!ROLE_ID_SET.has(scene.roleId)) scene.roleId = defaultScene.roleId
+  migrated.businessRoutes['/orders'] = structuredClone(defaults.businessRoutes['/orders'])
+  return migrated
+}
 
 export function validateSceneComponentCatalog(catalog, defaults) {
   if (!Array.isArray(catalog)) fail('component catalog must be an array')
@@ -128,7 +146,7 @@ export function validateSceneConfig(config, panelTypes = PANEL_TYPES) {
         || scene.defaultBusinessRoute !== undefined && scene.defaultBusinessRoute !== mainPath?.split('#')[0]) fail('scene default business path must match its main panel')
     }
   }
-  if (!object(config.businessRoutes) || JSON.stringify(Object.keys(config.businessRoutes).sort()) !== JSON.stringify([...BUSINESS_ROUTE_PATHS].sort())) fail('business route map must contain the five existing routes')
+  if (!object(config.businessRoutes) || JSON.stringify(Object.keys(config.businessRoutes).sort()) !== JSON.stringify([...BUSINESS_ROUTE_PATHS].sort())) fail('business route map must contain the registered routes')
   for (const path of BUSINESS_ROUTE_PATHS) {
     const target = config.businessRoutes[path]
     if (!object(target) || Object.keys(target).sort().join(',') !== 'panelId,sceneId'

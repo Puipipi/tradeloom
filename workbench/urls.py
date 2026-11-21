@@ -12,6 +12,7 @@ from .execution_plans import api as execution_plan_api
 from .procurement import api as procurement_api
 from .materials import api as material_api
 from . import canvas_workflow_api, native_artifact_api, dispatch_api, canvas_workflow_definition_api
+from . import orders_api
 
 
 urlpatterns = [
@@ -26,6 +27,7 @@ urlpatterns = [
     path("", views.task_list, name="task-list"),
     path("home", views.home, name="home"),
     path("products", views.products, name="products"),
+    path("orders", views.orders, name="orders"),
     path("customers", customer_views.customer_list, name="customer-list"),
     path("customers/<str:customer_id>", customer_views.customer_detail, name="customer-detail"),
     path("agent-center", views.agent_center, name="agent-center"),
@@ -36,6 +38,7 @@ urlpatterns = [
     path("tasks/<str:task_id>", views.task_detail, name="task-detail"),
     path("agents", views.agents, name="agents"),
     path("api/health", api.health),
+    path("api/orders", orders_api.order_followup),
     path("api/erpnext/status", erpnext_api.status),
     path("api/erpnext/records", erpnext_api.records),
     path("api/erpnext/record", erpnext_api.record),

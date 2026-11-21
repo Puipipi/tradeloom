@@ -1,12 +1,12 @@
 /* 由 scenes.json 同步生成 —— file:// 下使用本地内联布局数据 */
 window.__SCENES__ = {
   "version": 1,
-  "note": "织贸工作台五场景布局。业务页面与助手角色按当前桌面配置绑定；缺少配置时显示不可用状态，不创建会话。",
+  "note": "织贸工作台六场景布局。业务页面与助手角色按当前桌面配置绑定；缺少配置时显示不可用状态，不创建会话。",
   "scenes": [
     {
       "id": "center",
       "name": "工作总览",
-      "description": "总览主区、文件、预览与中心助手。",
+      "description": "总览主区、文件与预览；中心助手默认收起。",
       "cols": 4,
       "rows": 4,
       "panels": [
@@ -18,7 +18,7 @@ window.__SCENES__ = {
           "col": 1,
           "row": 1,
           "w": 3,
-          "h": 2
+          "h": 3
         },
         {
           "id": "files",
@@ -35,7 +35,7 @@ window.__SCENES__ = {
           "title": "预览",
           "type": "preview",
           "path": "/artifacts#preview",
-          "col": 1,
+          "col": 4,
           "row": 3,
           "w": 1,
           "h": 2
@@ -45,17 +45,18 @@ window.__SCENES__ = {
           "title": "🔒 中心助手",
           "type": "chat",
           "roleId": "center",
-          "col": 2,
-          "row": 3,
+          "col": 1,
+          "row": 4,
           "w": 3,
-          "h": 2
+          "h": 1,
+          "closedByDefault": true
         }
       ]
     },
     {
       "id": "products",
       "name": "商品",
-      "description": "商品主区、文件、预览与商品助手。",
+      "description": "商品表格主区、文件、预览与商品助手。",
       "cols": 4,
       "rows": 4,
       "panels": [
@@ -67,7 +68,7 @@ window.__SCENES__ = {
           "col": 1,
           "row": 1,
           "w": 3,
-          "h": 2
+          "h": 3
         },
         {
           "id": "files",
@@ -84,7 +85,7 @@ window.__SCENES__ = {
           "title": "预览",
           "type": "preview",
           "path": "/artifacts#preview",
-          "col": 1,
+          "col": 4,
           "row": 3,
           "w": 1,
           "h": 2
@@ -94,17 +95,70 @@ window.__SCENES__ = {
           "title": "🔒 商品助手",
           "type": "chat",
           "roleId": "product",
-          "col": 2,
-          "row": 3,
+          "col": 1,
+          "row": 4,
           "w": 3,
-          "h": 2
+          "h": 1
+        }
+      ]
+    },
+    {
+      "id": "order-production",
+      "name": "订单与生产",
+      "description": "订单与生产主区、文件、预览与订单跟进助手。",
+      "cols": 4,
+      "rows": 4,
+      "panels": [
+        {
+          "id": "orders-main",
+          "title": "订单与生产",
+          "type": "doc",
+          "path": "/orders",
+          "col": 1,
+          "row": 1,
+          "w": 3,
+          "h": 3,
+          "hostPanelId": "business-main"
+        },
+        {
+          "id": "files",
+          "title": "文件",
+          "type": "files",
+          "path": "/artifacts#files",
+          "col": 4,
+          "row": 1,
+          "w": 1,
+          "h": 2,
+          "hostPanelId": "files"
+        },
+        {
+          "id": "preview",
+          "title": "预览",
+          "type": "preview",
+          "path": "/artifacts#preview",
+          "col": 4,
+          "row": 3,
+          "w": 1,
+          "h": 2,
+          "hostPanelId": "preview"
+        },
+        {
+          "id": "orders-chat",
+          "title": "订单跟进助手",
+          "type": "chat",
+          "roleId": "order-production",
+          "col": 1,
+          "row": 4,
+          "w": 3,
+          "h": 1,
+          "hostPanelId": "native-chat"
         }
       ]
     },
     {
       "id": "agent-center",
       "name": "工作流",
-      "description": "工作流画布主区、文件、预览与中心助手。",
+      "description": "工作流画布优先，计划面板可恢复，预览、文件与中心助手并列。",
       "cols": 4,
       "rows": 4,
       "panels": [
@@ -115,7 +169,7 @@ window.__SCENES__ = {
           "type": "doc",
           "path": "/agent-center",
           "hostPanelId": "business-plan",
-          "col": 1,
+          "col": 4,
           "row": 1,
           "w": 1,
           "h": 2
@@ -125,9 +179,9 @@ window.__SCENES__ = {
           "title": "工作流画布",
           "type": "canvas",
           "path": "/agent-center",
-          "col": 2,
+          "col": 1,
           "row": 1,
-          "w": 2,
+          "w": 3,
           "h": 2,
           "standaloneCanvas": true,
           "hostPanelId": "business-main"
@@ -138,7 +192,7 @@ window.__SCENES__ = {
           "type": "files",
           "path": "/artifacts#files",
           "col": 4,
-          "row": 1,
+          "row": 3,
           "w": 1,
           "h": 2
         },
@@ -159,7 +213,7 @@ window.__SCENES__ = {
           "roleId": "center",
           "col": 2,
           "row": 3,
-          "w": 3,
+          "w": 2,
           "h": 2
         }
       ]
@@ -167,7 +221,7 @@ window.__SCENES__ = {
     {
       "id": "deliverables",
       "name": "资料与交付",
-      "description": "交付物主区、文件、预览与交付助手。",
+      "description": "交付物、文件、助手与大尺寸预览。",
       "cols": 4,
       "rows": 4,
       "panels": [
@@ -178,7 +232,7 @@ window.__SCENES__ = {
           "path": "/artifacts#deliverables",
           "col": 1,
           "row": 1,
-          "w": 3,
+          "w": 2,
           "h": 2,
           "tabs": [
             "文件",
@@ -193,8 +247,8 @@ window.__SCENES__ = {
           "title": "文件",
           "type": "files",
           "path": "/artifacts#files",
-          "col": 4,
-          "row": 1,
+          "col": 1,
+          "row": 3,
           "w": 1,
           "h": 2
         },
@@ -203,10 +257,10 @@ window.__SCENES__ = {
           "title": "预览",
           "type": "preview",
           "path": "/artifacts#preview",
-          "col": 1,
-          "row": 3,
-          "w": 1,
-          "h": 2
+          "col": 3,
+          "row": 1,
+          "w": 2,
+          "h": 4
         },
         {
           "id": "deliverables-chat",
@@ -215,7 +269,7 @@ window.__SCENES__ = {
           "roleId": "delivery",
           "col": 2,
           "row": 3,
-          "w": 3,
+          "w": 1,
           "h": 2
         }
       ]

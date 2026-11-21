@@ -38,6 +38,57 @@ async function openConfiguration(defaults, app) {
 
 const defaults = JSON.parse(await readFile(new URL('../scenes.json', import.meta.url), 'utf8'))
 
+test('Windows source maps the order scene to explicit Host panels and the /orders route', async () => {
+  const base = '../../../apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/'
+  const [shell, renderer, bridge, fallback] = await Promise.all([
+    readFile(new URL(base + 'scenes-data.js', import.meta.url), 'utf8'),
+    readFile(new URL(base + 'renderer.js', import.meta.url), 'utf8'),
+    readFile(new URL(base + 'business-bridge.js', import.meta.url), 'utf8'),
+    readFile(new URL(base + 'scenes.json', import.meta.url), 'utf8'),
+  ])
+  const context = { window: {} }
+  runInNewContext(shell, context)
+  const templates = context.window.__SCENES__
+  assert.deepEqual(JSON.parse(JSON.stringify(templates)), JSON.parse(fallback))
+  const orderTemplate = templates.scenes.find(scene => scene.id === 'order-production')
+  assert.ok(orderTemplate)
+  assert.equal(orderTemplate.panels.find(panel => panel.id === 'orders-chat').roleId, 'order-production')
+  assert.equal(orderTemplate.panels.find(panel => panel.id === 'orders-main').path, '/orders')
+  assert.deepEqual(JSON.parse(JSON.stringify(orderTemplate.panels.map(panel => [panel.id, panel.hostPanelId]))), [
+    ['orders-main', 'business-main'], ['files', 'files'], ['preview', 'preview'], ['orders-chat', 'native-chat'],
+  ])
+  context.configurationTemplates = templates.scenes
+  const projection = renderer.slice(renderer.indexOf('const hostPanelFor'), renderer.indexOf('function applyTrustedSceneConfiguration'))
+  runInNewContext(projection, context)
+  const hostOrder = defaults.scenes.find(scene => scene.id === 'order-production')
+  assert.equal(hostOrder.roleId, 'order-production')
+  const projected = context.projectTrustedScene(hostOrder)
+  assert.equal(projected.id, 'order-production')
+  assert.equal(projected.panels.find(panel => panel.id === 'orders-main').hostPanelId, 'business-main')
+  assert.equal(projected.panels.find(panel => panel.id === 'orders-main').path, '/orders')
+  const dimensions = id => Object.fromEntries(defaults.scenes.find(scene => scene.id === id).panels.map(panel => [panel.id, [panel.col, panel.row, panel.w, panel.h]]))
+  assert.deepEqual(dimensions('products')['business-main'], [1, 1, 3, 3])
+  assert.deepEqual(dimensions('order-production')['business-main'], [1, 1, 3, 3])
+  assert.deepEqual(dimensions('agent-center')['business-main'], [1, 1, 3, 2])
+  assert.deepEqual(dimensions('deliverables').preview, [3, 1, 2, 4])
+
+  const routeStart = bridge.indexOf('function routeForPath(path) {')
+  const routeEnd = bridge.indexOf('function workflowTemplateRoute(', routeStart)
+  const routeContext = {
+    allowedRoutes: new Set(['/orders']),
+    state: { config: {
+      raw: { businessRoutes: defaults.businessRoutes },
+      scenes: new Map([[hostOrder.id, { ...hostOrder, panelMap: new Map(hostOrder.panels.map(panel => [panel.id, panel])) }]]),
+    } },
+  }
+  const routeForPath = runInNewContext(`(${bridge.slice(routeStart, routeEnd).trim()})`, routeContext)
+  const resolved = routeForPath('/orders')
+  assert.equal(resolved.scene.id, 'order-production')
+  assert.equal(resolved.panel.id, 'business-main')
+  assert.match(bridge, /'order-production': 'order-production'/)
+  assert.match(bridge, /'\/orders': 'orders'/)
+})
+
 test('component registration rejects ambiguous or unrenderable declarations', () => {
   const files = SCENE_COMPONENT_CATALOG[0]
   const deliverables = { ...files, id: 'artifact-deliverables', label: '交付物', path: '/artifacts#deliverables' }

@@ -60,6 +60,7 @@
     workflowCanvasStatus: undefined,
     workflowCanvasObserver: undefined,
     roleSurfaces: new Map(),
+    assistantTabGroups: new Map(),
     offRoleSurfaceStatus: undefined,
     roleSurfaceObserver: undefined,
     roleGeometryFrame: undefined,
@@ -1404,7 +1405,9 @@
 
   function roleSurfaceVisible(record) {
     const rect = record.content?.getBoundingClientRect?.()
+    const assistantGroup = record.assistantTabGroupKey && state.assistantTabGroups.get(record.assistantTabGroupKey)
     return !state.disposed && record.content?.isConnected === true && record.sceneId === currentSceneId()
+      && (!assistantGroup || assistantGroup.activeRoleId === record.assistantTabRoleId)
       && rect && rect.width > 0 && rect.height > 0 && record.panel?.isConnected === true
       && !sceneHasDraggingPanel(record.panel)
       && !(state.accountChatMode && state.target?.sceneId === record.sceneId && state.target?.panelId === record.panelId)
@@ -1518,6 +1521,188 @@
     }
   }
 
+  function assistantTabsFor(record) {
+    const key = roleSurfaceKey(record.sceneId, record.panelId)
+    let group = state.assistantTabGroups.get(key)
+    if (!group) {
+      const roleId = typeof record.meta?.roleId === 'string' ? record.meta.roleId : ''
+      const label = String(record.meta?.title ?? '场景助手').replace(/^\s*🔒\s*/u, '')
+      group = { key, sceneId: record.sceneId, panelId: record.panelId, fixedRoleId: roleId,
+        activeRoleId: roleId, fixedLabel: label || '场景助手', fixedRecord: record, tabs: new Map(), bar: undefined }
+      state.assistantTabGroups.set(key, group)
+    } else {
+      group.fixedRecord = record
+    }
+    record.assistantTabGroupKey = key
+    record.assistantTabRoleId = group.fixedRoleId
+    return group
+  }
+
+  function renderAssistantTabBar(group) {
+    const record = group.fixedRecord
+    const header = record.panel?.querySelector('.panel-header')
+    if (!header) return
+    if (!group.bar) {
+      const bar = document.createElement('div')
+      bar.className = 'source-assistant-tabs'
+      bar.setAttribute('role', 'tablist')
+      bar.setAttribute('aria-label', 'AI 会话助手')
+      header.insertBefore(bar, header.querySelector('.panel-controls'))
+      group.bar = bar
+    }
+    const tabs = [{ roleId: group.fixedRoleId, label: group.fixedLabel, fixed: true }, ...group.tabs.values()]
+    group.bar.replaceChildren(...tabs.flatMap(tab => {
+      const wrapper = document.createElement('span')
+      wrapper.className = 'source-assistant-tab'
+      const button = document.createElement('button')
+      button.type = 'button'
+      button.className = 'source-assistant-tab-button'
+      button.setAttribute('role', 'tab')
+      button.setAttribute('aria-selected', String(tab.roleId === group.activeRoleId))
+      button.textContent = tab.label
+      button.addEventListener('click', () => selectAssistantTab(group, tab.roleId))
+      wrapper.append(button)
+      if (!tab.fixed) {
+        const close = document.createElement('button')
+        close.type = 'button'
+        close.className = 'source-assistant-tab-close'
+        close.setAttribute('aria-label', `关闭${tab.label}`)
+        close.title = `关闭${tab.label}`
+        close.textContent = '×'
+        close.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); closeAssistantTab(group, tab.roleId) })
+        wrapper.append(close)
+      }
+      return [wrapper]
+    }))
+  }
+
+  function selectAssistantTab(group, roleId) {
+    if (roleId !== group.fixedRoleId && !group.tabs.has(roleId)) return
+    group.activeRoleId = roleId
+    renderAssistantTabBar(group)
+    if (roleId !== group.fixedRoleId) void ensureAssistantTabSurface(group, group.tabs.get(roleId))
+    for (const record of state.roleSurfaces.values()) {
+      if (record.assistantTabGroupKey === group.key) void syncRoleSurface(record)
+    }
+  }
+
+  function closeAssistantTab(group, roleId) {
+    if (!group.tabs.has(roleId)) return
+    group.tabs.delete(roleId)
+    const wasActive = group.activeRoleId === roleId
+    if (wasActive) group.activeRoleId = [...group.tabs.keys()][0] ?? group.fixedRoleId
+    renderAssistantTabBar(group)
+    if (wasActive) selectAssistantTab(group, group.activeRoleId)
+    else {
+      const record = [...state.roleSurfaces.values()].find(item => item.assistantTabGroupKey === group.key && item.assistantTabRoleId === roleId)
+      if (record) void syncRoleSurface(record)
+    }
+  }
+
+  async function ensureAssistantTabSurface(group, tab) {
+    if (!tab || group.activeRoleId !== tab.roleId) return
+    const bridge = app?.harnessSurface
+    if (!bridge || typeof bridge.create !== 'function') return
+    const key = roleSurfaceKey(group.sceneId, tab.panelId)
+    let record = state.roleSurfaces.get(key)
+    if (!record) {
+      record = { sceneId: group.sceneId, panelId: tab.panelId, roleId: tab.roleId,
+        meta: { id: tab.panelId, roleId: tab.roleId, title: tab.label }, content: group.fixedRecord.content,
+        panel: group.fixedRecord.panel, note: group.fixedRecord.note, status: 'loading', created: false,
+        visible: false, placement: 'docked', hostStatusRevision: 0, motionActive: false }
+      state.roleSurfaces.set(key, record)
+    }
+    Object.assign(record, { assistantTabGroupKey: group.key, assistantTabRoleId: tab.roleId,
+      content: group.fixedRecord.content, panel: group.fixedRecord.panel })
+    try {
+      const value = await bridge.create(group.sceneId, tab.panelId)
+      if (state.disposed || state.roleSurfaces.get(key) !== record || !group.tabs.has(tab.roleId)) return
+      record.status = typeof value?.status === 'string' ? value.status : 'error'
+      record.created = record.status !== 'owned-elsewhere'
+      onRoleSurfaceStatus({ sceneId: group.sceneId, panelId: tab.panelId, status: record.status, placement: value?.placement })
+      if (record.created && typeof bridge.status === 'function') {
+        const status = await bridge.status(group.sceneId, tab.panelId)
+        if (status?.status) onRoleSurfaceStatus({ sceneId: group.sceneId, panelId: tab.panelId, ...status })
+      }
+      if (record.created && group.activeRoleId === tab.roleId) await syncRoleSurface(record)
+    } catch {
+      record.status = 'error'
+      group.fixedRecord.note.textContent = '无法打开此助手会话。'
+    }
+  }
+
+  function addAssistantRoleTab(group, option) {
+    if (!option || typeof option.panelId !== 'string' || typeof option.roleId !== 'string'
+      || option.roleId === group.fixedRoleId || group.tabs.has(option.roleId)) return
+    const tab = { roleId: option.roleId, panelId: option.panelId, label: typeof option.label === 'string' ? option.label : option.roleId }
+    group.tabs.set(tab.roleId, tab)
+    selectAssistantTab(group, tab.roleId)
+  }
+
+  async function openAssistantTabChooser(panel) {
+    const group = [...state.assistantTabGroups.values()].find(item => item.fixedRecord.panel === panel)
+    const list = app?.harnessSurface?.assistantTabCatalog
+    if (!group || typeof list !== 'function') return
+    const generation = (group.chooserGeneration || 0) + 1
+    group.chooserGeneration = generation
+    let options
+    try { options = await list(group.sceneId, group.panelId) } catch { group.fixedRecord.note.textContent = '可用助手清单暂不可用。'; return }
+    if (state.disposed || group.chooserGeneration !== generation || !Array.isArray(options)) return
+    const menu = document.createElement('div')
+    menu.className = 'pi-menu'
+    menu.setAttribute('role', 'menu')
+    menu.setAttribute('aria-label', '添加助手')
+    menu.setAttribute('popover', 'manual')
+    const candidates = options.filter(option => option && !group.tabs.has(option.roleId)
+      && option.roleId !== group.fixedRoleId)
+    if (!candidates.length) {
+      const item = document.createElement('div')
+      item.className = 'pi-menu-item source-assistant-empty'
+      item.textContent = '没有其他可用助手'
+      menu.append(item)
+    } else for (const option of candidates) {
+      const item = document.createElement('button')
+      item.type = 'button'
+      item.className = 'pi-menu-item'
+      item.setAttribute('role', 'menuitem')
+      item.textContent = option.label
+      item.addEventListener('click', () => { menu.remove(); void addAssistantRoleTab(group, option) })
+      menu.append(item)
+    }
+    document.body.append(menu)
+    try { menu.showPopover?.() } catch {}
+    const rect = group.bar?.getBoundingClientRect() ?? panel.getBoundingClientRect()
+    menu.style.top = `${Math.max(8, Math.min(rect.bottom + 5, window.innerHeight - menu.offsetHeight - 8))}px`
+    menu.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - menu.offsetWidth - 8))}px`
+    menu.querySelector('button')?.focus()
+  }
+
+  function mountAssistantTabBar(record) {
+    if (!record.panel || !['chat', 'native-chat'].includes(record.meta?.type)) return
+    const group = assistantTabsFor(record)
+    renderAssistantTabBar(group)
+    const bridge = app?.harnessSurface
+    if (typeof bridge?.assistantTabCatalog !== 'function') return
+    void bridge.assistantTabCatalog(group.sceneId, group.panelId).then(options => {
+      if (state.disposed || !Array.isArray(options) || group.fixedRecord !== record) return
+      const allowed = new Map(options.map(option => [option.roleId, option]))
+      for (const [roleId, prior] of [...group.tabs]) {
+        const current = allowed.get(roleId)
+        if (!current) { group.tabs.delete(roleId); continue }
+        group.tabs.set(roleId, { ...prior, ...current })
+      }
+      if (group.activeRoleId !== group.fixedRoleId && !group.tabs.has(group.activeRoleId)) group.activeRoleId = group.fixedRoleId
+      renderAssistantTabBar(group)
+      for (const tab of group.tabs.values()) void addAssistantRoleTab(group, tab)
+      selectAssistantTab(group, group.activeRoleId)
+    }).catch(() => {})
+  }
+
+  document.addEventListener('source-assistant-add', event => {
+    const panel = event.target?.closest?.('#grid .panel-chat')
+    if (panel) void openAssistantTabChooser(panel)
+  })
+
   function renderRolePanel(meta, content) {
     const sceneId = currentSceneId()
     const panelId = typeof meta?.id === 'string' ? meta.id : ''
@@ -1531,6 +1716,7 @@
       return () => content.replaceChildren()
     }
     const record = { sceneId, panelId, meta, content, panel: content.closest('.panel'), note, status: 'loading', created: false, visible: false, placement: 'docked', hostStatusRevision: 0, motionActive: false }
+    mountAssistantTabBar(record)
     const controls = record.panel?.querySelector('.panel-controls')
     if (controls) {
       const placementButton = document.createElement('button')

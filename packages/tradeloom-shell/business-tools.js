@@ -91,6 +91,7 @@ const TOOL_ACCESS = Object.freeze({
   tradeloom_intake_candidates: new Set([ROLE_PRESETS.center, ROLE_PRESETS.product, ROLE_PRESETS.delivery]),
   tradeloom_intake_candidate: new Set([ROLE_PRESETS.center, ROLE_PRESETS.product, ROLE_PRESETS.delivery]),
   tradeloom_read_execution_plan: new Set([ROLE_PRESETS.center, ROLE_PRESETS.delivery]),
+  tradeloom_read_order_followup: new Set([ROLE_PRESETS['order-production']]),
   tradeloom_scene_memory_read: new Set([ROLE_PRESETS.center, ROLE_PRESETS.product, ROLE_PRESETS.delivery]),
   tradeloom_scene_memory_write: new Set([ROLE_PRESETS.center, ROLE_PRESETS.product, ROLE_PRESETS.delivery]),
 })
@@ -1800,6 +1801,28 @@ export function registerBusinessTools(ctx, config = {}, dependencies = {}) {
         if (result?.ok === false) return failure(result.error_code)
         const projected = projectExecutionPlan(result, args.plan_revision_id)
         return projected ? success(projected, { business_ui_url: '/business/artifacts' }) : failure('invalid_execution_plan_dto')
+      },
+    },
+    {
+      name: 'tradeloom_read_order_followup',
+      description: 'Read local order follow-up by exact source_order_reference. Suggested candidate links remain pending, ShipmentPayment is shipment/payment only, and no data or review status is changed.',
+      parameters: schema({ order_key: wireString('Exact structured order reference, 1 to 140 characters.') }),
+      async execute(args, exec) {
+        if (!exactArgs(args, ['order_key'], ['order_key'])
+          || args.order_key.length > 140 || !args.order_key.trim() || args.order_key !== args.order_key.trim()) return failure('invalid_arguments')
+        const result = await djangoRequest(ctx, 'tradeloom_read_order_followup', exec,
+          `/api/orders?order_key=${encodeURIComponent(args.order_key)}`, 'GET', undefined, dependencies)
+        if (result?.ok === false) return failure(result.error_code)
+        const order = result?.order
+        const hasRecords = value => value && typeof value === 'object' && !Array.isArray(value)
+          && ['missing', 'needs_confirmation', 'confirmed'].includes(value.status) && Array.isArray(value.records)
+        if (!order || typeof order !== 'object' || Array.isArray(order)
+          || order.order_key !== args.order_key || order.schema_version !== 'order-followup.v1'
+          || !Array.isArray(order.inquiries) || !hasRecords(order.requirements)
+          || !hasRecords(order.purchase_plans) || !hasRecords(order.material_receipts)
+          || !hasRecords(order.production_handoff) || !hasRecords(order.shipment_payments)
+          || !order.erpnext || typeof order.erpnext !== 'object') return failure('invalid_order_followup_dto')
+        return success(order, { business_ui_url: `/business/orders?order_key=${encodeURIComponent(args.order_key)}` })
       },
     },
     {

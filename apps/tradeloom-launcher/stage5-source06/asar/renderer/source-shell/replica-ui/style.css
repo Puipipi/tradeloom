@@ -316,6 +316,14 @@ html[data-theme="light"] .tab.active{color:var(--accent)}
 .panel-identity{flex:1;min-width:0;display:flex;align-items:center;gap:7px}
 .panel-title{font-size:var(--ui-font-title-size,11.5px);font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .panel-sub{color:var(--text-dim);font-size:10px;flex-shrink:0}
+.source-assistant-tabs{display:flex;align-items:center;gap:2px;min-width:0;max-width:52%;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;flex:0 1 auto}
+.source-assistant-tabs::-webkit-scrollbar{display:none}
+.source-assistant-tab{display:inline-flex;align-items:center;gap:1px;min-width:0;padding:1px 2px;border:1px solid transparent;border-radius:5px;flex:0 0 auto}
+.source-assistant-tab:has([aria-selected="true"]){border-color:var(--focus-edge);background:var(--bg-panel-hover)}
+.source-assistant-tab-button,.source-assistant-tab-close{height:19px;border:0;background:transparent;color:var(--text-dim);font:500 10px/1 var(--ui-font, sans-serif);cursor:pointer}
+.source-assistant-tab-button{max-width:112px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 4px}
+.source-assistant-tab-button:hover,.source-assistant-tab-close:hover{color:var(--text)}
+.source-assistant-tab-close{width:16px;padding:0;font-size:13px}
 .panel-controls{display:flex;align-items:center;gap:3px}
 .icon-control{
   width:var(--ui-control-size,20px);height:var(--ui-control-size,20px);border-radius:4px;display:inline-flex;align-items:center;

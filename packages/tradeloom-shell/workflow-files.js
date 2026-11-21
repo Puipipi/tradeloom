@@ -117,8 +117,8 @@ function createWorkflowFiles() {
   return async (owner, request, assertOwner, chosen) => {
     await assertOwner()
     const operation = request?.operation
-    const hasEntry = ['enter', 'preview', 'download'].includes(operation)
-    if (!['pick', 'current', 'revoke', 'up', 'enter', 'preview', 'download'].includes(operation)
+    const hasEntry = ['enter', 'preview', 'download', 'open', 'reveal'].includes(operation)
+    if (!['pick', 'current', 'revoke', 'up', 'enter', 'preview', 'download', 'open', 'reveal'].includes(operation)
       || Object.keys(request).sort().join(',') !== (hasEntry ? 'id,operation' : 'operation')
       || hasEntry && (typeof request.id !== 'string' || !uuid.test(request.id))) throw reject()
     if (operation === 'revoke') {
@@ -173,6 +173,17 @@ function createWorkflowFiles() {
         record.stack = [...record.stack, opened]
         return opened.view
       }
+      if (operation === 'open' || operation === 'reveal') {
+        const info = await verify(grant, entry.target, entry.identity)
+        if (!info.isFile()) throw reject()
+        if (operation === 'open' && !(await file(grant, entry, false)).preview) throw reject()
+        const resolved = { path: entry.target, identity: {
+          dev: String(info.dev), ino: String(info.ino), size: String(info.size),
+          mtimeNs: String(info.mtimeNs), birthtimeNs: String(info.birthtimeNs),
+        } }
+        await fresh(owner, record, assertOwner)
+        return resolved
+      }
       const result = await file(grant, entry, operation === 'download')
       await fresh(owner, record, assertOwner)
       return result
@@ -224,7 +235,7 @@ export function createWorkflowFileAuthority(ctx, readState = async () => (await 
     },
     async desktop(input) {
       const picking = input?.operation === 'pick'
-      const hasEntry = ['enter', 'preview', 'download'].includes(input?.operation)
+      const hasEntry = ['enter', 'preview', 'download', 'open', 'reveal'].includes(input?.operation)
       const fields = picking ? 'bindingRevision,chosen,operation,sessionId'
         : hasEntry ? 'bindingRevision,id,operation,sessionId' : 'bindingRevision,operation,sessionId'
       if (!input || Object.keys(input).sort().join(',') !== fields

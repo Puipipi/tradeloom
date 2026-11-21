@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import { mkdtemp, mkdir, readFile, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises'
+import * as fsPromises from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
@@ -290,6 +291,7 @@ async function desktop(t, fixture, configuration = defaults) {
   }, () => { throw Error('unowned native picker') })(() => primary, () => undefined, () => true)
   const wire = await privateControl(mainSource, fixture.authority, () => controller.workflowFilesChanged())
   let delayedFileReply
+  const openedFiles = []
   const controller = createSourceShellController({
     BrowserWindow: class {},
     WebContentsView: class {
@@ -317,6 +319,7 @@ async function desktop(t, fixture, configuration = defaults) {
       }
       return result
     },
+    openWorkflowFile: async (operation, resolved, authorize) => { await authorize(); openedFiles.push({ operation, resolved }) },
     resolveBinding: async ({ sceneId, panelId, expectedSessionId }) => {
       const sessionId = fixture.state.roles.center.sessionId
       if (expectedSessionId && expectedSessionId !== sessionId) throw Error('stale center')
@@ -390,7 +393,7 @@ async function desktop(t, fixture, configuration = defaults) {
   }
   t.after(disposeInitial)
   return { app, files, preview, contents, handlers, downloads, objectUrls, bridge: window.businessBridge,
-    disposeInitial, nativeMenus,
+    disposeInitial, nativeMenus, openedFiles,
     canvasView: () => primary.contentView.children[0],
     delayFileReply(operation) {
       delayedFileReply = { operation, entered: Promise.withResolvers(), resume: Promise.withResolvers() }
@@ -564,6 +567,20 @@ test('normal workflow panes and the center tool consume one actual temporary-dir
   assert.match(visibleText(d.files), /next/)
   await click(d.preview, 'message.txt')
   await timeout(() => visibleText(d.preview).includes('nested test data'))
+  await click(d.preview, '系统打开')
+  await timeout(() => d.openedFiles.length === 1)
+  assert.equal(d.openedFiles[0].operation, 'open')
+  assert.equal(d.openedFiles[0].resolved.path, path.join(f.nested, 'message.txt'))
+  assert.deepEqual(Object.keys(d.openedFiles[0].resolved.identity).sort(), ['birthtimeNs', 'dev', 'ino', 'mtimeNs', 'size'])
+  await click(d.preview, '在文件夹中显示')
+  await timeout(() => d.openedFiles.length === 2)
+  assert.equal(d.openedFiles[1].operation, 'reveal')
+  assert.equal(d.openedFiles[1].resolved.path, path.join(f.nested, 'message.txt'))
+  const current = await d.app.workflowFiles({ operation: 'current' })
+  const message = current.entries.find(item => item.name === 'message.txt')
+  const actionResult = await d.app.workflowFiles({ operation: 'open', id: message.id })
+  assert.deepEqual(actionResult, { ok: true })
+  assert.equal(Object.hasOwn(actionResult, 'path'), false, 'resolved paths stay inside the trusted main process')
   assert.match(visibleText(d.files), /message.txt/)
   await click(d.files, '上一级')
   await timeout(() => visibleText(d.preview).includes('top.md'))
@@ -590,6 +607,10 @@ test('normal workflow panes and the center tool consume one actual temporary-dir
   await click(d.preview, '关闭预览')
   await click(d.preview, 'doc.zip')
   await timeout(() => visibleText(d.preview).includes('此文件暂无可用预览。'))
+  const currentFiles = await d.app.workflowFiles({ operation: 'current' })
+  const archive = currentFiles.entries.find(item => item.name === 'doc.zip')
+  await assert.rejects(d.app.workflowFiles({ operation: 'open', id: archive.id }))
+  assert.equal(d.openedFiles.length, 3, 'unsupported file types never reach the system opener')
 
   assert.equal((await f.tool({ operation: 'current' }, f.other)).ok, false)
   assert.equal((await f.tool({ operation: 'enter', id: f.outside })).ok, false)
@@ -606,6 +627,29 @@ test('normal workflow panes and the center tool consume one actual temporary-dir
   assert.equal((await f.tool({ operation: 'current' })).ok, false)
   assert.equal(nodes(d.files).find(node => node.tag === 'iframe').src, '/business/artifacts#files')
   assert.equal(nodes(d.preview).find(node => node.tag === 'iframe').src, '/business/artifacts#preview')
+})
+
+test('the main-process opener revalidates the resolved file and current binding', async t => {
+  const f = await scope(t)
+  const directory = await f.desktop({ operation: 'pick', chosen: f.root })
+  const item = directory.entries.find(entry => entry.name === 'top.md')
+  const resolved = await f.desktop({ operation: 'open', id: item.id })
+  const mainSource = await source('lib/main.js')
+  const actionSource = between(mainSource,
+    '\t\t\topenWorkflowFile: async (operation, resolved, authorize) => {',
+    '\n\t\t\tresolveNativeTheme:')
+  const action = new Function('shell', 'fsPromises', 'isAbsolute', 'return ({' + actionSource.trim().replace(/,$/, '') + '}).openWorkflowFile')
+  const calls = []
+  const shell = { async openPath(value) { calls.push(['open', value]); return '' }, showItemInFolder(value) { calls.push(['reveal', value]) } }
+  const open = action(shell, fsPromises, value => path.isAbsolute(value))
+  let authorizationChecks = 0
+  const authorize = async () => { authorizationChecks++ }
+  await open('open', resolved, authorize)
+  await open('reveal', resolved, authorize)
+  assert.deepEqual(calls, [['open', resolved.path], ['reveal', resolved.path]])
+  assert.equal(authorizationChecks, 2)
+  await assert.rejects(open('open', { ...resolved, identity: { ...resolved.identity, ino: '0' } }, authorize), /workflow file changed/)
+  assert.equal(calls.length, 2)
 })
 
 test('cancel, root replacement, reparse points and a late picker after role rotation fail closed', async t => {
