@@ -38,8 +38,10 @@ class Element {
   append(...nodes) { this.children.push(...nodes) }
   replaceChildren(...nodes) { this.children = nodes }
   remove() { this.isConnected = false }
+  contains(target) { return target === this || this.children.some(child => child.contains?.(target)) }
   showPopover() {}
   hidePopover() {}
+  focus() { this.focused = true }
   getBoundingClientRect() { return { left: 20, top: 30, right: 300, bottom: 60, width: 280, height: 30 } }
   click() { return this.handlers.get('click')?.({ stopPropagation() {}, preventDefault() {} }) }
 }
@@ -191,42 +193,55 @@ test('empty or failed catalog keeps visible chooser and reports failures in the 
   assert.equal(note.hidden, false)
 })
 
-test('assistant chooser adopts the ordinary outside-click and Escape menu lifecycle', () => {
+test('real assistant chooser survives adoption and closes on outside click or Escape', async () => {
   const interactionSource = readFileSync(resolve(sourceRoot, 'replica-ui/panel-interactions.js'), 'utf8')
-  const start = interactionSource.indexOf('  function closeMenu() {')
+  const start = interactionSource.indexOf('  function closeMenu(preserveElement) {')
   const end = interactionSource.indexOf('  function restoreEntries(', start)
-  assert.ok(start >= 0 && end > start, 'the existing menu lifecycle remains reusable')
-  const nodes = []
+  assert.ok(start >= 0 && end > start, 'the production menu lifecycle remains reusable')
+  const body = new Element('body')
   const listeners = new Set()
   const document = {
-    querySelectorAll: selector => selector === '.pi-menu' ? nodes.filter(node => node.isConnected) : [],
+    body,
+    createElement: tag => new Element(tag),
+    querySelectorAll: selector => selector === '.pi-menu'
+      ? body.children.filter(node => node.isConnected && node.className.split(/\s+/).includes('pi-menu')) : [],
     addEventListener: (name, fn) => listeners.add(`${name}:${fn.name}`),
     removeEventListener: (name, fn) => listeners.delete(`${name}:${fn.name}`),
   }
-  const window = { addEventListener() {}, removeEventListener() {} }
-  const context = { document, window }
-  const menuApi = vm.runInNewContext(`let menu = null\n${interactionSource.slice(start, end)}\n({adoptMenu, onOutsideMenu, onMenuKey})`, context)
-  const anchor = { focused: false, setAttribute() {}, focus() { this.focused = true } }
-  const panel = {}
-  const element = new Element('div')
-  element.contains = target => target === element
-  element.hidePopover = () => { element.hidden = true }
-  nodes.push(element)
+  const window = { innerHeight: 700, innerWidth: 1000, addEventListener() {}, removeEventListener() {} }
+  const interactionContext = { document, window }
+  const menuApi = vm.runInNewContext(`let menu = null\n${interactionSource.slice(start, end)}\n({adoptMenu, onOutsideMenu, onMenuKey})`, interactionContext)
+  window.sourcePanelInteractions = menuApi
 
-  menuApi.adoptMenu(element, anchor, panel)
+  const panel = new Element('section')
+  const note = new Element('div')
+  const bar = new Element('div')
+  const record = { panel, content: new Element('main'), note, revision: 1, uiSceneId: 'product-scene', disposed: false,
+    assistantTabs: { sceneId: 'product-scene', hostPanelId: 'product-chat', fixedRoleId: 'product', fixedLabel: '商品助手',
+      fixedTarget: { sceneId: 'product-scene', panelId: 'product-chat', roleId: 'product' }, activeRoleId: 'product',
+      tabs: new Map(), switchGeneration: 0, chooserGeneration: 0, bar } }
+  const api = { assistantTabCatalog: async () => [] }
+  const bridgeContext = { document, window, app: { harnessSurface: api },
+    state: { roleRecord: record, sceneTransitionPending: false, tearingDown: false },
+    isCurrentRole: candidate => candidate === record && !candidate.disposed }
+  const helpers = helperSource('  function renderAssistantTabBar(record) {', '  function openSceneRotation(panel) {')
+  const openChooser = vm.runInNewContext(`${helpers}\nopenAssistantTabChooser`, bridgeContext)
+
+  await openChooser(panel)
+  const first = document.querySelectorAll('.pi-menu')[0]
+  assert.ok(first?.isConnected, 'adoptMenu must preserve the newly appended chooser')
   assert.equal(listeners.size, 3)
+  menuApi.onOutsideMenu({ target: {} })
+  assert.equal(first.isConnected, false)
+  assert.equal(listeners.size, 0)
+
+  await openChooser(panel)
+  const second = document.querySelectorAll('.pi-menu')[0]
+  assert.ok(second?.isConnected)
   let prevented = false
   menuApi.onMenuKey({ key: 'Escape', preventDefault() { prevented = true } })
   assert.equal(prevented, true)
-  assert.equal(element.isConnected, false)
-  assert.equal(anchor.focused, true)
-  assert.equal(listeners.size, 0)
-
-  const outsideMenu = new Element('div')
-  outsideMenu.contains = target => target === outsideMenu
-  nodes.push(outsideMenu)
-  menuApi.adoptMenu(outsideMenu, anchor, panel)
-  menuApi.onOutsideMenu({ target: {} })
-  assert.equal(outsideMenu.isConnected, false)
+  assert.equal(second.isConnected, false)
+  assert.equal(bar.focused, true)
   assert.equal(listeners.size, 0)
 })

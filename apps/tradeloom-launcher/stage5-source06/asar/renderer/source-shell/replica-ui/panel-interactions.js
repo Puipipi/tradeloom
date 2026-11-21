@@ -599,9 +599,10 @@
     return true
   }
 
-  function closeMenu() {
+  function closeMenu(preserveElement) {
     menu?.anchor?.setAttribute?.('aria-expanded', 'false')
     for (const node of document.querySelectorAll?.('.pi-menu') ?? []) {
+      if (node === preserveElement) continue
       try { node.hidePopover?.() } catch {}
       node.remove()
     }
@@ -614,7 +615,7 @@
   }
 
   function adoptMenu(element, anchor, panel) {
-    closeMenu()
+    closeMenu(element)
     menu = { element, button: anchor, panel, anchor }
     document.addEventListener('pointerdown', onOutsideMenu, true)
     document.addEventListener('mousedown', onOutsideMenu, true)

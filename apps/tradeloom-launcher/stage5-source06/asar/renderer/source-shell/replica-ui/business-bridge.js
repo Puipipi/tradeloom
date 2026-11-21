@@ -935,9 +935,9 @@
       item.setAttribute('role', 'menuitem')
       item.textContent = option.label
       item.addEventListener('click', () => {
-        window.sourcePanelInteractions?.dismissMenu?.(menu)
-        try { menu.hidePopover?.() } catch {}
-        menu.remove()
+        const interactions = window.sourcePanelInteractions
+        if (typeof interactions?.dismissMenu === 'function') interactions.dismissMenu(menu)
+        else { try { menu.hidePopover?.() } catch {}; menu.remove() }
         if (!isCurrentRole(record) || group.tabs.has(option.roleId)) return
         group.tabs.set(option.roleId, { roleId: option.roleId, panelId: option.panelId,
           label: typeof option.label === 'string' && option.label ? option.label : option.roleId,
@@ -971,8 +971,9 @@
     if (record.assistantTabs) record.assistantTabs.switchGeneration++
     record.assistantTabs?.bar?.remove()
     for (const menu of document.querySelectorAll('.business-assistant-menu')) {
-      window.sourcePanelInteractions?.dismissMenu?.(menu)
-      menu.remove()
+      const interactions = window.sourcePanelInteractions
+      if (typeof interactions?.dismissMenu === 'function') interactions.dismissMenu(menu)
+      else menu.remove()
     }
     record.assistantTabs = undefined
   }
