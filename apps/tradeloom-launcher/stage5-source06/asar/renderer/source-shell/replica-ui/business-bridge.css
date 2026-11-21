@@ -90,3 +90,11 @@
 .tl-workflow-directory-status { margin:0.25rem 0; font-size:0.8rem }
 .tl-workflow-directory-body pre { white-space:pre-wrap; overflow-wrap:anywhere }
 .tl-workflow-directory-body img { display:block; max-width:100%; max-height:100%; object-fit:contain }
+.tl-pdf-preview { display:flex; flex-direction:column; min-height:16rem; height:100%; gap:0.3rem }
+.tl-pdf-preview-toolbar { display:flex; flex:0 0 auto; align-items:center; justify-content:center; gap:0.35rem }
+.tl-pdf-preview-toolbar input { width:3.5rem; color:inherit; background:transparent; border:1px solid currentColor; border-radius:0.25rem; font:inherit; text-align:center }
+.tl-pdf-preview-toolbar button { color:inherit; background:transparent; border:1px solid currentColor; border-radius:0.25rem; padding:0.15rem 0.35rem; font:inherit; font-size:0.75rem; cursor:pointer }
+.tl-pdf-preview-toolbar button:disabled,.tl-pdf-preview-toolbar input:disabled { opacity:0.45; cursor:default }
+.tl-pdf-preview-status { flex:0 0 auto; margin:0; text-align:center; font-size:0.75rem }
+.tl-pdf-preview-viewport { flex:1 1 auto; min-height:0; overflow:auto; text-align:center }
+.tl-pdf-preview-viewport canvas { display:block; max-width:100%; height:auto; margin:0 auto; background:#fff; box-shadow:0 1px 5px rgb(0 0 0 / 28%) }

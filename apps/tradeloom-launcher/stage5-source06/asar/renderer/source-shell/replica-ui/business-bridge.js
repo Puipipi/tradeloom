@@ -1283,6 +1283,12 @@
     area.append(header, status, body)
     content.prepend(area)
     content.classList.add('tl-workflow-directory-host')
+    let pdfMount
+    const disposePdfMount = () => {
+      const mounted = pdfMount
+      pdfMount = undefined
+      mounted?.dispose?.()
+    }
 
     const button = (label, onClick, disabled = false) => {
       const node = document.createElement('button')
@@ -1405,9 +1411,30 @@
           img.alt = selected.name
           img.src = 'data:' + selected.preview.type + ';base64,' + selected.preview.data
           body.append(img)
+        } else if (selected.preview?.type === 'application/pdf') {
+          const sameDocument = pdfMount?.id === selected.id && pdfMount?.data === selected.preview.data
+          if (!sameDocument) {
+            disposePdfMount()
+            const root = document.createElement('div')
+            root.className = 'tl-pdf-preview-host'
+            const mounted = pdfMount = { id: selected.id, data: selected.preview.data, root, dispose: undefined }
+            body.append(root)
+            const ready = window.TradeLoomPdfPreviewReady
+            if (ready?.then) {
+              ready.then(api => {
+                if (pdfMount !== mounted || typeof api?.mount !== 'function') return
+                mounted.dispose = api.mount(root, selected.preview.data, selected.name)
+              }).catch(() => {
+                if (pdfMount === mounted) root.textContent = 'PDF 预览组件加载失败。'
+              })
+            } else root.textContent = 'PDF 预览组件尚未就绪。'
+          } else body.append(pdfMount.root)
+          return
         } else body.textContent = '此文件暂无可用预览。'
+        disposePdfMount()
         return
       }
+      disposePdfMount()
       if (!directory.entries.length) body.textContent = '此目录没有可浏览的条目。'
       else {
         const entries = files ? body : document.createElement('div')
@@ -1467,6 +1494,7 @@
     }
     return () => {
       workflow.panes.delete(render)
+      disposePdfMount()
       if (!workflow.panes.size) {
         window.removeEventListener('focus', workflow.onFocus)
         workflow.offChanged?.()

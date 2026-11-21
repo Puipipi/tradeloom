@@ -629,6 +629,27 @@ test('normal workflow panes and the center tool consume one actual temporary-dir
   assert.equal(nodes(d.preview).find(node => node.tag === 'iframe').src, '/business/artifacts#preview')
 })
 
+test('authorized PDF previews require the PDF signature and stay within the preview byte limit', async t => {
+  const f = await scope(t)
+  const validPdf = Buffer.from('%PDF-1.4\n%preview fixture\n%%EOF', 'ascii')
+  const oversizedPdf = Buffer.alloc(1024 * 1024 + 1, 0x20)
+  Buffer.from('%PDF-').copy(oversizedPdf)
+  await writeFile(path.join(f.root, 'valid.pdf'), validPdf)
+  await writeFile(path.join(f.root, 'forged.pdf'), Buffer.from('not a PDF', 'ascii'))
+  await writeFile(path.join(f.root, 'oversized.pdf'), oversizedPdf)
+  const directory = await f.desktop({ operation: 'pick', chosen: f.root })
+  const entry = name => directory.entries.find(item => item.name === name)
+  const preview = await f.desktop({ operation: 'preview', id: entry('valid.pdf').id })
+  assert.equal(preview.preview.type, 'application/pdf')
+  assert.deepEqual(Buffer.from(preview.preview.data, 'base64'), validPdf)
+  const forged = await f.desktop({ operation: 'preview', id: entry('forged.pdf').id })
+  const oversized = await f.desktop({ operation: 'preview', id: entry('oversized.pdf').id })
+  assert.equal(forged.preview, null)
+  assert.equal(oversized.preview, null)
+  const resolved = await f.desktop({ operation: 'open', id: entry('valid.pdf').id })
+  assert.equal(resolved.path, path.join(f.root, 'valid.pdf'))
+})
+
 test('the main-process opener revalidates the resolved file and current binding', async t => {
   const f = await scope(t)
   const directory = await f.desktop({ operation: 'pick', chosen: f.root })

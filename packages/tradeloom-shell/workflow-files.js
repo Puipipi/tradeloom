@@ -34,6 +34,9 @@ function preview(bytes, name) {
   if (['.jpg', '.jpeg'].includes(ext) && bytes.subarray(0, 3).equals(Buffer.from('ffd8ff', 'hex'))) {
     return { type: 'image/jpeg', data: bytes.toString('base64') }
   }
+  if (ext === '.pdf' && bytes.subarray(0, 5).equals(Buffer.from('%PDF-'))) {
+    return { type: 'application/pdf', data: bytes.toString('base64') }
+  }
   if (!['.txt', '.md', '.json', '.csv', '.log'].includes(ext) || bytes.includes(0)) return null
   try { return { type: 'text/plain', data: new TextDecoder('utf-8', { fatal: true }).decode(bytes) } }
   catch { return null }
