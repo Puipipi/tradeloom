@@ -351,8 +351,8 @@
         "sha256": "e279172f4e053cb0247a446e8209ce6fe22c76f40d17b7f903cc76416fbb7d4d"
       },
       "client.workflow.js": {
-        "bytes": 120336,
-        "sha256": "9518ccb53bd77ee20b0277d28debf224e750b957b1461a1cd7c51bc464c6619a"
+        "bytes": 125436,
+        "sha256": "b4d2f391f4851b7fb9373753a8808982a5e43745c9c99d0c5d489d8c91123e4e"
       },
       "skills/wf-planner/SKILL.md": {
         "bytes": 4983,
@@ -669,8 +669,8 @@
         "sha256": "e279172f4e053cb0247a446e8209ce6fe22c76f40d17b7f903cc76416fbb7d4d"
       },
       "client.workflow.js": {
-        "bytes": 120336,
-        "sha256": "9518ccb53bd77ee20b0277d28debf224e750b957b1461a1cd7c51bc464c6619a"
+        "bytes": 125436,
+        "sha256": "b4d2f391f4851b7fb9373753a8808982a5e43745c9c99d0c5d489d8c91123e4e"
       },
       "skills/wf-planner/SKILL.md": {
         "bytes": 4983,
@@ -807,8 +807,8 @@
     },
     "inventory": {
       "fileCount": 79,
-      "bytes": 3087563,
-      "sha256": "2f4f03a2dbf6fe50a90e74544ead510bb5cf9a0d304920b355b743a2da3ef1b4"
+      "bytes": 3092663,
+      "sha256": "e386b334ddf80cdd46e3c91b9b7a8083c6d1d573253184e09ea02380076a0eda"
     },
     "validatorInput": {
       "source": "apps/tradeloom-launcher/installed-bootstrap.mjs",
