@@ -13,6 +13,9 @@ TRADELOOM_ERPNEXT_BASE_URL = os.environ.get("TRADELOOM_ERPNEXT_BASE_URL", "")
 TRADELOOM_ERPNEXT_INSTANCE_ID = os.environ.get("TRADELOOM_ERPNEXT_INSTANCE_ID", "")
 TRADELOOM_ERPNEXT_API_KEY = os.environ.get("TRADELOOM_ERPNEXT_API_KEY", "")
 TRADELOOM_ERPNEXT_API_SECRET = os.environ.get("TRADELOOM_ERPNEXT_API_SECRET", "")
+TRADELOOM_PACKAGED_ERPNEXT_CONFIG_STATUS = os.environ.get(
+    "TRADELOOM_PACKAGED_ERPNEXT_CONFIG_STATUS", "not_configured"
+)
 if TRADELOOM_DSH_EMBED:
     _embed_hosts = [host.strip() for host in os.environ.get("TRADELOOM_DSH_ALLOWED_HOSTS", "").split(",") if host.strip()]
     if any(host == "*" for host in _embed_hosts):

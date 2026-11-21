@@ -122,6 +122,11 @@ def _page_payload(page: ErpNextPage) -> dict[str, Any]:
 
 @require_GET
 def status(_request: HttpRequest) -> JsonResponse:
+    if getattr(settings, "TRADELOOM_PACKAGED_ERPNEXT_CONFIG_STATUS", "") == "invalid_configuration":
+        return JsonResponse({
+            "configured": False, "connected": False,
+            "status": "invalid_configuration", "error_code": "invalid_configuration", "site_url": "",
+        })
     try:
         client = _client_from_settings()
     except ErpNextError as exc:

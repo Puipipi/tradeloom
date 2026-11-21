@@ -9,6 +9,7 @@ import {
   launcherPipeName, networkCandidates, reserveNamedPipe, startOwnedChild,
 } from './core.mjs'
 import { initializeFreshPluginProfile, installFreshPluginSeed } from './plugin-seed.mjs'
+import { loadErpNextConfigFile } from './erpnext-config.mjs'
 
 export const INSTALLED_PROFILE_BUNDLES = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@tradeloom/dsh-business-shell']
 export const DATA_ROOT_MARKER = '.tradeloom-data-root-owned'
@@ -543,6 +544,38 @@ function makeDjangoEnv(isolated, host, password, paths, nativeBridgeKey, ports, 
   }
 }
 
+export async function readPackagedErpNextConfig(dataRoot, deps = {}) {
+  const fs = deps.fs ?? { lstat }
+  const loadConfig = deps.loadErpNextConfigFile ?? loadErpNextConfigFile
+  const privateDirectory = path.join(dataRoot, 'private')
+  const configPath = path.join(privateDirectory, 'erpnext.json')
+  try {
+    const directory = await fs.lstat(privateDirectory)
+    if (directory.isSymbolicLink() || !directory.isDirectory()) throw new Error('invalid private directory')
+    const file = await fs.lstat(configPath)
+    if (file.isSymbolicLink() || !file.isFile()) throw new Error('invalid ERPNext config file')
+  } catch (error) {
+    if (error?.code === 'ENOENT') return { status: 'not_configured', environment: {} }
+    return { status: 'invalid_configuration', environment: {} }
+  }
+  try {
+    return { status: 'configured', environment: await loadConfig(configPath, dataRoot) }
+  } catch {
+    return { status: 'invalid_configuration', environment: {} }
+  }
+}
+
+export function withPackagedErpNextConfig(djangoEnvironment, config) {
+  const environment = { ...djangoEnvironment }
+  for (const name of Object.keys(environment)) {
+    if (/^TRADELOOM_ERPNEXT_/i.test(name)) delete environment[name]
+  }
+  delete environment.TRADELOOM_PACKAGED_ERPNEXT_CONFIG_STATUS
+  if (config.status === 'configured') Object.assign(environment, config.environment)
+  environment.TRADELOOM_PACKAGED_ERPNEXT_CONFIG_STATUS = config.status
+  return environment
+}
+
 async function waitForListener(host, port, record, timeoutMs, delay, connect) {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
@@ -628,6 +661,7 @@ export async function bootstrapInstalledDesktop({ env = process.env, processEnv 
   if (!initialIdentity.isDirectory() || !canonicalIdentity.isDirectory() || initialIdentity.dev === 0n || initialIdentity.ino === 0n
     || initialIdentity.dev !== canonicalIdentity.dev || initialIdentity.ino !== canonicalIdentity.ino) throw new Error('packaged data root identity mismatch')
   const paths = { ...pathsFactory({ ...env, TRADELOOM_DATA_ROOT: root }), explicitDataRoot: initialPaths.explicitDataRoot, home: canonicalHome }
+  const erpNextConfig = await readPackagedErpNextConfig(paths.dataRoot, { fs })
   const agentsHome = await ownDirectory(paths.agentsHome, '.tradeloom-agents-owned', 'tradeloom-agents-home-v1\n')
   const workspace = await ownDirectory(paths.workspace, '.tradeloom-workspace-owned', 'tradeloom-workspace-v1\n')
   const logs = await ownDirectory(paths.logs, '.tradeloom-logs-owned', 'tradeloom-logs-v1\n')
@@ -644,6 +678,10 @@ export async function bootstrapInstalledDesktop({ env = process.env, processEnv 
   const nativeBridgeKey = (deps.createNativeBridgeKey ?? createNativeBridgeKey)()
   if (!/^[a-f0-9]{64}$/.test(nativeBridgeKey)) throw new TypeError('Native bridge key generator returned an invalid key.')
   delete isolated.PGPASSWORD
+  for (const name of Object.keys(isolated)) {
+    if (/^TRADELOOM_ERPNEXT_/i.test(name)) delete isolated[name]
+  }
+  delete isolated.TRADELOOM_PACKAGED_ERPNEXT_CONFIG_STATUS
   for (const [name, expected] of Object.entries({ DSH_HOME: paths.home, DSH_AGENTS_HOME: agentsHome, DSH_WORKSPACE: workspace,
     TRADELOOM_DSH_APP_HOME: paths.home, LOCALAPPDATA: paths.localAppData })) {
     if (path.resolve(isolated[name] ?? '').toLowerCase() !== path.resolve(expected).toLowerCase()) throw new Error('无法确认安装版独立运行目录：' + name)
@@ -771,8 +809,8 @@ export async function bootstrapInstalledDesktop({ env = process.env, processEnv 
       if (created.error || created.code !== 0) throw new Error('owned PostgreSQL tradeloom database creation failed (' + (created.code ?? 'null') + ').')
     }
 
-    const djangoEnv = makeDjangoEnv(isolated, host, secret.password, { ...paths, media, artifacts }, nativeBridgeKey, ports,
-      manifest.artifactNode ? { path: manifest.artifactNode, sha256: rawManifest.runtime.nodeSha256 } : undefined)
+    const djangoEnv = withPackagedErpNextConfig(makeDjangoEnv(isolated, host, secret.password, { ...paths, media, artifacts }, nativeBridgeKey, ports,
+      manifest.artifactNode ? { path: manifest.artifactNode, sha256: rawManifest.runtime.nodeSha256 } : undefined), erpNextConfig)
     const runPython = async djangoArgs => {
       const result = await runFile(manifest.python, pythonRunArgs(manifest.python, manifest.backend, manifest.packages, path.join(manifest.backend, 'manage.py'), djangoArgs),
         { cwd: workspace, env: djangoEnv, logPath: path.join(logs, 'django-startup.log') })

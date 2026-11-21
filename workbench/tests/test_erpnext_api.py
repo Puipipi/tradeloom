@@ -10,6 +10,27 @@ from workbench.erpnext.dto import ErpNextPage, ErpNextRecord
 
 class ErpNextApiTests(SimpleTestCase):
     @override_settings(
+        TRADELOOM_PACKAGED_ERPNEXT_CONFIG_STATUS="invalid_configuration",
+        TRADELOOM_ERPNEXT_BASE_URL="",
+        TRADELOOM_ERPNEXT_INSTANCE_ID="",
+        TRADELOOM_ERPNEXT_API_KEY="",
+        TRADELOOM_ERPNEXT_API_SECRET="",
+    )
+    def test_status_reports_invalid_packaged_config_without_constructing_client(self):
+        with patch("workbench.erpnext.api._client_from_settings") as create_client:
+            response = self.client.get("/api/erpnext/status")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {
+            "configured": False,
+            "connected": False,
+            "status": "invalid_configuration",
+            "error_code": "invalid_configuration",
+            "site_url": "",
+        })
+        create_client.assert_not_called()
+
+    @override_settings(
         TRADELOOM_ERPNEXT_BASE_URL="",
         TRADELOOM_ERPNEXT_INSTANCE_ID="",
         TRADELOOM_ERPNEXT_API_KEY="",
