@@ -807,8 +807,8 @@
     },
     "inventory": {
       "fileCount": 79,
-      "bytes": 3073613,
-      "sha256": "acd90d08207017beedf0f48d3983b8c0f91ae2bb1da0e4b1be41f7c005cdf155"
+      "bytes": 3076048,
+      "sha256": "936b2d2decd3375fb1ee97dfedbb710afb59dec29982e4b1d1b5844aa9d15a01"
     },
     "validatorInput": {
       "source": "apps/tradeloom-launcher/installed-bootstrap.mjs",
@@ -819,7 +819,7 @@
   "expectedAsar": {
     "logicalEntries": 21789,
     "unpackedFiles": 1666,
-    "bytes": 228914407,
-    "sha256": "ef42daa39ec9ad7b4dc90a0a1dbbd59e3f2398cd9a33655d6e8e3b9360bffd4f"
+    "bytes": 228923773,
+    "sha256": "e5b719e8b1b19a63714252fa28bddb3d6c17ca16ed75908e307c6924a1dec1f3"
   }
 }
