@@ -18,7 +18,7 @@
   "additions": {
     "lib/main.js": {
       "bytes": 1113204,
-      "sha256": "a3a31096be135435698ee0d009c6375fd9d0a596b59c91419a8536d6c69909cd"
+      "sha256": "d977d08e2dfdeef4dc4d79508e6d7dbd893fadde7d652b52fb4d568c3227aaec"
     },
     "lib/operation-report-worker.js": {
       "bytes": 185600,
@@ -3274,13 +3274,13 @@
     "preimages": {
       "lib/main.js": {
         "bytes": 1113204,
-        "sha256": "a3a31096be135435698ee0d009c6375fd9d0a596b59c91419a8536d6c69909cd"
+        "sha256": "d977d08e2dfdeef4dc4d79508e6d7dbd893fadde7d652b52fb4d568c3227aaec"
       }
     },
     "postimages": {
       "lib/main.js": {
         "bytes": 1140133,
-        "sha256": "ad8f5087653703869535e0efbbf9f9f49a26e50f313b56bcb4445352027a470b"
+        "sha256": "d879395b2a32c99f9e5c1fa3e22f303fcd365b7d0f7f7f907fb989c8df02a657"
       }
     }
   }
