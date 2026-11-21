@@ -4048,8 +4048,21 @@ html[data-business-iframe="true"] .file-list-pane { border-radius: var(--wb-scal
 html[data-business-iframe="true"] .orders-page {
   display: flex;
   flex-direction: column;
-  min-height: 410px;
+  flex: 1 1 auto;
+  min-height: 0;
 }
+html[data-business-iframe="true"] body:has(.orders-page) .app-shell { height: 100vh; min-height: 0; }
+html[data-business-iframe="true"] .workspace:has(.orders-page) { display: flex; flex-direction: column; min-height: 0; }
+html[data-business-iframe="true"] #main-content:has(.orders-page) {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+html[data-business-iframe="true"] .order-results { display: flex; flex: 1 1 auto; flex-direction: column; }
+html[data-business-iframe="true"] .order-empty { flex: 1 1 auto; }
 html[data-business-iframe="true"] .orders-heading { margin-bottom: calc(9px * var(--wb-ui-scale)); }
 html[data-business-iframe="true"] .orders-heading h2 { margin-bottom: calc(3px * var(--wb-ui-scale)); }
 html[data-business-iframe="true"] .orders-heading p:last-child { margin: 0; color: var(--muted); }
