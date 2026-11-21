@@ -28,6 +28,7 @@ class FakeWebContents extends EventEmitter {
   constructor(url) { super(); this.id = FakeWebContents.nextId++; this.mainFrame = { url }; this.dead = false; this.sent = [] }
   isDestroyed() { return this.dead }
   setZoomFactor() {}
+  getZoomFactor() { return 1 }
   send(channel, ...args) { this.sent.push({ channel, args }) }
   loadURL(url) { this.mainFrame = { url }; return Promise.resolve() }
   destroy() { if (this.dead) return; this.dead = true; this.emit('destroyed') }
@@ -59,7 +60,7 @@ class FakeWebContentsView {
   getBounds() { return this.bounds }
 }
 
-async function createHarness() {
+async function createHarness({ workflow = false } = {}) {
   FakeWebContentsView.instances.length = 0
   const handlers = new Map(), main = new FakeWindow()
   const scenes = [
@@ -67,7 +68,8 @@ async function createHarness() {
     { id: 'delivery', roleId: 'delivery', panels: [{ id: 'delivery-chat', type: 'native-chat', roleId: 'delivery' }] },
     { id: 'center', roleId: 'center', panels: [{ id: 'center-chat', type: 'native-chat', roleId: 'center' }] },
   ]
-  const config = { scenes, roles: scenes.map(scene => ({ id: scene.roleId, label: `${scene.roleId} 助手` })) }
+  if (workflow) scenes.push({ id: 'agent-center', panels: [{ id: 'business-main', type: 'canvas' }] })
+  const config = { scenes, roles: scenes.filter(scene => scene.roleId).map(scene => ({ id: scene.roleId, label: `${scene.roleId} 助手` })), ...(workflow ? { businessRoutes: { '/agent-center': { sceneId: 'agent-center', panelId: 'business-main' } } } : {}) }
   const controller = createSourceShellController({
     BrowserWindow: FakeWindow, WebContentsView: FakeWebContentsView,
     ipcMain: { handle(channel, handler) { handlers.set(channel, handler) }, removeHandler(channel) { handlers.delete(channel) } },
@@ -161,6 +163,53 @@ test('assistant tabs resolve available roles and return the same session to each
     assert.notEqual((await create(mainEvent, host.sceneId, centerTab.panelId)).status, 'owned-elsewhere', 'reopening the removed tab uses the retained conversation')
     assert.equal(controller.nativeDescriptor(tabView.webContents, tabView.webContents.mainFrame).sessionId, firstSession)
   }
+})
+
+test('workflow title bridge accepts the current account-scoped guest and only dispatches enabled fixed actions', async t => {
+  const harness = await createHarness({ workflow: true })
+  t.after(harness.destroy)
+  const { controller, handlers, mainEvent, main } = harness
+  await handlers.get('source-shell:accountCreate')(mainEvent)
+  const mount = handlers.get('source-shell:workflowCanvasMount')
+  const visible = handlers.get('source-shell:workflowCanvasVisible')
+  const publish = handlers.get('source-shell:workflowCanvasToolbarState')
+  const action = handlers.get('source-shell:workflowCanvasToolbarAction')
+  assert.equal(typeof mount, 'function')
+  const mounted = await mount(mainEvent)
+  const guestView = FakeWebContentsView.instances.at(-1)
+  const guest = guestView.webContents
+  const descriptor = controller.nativeDescriptor(guest, guest.mainFrame)
+  assert.equal(descriptor.kind, 'scene-component')
+  assert.equal(descriptor.sceneId, 'agent-center')
+  assert.equal(descriptor.panelId, 'business-main')
+  assert.ok(Number.isSafeInteger(descriptor.accountGeneration), 'fixture uses the account-scoped descriptor shape from an active account')
+  controller.nativeMounted(guest, guest.mainFrame, descriptor)
+  await visible(mainEvent, true)
+  assert.deepEqual(await publish({ sender: guest, senderFrame: guest.mainFrame }, {
+    descriptor, canStart: true, canRefresh: true,
+  }), { accepted: true, available: true })
+  const status = main.webContents.sent.findLast(entry => entry.channel === 'source-shell:workflow-canvas-status')
+  assert.deepEqual(status.args[0].toolbar, { canStart: true, canRefresh: true })
+  assert.ok(guest.sent.some(entry => entry.channel === 'source-shell:workflow-canvas-toolbar-dock-state'
+    && entry.args[0]?.available === true), 'guest receives the real docked header acknowledgement')
+  assert.deepEqual(await handlers.get('source-shell:workflowCanvasStatus')(mainEvent), {
+    status: 'context-mounted', visible: true, placement: 'docked', componentKey: 'workflow-canvas-native',
+    sceneId: 'agent-center', panelId: 'business-main', toolbar: { canStart: true, canRefresh: true },
+  })
+  assert.deepEqual(await action(mainEvent, 'start'), { delivered: true })
+  assert.equal(guest.sent.at(-1).channel, 'source-shell:workflow-canvas-toolbar-action')
+  assert.equal(guest.sent.at(-1).args[0].action, 'start')
+  await publish({ sender: guest, senderFrame: guest.mainFrame }, { descriptor, canStart: false, canRefresh: false })
+  assert.throws(() => action(mainEvent, 'start'), /rejected/, 'disabled guest capability cannot be dispatched by the host')
+  await publish({ sender: guest, senderFrame: guest.mainFrame }, { descriptor, canStart: true, canRefresh: true })
+  assert.throws(() => action(mainEvent, 'execute'), /rejected/)
+  assert.throws(() => publish({ sender: guest, senderFrame: { url: guest.mainFrame.url } }, {
+    descriptor, canStart: true, canRefresh: true,
+  }), /stale workflow canvas toolbar state/)
+  await handlers.get('source-shell:workflowCanvasPopOut')(mainEvent)
+  assert.equal(guest.sent.at(-1).args[0].available, false, 'popped out guest switches back to local header actions')
+  await handlers.get('source-shell:workflowCanvasReturnToDock')(mainEvent)
+  assert.equal(guest.sent.at(-1).args[0].available, true, 'returning guest restores the dock acknowledgement')
 })
 
 test('assistant tab UI keeps fixed tabs open and closes only the selected label', async () => {

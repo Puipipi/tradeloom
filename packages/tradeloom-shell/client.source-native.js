@@ -28,6 +28,10 @@ window.__ModuleLoader__.load({
         --dsw-font-family:var(--tl-font-family,"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif);
         font-family:var(--dsw-font-family);container-type:size;
       }
+      /* Better Sidebar's fixed blank-session fallback can outlive its 500ms
+         reflection poll. This account-owned stylesheet hides it directly while
+         the native right panel is active, without changing the panel controls. */
+      :root:has([data-source-native-root]):has([data-sidebar-right-panel][data-sidebar-right-open]:not([hidden]):not([aria-hidden="true"]):not([hidden] *):not([aria-hidden="true"] *)) [data-dsh-dock-fallback] { display:none!important; }
       [data-source-native-root] [data-conversation-content] {
         --dsh-chat-content-width:calc(100% - 16px);
         --dsh-composer-card-max-width:calc(100% - 16px);

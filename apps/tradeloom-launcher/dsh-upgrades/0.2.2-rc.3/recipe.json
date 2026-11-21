@@ -203,20 +203,20 @@
         "sha256": "b66001725b882c07b13b9de1e4a97fa6557014346ff2ef78180f907a348aa51a"
       },
       "client.js": {
-        "bytes": 248501,
-        "sha256": "0092428a07da696810063d765012d8ecff828b6f175ab119cb4b036203c534b5"
+        "bytes": 237429,
+        "sha256": "5adcc86d7f74db1696d5392426128c891417cdbee1c4d806e3dd42ae07993952"
       },
       "client.replica-palette.js": {
         "bytes": 7434,
         "sha256": "ba85fdfa59ead0ddf2b69049ae87d4963dab3a06e17e78f11fd3fae33d530f22"
       },
       "client.source-native.js": {
-        "bytes": 41746,
-        "sha256": "a816a17830e10d383ac374077ffc46cb6fd738ea167e2d4a3043da20a97e7293"
+        "bytes": 42223,
+        "sha256": "021910418740739f6050bf8ec92af9006676880e6ba47e9045fba050e233026a"
       },
       "client.scenes.js": {
-        "bytes": 411809,
-        "sha256": "dccf084688e76cd570cdb5e470227bd25e9fd70a76eb9d13019adaf0591560b2"
+        "bytes": 411847,
+        "sha256": "dbab5c6be42e6e8b665388c22d71619e68e2db16dd62b790e95cbf72db9a499a"
       },
       "client.mobile-qr.js": {
         "bytes": 57681,
@@ -232,7 +232,7 @@
       },
       "scenes.json": {
         "bytes": 19757,
-        "sha256": "e4fa5f23764d2ffc86b4ace42b4ac91191794baa7ff668e863c21c29abf246b0"
+        "sha256": "b5f099670193e5b105c198dddc384a37ae74eec4ca360c8bb1dcf6842053bb65"
       },
       "scene-layout.js": {
         "bytes": 16260,
@@ -351,8 +351,8 @@
         "sha256": "e279172f4e053cb0247a446e8209ce6fe22c76f40d17b7f903cc76416fbb7d4d"
       },
       "client.workflow.js": {
-        "bytes": 109574,
-        "sha256": "02616132ab427cc2365f954d0b0e40a4b425d86dfaaa53153dbb55667bf3202a"
+        "bytes": 120336,
+        "sha256": "9518ccb53bd77ee20b0277d28debf224e750b957b1461a1cd7c51bc464c6619a"
       },
       "skills/wf-planner/SKILL.md": {
         "bytes": 4983,
@@ -391,8 +391,8 @@
         "sha256": "0eeae4c4bb7b7cbbd8b29e145e60289d3381d0d10715dafd5b7b70f83920ebb1"
       },
       "workflow-files.js": {
-        "bytes": 12532,
-        "sha256": "ceab89d5628e8c21108d1feb10359952637a5e51c3c0684fa33f5a7324ca4552"
+        "bytes": 13031,
+        "sha256": "f20f57c5a99e0bdd2920531c4a48a1e411d739bbc3df2ccda7d8d3d41cca1b1f"
       },
       "workflow-native-executor.js": {
         "bytes": 25627,
@@ -521,20 +521,20 @@
         "sha256": "b66001725b882c07b13b9de1e4a97fa6557014346ff2ef78180f907a348aa51a"
       },
       "client.js": {
-        "bytes": 248501,
-        "sha256": "0092428a07da696810063d765012d8ecff828b6f175ab119cb4b036203c534b5"
+        "bytes": 237429,
+        "sha256": "5adcc86d7f74db1696d5392426128c891417cdbee1c4d806e3dd42ae07993952"
       },
       "client.replica-palette.js": {
         "bytes": 7434,
         "sha256": "ba85fdfa59ead0ddf2b69049ae87d4963dab3a06e17e78f11fd3fae33d530f22"
       },
       "client.source-native.js": {
-        "bytes": 41746,
-        "sha256": "a816a17830e10d383ac374077ffc46cb6fd738ea167e2d4a3043da20a97e7293"
+        "bytes": 42223,
+        "sha256": "021910418740739f6050bf8ec92af9006676880e6ba47e9045fba050e233026a"
       },
       "client.scenes.js": {
-        "bytes": 411809,
-        "sha256": "dccf084688e76cd570cdb5e470227bd25e9fd70a76eb9d13019adaf0591560b2"
+        "bytes": 411847,
+        "sha256": "dbab5c6be42e6e8b665388c22d71619e68e2db16dd62b790e95cbf72db9a499a"
       },
       "client.mobile-qr.js": {
         "bytes": 57681,
@@ -550,7 +550,7 @@
       },
       "scenes.json": {
         "bytes": 19757,
-        "sha256": "e4fa5f23764d2ffc86b4ace42b4ac91191794baa7ff668e863c21c29abf246b0"
+        "sha256": "b5f099670193e5b105c198dddc384a37ae74eec4ca360c8bb1dcf6842053bb65"
       },
       "scene-layout.js": {
         "bytes": 16260,
@@ -669,8 +669,8 @@
         "sha256": "e279172f4e053cb0247a446e8209ce6fe22c76f40d17b7f903cc76416fbb7d4d"
       },
       "client.workflow.js": {
-        "bytes": 109574,
-        "sha256": "02616132ab427cc2365f954d0b0e40a4b425d86dfaaa53153dbb55667bf3202a"
+        "bytes": 120336,
+        "sha256": "9518ccb53bd77ee20b0277d28debf224e750b957b1461a1cd7c51bc464c6619a"
       },
       "skills/wf-planner/SKILL.md": {
         "bytes": 4983,
@@ -709,8 +709,8 @@
         "sha256": "0eeae4c4bb7b7cbbd8b29e145e60289d3381d0d10715dafd5b7b70f83920ebb1"
       },
       "workflow-files.js": {
-        "bytes": 12532,
-        "sha256": "ceab89d5628e8c21108d1feb10359952637a5e51c3c0684fa33f5a7324ca4552"
+        "bytes": 13031,
+        "sha256": "f20f57c5a99e0bdd2920531c4a48a1e411d739bbc3df2ccda7d8d3d41cca1b1f"
       },
       "workflow-native-executor.js": {
         "bytes": 25627,
@@ -807,19 +807,19 @@
     },
     "inventory": {
       "fileCount": 79,
-      "bytes": 3086859,
-      "sha256": "07d9f357bf79191b2613dcb4e32fa9beae06d49bb279da94038d1c8b5a85f3f0"
+      "bytes": 3087563,
+      "sha256": "2f4f03a2dbf6fe50a90e74544ead510bb5cf9a0d304920b355b743a2da3ef1b4"
     },
     "validatorInput": {
       "source": "apps/tradeloom-launcher/installed-bootstrap.mjs",
-      "bytes": 51844,
-      "sha256": "eddaa4b6607ddefb333a3abeb36c2aaae911f33e9e36db48dd799ec509cd8ded"
+      "bytes": 52195,
+      "sha256": "b56b237a382c4a412bc85458e90bee17d4f5c1918c9551eefcfbd1c8dbd8ec4b"
     }
   },
   "expectedAsar": {
-    "logicalEntries": 21999,
+    "logicalEntries": 22000,
     "unpackedFiles": 1666,
-    "bytes": 235050926,
-    "sha256": "991a108af59548ae2a172d4fed78afdd67e9033e99f2ad1cfe9cc1225e87346a"
+    "bytes": 235074008,
+    "sha256": "bac190aff4b4f4a6a03469fd0d493f3c4fb002cfe63cd2c4af4aaf741d435e23"
   }
 }

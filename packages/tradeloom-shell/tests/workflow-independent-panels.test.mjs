@@ -25,7 +25,7 @@ const scene=sceneContext.window.__SCENES__.scenes.find(s=>s.id==='agent-center')
 test('workflow keeps an independently registered plan closed by default without changing canvas identity',()=>{
  assert.ok(scene.panels.some(p=>p.id==='workflow-plan'&&p.type==='doc'&&p.closedByDefault===true))
  const canvas=scene.panels.find(p=>p.id==='workflow-main');assert.equal(canvas.type,'canvas');assert.equal(canvas.tabs,undefined)
- const cells=new Set();for(const p of scene.panels)for(let y=p.row;y<p.row+p.h;y++)for(let x=p.col;x<p.col+p.w;x++){const key=x+','+y;assert.ok(!cells.has(key));cells.add(key)}
+ const cells=new Set();for(const p of scene.panels.filter(p=>!p.optional))for(let y=p.row;y<p.row+p.h;y++)for(let x=p.col;x<p.col+p.w;x++){const key=x+','+y;assert.ok(!cells.has(key));cells.add(key)}
 })
 function loadWorkflow({addSecondCanvas=false, activeRun}={}){
  let exported; const state=[],effects=[],refs=[];let index=0,refIndex=0
@@ -36,7 +36,7 @@ function loadWorkflow({addSecondCanvas=false, activeRun}={}){
  const second={...doc,id:'wf-second',title:'Second',confirmed:false}
  const list=addSecondCanvas ? [doc,second] : [doc]
  const catalog=workflowCatalog()
- const render=()=>{index=0;refIndex=0;effects.length=0;return exported.WorkflowCanvas({initial:{doc,list,catalog,editing:false,run:activeRun}})}
+ const render=props=>{index=0;refIndex=0;effects.length=0;return exported.WorkflowCanvas({initial:{doc,list,catalog,editing:false,run:activeRun},...props})}
  const tree=render()
  return{tree,state,effects,doc,second,list,catalog,context,render}
 }
@@ -173,15 +173,36 @@ test('refresh stays unavailable in the editor, during a run, or while a write is
  await saved
  assert.deepEqual(requests,['POST','GET'])
 })
-test('actual WorkflowCanvas exposes native prepare/save/history and catalog categories in top toolbar',async()=>{
- const f=loadWorkflow(),toolbar=all(f.tree).find(n=>n.props?.role==='toolbar')
- const primary=toolbar.children.find(n=>n.props.className==='tl-wf-primary')
+test('actual WorkflowCanvas exposes the reference header and canvas controls in separate rows',async()=>{
+ const f=loadWorkflow(),header=all(f.tree).find(n=>n.props?.className==='tl-wf-head'),toolbar=all(f.tree).find(n=>n.props?.className==='tl-wf-toolbar')
+ const primary=all(toolbar).find(n=>n.props.className==='tl-wf-primary')
  const buttons=primary.children.filter(n=>n.type==='button')
- assert.deepEqual(buttons.slice(0,4).map(label),['+','开始…','保存','历史'])
- assert.equal(buttons[0].props['aria-label'],'新建工作流')
- assert.equal(buttons[3].props.className,'tl-wf-history','history is aligned at the right edge of the primary toolbar')
- const categories=all(toolbar).filter(n=>n.type==='details'&&n.props.className==='tl-wf-category')
- assert.equal(categories.length,f.catalog.kinds.length)
+ assert.deepEqual(buttons.map(label),['保存','历史'])
+ assert.equal(buttons[1].props.className,'tl-wf-history')
+ assert.deepEqual(header.children.filter(n=>n.type==='button').map(label),['▶ 开始','刷新画布'])
+ assert.ok(all(f.tree).some(n=>n.props.className==='tl-wf-tabs-row'))
+ const categories=all(toolbar).filter(n=>n.props.className==='tl-wf-category'||n.props.className==='tl-wf-category is-unavailable')
+ assert.deepEqual(categories.map(n=>label(n.type==='details'?n.children[0]:n)),['＋ 内容节点 ▾','＋ 方式节点 ▾','＋ 工具节点 ▾','＋ 看板节点','＋ 位置节点'])
+ assert.deepEqual(categories.map(n=>n.type),['details','details','details','button','button'])
+ assert.deepEqual(categories.slice(0,3).map(n=>n.props.style['--tl-wf-group-color']),['#4f8cff','#c084fc','#34c98f'])
+ const workflowCss=all(f.tree).find(n=>n.type==='style').children[0]
+ assert.match(workflowCss,/--tl-ink:var\(--tl-theme-text,/,'workflow foreground follows the active light or dark theme')
+ assert.match(workflowCss,/\.tl-wf-category > summary \{ color:color-mix\(in srgb,var\(--tl-wf-group-color,[^\n]+--tl-ink\)/,'available category labels keep readable theme-aware text while retaining their group colors')
+ assert.match(workflowCss,/\.tl-wf-category\.is-unavailable \{[^\n]+border-style:dashed/,'unavailable category controls remain visibly distinct')
+ assert.match(workflowCss,/\.tl-wf-toolbar button\.tl-wf-category\.is-unavailable:disabled \{ opacity:1;/,'unavailable category text is not faded out')
+ assert.match(workflowCss,/\.tl-wf-tabs > \[aria-selected="true"\] \{ border-color:transparent; border-bottom:2px solid var\(--tl-accent/,'selected canvas tab uses a light accent marker instead of a full heavy border')
+ assert.match(workflowCss,/\.tl-wf-tabs-row > \.tl-wf-new-workflow \{ flex:none; min-width:2em;/,'the adjacent plus control keeps its fixed compact tab size')
+ const tabRow=all(f.tree).find(n=>n.props.className==='tl-wf-tabs-row')
+ assert.deepEqual(tabRow.children.slice(0,2).map(n=>n.props.className),['tl-wf-tabs','tl-wf-new-workflow'])
+ assert.equal(label(tabRow.children[1]),'+')
+ assert.equal(typeof tabRow.children[1].props.onClick,'function')
+ assert.deepEqual(categories.slice(3).map(n=>n.props.disabled),[true,true])
+ assert.match(categories[3].props.title,/没有可用的看板节点类型/)
+ assert.match(categories[4].props.title,/没有可用的位置节点类型/)
+ const actualKinds=kind=>f.catalog.kinds.find(item=>item.kind===kind)
+ assert.deepEqual(all(categories[0]).filter(n=>n.type==='button').map(label),[actualKinds('input'),actualKinds('output')].map(item=>`${item.icon} ${item.label}`))
+ assert.deepEqual(all(categories[1]).filter(n=>n.type==='button').map(label),[`${actualKinds('review').icon} ${actualKinds('review').label}`])
+ assert.deepEqual(all(categories[2]).filter(n=>n.type==='button').map(label),[...f.catalog.agents.map(item=>`${item.icon??actualKinds('agent').icon} ${item.label}`),`${actualKinds('external').icon} ${actualKinds('external').label}（仅模拟）`])
  assert.equal(typeof categories[0].props.onMouseEnter,'function')
  assert.equal(typeof categories[0].props.onMouseLeave,'function')
  const hoverMenu={open:false,ownerDocument:{activeElement:null},contains:()=>false}
@@ -189,26 +210,25 @@ test('actual WorkflowCanvas exposes native prepare/save/history and catalog cate
  categories[0].props.onMouseLeave({currentTarget:hoverMenu});assert.equal(hoverMenu.open,false,'leaving the category closes an unfocused submenu')
  hoverMenu.open=true;hoverMenu.ownerDocument.activeElement={};hoverMenu.contains=()=>true
  categories[0].props.onMouseLeave({currentTarget:hoverMenu});assert.equal(hoverMenu.open,true,'keyboard focus keeps the submenu open after pointer exit')
- assert.deepEqual(all(categories[1]).filter(n=>n.type==='button').map(label),f.catalog.agents.map(item=>`${item.icon} ${item.label}`))
  const calls=[];f.context.onFetch=async(url,options)=>{calls.push({url,body:options.body&&JSON.parse(options.body)});return{ok:true,status:200,json:async()=>({workflow:f.doc,catalog:f.catalog,workflows:[f.doc],schemaVersion:1,ok:true,executionMode:'native_dsh',action:'list',runs:[]})}}
- await buttons[2].props.onClick();assert.equal(calls[0].body.action,'save')
- calls.length=0;buttons[3].props.onClick();await new Promise(r=>setTimeout(r,0));assert.equal(calls[0].body.action,'list')
- calls.length=0;buttons[1].props.onClick();await new Promise(r=>setTimeout(r,0));assert.equal(calls[0].body.action,'prepare');assert.ok(!calls.some(c=>c.body?.action==='submit'))
+ await buttons[0].props.onClick();assert.equal(calls[0].body.action,'save')
+ calls.length=0;buttons[1].props.onClick();await new Promise(r=>setTimeout(r,0));assert.equal(calls[0].body.action,'list')
+ calls.length=0;header.children.find(n=>label(n)==='▶ 开始').props.onClick();await new Promise(r=>setTimeout(r,0));assert.equal(calls[0].body.action,'prepare');assert.ok(!calls.some(c=>c.body?.action==='submit'))
  // All add controls execute the production addNode path from actual catalog, not demo nodes.
  const before=f.state[2].nodes.length
  let focusCount=0
  const summary={focus(){focusCount++}}
  const menu={open:true,querySelector:()=>summary,contains:node=>node===summary}
  const event={currentTarget:menu,relatedTarget:summary,key:'Escape',preventDefault(){},stopPropagation(){}}
- categories[1].props.onBlur(event);assert.equal(menu.open,true)
- categories[1].props.onKeyDown(event);assert.equal(menu.open,false);assert.equal(focusCount,1)
+ categories[2].props.onBlur(event);assert.equal(menu.open,true)
+ categories[2].props.onKeyDown(event);assert.equal(menu.open,false);assert.equal(focusCount,1)
  menu.open=true
- const add=all(categories[1]).find(n=>n.type==='button');add.props.onClick({currentTarget:{closest:()=>menu}})
+ const add=all(categories[2]).find(n=>n.type==='button');add.props.onClick({currentTarget:{closest:()=>menu}})
  assert.equal(menu.open,false);assert.equal(focusCount,2)
  assert.equal(f.state[2].nodes.length,before+1);assert.equal(f.state[2].nodes.at(-1).kind,'agent')
 })
 function fn(source,name){const start=source.indexOf(`  function ${name}(`);assert.ok(start>=0,`missing ${name}`);const next=source.indexOf('\n  function ',start+12);return source.slice(start,next<0?undefined:next)}
-function element(){return{style:{},dataset:{},children:[],isConnected:true,hidden:false,setAttribute(){},listeners:new Map(),addEventListener(type,fn){this.listeners.set(type,fn)},removeEventListener(type){this.listeners.delete(type)},append(...nodes){this.children.push(...nodes)},replaceChildren(...nodes){this.children=nodes},contains(n){return this.children.includes(n)},closest(){return this.panel},getBoundingClientRect(){return{left:0,top:0,width:600,height:400}},querySelector(){return null},classList:{toggle(){},add(){}}}}
+function element(){return{style:{},dataset:{},children:[],attributes:{},isConnected:true,hidden:false,setAttribute(name,value){this.attributes[name]=value},listeners:new Map(),addEventListener(type,fn){this.listeners.set(type,fn)},removeEventListener(type){this.listeners.delete(type)},remove(){this.isRemoved=true},append(...nodes){this.children.push(...nodes)},replaceChildren(...nodes){this.children=nodes},insertAdjacentElement(position,node){this.inserted={position,node}},contains(n){return this.children.includes(n)},closest(){return this.panel},getBoundingClientRect(){return{left:0,top:0,width:600,height:400}},querySelector(selector){return this.queries?.[selector]??null},classList:{toggle(){},add(){}}}}
 function bridge(mount, status=async()=>({})){
  const source=read('business-bridge.js'),calls=[],observers=[],state={phase:'ready',sceneId:'agent-center',workflowMounted:false,config:{}},content=element();content.panel=element()
  const app={workflowCanvas:{mount,status,setBounds:async()=>calls.push('bounds'),setVisible:async v=>calls.push(v)}}
@@ -246,6 +266,108 @@ test('workflow main keeps the native guest hidden until the canvas owner mounts 
  f.c.onWorkflowStatus({...target,status:'error'})
  await tick()
  assert.equal(f.calls.at(-1),false)
+})
+test('workflow title toolbar sits beside the component tabs and invokes only the real start and refresh bridge actions', async () => {
+ const target={componentKey:'workflow-canvas-native',sceneId:'agent-center',panelId:'business-main',placement:'docked'}
+ const actions=[]
+ const f=bridge(async()=>({...target,status:'context-mounted'}))
+ f.c.app.workflowCanvas.toolbarAction=async action=>{actions.push(action);return{delivered:true}}
+ f.c.renderBusinessPanel=()=>()=>{}
+ const panel=element(),header=element(),componentTabs=element(),identity=element()
+ header.queries={'.pi-component-tabs':componentTabs,'.panel-identity':identity}
+ panel.queries={'.panel-header':header};f.content.panel=panel
+ const cleanup=f.c.renderWorkflowPanel({standaloneCanvas:true},f.content)
+ await tick()
+ const bar=componentTabs.inserted.node
+ assert.equal(componentTabs.inserted.position,'afterend')
+ assert.equal(bar.attributes.role,'toolbar')
+ assert.deepEqual(bar.children.map(button=>button.textContent),['▶ 开始','刷新画布'])
+ const [start,refresh]=bar.children
+ f.c.onWorkflowStatus({...target,status:'context-mounted',visible:true,toolbar:{canStart:true,canRefresh:true}})
+ assert.equal(start.disabled,false);assert.equal(refresh.disabled,false)
+ start.listeners.get('click')();await tick()
+ assert.deepEqual(actions,['start']);assert.equal(start.disabled,true)
+ refresh.listeners.get('click')();await tick()
+ assert.deepEqual(actions,['start','refresh'])
+ assert.equal(refresh.disabled,false,'a successful refresh keeps the host control available until the guest reports a real permission change')
+ cleanup()
+ assert.equal(bar.isRemoved,true)
+})
+test('standalone scene canvas installs title actions in the real shell panel header',async()=>{
+ const target={componentKey:'workflow-canvas-native',sceneId:'agent-center',panelId:'business-main',placement:'docked'}
+ const f=bridge(async()=>({...target,status:'context-mounted'})),actions=[]
+ f.c.app.workflowCanvas.toolbarAction=async action=>{actions.push(action);return{delivered:true}}
+ const panel=element(),header=element(),componentTabs=element(),identity=element()
+ header.queries={'.pi-component-tabs':componentTabs,'.panel-identity':identity}
+ panel.queries={'.panel-header':header};f.content.panel=null
+ const source=fs.readFileSync(new URL('../../../apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/renderer.js',import.meta.url),'utf8')
+ const append=source.indexOf('wrap.append(head, content)',source.indexOf('function makePanel('))
+ const call=source.indexOf('cleanups.set(meta.id, (rendererRegistry[meta.type] || unsupportedRenderer)(meta, content))',append)
+ assert.ok(append>=0&&call>append,'real makePanel attaches the header/content before invoking the business renderer')
+ assert.match(source,/e\.target\.closest\('\.icon-control, \.panel-expand, \.pi-component-tabs, \.workflow-header-actions'\)/,'outer workflow buttons do not start panel dragging')
+ f.content.panel=panel
+ const cleanup=f.c.renderWorkflowPanel({standaloneCanvas:true},f.content)
+ assert.ok(componentTabs.inserted,'standalone scene canvas still installs the external controls when a shell header exists')
+ await tick()
+ const bar=componentTabs.inserted.node
+ assert.deepEqual(bar.children.map(button=>button.textContent),['▶ 开始','刷新画布'])
+ f.c.onWorkflowStatus({...target,status:'context-mounted',visible:true,toolbar:{canStart:true,canRefresh:true}})
+ assert.equal(bar.children[0].disabled,false)
+ cleanup()
+})
+test('late Windows component tabs are inserted before already installed workflow actions',()=>{
+ const header={children:[],querySelector(selector){return selector==='.workflow-header-actions'?actions:selector==='.panel-controls'?controls:null},insertBefore(node,before){this.children.splice(this.children.indexOf(before),0,node)}}
+ const identity={className:'panel-identity'},actions={className:'workflow-header-actions'},controls={className:'panel-controls'}
+ header.children=[identity,actions,controls]
+ const title={textContent:'工作流'},panel={dataset:{panelId:'business-main'},classList:{contains:()=>false,toggle(){}},setAttribute(){},querySelector(selector){return selector==='.panel-header'?header:selector==='.panel-title'?title:null}}
+ const document={addEventListener(){},createElement:()=>({dataset:{},classList:{toggle(){}},setAttribute(){},replaceChildren(...children){this.children=children}})}
+ const window={localStorage:{getItem:()=>null,setItem(){}},addEventListener(){},dispatchEvent(){}}
+ const source=fs.readFileSync(new URL('../../../apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/panel-tabs.js',import.meta.url),'utf8')
+ vm.runInNewContext(source,{window,document,CustomEvent:class{}})
+ window.sourcePanelTabs.render({sceneId:'agent-center',geometry:[{id:'business-main'}],panels:[panel]})
+ assert.deepEqual(header.children.map(item=>item.className),['panel-identity','pi-component-tabs','workflow-header-actions','panel-controls'])
+})
+test('acknowledged native toolbar removes the inner title row and keeps document actions reachable',()=>{
+ const f=loadWorkflow()
+ f.state[14]=true
+ const tree=f.render({nativeToolbar:true}),nodes=all(tree)
+ assert.ok(!nodes.some(node=>node.props?.className==='tl-wf-head'),'native mode has no duplicate workflow title dropdown row')
+ assert.ok(nodes.some(node=>node.props?.className==='tl-wf-tabs-row'),'canvas tabs and the adjacent add button remain')
+ const primary=nodes.find(node=>node.props?.className==='tl-wf-primary')
+ const documentMenu=nodes.find(node=>node.props?.className==='tl-wf-doc-menu')
+ assert.ok(primary.children.includes(documentMenu),'rename, confirm, and delete remain reachable through the document menu')
+ assert.equal(label(documentMenu.children[0]),'文档')
+ assert.ok(!nodes.some(node=>node.props?.className==='tl-wf-start'),'start remains only in the outer native title toolbar')
+})
+test('native toolbar guest dispatches the existing prepareNative and refreshCanvas handlers for the current descriptor',async()=>{
+ const f=loadWorkflow(),descriptor={kind:'scene-component',componentKey:'workflow-canvas-native',sceneId:'agent-center',panelId:'business-main',generation:4,accountGeneration:2},requests=[]
+ let requested,disposed=false
+ f.context.window.dshDesktop={
+  nativeSurfaceDescriptor:async()=>descriptor,
+  workflowCanvasToolbarState:async value=>{assert.equal(value.descriptor.generation,4);assert.equal(value.descriptor.accountGeneration,2);assert.equal(value.canStart,true);assert.equal(value.canRefresh,true);return{accepted:true,available:true}},
+  onWorkflowCanvasToolbarActionRequested:listener=>{requested=listener;return()=>{disposed=true}},
+  onWorkflowCanvasToolbarDockStateChanged:()=>()=>{},
+ }
+ f.context.onFetch=async(url,options)=>{
+  requests.push({url,body:options.body&&JSON.parse(options.body)})
+  return options.body ? {ok:false,status:403,json:async()=>({error_code:'rejected'})}
+   : {ok:true,json:async()=>url.includes('?')?{workflow:f.doc,catalog:f.catalog}:{workflows:[f.doc],catalog:f.catalog}}
+ }
+ f.render({nativeToolbar:true})
+ const effect=f.effects.find(callback=>callback.toString().includes('nativeSurfaceDescriptor'))
+ assert.ok(effect,'actual WorkflowCanvas owns the descriptor-bound toolbar bridge')
+ const cleanup=effect()
+ await tick()
+ assert.equal(f.state[14],true)
+ requested({action:'start',descriptor})
+ await tick()
+ assert.ok(requests.some(request=>request.body?.action==='prepare'))
+ assert.ok(!requests.some(request=>request.body?.action==='submit'),'start only prepares the existing explicit-confirmation flow')
+ requested({action:'refresh',descriptor})
+ await tick()
+ assert.deepEqual(requests.slice(-2).map(request=>request.url),['/tradeloom/workflows?id=wf-test','/tradeloom/workflows'])
+ cleanup()
+ assert.equal(disposed,true)
 })
 test('workflow main keeps a canvas acknowledgement that arrives before the initial mount response', async () => {
  let resolveMount
@@ -489,15 +611,15 @@ function preparedFor(doc){return{workflowId:doc.id,title:doc.title,eligible:true
 test('actual native prepare requires explicit confirm; close aborts late response and errors remain visible',async()=>{
  const f=loadWorkflow(),calls=[];let complete,signal
  f.context.onFetch=async(url,options)=>{calls.push(JSON.parse(options.body));signal=options.signal;return new Promise(r=>complete=r)}
- button(f.tree,'开始…').props.onClick();assert.equal(calls[0].action,'prepare');assert.ok(!calls.some(c=>c.action==='submit'))
+ button(f.tree,'▶ 开始').props.onClick();assert.equal(calls[0].action,'prepare');assert.ok(!calls.some(c=>c.action==='submit'))
  const pending=f.render();button(pending,'关闭').props.onClick();assert.equal(signal.aborted,true)
  complete({ok:true,status:200,json:async()=>({schemaVersion:1,ok:true,executionMode:'native_dsh',action:'prepare',prepared:preparedFor(f.doc)})});await tick();assert.ok(!all(f.render()).some(n=>n.props?.className==='tl-wf-native'))
  f.context.onFetch=async()=>({ok:false,status:409,json:async()=>({error_code:'binding_revision_mismatch'})})
- button(f.render(),'开始…').props.onClick();await tick();assert.ok(all(f.render()).some(n=>n.props?.role==='alert'&&label(n).includes('绑定')))
+ button(f.render(),'▶ 开始').props.onClick();await tick();assert.ok(all(f.render()).some(n=>n.props?.role==='alert'&&label(n).includes('绑定')))
 })
 test('actual confirmation sends native submit with prepared definition and binding identity only after click',async()=>{
  const f=loadWorkflow(),calls=[];f.context.onFetch=async(url,options)=>{const body=JSON.parse(options.body);calls.push(body);return{ok:true,status:200,json:async()=>({schemaVersion:1,ok:true,executionMode:'native_dsh',action:'prepare',prepared:preparedFor(f.doc)})}}
- button(f.tree,'开始…').props.onClick();await tick();assert.equal(calls.length,1)
+ button(f.tree,'▶ 开始').props.onClick();await tick();assert.equal(calls.length,1)
  const ready=f.render(),confirm=button(ready,'确认并启动真实原生执行');assert.ok(confirm)
  f.context.onFetch=async(url,options)=>{calls.push(JSON.parse(options.body));return{ok:false,status:409,json:async()=>({error_code:'binding_revision_mismatch'})}}
  confirm.props.onClick();await tick();assert.equal(calls[1].action,'submit');assert.equal(calls[1].confirm,true);assert.equal(calls[1].expectedBindingRevision,'7');assert.equal(calls[1].expectedDefinitionRevision,'sha256:'+'b'.repeat(64));assert.ok(all(f.render()).some(n=>n.props?.role==='alert'))

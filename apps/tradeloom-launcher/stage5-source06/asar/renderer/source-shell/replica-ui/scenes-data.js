@@ -169,10 +169,10 @@ window.__SCENES__ = {
           "type": "doc",
           "path": "/agent-center",
           "hostPanelId": "business-plan",
-          "col": 4,
+          "col": 3,
           "row": 1,
           "w": 1,
-          "h": 2
+          "h": 3
         },
         {
           "id": "workflow-main",
@@ -181,8 +181,8 @@ window.__SCENES__ = {
           "path": "/agent-center",
           "col": 1,
           "row": 1,
-          "w": 3,
-          "h": 2,
+          "w": 2,
+          "h": 3,
           "standaloneCanvas": true,
           "hostPanelId": "business-main"
         },
@@ -192,9 +192,9 @@ window.__SCENES__ = {
           "type": "files",
           "path": "/artifacts#files",
           "col": 4,
-          "row": 3,
+          "row": 1,
           "w": 1,
-          "h": 2
+          "h": 3
         },
         {
           "id": "preview",
@@ -202,19 +202,19 @@ window.__SCENES__ = {
           "type": "preview",
           "path": "/artifacts#preview",
           "col": 1,
-          "row": 3,
-          "w": 1,
-          "h": 2
+          "row": 4,
+          "w": 2,
+          "h": 1
         },
         {
           "id": "workflow-chat",
           "title": "🔒 中心助手",
           "type": "chat",
           "roleId": "center",
-          "col": 2,
-          "row": 3,
+          "col": 3,
+          "row": 4,
           "w": 2,
-          "h": 2
+          "h": 1
         }
       ]
     },

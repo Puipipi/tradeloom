@@ -342,7 +342,12 @@ async function copyBusinessShell(shellRoot, destination, verified, fs) {
       await fs.rename(recoverable[0], destination)
       destinationInfo = await fs.lstat(destination)
     } else if (recordInfo || backupNames.length) {
-      throw new Error('profile business-shell inventory/bundle 不完整，且没有唯一匹配的受信恢复备份；拒绝覆盖。')
+      const registeredPackageWasPruned = recordInfo && backupNames.length === 0
+        && priorRecord.packageName === expectedRecord.packageName
+        && priorRecord.inventorySha256 === expectedHash
+        && priorRecord.fileCount === expectedRecord.fileCount
+        && priorRecord.bytes === expectedRecord.bytes
+      if (!registeredPackageWasPruned) throw new Error('profile business-shell inventory/bundle 不完整，且没有唯一匹配的受信恢复备份；拒绝覆盖。')
     }
   }
 

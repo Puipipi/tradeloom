@@ -25470,7 +25470,7 @@ async function main() {
 				return result;
 			},
 			openWorkflowFile: async (operation, resolved, authorize) => {
-				if (!['open', 'reveal'].includes(operation) || typeof authorize !== "function" || !resolved || typeof resolved.path !== "string"
+				if (!['open', 'reveal', 'open-directory'].includes(operation) || typeof authorize !== "function" || !resolved || typeof resolved.path !== "string"
 					|| !isAbsolute(resolved.path) || resolved.path.includes("\0")
 					|| !resolved.identity || Object.keys(resolved.identity).sort().join(",") !== "birthtimeNs,dev,ino,mtimeNs,size"
 					|| !Object.values(resolved.identity).every(value => typeof value === "string" && value.length > 0 && [...value].every(char => char >= "0" && char <= "9"))) {
@@ -25481,7 +25481,8 @@ async function main() {
 					fsPromises.lstat(resolved.path, { bigint: true })
 				]);
 				const identity = resolved.identity;
-				if (canonical !== resolved.path || info.isSymbolicLink() || !info.isFile()
+				const expectedKind = operation === "open-directory" ? info.isDirectory() : info.isFile();
+				if (canonical !== resolved.path || info.isSymbolicLink() || !expectedKind
 					|| String(info.dev) !== identity.dev || String(info.ino) !== identity.ino
 					|| String(info.size) !== identity.size || String(info.mtimeNs) !== identity.mtimeNs
 					|| String(info.birthtimeNs) !== identity.birthtimeNs) throw new Error("workflow file changed");

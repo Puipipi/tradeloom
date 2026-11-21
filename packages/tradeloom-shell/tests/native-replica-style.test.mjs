@@ -329,6 +329,18 @@ test('rc2 public conversation DOM actually consumes every native selector used b
   assert.ok(!source.includes('data-conversation-density'), 'the old compact attribute alone is insufficient')
 })
 
+test('native account layout hides only the stale Better Sidebar fallback while its right panel is active', () => {
+  const { nativeChatStyles } = chatStyleInstaller({})
+  const rule = nativeChatStyles.match(/([^{}]*:has\(\[data-sidebar-right-panel\][^{}]*)\s*\{\s*display:none!important;\s*\}/)
+  assert.ok(rule, 'the account chat stylesheet must directly gate the fallback against the native panel state')
+  assert.match(rule[1], /:root:has\(\[data-source-native-root\]\)/)
+  assert.match(rule[1], /\[data-sidebar-right-open\]/)
+  assert.match(rule[1], /:not\(\[hidden\] \*\)/)
+  assert.match(rule[1], /:not\(\[aria-hidden="true"\] \*\)/)
+  assert.match(rule[1].trim(), /\[data-dsh-dock-fallback\]$/)
+  assert.doesNotMatch(rule[1], /data-sidebar-right-(?:mode|toggle)/)
+})
+
 test('rc2 real theme validation accepts the adapter pairs and its real presenter applies both schemes to body', { skip: !official }, async () => {
   const theme = officialEntry('dsh/node_modules/@deepseek-ai/dsh-client-ui-theme/lib/client.js', '6bf9c4c2c5b5e9bdd91dd0974c0a7e6d809945938626b4031cd29d28bff188df')
   const layout = officialEntry('dsh/node_modules/@deepseek-ai/dsh-client-ui-layout/lib/client.js', '814486863a32f73e7184a66312ec2d7f5884766000af21f60891a0c01b592630')

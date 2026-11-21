@@ -61,6 +61,7 @@
     overlayObserver: undefined,
   }
   const fileBridgeMounts = new Map()
+  const localWorkflowMounts = new Map()
 
   const isDesktop = () => location.protocol === 'dsh-app:' && location.hostname === 'app'
     && !location.port && !location.username && !location.password
@@ -283,6 +284,7 @@
       try { mounted.handler.dispose?.() } catch { /* page is closing */ }
     }
     fileBridgeMounts.clear()
+    localWorkflowMounts.clear()
   }
 
   function start() {
@@ -1262,11 +1264,17 @@
     if (!record?.target || value?.componentKey !== 'workflow-canvas-native'
       || value.sceneId !== record.target.sceneId || value.panelId !== record.target.panelId) return
     const placement = typeof value.placement === 'string' ? value.placement : record.placement
-    // Visibility setters echo the current status. Only a status or placement
-    // transition can require another visibility synchronization.
-    if (record.status === value.status && record.placement === placement) return
+    const statusChanged = record.status !== value.status
+    const placementChanged = record.placement !== placement
+    if (typeof value.visible === 'boolean') record.visible = value.visible
     record.status = value.status
     record.placement = placement
+    record.toolbar = value.toolbar && typeof value.toolbar.canStart === 'boolean' && typeof value.toolbar.canRefresh === 'boolean'
+      ? { canStart: value.toolbar.canStart, canRefresh: value.toolbar.canRefresh } : { canStart: false, canRefresh: false }
+    syncWorkflowHeaderActions(record)
+    // Visibility setters echo the current status. Only a status or placement
+    // transition can require another visibility synchronization.
+    if (!statusChanged && !placementChanged) return
     if (record.note && value.status === 'context-mounted') {
       record.note.hidden = true
       void syncWorkflow(record)
@@ -1276,6 +1284,53 @@
       record.note.dataset.state = 'error'
       void syncWorkflow(record)
     }
+  }
+
+  function syncWorkflowHeaderActions(record) {
+    if (!record?.headerActions) return
+    record.headerActions.hidden = !record.active
+    const ready = record.status === 'context-mounted' && record.visible === true && record.placement === 'docked'
+    if (record.startButton) record.startButton.disabled = !ready || record.toolbar?.canStart !== true
+    if (record.refreshButton) record.refreshButton.disabled = !ready || record.toolbar?.canRefresh !== true
+  }
+
+  function installWorkflowHeaderActions(record) {
+    if (!record || record !== state.workflowRecord || record.disposed || record.headerActions
+      || typeof app?.workflowCanvas?.toolbarAction !== 'function') return
+    const panel = record.content.closest('.panel')
+    const header = panel?.querySelector('.panel-header')
+    const componentTabs = header?.querySelector('.pi-component-tabs')
+    const identity = header?.querySelector('.panel-identity')
+    if (!panel || !header || (!componentTabs && !identity)) return
+    record.panel = panel
+    const headerActions = document.createElement('div')
+    headerActions.className = 'workflow-header-actions'
+    headerActions.setAttribute('role', 'toolbar')
+    headerActions.setAttribute('aria-label', '工作流操作')
+    const startButton = document.createElement('button')
+    startButton.type = 'button'; startButton.className = 'workflow-header-start'; startButton.textContent = '▶ 开始'
+    startButton.setAttribute('aria-label', '开始工作流')
+    const refreshButton = document.createElement('button')
+    refreshButton.type = 'button'; refreshButton.textContent = '刷新画布'; refreshButton.setAttribute('aria-label', '刷新工作流画布')
+    const invoke = (action, button) => {
+      if (button.disabled) return
+      if (action === 'start') {
+        record.toolbar = { ...(record.toolbar ?? {}), canStart: false }
+        syncWorkflowHeaderActions(record)
+      }
+      void Promise.resolve(app.workflowCanvas.toolbarAction(action)).catch(async () => {
+        try { onWorkflowStatus(await app.workflowCanvas.status()) } catch { /* status remains unavailable */ }
+      })
+    }
+    startButton.addEventListener('click', () => invoke('start', startButton))
+    refreshButton.addEventListener('click', () => invoke('refresh', refreshButton))
+    headerActions.append(startButton, refreshButton)
+    if (componentTabs) componentTabs.insertAdjacentElement('afterend', headerActions)
+    else identity.insertAdjacentElement('afterend', headerActions)
+    record.headerActions = headerActions
+    record.startButton = startButton
+    record.refreshButton = refreshButton
+    syncWorkflowHeaderActions(record)
   }
 
   async function syncWorkflow(record) {
@@ -1344,12 +1399,17 @@
 
     let planCleanup = independent ? undefined : renderBusinessPanel(meta, plan, '/agent-center')
     const uiSceneId = meta.sceneId ?? state.sceneId
-    const record = { uiSceneId, panel: content.closest('.panel'), host, note, hostObserver: undefined, active: false, visible: false, placement: 'docked', status: 'loading', revision: 0, queue: Promise.resolve() }
+    const record = { uiSceneId, content, panel: content.closest('.panel'), host, note, headerActions: undefined, startButton: undefined, refreshButton: undefined, toolbar: { canStart: false, canRefresh: false }, hostObserver: undefined, active: false, visible: false, placement: 'docked', status: 'loading', revision: 0, queue: Promise.resolve(), disposed: false }
     state.workflowRecord = record
+    if (typeof app?.workflowCanvas?.toolbarAction === 'function') {
+      if (record.panel) installWorkflowHeaderActions(record)
+      else Promise.resolve().then(() => installWorkflowHeaderActions(record))
+    }
     let observer
     const choose = async label => {
       const canvas = label === '工作流画布'
       record.active = canvas
+      syncWorkflowHeaderActions(record)
       plan.style.display = canvas ? 'none' : 'flex'
       host.style.display = canvas ? 'flex' : 'none'
       for (const button of [planButton, canvasButton]) {
@@ -1436,6 +1496,8 @@
       const title = content.closest('.panel')?.querySelector('.panel-title')
       if (title) title.textContent = meta.title
       if (observer) { observer.disconnect(); record.hostObserver = undefined }
+      record.disposed = true
+      record.headerActions?.remove()
       if (state.workflowRecord === record) state.workflowRecord = undefined
       record.active = false
       record.revision++
@@ -1496,19 +1558,23 @@
     content.replaceChildren()
   }
 
-  function mountWorkflowFiles(workflow, content, view, business, isCurrent = () => true) {
+  function mountWorkflowFiles(workflow, content, view, isCurrent = () => true) {
+    // File and directory presentation is adapted from luanyujia-workbench
+    // (MIT, Copyright (c) 2026 淋雨家); see WORKFLOW_FILES_UI_LICENSE.txt.
     const files = view === 'files'
     const area = document.createElement('section')
     area.className = 'tl-workflow-directory'
     area.dataset.directoryView = files ? 'files' : 'preview'
     const header = document.createElement('div')
     header.className = 'tl-workflow-directory-bar'
+    const pathBar = document.createElement('div')
+    pathBar.className = 'tl-workflow-directory-pathbar'
     const body = document.createElement('div')
     body.className = 'tl-workflow-directory-body'
     const status = document.createElement('p')
     status.className = 'tl-workflow-directory-status'
     status.setAttribute('role', 'status')
-    area.append(header, status, body)
+    area.append(header, pathBar, status, body)
     content.prepend(area)
     content.classList.add('tl-workflow-directory-host')
     let pdfMount
@@ -1521,10 +1587,48 @@
     const button = (label, onClick, disabled = false) => {
       const node = document.createElement('button')
       node.type = 'button'
+      node.className = 'tl-workflow-directory-tool'
       node.textContent = label
       node.disabled = disabled
       node.addEventListener('click', onClick)
       return node
+    }
+    const panelHeader = content.closest('.panel')?.querySelector('.panel-header')
+    const panelTitle = panelHeader?.querySelector('.panel-title')
+    const previousPanelTitle = panelTitle?.textContent
+    panelHeader?.classList.add('tl-file-companion-header')
+    let fileHeaderGroup
+    let fileHeaderPath
+    let fileHeaderOpen
+    let fileHeaderUp
+    let onFileHeaderMenuAction
+    if (files && panelHeader && panelTitle) {
+      fileHeaderGroup = document.createElement('div')
+      fileHeaderGroup.className = 'tl-workflow-file-head-actions'
+      fileHeaderPath = document.createElement('span')
+      fileHeaderPath.className = 'tl-workflow-file-path-badge'
+      const tools = document.createElement('div')
+      tools.className = 'tl-workflow-file-head-tools'
+      fileHeaderOpen = button('📂', () => void request('pick'))
+      fileHeaderOpen.title = '选择并授权一个目录'
+      fileHeaderOpen.setAttribute('aria-label', '打开并授权目录')
+      fileHeaderUp = button('↑', () => void request('up'))
+      fileHeaderUp.title = '返回已授权目录中的上一级'
+      fileHeaderUp.setAttribute('aria-label', '返回已授权目录中的上一级')
+      for (const control of [fileHeaderOpen, fileHeaderUp]) {
+        control.addEventListener('pointerdown', event => event.stopPropagation())
+        control.addEventListener('click', event => event.stopPropagation())
+        tools.append(control)
+      }
+      fileHeaderGroup.append(fileHeaderPath, tools)
+      panelHeader.classList.add('tl-workflow-file-header')
+      panelHeader.insertBefore(fileHeaderGroup, panelHeader.querySelector('.panel-controls'))
+      const panel = content.closest('.panel')
+      onFileHeaderMenuAction = event => {
+        if (event.detail?.action === 'reload') void request('current')
+        else if (event.detail?.action === 'close') void request('revoke')
+      }
+      panel?.addEventListener('workflow-files-menu-action', onFileHeaderMenuAction)
     }
     const download = ({ name, data }) => {
       const url = URL.createObjectURL(new Blob([Uint8Array.from(atob(data), c => c.charCodeAt(0))]))
@@ -1538,13 +1642,35 @@
       const separator = /\\/.test(directory.path) ? '\\' : '/'
       return directory.path.replace(/[\\/]+$/, '') + separator + name
     }
+    const formatModified = value => {
+      const date = new Date(value)
+      const pad = part => String(part).padStart(2, '0')
+      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+    }
+    const fileIcon = name => {
+      const value = String(name).toLowerCase()
+      if (/\.(png|jpe?g|webp|gif|bmp|exr|hdr)$/.test(value)) return '🖼️'
+      if (/\.(mp4|mov|mkv|webm|avi|m4v)$/.test(value)) return '🎬'
+      if (/\.(mp3|wav|m4a|flac|aac)$/.test(value)) return '🎵'
+      if (/\.pdf$/.test(value)) return '📕'
+      if (/\.(zip|7z|rar|tar|gz)$/.test(value)) return '🗜️'
+      if (/\.(xls|xlsx|csv)$/.test(value)) return '📊'
+      return '📄'
+    }
     const copySelectedPath = async () => {
       try {
         if (!window.navigator?.clipboard?.writeText || !workflow.directory || !workflow.selected) throw new Error('clipboard unavailable')
         await window.navigator.clipboard.writeText(filePath(workflow.directory, workflow.selected.name))
-        workflow.error = '已复制文件路径。'
-      } catch { workflow.error = '无法复制文件路径。' }
+        announce('已复制文件路径。')
+      } catch { announce('无法复制文件路径。') }
       refresh()
+    }
+    function announce(message) {
+      workflow.error = message
+      if (workflow.noticeTimer) clearTimeout(workflow.noticeTimer)
+      workflow.noticeTimer = setTimeout(() => {
+        if (workflow.error === message) { workflow.error = ''; refresh() }
+      }, 2400)
     }
     const refresh = () => { for (const render of workflow.panes) render() }
     async function request(operation, id) {
@@ -1560,11 +1686,13 @@
         const value = await app.workflowFiles(id ? { operation, id } : { operation })
         if (!isCurrent() || !workflow.panes.size || (operation === 'pick' && value === null)) return
         if (operation === 'download') download(value)
-        else if (operation === 'preview') workflow.selected = { ...value, id }
-        else if (operation === 'open') workflow.error = '已请求系统打开所选文件。'
-        else if (operation === 'reveal') workflow.error = '已在文件夹中定位所选文件。'
+        else if (operation === 'preview') { workflow.selected = { ...value, id }; workflow.previewOpen = true }
+        else if (operation === 'open') announce('已请求系统打开所选文件。')
+        else if (operation === 'open-directory') announce('已在资源管理器中打开当前授权目录。')
+        else if (operation === 'reveal') announce('已在文件夹中定位所选文件。')
         else {
           workflow.directory = value
+          if (operation === 'pick' || operation === 'enter' || operation === 'up') workflow.previewOpen = true
           if (!value?.entries.some(item => item.id === workflow.selected?.id)) workflow.selected = null
         }
       } catch {
@@ -1574,7 +1702,7 @@
           workflow.directory = null
           workflow.selected = null
         }
-        workflow.error = '无法访问所选目录或文件。请重新打开目录。'
+        announce('无法访问所选目录或文件。请重新打开目录。')
         if (operation !== 'pick' && operation !== 'current') {
           try {
             const directory = await app.workflowFiles({ operation: 'current' })
@@ -1599,17 +1727,29 @@
       const directory = workflow.directory
       const showLocal = Boolean(directory)
       const selected = workflow.selected
-      business.hidden = showLocal
-      area.hidden = !files && !showLocal
-      body.hidden = !showLocal
+      area.hidden = !files && workflow.previewOpen === false
+      body.hidden = !files && workflow.previewOpen === false
       status.textContent = workflow.error || (workflow.busy ? '正在读取…' : '')
       status.hidden = !status.textContent
+      if (fileHeaderGroup) {
+        const drive = /^([a-z]):[\\/]/i.exec(directory?.path || '')
+        if (panelTitle) panelTitle.textContent = drive ? `素材管理 · ${drive[1].toUpperCase()}盘` : '素材管理'
+        fileHeaderPath.textContent = directory?.path || '尚未打开本地目录'
+        fileHeaderPath.title = directory?.path || '等待通过系统目录选择器授权'
+        fileHeaderOpen.disabled = workflow.busy
+        fileHeaderUp.disabled = workflow.busy || !showLocal || !directory.canGoUp
+      }
       header.replaceChildren()
+      pathBar.replaceChildren()
       body.replaceChildren()
+      header.hidden = files && Boolean(fileHeaderGroup)
+      pathBar.hidden = files
+      body.dataset.listView = files ? (showLocal ? 'files' : 'files-empty') : !showLocal ? 'preview-empty' : selected ? 'preview' : 'cards'
 
       const title = document.createElement('span')
       title.className = 'tl-workflow-directory-path'
-      title.textContent = (showLocal && !files && selected?.name) || directory?.path || '尚未打开本地目录'
+      const directoryName = directory?.path?.split(/[\\/]+/).filter(Boolean).at(-1) || directory?.path || '尚未打开本地目录'
+      title.textContent = files ? (directory?.path || '尚未打开本地目录') : `📁 项目文件夹 · ${directoryName}`
       title.title = title.textContent
       header.append(title)
       const actions = document.createElement('div')
@@ -1619,16 +1759,48 @@
         actions.append(button('上一级', () => void request('up'), workflow.busy || !showLocal || !directory.canGoUp))
         if (directory) actions.append(button('重读', () => void request('current'), workflow.busy))
         if (directory) actions.append(button('关闭目录', () => void request('revoke'), workflow.busy))
-      } else if (selected) {
-        actions.append(button('重读', () => void request('preview', selected.id), workflow.busy))
-        actions.append(button('复制路径', () => void copySelectedPath(), workflow.busy))
-        actions.append(button('系统打开', () => void request('open', selected.id), workflow.busy))
-        actions.append(button('在文件夹中显示', () => void request('reveal', selected.id), workflow.busy))
-        actions.append(button('关闭预览', () => { workflow.selected = null; refresh() }, workflow.busy))
-        actions.append(button('下载', () => void request('download', selected.id), workflow.busy))
+      } else {
+        const close = button('× 关闭', () => { workflow.previewOpen = false; refresh() }, workflow.busy)
+        close.title = '关闭预览'
+        close.setAttribute('aria-label', '关闭预览')
+        actions.append(close)
       }
       if (actions.childElementCount) header.append(actions)
-      if (!showLocal) return
+      if (!files && showLocal) {
+        const path = document.createElement('span')
+        path.className = 'tl-workflow-directory-fullpath'
+        path.textContent = directory.path
+        path.title = directory.path
+        pathBar.append(path)
+        const tools = document.createElement('div')
+        tools.className = 'tl-workflow-directory-actions'
+        tools.append(button('刷新', () => void request(selected ? 'preview' : 'current', selected?.id), workflow.busy))
+        tools.append(button('📂 用资源管理器打开', () => void request('open-directory'), workflow.busy))
+        pathBar.append(tools)
+        if (selected) {
+          const selectedActions = document.createElement('div')
+          selectedActions.className = 'tl-workflow-directory-selected-actions'
+          selectedActions.append(button('复制路径', () => void copySelectedPath(), workflow.busy))
+          selectedActions.append(button('系统打开', () => void request('open', selected.id), workflow.busy))
+          selectedActions.append(button('在文件夹中显示', () => void request('reveal', selected.id), workflow.busy))
+          selectedActions.append(button('下载', () => void request('download', selected.id), workflow.busy))
+          pathBar.append(selectedActions)
+        }
+      }
+      if (!showLocal) {
+        if (files) body.textContent = '打开本地目录以查看素材。'
+        else {
+          const empty = document.createElement('div')
+          empty.className = 'tl-workflow-directory-preview-empty'
+          const title = document.createElement('strong')
+          title.textContent = '尚未选择文件'
+          const note = document.createElement('p')
+          note.textContent = '在文件面板选择条目后查看可用预览。'
+          empty.append(title, note)
+          body.append(empty)
+        }
+        return
+      }
       if (!files && selected) {
         if (selected.preview?.type === 'text/plain') {
           const text = document.createElement('pre')
@@ -1676,8 +1848,16 @@
           entry.className = files ? 'tl-workflow-directory-row' : 'tl-workflow-directory-card'
           entry.setAttribute('aria-current', String(item.id === selected?.id))
           const icon = document.createElement('span')
+          icon.className = `tl-workflow-directory-icon${folder ? ' is-folder' : ' is-file'}`
           icon.setAttribute('aria-hidden', 'true')
-          icon.textContent = folder ? '📁' : '📄'
+          const extension = (item.name.match(/\.([a-z0-9]{1,5})$/i)?.[1] || '文件').toUpperCase()
+          if (files) icon.textContent = folder ? '📁' : fileIcon(item.name)
+          else {
+            const badge = document.createElement('span')
+            badge.className = folder ? 'tl-workflow-directory-folder-badge' : 'tl-workflow-directory-type-badge'
+            badge.textContent = folder ? '📁' : extension
+            icon.append(badge)
+          }
           const name = document.createElement('span')
           name.className = 'tl-workflow-directory-name'
           name.textContent = item.name
@@ -1688,19 +1868,14 @@
             kind.className = 'tl-workflow-directory-kind'
             kind.textContent = folder ? '文件夹' : '文件'
             entry.append(kind)
-            if (!folder) {
-              const size = document.createElement('span')
-              size.className = 'tl-workflow-directory-size'
-              size.textContent = Number.isFinite(item.size) ? `${item.size.toLocaleString()} B` : ''
-              entry.append(size)
-              const modified = document.createElement('time')
-              modified.className = 'tl-workflow-directory-modified'
-              if (Number.isFinite(item.modifiedAt)) {
-                modified.dateTime = new Date(item.modifiedAt).toISOString()
-                modified.textContent = new Date(item.modifiedAt).toLocaleString()
-              }
-              entry.append(modified)
+          } else {
+            const modified = document.createElement('time')
+            modified.className = 'tl-workflow-directory-row-modified'
+            if (Number.isFinite(item.modifiedAt)) {
+              modified.dateTime = new Date(item.modifiedAt).toISOString()
+              modified.textContent = formatModified(item.modifiedAt)
             }
+            entry.append(modified)
           }
           entries.append(entry)
         }
@@ -1728,6 +1903,47 @@
         workflow.offChanged?.()
       }
       content.classList.remove('tl-workflow-directory-host')
+      if (fileHeaderGroup) fileHeaderGroup.remove()
+      panelHeader?.classList.remove('tl-file-companion-header')
+      if (onFileHeaderMenuAction) content.closest('.panel')?.removeEventListener('workflow-files-menu-action', onFileHeaderMenuAction)
+      panelHeader?.classList.remove('tl-workflow-file-header')
+      if (panelTitle && previousPanelTitle !== undefined) panelTitle.textContent = previousPanelTitle
+    }
+  }
+
+  function isLocalWorkflowCompanion(meta, target) {
+    const uiSceneId = meta.sceneId || state.sceneId
+    const directory = target.workflowDirectory === true || (uiSceneId === 'agent-center' && target.sceneId === 'agent-center')
+    return directory && state.sceneId === uiSceneId && typeof app?.workflowFiles === 'function'
+  }
+
+  function mountLocalWorkflowCompanion(meta, content, target, view) {
+    const uiSceneId = meta.sceneId || state.sceneId
+    let mounted = localWorkflowMounts.get(uiSceneId)
+    if (!mounted) {
+      mounted = { refs: 0, workflow: { panes: new Set() } }
+      localWorkflowMounts.set(uiSceneId, mounted)
+    }
+    mounted.refs++
+    const panel = content.closest('.panel')
+    if (panel) panel.dataset.businessRoute = (pathForScene(uiSceneId) || '/').slice(1)
+    content.replaceChildren()
+    content.dataset.fileBridgeView = view
+    content.dataset.fileBridgeReady = 'true'
+    delete content.__businessFileExport
+    delete content.__businessFileFocus
+    const sceneRevision = state.sceneRevision
+    const cleanup = mountWorkflowFiles(mounted.workflow, content, view,
+      () => state.sceneId === uiSceneId && state.sceneRevision === sceneRevision
+        && !state.sceneTransitionPending && !state.tearingDown
+        && (!target.workflowDirectory || Boolean(workflowTemplateRoute(uiSceneId))))
+    return () => {
+      cleanup?.()
+      mounted.refs = Math.max(0, mounted.refs - 1)
+      if (!mounted.refs) localWorkflowMounts.delete(uiSceneId)
+      delete content.dataset.fileBridgeView
+      delete content.dataset.fileBridgeReady
+      content.replaceChildren()
     }
   }
 
@@ -1755,15 +1971,13 @@
     mounted.refs++
     const panel = content.closest('.panel')
     if (panel) panel.dataset.businessRoute = (pathForScene(uiSceneId) || '/').slice(1)
-    const directory = target.workflowDirectory === true || (uiSceneId === 'agent-center' && target.sceneId === 'agent-center')
-    const local = directory && state.sceneId === uiSceneId && typeof app?.workflowFiles === 'function'
-    const business = local ? document.createElement('div') : content
-    if (local) {
-      business.className = 'tl-workflow-directory-business'
-      content.replaceChildren(business)
-    }
-    const cleanupFrame = renderBusinessPanel(meta, business, target.path, { sceneId: target.sceneId, panelId: target.panelId })
-    const frame = business.querySelector('iframe')
+    const panelHeader = panel?.querySelector('.panel-header')
+    const panelTitle = panelHeader?.querySelector('.panel-title')
+    const previousPanelTitle = panelTitle?.textContent
+    panelHeader?.classList.add('tl-file-companion-header')
+    if (view === 'files' && panelTitle) panelTitle.textContent = '素材管理'
+    const cleanupFrame = renderBusinessPanel(meta, content, target.path, { sceneId: target.sceneId, panelId: target.panelId })
+    const frame = content.querySelector('iframe')
     if (frame) {
       frame.dataset.tradeloomPanelId = target.panelId
       frame.dataset.tradeloomBusinessSceneId = target.sceneId
@@ -1774,13 +1988,12 @@
     content.dataset.fileBridgeReady = 'true'
     content.__businessFileExport = mounted.handler.requestFileExport
     content.__businessFileFocus = mounted.handler.requestFileFocus
-    if (local && !mounted.workflow) mounted.workflow = { panes: new Set() }
-    const sceneRevision = state.sceneRevision
-    const cleanupWorkflow = local ? mountWorkflowFiles(mounted.workflow, content, view, business,
-      () => state.sceneId === uiSceneId && state.sceneRevision === sceneRevision
-        && !state.sceneTransitionPending && !state.tearingDown
-        && (!target.workflowDirectory || Boolean(workflowTemplateRoute(uiSceneId)))) : undefined
-    return () => { cleanupWorkflow?.(); cleanupFrame?.(); releaseFileCompanion(uiSceneId, mounted, content) }
+    return () => {
+      cleanupFrame?.()
+      panelHeader?.classList.remove('tl-file-companion-header')
+      if (panelTitle && previousPanelTitle !== undefined) panelTitle.textContent = previousPanelTitle
+      releaseFileCompanion(uiSceneId, mounted, content)
+    }
   }
 
   function renderCompanion(meta, content, view) {
@@ -1808,6 +2021,7 @@
       stateNode(content, view === 'files' ? '文件服务尚未映射到当前桌面配置。' : '预览服务尚未映射到当前桌面配置。', 'error')
       return () => content.replaceChildren()
     }
+    if (isLocalWorkflowCompanion(meta, target)) return mountLocalWorkflowCompanion(meta, content, target, view)
     if (window.TradeLoomBusinessFileBridge?.create) {
       return mountFileCompanion(meta, content, target, view)
     }

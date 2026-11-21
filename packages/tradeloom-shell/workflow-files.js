@@ -121,7 +121,7 @@ function createWorkflowFiles() {
     await assertOwner()
     const operation = request?.operation
     const hasEntry = ['enter', 'preview', 'download', 'open', 'reveal'].includes(operation)
-    if (!['pick', 'current', 'revoke', 'up', 'enter', 'preview', 'download', 'open', 'reveal'].includes(operation)
+    if (!['pick', 'current', 'revoke', 'up', 'enter', 'preview', 'download', 'open', 'reveal', 'open-directory'].includes(operation)
       || Object.keys(request).sort().join(',') !== (hasEntry ? 'id,operation' : 'operation')
       || hasEntry && (typeof request.id !== 'string' || !uuid.test(request.id))) throw reject()
     if (operation === 'revoke') {
@@ -159,6 +159,16 @@ function createWorkflowFiles() {
       }
       const grant = record.grant, current = record.stack?.at(-1)
       if (!grant || !current) throw reject()
+      if (operation === 'open-directory') {
+        const info = await verify(grant, current.target, current.identity)
+        if (!info.isDirectory()) throw reject()
+        const resolved = { path: current.target, identity: {
+          dev: String(info.dev), ino: String(info.ino), size: String(info.size),
+          mtimeNs: String(info.mtimeNs), birthtimeNs: String(info.birthtimeNs),
+        } }
+        await fresh(owner, record, assertOwner)
+        return resolved
+      }
       if (operation === 'up') {
         const parent = record.stack.at(-2)
         if (!parent) throw reject()

@@ -199,6 +199,56 @@
   transform: translateY(0);
 }
 
+.panel-header:has(.workflow-header-actions) .pi-component-tabs {
+  flex: 0 1 auto;
+}
+
+.panel-header:has(.workflow-header-actions) > .panel-controls { margin-inline-start: auto; }
+
+.workflow-header-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  margin-inline-start: 4px;
+}
+
+.workflow-header-actions[hidden] {
+  display: none;
+}
+
+.workflow-header-actions button {
+  flex: none;
+  min-height: 24px;
+  border: 1px solid var(--line-2);
+  border-radius: 4px;
+  padding: 2px 7px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: .9em;
+  line-height: 1.25;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.workflow-header-actions .workflow-header-start {
+  color: var(--state-success-primary, var(--text));
+}
+
+.workflow-header-actions button:disabled {
+  color: var(--text-dim, var(--text));
+  border-color: var(--line-2);
+  background: transparent;
+  opacity: 1;
+  cursor: default;
+}
+
+.workflow-header-actions button:focus-visible {
+  outline: 2px solid var(--focus-edge, var(--accent));
+  outline-offset: 2px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .pi-toast {
     transition-duration: 0.01ms;

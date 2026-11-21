@@ -2044,7 +2044,7 @@ window.__ModuleLoader__.load({
       return workflowRequest
     }
 
-    function WorkflowCanvasPane({ refreshRequest } = {}) {
+    function WorkflowCanvasPane({ refreshRequest, nativeToolbar = false } = {}) {
       const modelGroups = useRoleModelGroups('center')
       const [revision, setRevision] = React.useState(0)
       const [module, setModule] = React.useState({ status: 'loading', Component: null })
@@ -2064,7 +2064,7 @@ window.__ModuleLoader__.load({
       return h('div', { className: 'tl-workflow-canvas-pane', 'data-workflow-canvas': 'true' },
         modelGroups.length ? null : h('p', { className: 'tl-workflow-model-hint', role: 'status' },
           '中心助手尚无可用模型目录；请选择已连接的中心助手模型，不会自动创建会话。'),
-        h(module.Component, { modelGroups, refreshRequest }))
+        h(module.Component, { modelGroups, refreshRequest, nativeToolbar }))
     }
 
     function BusinessPaneTabs({ panel, path, proposalHref, refreshKey, sceneId, viewIntent, fitContainer = false }) {

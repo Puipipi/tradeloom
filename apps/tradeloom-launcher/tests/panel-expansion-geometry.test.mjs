@@ -199,8 +199,23 @@ test('overview assistant defaults closed while saved trees and explicit reopen s
   }
   const workflowTree = tree(workflowInfo, new Set(['workflow-main', 'files', 'preview', 'workflow-chat']))
   assert.equal(workflowTree.axis, 'y')
-  assert.equal(workflowTree.ratio, .5)
-  assert.equal(workflowTree.first.id, 'workflow-main')
+  assert.equal(workflowTree.boundary, 3, 'the vertical resize boundary remains on the four-track grid')
+  assert.equal(workflowTree.ratio, .65, 'the workflow row occupies about two thirds of the scene')
+  assert.equal(workflowTree.first.axis, 'x')
+  assert.equal(workflowTree.first.ratio, .75, 'the canvas and files share the top row at 75/25')
+  assert.equal(workflowTree.first.first.id, 'workflow-main')
+  assert.equal(workflowTree.first.second.id, 'files')
+  assert.equal(workflowTree.second.axis, 'x')
+  assert.equal(workflowTree.second.ratio, .5, 'preview and assistant share the lower row equally')
   assert.equal(workflowTree.second.first.id, 'preview')
-  assert.equal(workflowTree.second.second.first.id, 'workflow-chat')
+  assert.equal(workflowTree.second.second.id, 'workflow-chat')
+  const treeRects = loadFunction(functionSource(interactions,
+    'function treeRects(node, rect, gaps, output = new Map()) {', 'function gridContentBounds(grid)'))
+  const rects = treeRects(workflowTree, { left: 0, top: 0, width: 1000, height: 1000, right: 1000, bottom: 1000 }, { x: 0, y: 0 })
+  assert.deepEqual(Array.from(rects, ([id, rect]) => [id, rect.left, rect.top, rect.width, rect.height]), [
+    ['workflow-main', 0, 0, 750, 650], ['files', 750, 0, 250, 650],
+    ['preview', 0, 650, 500, 350], ['workflow-chat', 500, 650, 500, 350],
+  ], 'the headless renderer places the four visible panels at the requested ratios')
+  assert.equal(tree(workflowInfo, new Set(['workflow-plan', 'workflow-main', 'files', 'preview', 'workflow-chat'])), null,
+    'reopening the retained plan panel returns to the full, non-overlapping template layout')
 })

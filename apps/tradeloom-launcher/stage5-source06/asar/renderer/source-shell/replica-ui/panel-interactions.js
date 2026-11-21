@@ -387,13 +387,14 @@
     }
     if (info.sceneId !== 'agent-center' || !defaultClosedPanelIds(info).includes('workflow-plan') || visible.has('workflow-plan')) return null
     const geometry = {
-      'workflow-plan': [4, 1, 1, 2], 'workflow-main': [1, 1, 3, 2], files: [4, 3, 1, 2],
-      preview: [1, 3, 1, 2], 'workflow-chat': [2, 3, 2, 2],
+      'workflow-plan': [3, 1, 1, 3], 'workflow-main': [1, 1, 2, 3], files: [4, 1, 1, 3],
+      preview: [1, 4, 2, 1], 'workflow-chat': [3, 4, 2, 1],
     }
     if (info.geometry.length !== Object.keys(geometry).length || !info.geometry.every(panel =>
       geometry[panel.id]?.every((value, index) => value === [panel.col, panel.row, panel.w, panel.h][index]))) return null
-    return split('y', 3, .5, leaf('workflow-main'),
-      split('x', 1, .25, leaf('preview'), split('x', 3, 2 / 3, leaf('workflow-chat'), leaf('files'))))
+    return split('y', 3, .65,
+      split('x', 3, .75, leaf('workflow-main'), leaf('files')),
+      split('x', 2, .5, leaf('preview'), leaf('workflow-chat')))
   }
 
   function activePanelSlots(info) {
@@ -686,6 +687,12 @@
       else announce(explanation)
       return
     }
+    if (label === '重新读取目录' || label === '关闭目录') {
+      ownerPanel?.dispatchEvent(new CustomEvent('workflow-files-menu-action', {
+        detail: { action: label === '重新读取目录' ? 'reload' : 'close' },
+      }))
+      return
+    }
     if (label === '关闭面板') {
       closePanel(ownerPanel)
       return
@@ -750,6 +757,12 @@
         .map(([label, explanation]) => ({ label, explanation }))
       : []
     if (panel?.classList.contains('panel-chat')) entries.unshift({ label: '添加助手', explanation: '在当前助手区域打开另一个已绑定助手。' })
+    if (panel?.querySelector('.tl-workflow-directory[data-directory-view="files"]')) {
+      entries.unshift(
+        { label: '重新读取目录', explanation: '重新读取当前已授权目录。' },
+        { label: '关闭目录', explanation: '关闭当前目录并撤销本次授权。' },
+      )
+    }
     const panelGrid = panel?.closest?.('#grid') ?? (point ? document.getElementById('grid') : null)
     const sceneKey = panel ? sceneKeyFor(panel) : (panelGrid ? sceneGridInfo(panelGrid)?.sceneId : '')
     entries.push(...restoreEntries(sceneKey, panelGrid, panel?.dataset?.panelId))

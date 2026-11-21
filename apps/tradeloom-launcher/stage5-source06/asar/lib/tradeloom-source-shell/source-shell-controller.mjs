@@ -290,7 +290,7 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
   const notifyGuest = item => { clearGeometryMotion(item);item.generation=++generation; item.status=item.loaded?'document-loaded':'loading';const next=descriptor(item);if(next.kind==='role')onNativeDescriptorChanged(item.view.webContents,next); try { item.view.webContents.send('dsh-desktop:native-surface-changed',next) } catch(error) { item.status='context-update-failed'; console.error('source shell: guest notification failed',error) } }
   const observedOperations = Object.freeze({
     create:'role-create',status:'role-status',bounds:'role-bounds',visible:'role-visibility',
-    workflowCanvasMount:'workflow-create',workflowCanvasStatus:'workflow-status',workflowCanvasBounds:'workflow-bounds',workflowCanvasVisible:'workflow-visibility',
+    workflowCanvasMount:'workflow-create',workflowCanvasStatus:'workflow-status',workflowCanvasBounds:'workflow-bounds',workflowCanvasVisible:'workflow-visibility',workflowCanvasToolbarState:'workflow-toolbar-state',workflowCanvasToolbarAction:'workflow-toolbar-action',
     erpNextStatusMount:'erpnext-create',erpNextStatusStatus:'erpnext-status',erpNextStatusBounds:'erpnext-bounds',erpNextStatusVisible:'erpnext-visibility',
     accountSidebarToggle:'sidebar-open',accountSidebarSet:'sidebar-open',accountSidebarStatus:'sidebar-status',accountSidebarWidth:'sidebar-width',accountSidebarSetWidth:'sidebar-width',themePreference:'theme-preference',
     sceneRotationPreview:'scene-rotation-preview',sceneRotationConfirm:'scene-rotation-confirm',sceneRotationStatus:'scene-rotation-status',sceneRotationResume:'scene-rotation-resume',sceneRotationCancel:'scene-rotation-cancel',sceneRotationAbandon:'scene-rotation-abandon',
@@ -582,17 +582,9 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
   // Overlay the complete account document, preserving its session and native layout.
   const applyAccountOverlayBounds = item => {
     const b=item.parent.getContentBounds(),top=Math.min(Math.round(sourceCaptionHeightDip(item.parent)),Math.max(0,Math.floor(b.height)))
-    const available={width:Math.max(0,Math.floor(b.width)),height:Math.max(0,Math.floor(b.height-top))},z=item.view.webContents.getZoomFactor()
-    // Presentation is transient and independent of accountOverlay.rect (the saved dock layout).
-    const desired=accountOverlay?.item===item?accountOverlay.presentationRect:undefined
-    const rect={x:0,y:top,width:Math.min(available.width,Math.max(Math.min(available.width,Math.ceil(664*z)),Math.round(desired?.width??available.width))),height:Math.min(available.height,Math.max(Math.min(available.height,Math.ceil(240*z)),Math.round(desired?.height??available.height)))}
+    const available={width:Math.max(0,Math.floor(b.width)),height:Math.max(0,Math.floor(b.height-top))}
+    const rect={x:0,y:top,width:available.width,height:available.height}
     item.view.setBounds(rect);raiseAccountOverlay(item.parent);return rect
-  }
-  const accountOverlayBoundsValue = () => {
-    const item=accountOverlay.item,rect=item.view.getBounds(),b=item.parent.getContentBounds(),z=item.view.webContents.getZoomFactor()
-    const maxWidth=Math.max(0,Math.floor(b.width))/z,maxHeight=Math.max(0,Math.floor(b.height-rect.y))/z
-    return {requestId:accountOverlayRequest.requestId,generation:item.generation,width:rect.width/z,height:rect.height/z,
-      minWidth:Math.min(maxWidth,Math.ceil(664*z)/z),minHeight:Math.min(maxHeight,Math.ceil(240*z)/z),maxWidth,maxHeight}
   }
   const publishAccountOverlayRequest = () => {
     const item=account, contents=item?.view.webContents, frame=contents?.mainFrame
@@ -794,7 +786,7 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
   async function workflowFileRequest(event, request) {
     const operation = request?.operation
     const hasEntry = ['enter', 'preview', 'download', 'open', 'reveal'].includes(operation)
-    if (!['current', 'pick', 'up', 'enter', 'preview', 'download', 'open', 'reveal', 'revoke'].includes(operation)
+    if (!['current', 'pick', 'up', 'enter', 'preview', 'download', 'open', 'reveal', 'open-directory', 'revoke'].includes(operation)
       || !exactKeys(request, hasEntry ? ['id', 'operation'] : ['operation'])
       || hasEntry && (typeof request.id !== 'string' || !/^[0-9a-f-]{36}$/.test(request.id))) {
       throw Error('invalid workflow files request')
@@ -831,7 +823,7 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
     }
     const result = await requestWorkflowFiles(input)
     assertOwner()
-    if (operation === 'open' || operation === 'reveal') {
+    if (operation === 'open' || operation === 'reveal' || operation === 'open-directory') {
       const authorize = async () => {
         assertOwner()
         const current = await resolveBinding(target)
@@ -851,12 +843,18 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
   const componentDockOwner = item => item?.componentKey==='workflow-canvas-native' ? windows.get(item.sceneId) ?? main : main
   const componentForKey = componentKey => componentKey==='workflow-canvas-native'?sceneComponent:componentKey==='erpnext-status-native'?erpNextStatusComponent:undefined
   const componentPlacement = item => item && componentPopouts.get(item.componentKey)===item.parent?'popped-out':'docked'
-  const componentStatusValue = item => ({status:item?.status ?? 'unavailable',visible:item?.visible===true,placement:componentPlacement(item),componentKey:item?.componentKey,sceneId:item?.sceneId,panelId:item?.panelId})
+  const workflowToolbarDocked = item => item?.componentKey==='workflow-canvas-native' && item===sceneComponent
+    && item.parent===workflowDockOwner() && componentPlacement(item)==='docked' && item.visible===true
+    && item.status==='context-mounted' && !hasNativeModal(item.parent)
+  const componentStatusValue = item => ({status:item?.status ?? 'unavailable',visible:item?.visible===true,placement:componentPlacement(item),componentKey:item?.componentKey,sceneId:item?.sceneId,panelId:item?.panelId,...(item?.componentKey==='workflow-canvas-native'?{toolbar:{canStart:item.toolbar?.canStart===true,canRefresh:item.toolbar?.canRefresh===true}}:{})})
   const notifySceneComponent = item => {
     const dockOwner=componentDockOwner(item)
     if(closed || !dockOwner || dockOwner.isDestroyed())return
     const channel=item.componentKey==='workflow-canvas-native'?'source-shell:workflow-canvas-status':'source-shell:erpnext-status-event'
     try{dockOwner.webContents.send(channel,componentStatusValue(item))}catch{}
+    if(item===sceneComponent && item.componentKey==='workflow-canvas-native' && item.view && !item.view.webContents.isDestroyed()) {
+      try{item.view.webContents.send('source-shell:workflow-canvas-toolbar-dock-state',{descriptor:descriptor(item),available:workflowToolbarDocked(item)})}catch{}
+    }
   }
   const applySceneComponentBounds = (item,rect) => {
     if(!rect || !['x','y','width','height'].every(key=>Number.isFinite(rect[key])) || rect.width<0 || rect.height<0)throw Error('invalid scene component bounds')
@@ -1003,6 +1001,20 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
           || JSON.stringify(descriptor(pending.item)) !== JSON.stringify(pending.expected)) throw Error('stale draft save result')
         pending.resolve(value.saved)
         return { accepted: true }
+      })
+      bind('workflowCanvasToolbarState', (event, value) => {
+        const item=sceneComponent,guest=controller.resolveGuest(event.sender,event.senderFrame)
+        const route=workflowCanvasRoute(),expected=item&&descriptor(item)
+        if(!value || Object.keys(value).sort().join(',')!=='canRefresh,canStart,descriptor'
+          || typeof value.canStart!=='boolean' || typeof value.canRefresh!=='boolean'
+          || !item || item!==sceneComponent || item.componentKey!=='workflow-canvas-native'
+          || item.sceneId!==route.sceneId || item.panelId!==route.panelId
+          || guest?.scope!=='scene-component' || guest.view!==item.view || guest.componentKey!==item.componentKey
+          || event.sender!==item.view.webContents || event.senderFrame!==event.sender.mainFrame
+          || JSON.stringify(value.descriptor)!==JSON.stringify(expected)) throw Error('stale workflow canvas toolbar state')
+        item.toolbar={canStart:value.canStart,canRefresh:value.canRefresh}
+        notifySceneComponent(item)
+        return {accepted:true,available:workflowToolbarDocked(item)}
       })
       const configurationOwner = event => {
         const window = assertWindow(event), frame = event.senderFrame
@@ -1225,6 +1237,17 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
       bind('workflowCanvasStatus',event=>{
         if(assertWindow(event)!==workflowDockOwner())throw Error('workflow canvas owner rejected')
         return sceneComponent?componentStatusValue(sceneComponent):{status:'unavailable',visible:false}
+      })
+      bind('workflowCanvasToolbarAction',(event,action)=>{
+        const dockOwner=workflowDockOwner(),item=sceneComponent,route=workflowCanvasRoute()
+        if(assertWindow(event)!==dockOwner || !['start','refresh'].includes(action) || !item || item!==sceneComponent
+          || item.componentKey!=='workflow-canvas-native' || item.sceneId!==route.sceneId || item.panelId!==route.panelId
+          || !workflowToolbarDocked(item) || hasNativeModal(dockOwner)
+          || item.toolbar?.[action==='start'?'canStart':'canRefresh']!==true || item.view.webContents.isDestroyed()) throw Error('workflow canvas toolbar action rejected')
+        const owned=controller.resolveGuest(item.view.webContents,item.view.webContents.mainFrame)
+        if(owned?.scope!=='scene-component' || owned.view!==item.view || owned.window!==dockOwner) throw Error('workflow canvas guest rejected')
+        item.view.webContents.send('source-shell:workflow-canvas-toolbar-action',{action,descriptor:descriptor(item)})
+        return {delivered:true}
       })
       bind('erpNextStatusMount',async event=>{
         if(assertWindow(event)!==main)throw Error('ERPNext status owner rejected')
@@ -1637,24 +1660,6 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
     },
     nativeMounted(contents,frame,ack) { const current=this.nativeDescriptor(contents,frame); if(!current || !ack || Object.keys(current).some(k=>ack[k]!==current[k]) || Object.keys(ack).length!==Object.keys(current).length) throw Error('source shell: rejected mounted acknowledgement'); if(current.kind==='account'){account.status='context-mounted';notifyAccount(account)}else if(current.kind==='scene-component'&&current.componentKey==='workflow-canvas-native'){sceneComponent.status='context-mounted';notifySceneComponent(sceneComponent)}else if(current.kind==='scene-component'&&current.componentKey==='erpnext-status-native'){erpNextStatusComponent.status='context-mounted';notifySceneComponent(erpNextStatusComponent)}else if(current.kind==='role'){const item=[...views.values()].find(value=>value.view.webContents===contents);if(item)emit(item,'context-mounted')} return undefined },
     accountSidebarCommand(contents,frame,request) {
-      if(['get-workbench-pair-bounds','resize-workbench-pair','restore-workbench-pair-bounds'].includes(request?.action)){
-        const resizing=request.action==='resize-workbench-pair'
-        if(!exactKeys(request,resizing?['action','requestId','generation','width','height']:['action','requestId','generation'])
-          || !Number.isSafeInteger(request.requestId) || !Number.isSafeInteger(request.generation)
-          || (resizing && (!Number.isFinite(request.width) || !Number.isFinite(request.height) || request.width<=0 || request.height<=0)))throw Error('invalid account overlay bounds request')
-        const pending=accountOverlayRequest,current=this.nativeDescriptor(contents,frame)
-        if(!pending || current?.kind!=='account' || current.businessNavigation!=='shell'
-          || pending.item!==account || pending.contents!==contents || pending.frame!==frame || contents.mainFrame!==frame
-          || pending.generation!==current.generation || pending.generation!==request.generation || pending.requestId!==request.requestId
-          || accountOverlay?.item!==account || !accountSidebarOpen || accountGlobalPanel || account.status!=='context-mounted'
-          || account.parent!==main || account.placement!=='docked')throw Error('stale account overlay bounds request')
-        const z=contents.getZoomFactor()
-        if(!Number.isFinite(z) || z<=0)throw Error('invalid account overlay zoom')
-        if(resizing){const limits=accountOverlayBoundsValue();accountOverlay.presentationRect={width:Math.min(limits.maxWidth,Math.max(limits.minWidth,request.width))*z,height:Math.min(limits.maxHeight,Math.max(limits.minHeight,request.height))*z}}
-        else if(request.action==='restore-workbench-pair-bounds')accountOverlay.presentationRect=undefined
-        if(resizing || request.action==='restore-workbench-pair-bounds')applyAccountOverlayBounds(account)
-        return accountOverlayBoundsValue()
-      }
       if(request?.action==='collapse-workbench-pair'){
         if(!exactKeys(request,['action','requestId','generation']) || !Number.isSafeInteger(request.requestId) || !Number.isSafeInteger(request.generation))throw Error('invalid account overlay request')
         const pending=accountOverlayRequest, current=this.nativeDescriptor(contents,frame)

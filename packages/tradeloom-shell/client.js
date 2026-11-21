@@ -1318,7 +1318,9 @@ window.__ModuleLoader__.load({
           .tl-workflow-canvas-pane { display:flex; flex:1 1 0; flex-direction:column; min-width:0; min-height:0; overflow:hidden; }
           .tl-workflow-canvas-pane>.tl-wf { flex:1 1 0; min-height:0; }
           .tl-workflow-model-hint { flex:0 0 auto; margin:0; padding:var(--tl-space-1) var(--tl-space-2); color:var(--tl-theme-muted); font-size:var(--tl-font-compact); border-bottom:1px solid var(--tl-theme-border); }
-        `), h(sceneApi.WorkflowCanvasPane))
+        `), h(sceneApi.WorkflowCanvasPane, { nativeToolbar: typeof window.dshDesktop?.workflowCanvasToolbarState === 'function'
+          && typeof window.dshDesktop?.onWorkflowCanvasToolbarActionRequested === 'function'
+          && typeof window.dshDesktop?.onWorkflowCanvasToolbarDockStateChanged === 'function' }))
     }
 
     function ShellToolsMenu(props = {}) {
@@ -2841,6 +2843,35 @@ window.__ModuleLoader__.load({
       }
     }
 
+    function registerSourceAccountSidebarCollapse(ctx, descriptor, bridge) {
+      if (descriptor?.kind !== 'account' || descriptor.businessNavigation !== 'shell'
+        || typeof bridge.nativeAccountOverlayState !== 'function' || typeof bridge.onNativeAccountOverlayState !== 'function'
+        || typeof bridge.accountSidebarCommand !== 'function') return
+      return ctx.effect(() => {
+        let live = true, state, revision = -1, consumedRevision = -1
+        const receive = value => {
+          if (!live || !value || Object.keys(value).sort().join(',') !== 'eligible,generation,requestId'
+            || value.generation !== descriptor.generation || !Number.isSafeInteger(value.requestId)
+            || value.requestId < revision || typeof value.eligible !== 'boolean') return
+          revision = value.requestId; state = { ...value }
+        }
+        const stop = bridge.onNativeAccountOverlayState(receive)
+        void bridge.nativeAccountOverlayState().then(receive).catch(() => {})
+        const dispose = ctx.reflect.provide('workbenchSidebarCollapse', Object.freeze({
+          collapse() {
+            if (live && state && state.requestId === consumedRevision) return true
+            if (!live || state?.eligible !== true) return false
+            const request = { action:'collapse-workbench-pair',requestId:state.requestId,generation:descriptor.generation }
+            state = { ...state, eligible:false }
+            consumedRevision = request.requestId
+            void bridge.accountSidebarCommand(request).catch(() => { console.warn('TradeLoom account overlay close rejected') })
+            return true
+          },
+        }))
+        return () => { live = false; state = undefined; stop(); void dispose() }
+      }, 'source-account-sidebar-collapse')
+    }
+
     function registerSourceAccountRootMounted(ctx, descriptor, bridge) {
       if (descriptor?.kind !== 'account') return
       const expected = { ...descriptor }, keys = Object.keys(expected)
@@ -2865,172 +2896,6 @@ window.__ModuleLoader__.load({
         }
         const dispose = ctx.slots.register({ name: 'shell.overlay', id: 'tradeloom-account-root-mounted' }, SourceAccountRootMounted)
         return () => { registered = false; dispose() }
-      })
-    }
-
-    function registerSourceAccountSidebarCollapse(ctx, descriptor, bridge) {
-      if (descriptor?.kind !== 'account' || descriptor.businessNavigation !== 'shell'
-        || typeof bridge.nativeAccountOverlayState !== 'function' || typeof bridge.onNativeAccountOverlayState !== 'function'
-        || typeof bridge.accountSidebarCommand !== 'function') return
-      return ctx.effect(() => {
-        let live = true, state, revision = -1, consumedRevision = -1
-        const receive = value => {
-          if (!live || !value || Object.keys(value).sort().join(',') !== 'eligible,generation,requestId'
-            || value.generation !== descriptor.generation || !Number.isSafeInteger(value.requestId)
-            || value.requestId < revision || typeof value.eligible !== 'boolean') return
-          revision = value.requestId; state = { ...value }
-        }
-        const stop = bridge.onNativeAccountOverlayState(receive)
-        void bridge.nativeAccountOverlayState().then(receive).catch(() => {})
-        const dispose = ctx.reflect.provide('workbenchSidebarCollapse', Object.freeze({
-          collapse() {
-            if (live && state && state.requestId === consumedRevision) return true
-            if (!live || state?.eligible !== true) return false
-            const request = { action:'collapse-workbench-pair',requestId:state.requestId,generation:descriptor.generation }
-            // A consumed request never falls back to SDK toggling after Host rejection.
-            state = { ...state, eligible:false }
-            consumedRevision = request.requestId
-            void bridge.accountSidebarCommand(request).catch(() => { console.warn('TradeLoom account overlay close rejected') })
-            return true
-          },
-        }))
-        return () => { live = false; state = undefined; stop(); void dispose() }
-      }, 'source-account-sidebar-collapse')
-    }
-
-    // One account-overlay interaction, not a general panel/layout controller.
-    function createSourceAccountPairResize(bridge, descriptor, onChange, host = window) {
-      let live = true, request, layout, revision = -1, sequence = 0, drag, raf, pendingPoint
-      const same = value => live && request?.eligible === true && value?.requestId === request.requestId && value.generation === request.generation
-      const emit = error => { if (live) onChange({ request, layout, error }) }
-      const validBounds = (value, expected) => value && Object.keys(value).sort().join(',') === 'generation,height,maxHeight,maxWidth,minHeight,minWidth,requestId,width'
-        && value.requestId === expected.requestId && value.generation === expected.generation
-        && ['width','height','minWidth','minHeight','maxWidth','maxHeight'].every(key => Number.isFinite(value[key]) && value[key] >= 0)
-        && value.minWidth <= value.width && value.width <= value.maxWidth && value.minHeight <= value.height && value.height <= value.maxHeight
-      const issue = async (action, dimensions) => {
-        if (!same(request)) return
-        const expected = { ...request }, ticket = ++sequence
-        try {
-          const value = await bridge.accountSidebarCommand({ action, requestId:expected.requestId, generation:expected.generation, ...dimensions })
-          if (!same(expected) || ticket !== sequence) return
-          if (!validBounds(value, expected)) throw Error('invalid account pair size')
-          layout = { ...value }; emit()
-          return value
-        } catch { if (same(expected) && ticket === sequence) emit('尺寸调整暂不可用，请重试。') }
-      }
-      const resize = (width, height) => {
-        if (!layout || !Number.isFinite(width) || !Number.isFinite(height)) return
-        return issue('resize-workbench-pair', { width:Math.max(layout.minWidth,Math.min(layout.maxWidth,width)), height:Math.max(layout.minHeight,Math.min(layout.maxHeight,height)) })
-      }
-      const removePointer = () => {
-        host.removeEventListener('pointermove', move); host.removeEventListener('pointerup', end)
-        host.removeEventListener('pointercancel', cancelEvent); host.removeEventListener('blur', cancelEvent)
-        if (raf !== undefined) host.cancelAnimationFrame(raf)
-        raf = undefined; pendingPoint = undefined
-      }
-      const release = current => { try { if (current?.target.hasPointerCapture?.(current.pointerId)) current.target.releasePointerCapture(current.pointerId) } catch {} }
-      const applyPoint = point => { if (drag && point && same(drag.request)) void resize(drag.width+point.x-drag.x,drag.height+point.y-drag.y) }
-      function move(event) {
-        if (!drag || event.pointerId !== drag.pointerId || !Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) return
-        pendingPoint={x:event.clientX,y:event.clientY}
-        if (raf !== undefined) return
-        raf=host.requestAnimationFrame(() => { raf=undefined;const point=pendingPoint;pendingPoint=undefined;applyPoint(point) })
-      }
-      function end(event) {
-        if (!drag || event.pointerId !== drag.pointerId) return
-        if (Number.isFinite(event.clientX) && Number.isFinite(event.clientY)) applyPoint({x:event.clientX,y:event.clientY})
-        const current=drag;drag=undefined;removePointer();release(current)
-      }
-      function cancel(restore) {
-        const current=drag;drag=undefined;removePointer();release(current)
-        if (restore && current && same(current.request)) void resize(current.width,current.height)
-      }
-      function cancelEvent() { cancel(true) }
-      const receive = value => {
-        if (!live || !value || Object.keys(value).sort().join(',') !== 'eligible,generation,requestId'
-          || value.generation !== descriptor.generation || !Number.isSafeInteger(value.requestId) || value.requestId < 0
-          || value.requestId < revision || typeof value.eligible !== 'boolean') return
-        if (value.requestId !== revision || !value.eligible) { cancel(false); sequence++; layout=undefined }
-        revision=value.requestId;request={...value};emit()
-        if (value.eligible) void issue('get-workbench-pair-bounds')
-      }
-      const stop=bridge.onNativeAccountOverlayState(receive)
-      void bridge.nativeAccountOverlayState().then(receive).catch(() => {})
-      const onViewportResize=()=>{ if (request?.eligible) void issue('get-workbench-pair-bounds') }
-      host.addEventListener('resize',onViewportResize)
-      return {
-        begin(event) {
-          if (!live || drag || !layout || !same(request) || event.button !== 0 || event.isPrimary === false) return
-          try { event.currentTarget.setPointerCapture(event.pointerId) } catch { return }
-          event.preventDefault();event.stopPropagation()
-          drag={pointerId:event.pointerId,target:event.currentTarget,x:event.clientX,y:event.clientY,width:layout.width,height:layout.height,request:{...request}}
-          host.addEventListener('pointermove',move);host.addEventListener('pointerup',end)
-          host.addEventListener('pointercancel',cancelEvent);host.addEventListener('blur',cancelEvent)
-        },
-        lostCapture(event) { if (drag?.pointerId === event.pointerId) cancel(true) },
-        key(event) {
-          if (!layout || drag || !['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home'].includes(event.key)) return
-          event.preventDefault();event.stopPropagation()
-          if (event.key === 'Home') void issue('restore-workbench-pair-bounds')
-          else void resize(layout.width+(event.key==='ArrowRight'?16:event.key==='ArrowLeft'?-16:0),layout.height+(event.key==='ArrowDown'?16:event.key==='ArrowUp'?-16:0))
-        },
-        restore() { cancel(false);void issue('restore-workbench-pair-bounds') },
-        dispose() { if (!live) return;live=false;sequence++;cancel(false);stop();host.removeEventListener('resize',onViewportResize) },
-      }
-    }
-
-    function registerSourceAccountOverlayResize(ctx, descriptor, bridge) {
-      if (descriptor?.kind !== 'account' || descriptor.businessNavigation !== 'shell'
-        || typeof bridge.nativeAccountOverlayState !== 'function' || typeof bridge.onNativeAccountOverlayState !== 'function'
-        || typeof bridge.accountSidebarCommand !== 'function') return
-      return ctx.slots.inject('shell.overlay', () => {
-        function SourceAccountOverlayResize() {
-          const [view,setView]=React.useState(), toolbar=React.useRef(), interaction=React.useRef()
-          React.useEffect(() => {
-            const control=createSourceAccountPairResize(bridge,descriptor,setView)
-            interaction.current=control
-            return () => { interaction.current=undefined;control.dispose() }
-          }, [])
-          React.useLayoutEffect(() => {
-            const node=toolbar.current, request=view?.request
-            if (!node || !request?.eligible || !view.layout) return
-            const seat=node.closest('[data-shell-overlay]'),frame=seat?.parentElement
-            if (!seat?.contains(node) || !frame || frame.ownerDocument !== node.ownerDocument) return
-            const owner=`${request.generation}:${request.requestId}`
-            const oldValue=frame.style.getPropertyValue('padding-bottom'),oldPriority=frame.style.getPropertyPriority('padding-bottom')
-            const previousOwner=frame.getAttribute('data-tradeloom-account-resize-owner')
-            const padding=parseFloat(getComputedStyle(frame).paddingBottom),height=node.getBoundingClientRect().height
-            if (!Number.isFinite(padding) || !Number.isFinite(height) || height<=0) return
-            const assigned=`${padding+height}px`
-            frame.setAttribute('data-tradeloom-account-resize-owner',owner)
-            frame.style.setProperty('padding-bottom',assigned)
-            const storedValue=frame.style.getPropertyValue('padding-bottom'),storedPriority=frame.style.getPropertyPriority('padding-bottom')
-            return () => {
-              if (frame.getAttribute('data-tradeloom-account-resize-owner')!==owner) return
-              if (frame.style.getPropertyValue('padding-bottom')===storedValue && frame.style.getPropertyPriority('padding-bottom')===storedPriority) {
-                if (oldValue) frame.style.setProperty('padding-bottom',oldValue,oldPriority)
-                else frame.style.removeProperty('padding-bottom')
-              }
-              if (previousOwner===null) frame.removeAttribute('data-tradeloom-account-resize-owner')
-              else frame.setAttribute('data-tradeloom-account-resize-owner',previousOwner)
-            }
-          }, [view?.request?.requestId,view?.request?.eligible,view?.layout?.width,view?.layout?.height])
-          if (!view?.request?.eligible || (!view.layout && !view.error)) return null
-          const controlStyle={font:'inherit',lineHeight:'inherit',color:'inherit',background:'var(--dsw-alias-bg-base)',border:'1px solid var(--dsw-alias-border-l3)',borderRadius:'var(--dsw-radius-sm)',padding:'0.1em 0.5em',cursor:'pointer'}
-          return h(React.Fragment,null,
-            h('style',null,`
-              .tl-account-pair-glow { position:fixed; inset:0; z-index:2; pointer-events:none; box-sizing:border-box; box-shadow:inset 0 0 0 1px var(--tl-theme-accent),inset 0 0 20px var(--tl-theme-accent-soft); animation:tlAccountPairGlow 2.8s ease-in-out infinite; }
-              @keyframes tlAccountPairGlow { 0%,100% { box-shadow:inset 0 0 0 1px var(--tl-theme-accent),inset 0 0 20px var(--tl-theme-accent-soft); } 50% { box-shadow:inset 0 0 0 1px var(--tl-theme-teal),inset 0 0 38px var(--tl-theme-accent-soft); } }
-              @media(prefers-reduced-motion:reduce) { .tl-account-pair-glow { animation:none; } }
-            `),
-            h('div',{className:'tl-account-pair-glow','aria-hidden':true}),
-            h('div',{ref:toolbar,role:'group','aria-label':'侧栏与会话大小',style:{position:'fixed',left:0,right:0,bottom:0,zIndex:1,display:'flex',justifyContent:'center',alignItems:'center',gap:'0.5em',padding:'0.15em 0.5em',boxSizing:'border-box',color:'var(--dsw-alias-label-secondary)',background:'var(--dsw-alias-bg-base)',borderTop:'1px solid var(--dsw-alias-border-l3)',pointerEvents:'auto',fontSize:'inherit'}},
-            view.error?h('span',{role:'status'},view.error):null,
-            h('button',{type:'button',style:controlStyle,disabled:!view.layout,onClick:()=>interaction.current?.restore()},'还原大小'),
-            h('button',{type:'button','aria-label':'调整侧栏与会话大小',title:'拖动调整大小；方向键微调，Home还原大小',disabled:!view.layout,style:{...controlStyle,cursor:'nwse-resize',touchAction:'none'},onPointerDown:event=>interaction.current?.begin(event),onLostPointerCapture:event=>interaction.current?.lostCapture(event),onKeyDown:event=>interaction.current?.key(event)},
-              h('svg',{width:16,height:16,viewBox:'0 0 16 16',fill:'none',stroke:'currentColor',strokeWidth:1.5,'aria-hidden':true},h('path',{d:'M4 12 12 4M7 12h5V7M4 9V4h5'})))))
-        }
-        return ctx.slots.register({name:'shell.overlay',id:'tradeloom-account-pair-resize'},SourceAccountOverlayResize)
       })
     }
 
@@ -3211,7 +3076,6 @@ window.__ModuleLoader__.load({
             }
             if (descriptor.kind === 'account') {
               registerSourceAccountSidebarCollapse(ctx, descriptor, bridge)
-              registerSourceAccountOverlayResize(ctx, descriptor, bridge)
               const nativeSurface = await require.async('./client.source-native.js')
               registerAccountMobileLink(ctx, bridge)
               nativeSurface.registerAccountInventory(ctx, bridge)

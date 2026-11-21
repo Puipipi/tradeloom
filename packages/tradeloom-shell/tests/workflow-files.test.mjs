@@ -32,7 +32,9 @@ test('authorized directory cards share the existing navigation and single-file p
   ] }
   let releasePick
   const pick = new Promise(resolve => { releasePick = resolve })
+  const workflowFileCalls = []
   const app = { async workflowFiles({ operation, id }) {
+    workflowFileCalls.push(operation)
     if (operation === 'current') return null
     if (operation === 'pick') return pick
     if (operation === 'enter') { assert.equal(id, 'folder'); return child }
@@ -40,6 +42,7 @@ test('authorized directory cards share the existing navigation and single-file p
     if (operation === 'preview') return id === 'text'
       ? { name: '说明.txt', preview: { type: 'text/plain', data: '合成说明' } }
       : { name: '预览.png', preview: { type: 'image/png', data: 'AA==' } }
+    if (operation === 'open-directory') return { ok: true }
     assert.fail(operation)
   } }
   const start = bridge.indexOf('  function mountWorkflowFiles(')
@@ -49,18 +52,21 @@ test('authorized directory cards share the existing navigation and single-file p
   const workflow = { panes: new Set() }
   const files = document.getElementById('files')
   const preview = document.getElementById('preview')
-  const cleanup = [files, preview].map(host => mount(workflow, host, host.id, host.appendChild(document.createElement('div'))))
+  const cleanup = [files, preview].map(host => mount(workflow, host, host.id))
   const button = (host, label) => [...host.querySelectorAll('button')].find(button => button.textContent === label)
   const settle = () => timeout(() => !workflow.busy)
   try {
     await settle()
+    assert.equal(files.querySelector('iframe'), null, 'the local workflow pane does not mount a business iframe')
+    assert.equal(files.querySelector('.tl-workflow-directory-body').hidden, false, 'the local-directory pane fills the files area before a folder is selected')
+    assert.match(files.querySelector('.tl-workflow-directory-body').textContent, /打开本地目录以查看素材/)
     button(files, '打开').click()
     assert.equal(button(files, '打开').disabled, true)
     assert.equal(files.querySelector('[role="status"]').textContent, '正在读取…')
     releasePick(root)
     await settle()
     assert.equal(files.querySelector('.tl-workflow-directory-path').title, root.path)
-    assert.deepEqual([...files.querySelectorAll('.tl-workflow-directory-actions button')].map(node => node.textContent), ['打开', '上一级', '关闭目录'])
+    assert.deepEqual([...files.querySelectorAll('.tl-workflow-directory-actions button')].map(node => node.textContent), ['打开', '上一级', '重读', '关闭目录'])
     assert.equal(files.querySelectorAll('.tl-workflow-directory-row').length, 1)
     assert.equal(files.querySelector('.tl-workflow-directory-cards'), null)
     const folder = preview.querySelector('.tl-workflow-directory-card')
@@ -75,9 +81,16 @@ test('authorized directory cards share the existing navigation and single-file p
     assert.equal(preview.querySelector('pre').textContent, '合成说明')
     assert.equal(preview.querySelector('.tl-workflow-directory-cards'), null)
     assert.match(files.querySelector('[aria-current="true"]').textContent, /说明.txt/)
-    button(preview, '关闭预览').click()
-    preview.querySelector('[title="预览.png"]').click()
+    button(preview, '📂 用资源管理器打开').click()
     await settle()
+    assert.ok(workflowFileCalls.includes('open-directory'))
+    assert.equal(preview.querySelector('.tl-workflow-directory').hidden, false)
+    button(preview, '关闭预览').click()
+    assert.equal(preview.querySelector('.tl-workflow-directory').hidden, true)
+    assert.equal(files.querySelector('.tl-workflow-directory-path').title, child.path)
+    files.querySelector('[title="预览.png"]').click()
+    await settle()
+    assert.equal(preview.querySelector('.tl-workflow-directory').hidden, false)
     assert.equal(preview.querySelector('img').alt, '预览.png')
     assert.equal(preview.querySelector('.tl-workflow-directory-cards'), null)
     button(files, '上一级').click()
@@ -451,7 +464,7 @@ test('a projected workbench copy uses the existing authorized directory and prev
     return { ...panes, dispose }
   }
   const { files, preview, dispose: disposeCompanions } = mountCompanions(scene)
-  assert.equal(nodes(files).find(node => node.tag === 'iframe')?.src, '/business/artifacts#files')
+  assert.equal(nodes(files).find(node => node.tag === 'iframe'), undefined, 'the local workflow files pane mounts no business iframe')
   await click(files, '打开')
   await timeout(() => visibleText(files).includes(fixture.root))
   await click(files, 'top.md')
@@ -550,8 +563,8 @@ test('a projected workbench copy uses the existing authorized directory and prev
 test('normal workflow panes and the center tool consume one actual temporary-directory grant', async t => {
   const f = await scope(t)
   const d = await desktop(t, f)
-  assert.equal(nodes(d.files).find(node => node.tag === 'iframe')?.src, '/business/artifacts#files')
-  assert.equal(nodes(d.preview).find(node => node.tag === 'iframe')?.src, '/business/artifacts#preview')
+  assert.equal(nodes(d.files).find(node => node.tag === 'iframe'), undefined, 'the local files pane mounts directly')
+  assert.equal(nodes(d.preview).find(node => node.tag === 'iframe'), undefined, 'the local preview pane mounts directly')
   assert.equal((await f.tool({ operation: 'current' })).ok, false)
   await timeout(() => button(d.files, '打开')?.disabled === false)
   assert.equal(button(d.files, '上一级').disabled, true)
@@ -565,17 +578,21 @@ test('normal workflow panes and the center tool consume one actual temporary-dir
   await click(d.files, 'next')
   await timeout(() => visibleText(d.preview).includes('message.txt'))
   assert.match(visibleText(d.files), /next/)
+  await click(d.preview, '📂 用资源管理器打开')
+  await timeout(() => d.openedFiles.length === 1)
+  assert.equal(d.openedFiles[0].operation, 'open-directory')
+  assert.equal(d.openedFiles[0].resolved.path, f.nested)
   await click(d.preview, 'message.txt')
   await timeout(() => visibleText(d.preview).includes('nested test data'))
   await click(d.preview, '系统打开')
-  await timeout(() => d.openedFiles.length === 1)
-  assert.equal(d.openedFiles[0].operation, 'open')
-  assert.equal(d.openedFiles[0].resolved.path, path.join(f.nested, 'message.txt'))
-  assert.deepEqual(Object.keys(d.openedFiles[0].resolved.identity).sort(), ['birthtimeNs', 'dev', 'ino', 'mtimeNs', 'size'])
-  await click(d.preview, '在文件夹中显示')
   await timeout(() => d.openedFiles.length === 2)
-  assert.equal(d.openedFiles[1].operation, 'reveal')
+  assert.equal(d.openedFiles[1].operation, 'open')
   assert.equal(d.openedFiles[1].resolved.path, path.join(f.nested, 'message.txt'))
+  assert.deepEqual(Object.keys(d.openedFiles[1].resolved.identity).sort(), ['birthtimeNs', 'dev', 'ino', 'mtimeNs', 'size'])
+  await click(d.preview, '在文件夹中显示')
+  await timeout(() => d.openedFiles.length === 3)
+  assert.equal(d.openedFiles[2].operation, 'reveal')
+  assert.equal(d.openedFiles[2].resolved.path, path.join(f.nested, 'message.txt'))
   const current = await d.app.workflowFiles({ operation: 'current' })
   const message = current.entries.find(item => item.name === 'message.txt')
   const actionResult = await d.app.workflowFiles({ operation: 'open', id: message.id })
@@ -602,15 +619,15 @@ test('normal workflow panes and the center tool consume one actual temporary-dir
   assert.equal(d.downloads[0].name, 'message.txt')
   assert.equal(await d.objectUrls.get(d.downloads[0].url).text(), 'nested test data')
   await click(d.preview, '关闭预览')
-  await click(d.preview, 'dot.png')
+  await click(d.files, 'dot.png')
   await timeout(() => nodes(d.preview).some(node => node.tag === 'img' && node.src.startsWith('data:image/png;base64,')))
   await click(d.preview, '关闭预览')
-  await click(d.preview, 'doc.zip')
+  await click(d.files, 'doc.zip')
   await timeout(() => visibleText(d.preview).includes('此文件暂无可用预览。'))
   const currentFiles = await d.app.workflowFiles({ operation: 'current' })
   const archive = currentFiles.entries.find(item => item.name === 'doc.zip')
   await assert.rejects(d.app.workflowFiles({ operation: 'open', id: archive.id }))
-  assert.equal(d.openedFiles.length, 3, 'unsupported file types never reach the system opener')
+  assert.equal(d.openedFiles.length, 4, 'unsupported file types never reach the system opener')
 
   assert.equal((await f.tool({ operation: 'current' }, f.other)).ok, false)
   assert.equal((await f.tool({ operation: 'enter', id: f.outside })).ok, false)
@@ -625,8 +642,8 @@ test('normal workflow panes and the center tool consume one actual temporary-dir
   await timeout(() => visibleText(d.files).includes('尚未打开本地目录'))
   await timeout(() => button(d.files, '打开')?.disabled === false)
   assert.equal((await f.tool({ operation: 'current' })).ok, false)
-  assert.equal(nodes(d.files).find(node => node.tag === 'iframe').src, '/business/artifacts#files')
-  assert.equal(nodes(d.preview).find(node => node.tag === 'iframe').src, '/business/artifacts#preview')
+  assert.equal(nodes(d.files).find(node => node.tag === 'iframe'), undefined, 'closing the local directory does not mount the business files iframe')
+  assert.equal(nodes(d.preview).find(node => node.tag === 'iframe'), undefined, 'closing the local directory does not mount the business preview iframe')
 })
 
 test('authorized PDF previews require the PDF signature and stay within the preview byte limit', async t => {
@@ -667,10 +684,14 @@ test('the main-process opener revalidates the resolved file and current binding'
   const authorize = async () => { authorizationChecks++ }
   await open('open', resolved, authorize)
   await open('reveal', resolved, authorize)
-  assert.deepEqual(calls, [['open', resolved.path], ['reveal', resolved.path]])
-  assert.equal(authorizationChecks, 2)
+  const directoryResolved = await f.desktop({ operation: 'open-directory' })
+  assert.equal(directoryResolved.path, f.root)
+  await open('open-directory', directoryResolved, authorize)
+  assert.deepEqual(calls, [['open', resolved.path], ['reveal', resolved.path], ['open', f.root]])
+  assert.equal(authorizationChecks, 3)
   await assert.rejects(open('open', { ...resolved, identity: { ...resolved.identity, ino: '0' } }, authorize), /workflow file changed/)
-  assert.equal(calls.length, 2)
+  await assert.rejects(open('open-directory', resolved, authorize), /workflow file changed/)
+  assert.equal(calls.length, 3)
 })
 
 test('cancel, root replacement, reparse points and a late picker after role rotation fail closed', async t => {
@@ -757,7 +778,7 @@ test('picker cancellation and focus preserve the selected preview during a cente
   }
   assert.equal((await pending).ok, true)
   await click(d.preview, '关闭预览')
-  await click(d.preview, 'top.md')
+  await click(d.files, 'top.md')
   await timeout(() => visibleText(d.preview).includes('# top test data'))
 })
 

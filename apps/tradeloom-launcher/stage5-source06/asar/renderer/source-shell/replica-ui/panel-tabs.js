@@ -97,7 +97,7 @@
           bar.className = 'pi-component-tabs'
           bar.setAttribute('role', 'tablist')
           bar.setAttribute('aria-label', '面板组件')
-          header.insertBefore(bar, header.querySelector('.panel-controls'))
+          header.insertBefore(bar, header.querySelector('.workflow-header-actions') || header.querySelector('.panel-controls'))
           bars.set(panel, bar)
         }
         const signature = JSON.stringify([available, selected])

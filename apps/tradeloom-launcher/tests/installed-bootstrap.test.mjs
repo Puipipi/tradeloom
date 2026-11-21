@@ -4,7 +4,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import os from 'node:os'
 import path from 'node:path'
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
-import { bootstrapInstalledDesktop, DATA_ROOT_MARKER, DATA_ROOT_MARKER_CONTENT, digestInventory, pythonRunArgs, runCommandFile, runControllerFile, validateInstalledManifest } from '../installed-bootstrap.mjs'
+import { bootstrapInstalledDesktop, BUSINESS_SHELL_INVENTORY_FILE, DATA_ROOT_MARKER, DATA_ROOT_MARKER_CONTENT, digestInventory, pythonRunArgs, runCommandFile, runControllerFile, validateInstalledManifest } from '../installed-bootstrap.mjs'
 import { getDefaultPaths, OWNED_MARKER, OWNED_MARKER_CONTENT } from '../core.mjs'
 
 const hash = value => createHash('sha256').update(value).digest('hex')
@@ -233,6 +233,47 @@ test('packaged bootstrap validates schema 2, initializes isolated runtime in ord
   await startup.stop()
   assert.equal(state.pgActive, false)
   assert.ok(state.events.includes('pgctl:stop'))
+})
+
+test('packaged bootstrap restores a registered business-shell package pruned by plugin reinstall', async t => {
+  const f = await fixture(t)
+  const env = { LOCALAPPDATA: path.join(f.root, 'local'), TRADELOOM_DATA_ROOT: f.privateData }
+  const firstState = { events: [], ports: [], pgActive: false, databaseExists: false, migrationCode: 0, password: 'fixture-only', dataRoot: f.privateData }
+  const first = await bootstrapInstalledDesktop({ env, processEnv: {}, appPath: f.appPath, resourcesPath: f.resourcesPath,
+    platform: 'win32', deps: { ...runtimeDeps(firstState), seedFreshPluginProfile: async () => {} } })
+  await first.ready
+
+  const profileRoot = path.join(first.paths.home, 'profiles', 'desktop')
+  const profileManifestPath = path.join(profileRoot, 'package.json')
+  const profileManifest = JSON.parse(await readFile(profileManifestPath, 'utf8'))
+  profileManifest.dependencies = { '@michengai/dsh-skills-manager': '1.4.1' }
+  await writeFile(profileManifestPath, JSON.stringify(profileManifest) + '\n')
+  const settingsPath = path.join(profileRoot, 'settings.json')
+  await writeFile(settingsPath, '{"pluginSettings":{"@michengai/dsh-skills-manager":{"fixture":"preserve"}}}\n')
+  const settingsBefore = await readFile(settingsPath)
+  const registeredBundles = profileManifest.dsh.profile.bundles
+  const installedShell = path.join(profileRoot, 'node_modules', '@tradeloom', 'dsh-business-shell')
+  const recordPath = path.join(profileRoot, BUSINESS_SHELL_INVENTORY_FILE)
+  const inventoryBefore = await readFile(recordPath)
+  await first.stop()
+
+  await rm(installedShell, { recursive: true })
+  const packageParent = path.dirname(installedShell)
+  assert.equal((await readdir(packageParent)).some(name => name.startsWith('.tradeloom-business-shell-backup-')), false)
+
+  const restartState = { events: [], ports: [], pgActive: false, databaseExists: false, migrationCode: 0, password: 'fixture-only', dataRoot: f.privateData }
+  const restarted = await bootstrapInstalledDesktop({ env, processEnv: {}, appPath: f.appPath, resourcesPath: f.resourcesPath,
+    platform: 'win32', deps: runtimeDeps(restartState) })
+  await restarted.ready
+  assert.equal(await readFile(path.join(installedShell, 'host.js'), 'utf8'), 'export default {}\n')
+  assert.equal((await inventory(installedShell)).length, 2)
+  assert.equal(JSON.parse(await readFile(path.join(installedShell, 'package.json'), 'utf8')).name, '@tradeloom/dsh-business-shell')
+  assert.deepEqual(JSON.parse(await readFile(profileManifestPath, 'utf8')).dsh.profile.bundles, registeredBundles)
+  assert.deepEqual(JSON.parse(await readFile(profileManifestPath, 'utf8')).dependencies, { '@michengai/dsh-skills-manager': '1.4.1' })
+  assert.deepEqual(await readFile(settingsPath), settingsBefore)
+  assert.deepEqual(JSON.parse(await readFile(recordPath, 'utf8')), JSON.parse(inventoryBefore))
+  assert.ok(!restartState.events.includes('initdb'), 'recovery does not reinitialize an already initialized profile runtime')
+  await restarted.stop()
 })
 
 test('packaged bootstrap upgrades the exact stage6 profile bundle transactionally and rejects unknown edits', async t => {

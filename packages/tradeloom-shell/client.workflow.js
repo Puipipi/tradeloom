@@ -6,11 +6,21 @@ window.__ModuleLoader__.load({
     const React = require('react')
     const h = React.createElement
     const ROUTE = '/tradeloom/workflows'
-    const NODE_W = 244
-    const NODE_H = 112
+    const NODE_W = 190
+    const NODE_H = 96
     const STATUS_LABEL = { pending: '等待', running: '运行中', waiting: '待确认', done: '已完成', failed: '失败', skipped: '已跳过', interrupted: '已中止', cancelled: '已取消', unknown: '状态未知' }
     const RUN_LABEL = { running: '运行中', waiting: '等待人工确认', done: '已完成', failed: '失败', cancelled: '已取消' }
     const KIND_DEFAULT_TITLE = { input: '输入', agent: '新 agent 步骤', review: '人工确认', external: '外部平台', output: '输出' }
+
+    // 视觉分组色参考 MIT 上游 mashanglinyu/luanyujia-workbench@873b53f11a7cf73f9e08efe472025ccf589a4c7d；Copyright (c) 2026 淋雨家，许可见其 LICENSE。这里只映射本组件确实支持的节点语义。
+    const WORKFLOW_NODE_GROUPS = [
+      { id: 'content', label: '内容节点', color: '#4f8cff', kinds: ['input', 'output'] },
+      { id: 'method', label: '方式节点', color: '#c084fc', kinds: ['review'] },
+      { id: 'tool', label: '工具节点', color: '#34c98f', kinds: ['agent', 'external'] },
+      { id: 'board', label: '看板节点', color: '#e5b355', kinds: [], unavailable: '当前工作流没有可用的看板节点类型。' },
+      { id: 'place', label: '位置节点', color: '#e0b341', kinds: [], unavailable: '当前工作流没有可用的位置节点类型。' },
+    ]
+    const workflowNodeGroup = kind => WORKFLOW_NODE_GROUPS.find(group => group.kinds.includes(kind)) ?? WORKFLOW_NODE_GROUPS[0]
 
     async function api(method, body, query = '') {
       const response = await fetch(`${ROUTE}${query}`, {
@@ -61,7 +71,7 @@ window.__ModuleLoader__.load({
     }
 
     // initial 仅供测试注入初始状态；正常挂载时从宿主路由加载。
-    function WorkflowCanvas({ modelGroups = [], initial = null, refreshRequest }) {
+    function WorkflowCanvas({ modelGroups = [], initial = null, refreshRequest, nativeToolbar = false }) {
       const [catalog, setCatalog] = React.useState(initial?.catalog ?? null)
       const [list, setList] = React.useState(initial?.list ?? [])
       const [doc, setDoc] = React.useState(initial?.doc ?? null)
@@ -108,6 +118,7 @@ window.__ModuleLoader__.load({
       const nativeClose = React.useRef(null)
       const nativeResumeFocus = React.useRef(false)
       const [artifactImports, setArtifactImports] = React.useState({})
+      const [nativeToolbarActive, setNativeToolbarActive] = React.useState(false)
       const artifactImportControllers = React.useRef(new Map())
       const nativeSignature = JSON.stringify(doc)
       const nativeContext = React.useRef('')
@@ -734,6 +745,7 @@ window.__ModuleLoader__.load({
       // 新出现待确认节点时，把视角平移到该节点并选中它，用户不用自己找
       const waitingKey = Object.entries(run?.nodes ?? {}).filter(([, state]) => state.status === 'waiting').map(([id]) => id).join(',')
       const focusedRef = React.useRef('')
+      const nativeToolbarPermissions = React.useRef({ canStart: false, canRefresh: false })
       React.useEffect(() => {
         if (!waitingKey || waitingKey === focusedRef.current) { focusedRef.current = waitingKey; return }
         const previous = new Set(focusedRef.current.split(','))
@@ -762,6 +774,7 @@ window.__ModuleLoader__.load({
       const nativeBusy = ['preparing', 'submitting', 'listing', 'cancelling', 'preparing-resume', 'resuming'].includes(native.phase)
       const savedCanvas = list.some(item => item.id === doc?.id)
       const refreshDisabled = !savedCanvas || dirty || Boolean(draft) || editingRun || nativeBusy
+      nativeToolbarPermissions.current = { canStart: !nativeBusy && !nativeEligibility, canRefresh: !refreshDisabled }
 
       async function refreshCanvas() {
         if (!doc) return
@@ -781,6 +794,37 @@ window.__ModuleLoader__.load({
         handledRefreshRequest.current = refreshRequest
         if (refreshRequest !== undefined) void refreshCanvas()
       })
+
+      React.useEffect(() => {
+        if (!nativeToolbar) return undefined
+        const bridge = window.dshDesktop
+        if (typeof bridge?.nativeSurfaceDescriptor !== 'function'
+          || typeof bridge?.workflowCanvasToolbarState !== 'function'
+          || typeof bridge?.onWorkflowCanvasToolbarActionRequested !== 'function'
+          || typeof bridge?.onWorkflowCanvasToolbarDockStateChanged !== 'function') return undefined
+        let live = true
+        let descriptor
+        const matches = value => value?.kind === 'scene-component' && value.componentKey === 'workflow-canvas-native'
+          && typeof value.sceneId === 'string' && typeof value.panelId === 'string' && Number.isSafeInteger(value.generation)
+        const sameDescriptor = (left, right) => matches(left) && matches(right)
+          && left.sceneId === right.sceneId && left.panelId === right.panelId && left.generation === right.generation
+          && left.accountGeneration === right.accountGeneration
+        void Promise.resolve(bridge.nativeSurfaceDescriptor()).then(value => {
+          if (!live || !matches(value)) return
+          descriptor = value
+          return bridge.workflowCanvasToolbarState({ descriptor, ...nativeToolbarPermissions.current })
+            .then(result => { if (live) setNativeToolbarActive(result?.accepted === true && result.available === true) })
+        }).catch(() => {})
+        const off = bridge.onWorkflowCanvasToolbarActionRequested(request => {
+          if (!live || !descriptor || !sameDescriptor(request?.descriptor, descriptor)) return
+          if (request.action === 'start' && nativeToolbarPermissions.current.canStart) prepareNative()
+          else if (request.action === 'refresh' && nativeToolbarPermissions.current.canRefresh) void refreshCanvas()
+        })
+        const offDockState = bridge.onWorkflowCanvasToolbarDockStateChanged(value => {
+          if (live && descriptor && sameDescriptor(value?.descriptor, descriptor)) setNativeToolbarActive(value.available === true)
+        })
+        return () => { live = false; off?.(); offDockState?.() }
+      }, [nativeToolbar, nativeBusy, nativeEligibility, refreshDisabled, doc?.id])
 
       if (!doc) return h('div', { className: 'tl-wf-empty', role: 'status' }, message.text || '加载工作流…')
       const byId = new Map(doc.nodes.map(node => [node.id, node]))
@@ -972,30 +1016,23 @@ window.__ModuleLoader__.load({
         if (menu) menu.open = false
       }
 
-      const toolbar = h('div', { className: 'tl-wf-toolbar', role: 'toolbar', 'aria-label': '工作流操作', inert: draft ? '' : undefined },
-        h('div', { className: 'tl-wf-primary' },
-        h('button', { type: 'button', className: 'tl-wf-new-workflow', 'aria-label': '新建工作流', title: '新建工作流', onClick: newWorkflow, disabled: editingRun }, '+'),
-        h('button', { type: 'button', onClick: prepareNative, disabled: nativeBusy || Boolean(nativeEligibility), title: nativeEligibility || '准备真实原生执行，核对后显式确认', ref: nativeTrigger }, '开始…'),
-        h('button', { type: 'button', onClick: save, disabled: editingRun }, dirty ? '保存*' : '保存'),
-        h('button', { type: 'button', className: 'tl-wf-history', onClick: listNative, disabled: nativeBusy, title: '查询真实原生运行记录' }, '历史'),
-        h('button', { type: 'button', onClick: refreshCanvas, disabled: refreshDisabled,
-          title: savedCanvas ? '读取已保存画布，保留视图位置' : '保存后可以刷新画布' }, '刷新画布'),
+      const documentMenu = nativeToolbarActive && h('details', { className: 'tl-wf-doc-menu', onToggle: placeToolbarMenu },
+        h('summary', { 'aria-label': '工作流文档操作', title: '重命名、确认草稿与删除' }, '文档'),
+        h('div', { className: 'tl-wf-doc-actions', role: 'group', 'aria-label': '工作流文档操作菜单' },
+          h('label', null, '工作流名称', h('input', { 'aria-label': '工作流名称', value: doc.title, disabled: editingRun, onChange: event => edit({ ...doc, title: event.target.value }) })),
+          !doc.confirmed && h('button', { type: 'button', className: 'is-primary', onClick: confirm }, '确认草稿'),
+          h('button', { type: 'button', onClick: remove, disabled: editingRun || !list.some(item => item.id === doc.id) }, '删除')))
+      const header = nativeToolbarActive ? null : h('div', { className: 'tl-wf-head', role: 'toolbar', 'aria-label': '工作流', inert: draft ? '' : undefined },
         h('details', { className: 'tl-wf-doc-menu', onToggle: placeToolbarMenu },
-          h('summary', { 'aria-label': '工作流文档操作', title: '重命名、新建、确认草稿、删除' }, '⋯'),
+          h('summary', { 'aria-label': '工作流文档操作', title: '重命名、新建、确认草稿、删除' }, `${doc.title}　▾`),
           h('div', { className: 'tl-wf-doc-actions', role: 'group', 'aria-label': '工作流文档操作菜单' },
             h('label', null, '工作流名称', h('input', { 'aria-label': '工作流名称', value: doc.title, disabled: editingRun, onChange: event => edit({ ...doc, title: event.target.value }) })),
             !doc.confirmed && h('button', { type: 'button', className: 'is-primary', onClick: confirm }, '确认草稿'),
             h('button', { type: 'button', onClick: remove, disabled: editingRun || !list.some(item => item.id === doc.id) }, '删除'))),
-        h('details', { className: 'tl-wf-execution-menu', onToggle: placeToolbarMenu },
-          h('summary', { ref: nativeTrigger, 'aria-label': '工作流执行与记录', title: '模拟运行、原生运行与原生记录' }, active ? '运行中' : '执行'),
-          h('div', { className: 'tl-wf-execution-actions', role: 'group', 'aria-label': '工作流执行与记录菜单' },
-            h('p', { className: 'tl-wf-execution-note' }, '模拟执行未连接真实 Agent/外部平台；模拟运行记录仅在当前窗口内存保留 30 条。'),
-            active ? h('button', { type: 'button', className: 'is-danger', onClick: closeMenuAfter(cancel) }, '停止')
-              : h('button', { type: 'button', className: 'is-primary', onClick: closeMenuAfter(start), disabled: !doc.confirmed }, '▶ 模拟运行'),
-            h('p', { className: 'tl-wf-execution-note' }, '真实执行请使用上方“开始…”，准备后仍需明确确认。'))),
-        h('span', { className: `tl-wf-runstate${nativeCanvas ? ' tl-wf-source' : ''}`, role: 'status', 'aria-live': 'polite' },
-          nativeCanvas ? `原生运行 · ${nativeGraphMatches ? '当前返回状态' : '等待状态核验'}`
-            : `模拟执行 · ${doc.source === 'agent' && !doc.confirmed ? '草稿待确认' : run ? RUN_LABEL[run.status] ?? run.status : '未运行'}`)),
+        h('button', { type: 'button', className: 'tl-wf-start', onClick: prepareNative, disabled: nativeBusy || Boolean(nativeEligibility), title: nativeEligibility || '准备真实原生执行，核对后仍需明确确认', ref: nativeTrigger }, '▶ 开始'),
+        h('button', { type: 'button', onClick: refreshCanvas, disabled: refreshDisabled,
+          title: savedCanvas ? '读取已保存画布，保留视图位置' : '保存后可以刷新画布' }, '刷新画布'))
+      const tabs = h('div', { className: 'tl-wf-tabs-row', inert: draft ? '' : undefined },
         h('div', { className: 'tl-wf-tabs', role: 'tablist', 'aria-label': '工作流画布页签', onKeyDown: canvasTabKey },
           canvasTabs.map((item, index) => h('button', {
             key: item.id, id: `${tabPrefix}-tab-${index}`, role: 'tab', type: 'button',
@@ -1003,39 +1040,57 @@ window.__ModuleLoader__.load({
             tabIndex: index === activeTab ? 0 : -1,
             onClick: () => selectCanvas(item.id),
           }, `${item.source === 'agent' ? '🤖 ' : ''}${item.title}${item.id === doc.id && !savedCanvas ? '（未保存）' : item.confirmed ? '' : '（待确认）'}`))),
-        h('div', { className: 'tl-wf-categories', role: 'group', 'aria-label': '业务节点分类' },
-          (catalog?.kinds ?? []).map(kind => h('details', {
-            key: kind.kind, className: 'tl-wf-category', onToggle: placeToolbarMenu,
-            onMouseEnter: event => { event.currentTarget.open = true },
-            onMouseLeave: event => {
-              const category = event.currentTarget
-              if (!category.contains(category.ownerDocument.activeElement)) category.open = false
-            },
-            onBlur: event => { if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false },
-            onKeyDown: event => {
-              if (event.key !== 'Escape' || !event.currentTarget.open) return
-              event.preventDefault()
-              event.stopPropagation()
-              event.currentTarget.open = false
-              event.currentTarget.querySelector('summary')?.focus()
-            },
-          }, h('summary', { title: kind.kind === 'external' ? '外部平台：仅模拟/说明，原生不可运行' : `添加${kind.label}节点` }, kind.label),
-          h('div', { className: 'tl-wf-kind-menu', role: 'group', 'aria-label': kind.label },
-            (kind.kind === 'agent' ? catalog.agents : [kind]).map(item => h('button', {
-              key: item.id ?? item.kind, type: 'button', disabled: editingRun,
-              onClick: event => {
-                const menu = event.currentTarget.closest('details')
-                addNode(kind.kind, item.id)
-                menu.open = false
-                menu.querySelector('summary')?.focus()
+        h('button', { type: 'button', className: 'tl-wf-new-workflow', 'aria-label': '新建工作流', title: '新建工作流', onClick: newWorkflow, disabled: editingRun }, '+'),
+        h('span', { className: 'tl-wf-tab-count', role: 'status', 'aria-label': '工作流页签数量' }, `第 ${Math.max(0, activeTab) + 1} / ${canvasTabs.length} 张`))
+      const toolbar = h('div', { className: 'tl-wf-toolbar', role: 'toolbar', 'aria-label': '画布节点与视图操作', inert: draft ? '' : undefined },
+        h('div', { className: 'tl-wf-categories', role: 'group', 'aria-label': '节点分类' },
+          WORKFLOW_NODE_GROUPS.map(group => {
+            const kinds = group.kinds.map(kindId => (catalog?.kinds ?? []).find(kind => kind.kind === kindId)).filter(Boolean)
+            const style = { '--tl-wf-group-color': group.color }
+            if (kinds.length === 0) return h('button', {
+              key: group.id, type: 'button', className: 'tl-wf-category is-unavailable', style,
+              disabled: true, title: group.unavailable, 'aria-label': `${group.label}：${group.unavailable}`,
+            }, `＋ ${group.label}`)
+            const entries = kinds.flatMap(kind => {
+              const items = kind.kind === 'agent' ? catalog.agents : [kind]
+              return items.map(item => h('button', {
+                key: `${kind.kind}-${item.id ?? item.kind}`, type: 'button', disabled: editingRun,
+                onClick: event => {
+                  const menu = event.currentTarget.closest('details')
+                  addNode(kind.kind, item.id)
+                  menu.open = false
+                  menu.querySelector('summary')?.focus()
+                },
+                title: kind.kind === 'external' ? '仅模拟/说明，原生不可运行' : `添加${item.label}节点`,
+              }, h('span', { 'aria-hidden': true }, item.icon ?? kind.icon), ` ${item.label}${kind.kind === 'external' ? '（仅模拟）' : ''}`))
+            })
+            return h('details', {
+              key: group.id, className: 'tl-wf-category', style, onToggle: placeToolbarMenu,
+              onMouseEnter: event => { event.currentTarget.open = true },
+              onMouseLeave: event => {
+                const category = event.currentTarget
+                if (!category.contains(category.ownerDocument.activeElement)) category.open = false
               },
-              title: kind.kind === 'external' ? '仅模拟/说明，原生不可运行' : `添加${item.label}节点`,
-            }, h('span', { 'aria-hidden': true }, item.icon ?? kind.icon), ` ${item.label}${kind.kind === 'external' ? '（仅模拟）' : ''}`)))))),
-        h('div', { className: 'tl-wf-view-tools', role: 'group', 'aria-label': '画布视图' },
-          h('button', { type: 'button', onClick: fit, title: '适应全部节点（主动缩放）', 'aria-label': '适应全部节点' }, '⊡', h('span', { className: 'tl-wf-tool-label' }, ' 适应')),
-          h('button', { type: 'button', onClick: () => setView(current => ({ ...current, scale: Math.max(.05, current.scale / 1.1) })), 'aria-label': '缩小画布' }, '−'),
-          h('button', { type: 'button', onClick: () => setView(current => ({ ...current, scale: 1 })), 'aria-label': '重置画布缩放' }, `${Math.round(view.scale * 100)}%`),
-          h('button', { type: 'button', onClick: () => setView(current => ({ ...current, scale: Math.min(2, current.scale * 1.1) })), 'aria-label': '放大画布' }, '＋'),
+              onBlur: event => { if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false },
+              onKeyDown: event => {
+                if (event.key !== 'Escape' || !event.currentTarget.open) return
+                event.preventDefault()
+                event.stopPropagation()
+                event.currentTarget.open = false
+                event.currentTarget.querySelector('summary')?.focus()
+              },
+            }, h('summary', { title: `添加${group.label}`, 'aria-label': `添加${group.label}` }, `＋ ${group.label} ▾`),
+            h('div', { className: 'tl-wf-kind-menu', role: 'group', 'aria-label': group.label }, entries))
+          })),
+        h('div', { className: 'tl-wf-view-tools', role: 'group', 'aria-label': '画布视图与操作' },
+          h('button', { type: 'button', className: 'tl-wf-view-action', onClick: fit, title: '适应全部节点（主动缩放）', 'aria-label': '适应全部节点' }, '⤢ 适应'),
+          h('button', { type: 'button', className: 'tl-wf-view-action', onClick: arrange, disabled: editingRun, title: '按现有连线整理节点；保存后持久化', 'aria-label': '整理节点' }, '⇥ 整理'),
+          h('details', { className: 'tl-wf-status-menu', onToggle: placeToolbarMenu },
+            h('summary', { className: 'tl-wf-view-action', title: '查看当前真实节点状态数', 'aria-label': '节点状态统计' }, '◷ 状态'),
+            h('div', { className: 'tl-wf-status-list', role: 'status', 'aria-label': '节点状态统计' }, Object.entries(STATUS_LABEL).map(([status, label]) => h('span', { key: status }, `${label}：${doc.nodes.filter(node => (nodeState(node.id)?.status ?? 'pending') === status).length}`)))),
+          h('button', { type: 'button', className: 'tl-wf-view-action is-unavailable', disabled: true, title: '当前工作流没有 Markdown 导出能力。', 'aria-label': 'Markdown：当前未实现' }, '⧉ Markdown'),
+          h('button', { type: 'button', className: 'tl-wf-view-action is-unavailable', disabled: true, title: '当前工作流没有清空节点的操作；删除工作流会删除整张业务记录，因此不代替清空。', 'aria-label': '清空：当前未实现' }, '▤ 清空'),
+          h('button', { type: 'button', className: 'tl-wf-view-action is-unavailable', disabled: true, title: '当前工作流没有内置模板功能。', 'aria-label': '模板：当前未实现' }, '▤ 模板'),
           h('details', { className: 'tl-wf-view-menu', onToggle: placeToolbarMenu },
             h('summary', { 'aria-label': '更多画布操作', title: '缩放、整理、编辑节点与节点状态' }, '视图', h('span', { className: 'tl-wf-view-level' }, ` ${Math.round(view.scale * 100)}%`)),
             h('div', { className: 'tl-wf-view-actions', role: 'group', 'aria-label': '更多画布操作菜单' },
@@ -1045,8 +1100,24 @@ window.__ModuleLoader__.load({
                 h('button', { type: 'button', onClick: () => setView(current => ({ ...current, scale: Math.min(2, current.scale * 1.1) })), 'aria-label': '放大画布' }, '＋ 放大画布')),
               h('button', { type: 'button', onClick: closeMenuAfter(arrange), disabled: editingRun, title: '整理节点', 'aria-label': '整理节点' }, '☷ 整理节点'),
               h('button', { type: 'button', disabled: !selectedNode, onClick: closeMenuAfter(() => openEditor(selectedNode)), title: '编辑选中节点', 'aria-label': '编辑节点' }, '✎ 编辑节点'),
-              h('details', { className: 'tl-wf-status-menu', onToggle: placeToolbarMenu }, h('summary', { title: '节点状态', 'aria-label': '节点状态' }, '◷ 节点状态'),
-                h('div', { className: 'tl-wf-status-list' }, Object.entries(STATUS_LABEL).map(([status, label]) => h('span', { key: status }, `${label}：${doc.nodes.filter(node => (nodeState(node.id)?.status ?? 'pending') === status).length}`)))))))
+              h('details', { className: 'tl-wf-status-menu', onToggle: placeToolbarMenu }, h('summary', { title: '节点状态', 'aria-label': '节点状态' }, '◷ 状态'),
+                h('div', { className: 'tl-wf-status-list' }, Object.entries(STATUS_LABEL).map(([status, label]) => h('span', { key: status }, `${label}：${doc.nodes.filter(node => (nodeState(node.id)?.status ?? 'pending') === status).length}`))))))),
+        h('span', { className: 'tl-wf-category-counts', role: 'status', 'aria-label': '分类节点计数' }, WORKFLOW_NODE_GROUPS.map(group =>
+          `${group.label.replace('节点', '')} ${doc.nodes.filter(node => workflowNodeGroup(node.kind).id === group.id).length}`).join(' · ')),
+        h('div', { className: 'tl-wf-primary' },
+          documentMenu,
+          h('button', { type: 'button', onClick: save, disabled: editingRun }, dirty ? '保存*' : '保存'),
+          h('button', { type: 'button', className: 'tl-wf-history', onClick: listNative, disabled: nativeBusy, title: '查询真实原生运行记录' }, '历史'),
+        h('details', { className: 'tl-wf-execution-menu', onToggle: placeToolbarMenu },
+          h('summary', { ref: nativeTrigger, 'aria-label': '工作流执行与记录', title: '模拟运行、原生运行与原生记录' }, active ? '运行中' : '执行'),
+          h('div', { className: 'tl-wf-execution-actions', role: 'group', 'aria-label': '工作流执行与记录菜单' },
+            h('p', { className: 'tl-wf-execution-note' }, '模拟执行未连接真实 Agent/外部平台；模拟运行记录仅在当前窗口内存保留 30 条。'),
+            active ? h('button', { type: 'button', className: 'is-danger', onClick: closeMenuAfter(cancel) }, '停止')
+              : h('button', { type: 'button', className: 'is-primary', onClick: closeMenuAfter(start), disabled: !doc.confirmed }, '▶ 模拟运行'),
+            h('p', { className: 'tl-wf-execution-note' }, '真实执行请使用上方“开始…”，准备后仍需明确确认。'))),
+          h('span', { className: `tl-wf-runstate${nativeCanvas ? ' tl-wf-source' : ''}`, role: 'status', 'aria-live': 'polite' },
+          nativeCanvas ? `原生运行 · ${nativeGraphMatches ? '当前返回状态' : '等待状态核验'}`
+            : `模拟执行 · ${doc.source === 'agent' && !doc.confirmed ? '草稿待确认' : run ? RUN_LABEL[run.status] ?? run.status : '未运行'}`)),
       )
 
       const edges = h('svg', { className: 'tl-wf-edges', 'aria-hidden': true },
@@ -1074,7 +1145,7 @@ window.__ModuleLoader__.load({
           'aria-label': `${node.title}，${sub}${status ? `，${STATUS_LABEL[status]}` : ''}`,
           'aria-pressed': selected === node.id,
           className: `tl-wf-node${status ? ` is-${status}` : ''}${selected === node.id ? ' is-selected' : ''}`,
-          style: { left: node.position.x, top: node.position.y, width: nodeWidth, height: nodeHeight, '--tl-wf-color': look.color },
+          style: { left: node.position.x, top: node.position.y, width: nodeWidth, height: nodeHeight, '--tl-wf-color': look.color, '--tl-wf-category-color': workflowNodeGroup(node.kind).color },
           onKeyDown: event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openEditor(node) } },
           onDoubleClick: () => openEditor(node),
           onPointerDown: event => {
@@ -1087,6 +1158,7 @@ window.__ModuleLoader__.load({
           },
           onPointerUp: () => { if (linking && linking.from !== node.id) connect(linking.from, node.id) },
         },
+          h('span', { className: 'tl-wf-node-category-bar', 'aria-hidden': true }),
           node.kind !== 'input' && h('span', { className: 'tl-wf-port is-in', 'aria-hidden': true }),
           h('span', { className: 'tl-wf-icon', 'aria-hidden': true }, look.icon),
           h('span', { className: 'tl-wf-text' },
@@ -1158,6 +1230,8 @@ window.__ModuleLoader__.load({
 
       return h('section', { ref: root, className: 'tl-wf', 'aria-label': '工作流画布', 'data-state-owner': nativeCanvas ? 'native' : run ? 'simulation' : 'none' },
         h('style', null, WORKFLOW_CSS),
+        header,
+        tabs,
         toolbar,
         nativePanel,
         (message.text || message.issues.length > 0) && h('div', { className: 'tl-wf-message', role: 'status' },
@@ -1173,12 +1247,14 @@ window.__ModuleLoader__.load({
             },
             onPointerMove, onPointerUp, onPointerLeave: onPointerUp, onWheel,
           },
-            h('div', { className: 'tl-wf-layer', style: { transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` } }, edges, nodes, quickDecisions))),
+            h('div', { className: 'tl-wf-layer', style: { transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` } }, edges, nodes, quickDecisions),
+            h('span', { className: 'tl-wf-canvas-hint' }, '拖动空白处平移 · 滚轮缩放 · 拖动节点端口连线'),
+            h('span', { className: 'tl-wf-counts', role: 'status', 'aria-label': '画布实际计数与缩放' }, `节点 ${doc.nodes.length} · 连线 ${doc.edges.length} · ${Math.round(view.scale * 100)}%`))),
         inspector)
     }
 
     const WORKFLOW_CSS = `
-      .tl-wf { --tl-success:var(--tl-theme-success,var(--dsw-alias-state-success-primary,#0f635a)); --tl-warning:var(--tl-theme-warning,#76501b); --tl-danger:var(--tl-theme-danger,var(--dsw-alias-state-error-primary,#ba2121)); --tl-wf-status-button-ink:var(--tl-theme-canvas,var(--tl-surface,#fff)); position:relative; container-type:size; display:flex; flex-direction:column; height:100%; min-height:0; color:var(--tl-ink,#202b3a); font-size:inherit; }
+      .tl-wf { --tl-surface:var(--tl-theme-panel,#131722); --tl-surface-soft:var(--tl-theme-canvas,#0b0d12); --tl-border:var(--tl-theme-border,#232a3a); --tl-ink:var(--tl-theme-text,#e6e8ee); --tl-muted:var(--tl-theme-muted,#8b93a7); --tl-success:var(--tl-theme-success,var(--dsw-alias-state-success-primary,#0f635a)); --tl-warning:var(--tl-theme-warning,#76501b); --tl-danger:var(--tl-theme-danger,var(--dsw-alias-state-error-primary,#ba2121)); --tl-wf-status-button-ink:var(--tl-theme-canvas,var(--tl-surface,#fff)); position:relative; container-type:size; display:flex; flex-direction:column; height:100%; min-height:0; color:var(--tl-ink,#202b3a); font-size:inherit; }
       .tl-wf-empty { padding:16px; color:var(--tl-muted,#68778c); }
       .tl-wf-native { flex:0 1 auto; box-sizing:border-box; min-height:0; max-height:45%; overflow:auto; padding:.6em .8em; border-bottom:1px solid var(--tl-border,#cbd5e2); background:var(--tl-surface,#fff); overflow-wrap:anywhere; }
       .tl-wf-native ~ .tl-wf-body { min-height:min(4em,25cqh); }
@@ -1199,22 +1275,36 @@ window.__ModuleLoader__.load({
       .tl-wf-artifact-description { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
       .tl-wf-artifact-card details { margin-top:.4em; }
       .tl-wf-artifact-card summary { font-size:.85em; }
-      .tl-wf-toolbar { flex:none; display:flex; flex-wrap:wrap; align-items:center; gap:4px; padding:4px 6px; border-bottom:1px solid var(--tl-border,#cbd5e2); }
-      .tl-wf-primary { display:flex; flex:1 1 100%; flex-wrap:wrap; align-items:center; min-width:0; gap:4px; }
-      .tl-wf-history { margin-inline-start:auto; }
-      .tl-wf-tabs { display:flex; flex:1 1 100%; gap:.3em; min-width:0; overflow-x:auto; padding:2px; }
+      .tl-wf-head { flex:none; display:flex; align-items:center; flex-wrap:wrap; gap:4px; min-width:0; padding:4px 6px; border-bottom:1px solid var(--tl-border,#cbd5e2); }
+      .tl-wf-head > button { border:1px solid var(--tl-border,#cbd5e2); background:transparent; color:inherit; border-radius:4px; padding:2px 7px; cursor:pointer; font:inherit; font-size:.9em; line-height:1.25; }
+      .tl-wf-head > button:disabled { color:var(--tl-muted,#68778c); border-color:var(--tl-border,#cbd5e2); opacity:1; cursor:default; }
+      .tl-wf-head .tl-wf-start { color:var(--tl-theme-success,var(--tl-success,#0f635a)); }
+      .tl-wf-doc-menu { position:relative; min-width:0; max-width:min(34em,55%); }
+      .tl-wf-doc-menu > summary { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .tl-wf-tabs-row { flex:none; display:flex; align-items:center; gap:.25em; min-width:0; padding:2px 6px 0; border-bottom:1px solid var(--tl-border,#cbd5e2); background:var(--tl-surface-soft,#eef3f9); }
+      .tl-wf-tabs { display:flex; flex:0 1 auto; gap:.15em; min-width:0; overflow-x:auto; padding:2px 2px 0; scrollbar-width:thin; }
+      .tl-wf-tabs-row button { border:1px solid transparent; background:transparent; color:inherit; border-radius:4px 4px 0 0; padding:3px 9px 4px; cursor:pointer; font:inherit; }
+      .tl-wf-tabs-row button:disabled { opacity:.45; cursor:default; }
       .tl-wf-tabs > button { flex:none; max-inline-size:min(20em,100%); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-      .tl-wf-tabs > [aria-selected="true"] { border-color:var(--tl-accent,#356fc4); background:var(--tl-surface-soft,#eef3f9); }
+      .tl-wf-tabs > [aria-selected="true"] { border-color:transparent; border-bottom:2px solid var(--tl-accent,#356fc4); background:var(--tl-surface,#fff); }
+      .tl-wf-tabs-row > .tl-wf-new-workflow { flex:none; min-width:2em; border-color:var(--tl-border,#cbd5e2); background:var(--tl-surface,#fff); padding-inline:6px; }
+      .tl-wf-tab-count { flex:none; margin-left:auto; padding-inline:6px; color:var(--tl-muted,#8b93a7); font-size:.8em; white-space:nowrap; }
+      .tl-wf-toolbar { flex:none; display:flex; flex-wrap:wrap; align-items:center; gap:4px; min-width:0; padding:4px 6px; border-bottom:1px solid var(--tl-border,#cbd5e2); }
+      .tl-wf-primary { display:flex; flex:0 1 auto; flex-wrap:wrap; align-items:center; min-width:0; margin-left:auto; gap:4px; }
+      .tl-wf-primary .tl-wf-runstate { margin-left:0; }
       .tl-wf-toolbar button, .tl-wf-inspector button { border:1px solid var(--tl-border,#cbd5e2); background:var(--tl-surface,#fff); color:inherit; border-radius:6px; padding:3px 9px; cursor:pointer; }
       .tl-wf-toolbar button[style] { border-color:var(--tl-wf-color); }
       .tl-wf-toolbar button:disabled { opacity:.45; cursor:default; }
       .tl-wf button.is-primary { background:var(--tl-accent,#356fc4); border-color:var(--tl-accent,#356fc4); color:var(--tl-theme-button-ink,#fff); }
       .tl-wf button.is-danger { border-color:var(--tl-danger,#c0392b); color:var(--tl-danger,#c0392b); }
       .tl-wf-title { width:12em; min-width:0; }
-      .tl-wf-kinds, .tl-wf-category, .tl-wf-status-menu, .tl-wf-doc-menu { position:relative; }
-      .tl-wf-categories { display:flex; flex-wrap:wrap; align-items:center; gap:.3em; }
+      .tl-wf-kinds, .tl-wf-category, .tl-wf-status-menu { position:relative; }
+      .tl-wf-categories { display:flex; flex:0 1 auto; flex-wrap:wrap; align-items:center; min-width:0; gap:.3em; }
       .tl-wf-toolbar :is(button,select,summary) { font:inherit; min-height:initial; }
       .tl-wf-category > .tl-wf-kind-menu { top:100%; padding-top:.4em; }
+      .tl-wf-category > summary { color:color-mix(in srgb,var(--tl-wf-group-color,var(--tl-ink)) 42%,var(--tl-ink)); border-color:color-mix(in srgb,var(--tl-wf-group-color,var(--tl-border)) 65%,var(--tl-border)); white-space:nowrap; }
+      .tl-wf-category.is-unavailable { color:color-mix(in srgb,var(--tl-wf-group-color,var(--tl-muted)) 35%,var(--tl-ink)); border-color:color-mix(in srgb,var(--tl-wf-group-color,var(--tl-border)) 58%,var(--tl-border)); border-style:dashed; }
+      .tl-wf-toolbar button.tl-wf-category.is-unavailable:disabled { opacity:1; cursor:not-allowed; }
       .tl-wf summary { list-style:none; border:1px solid var(--tl-border,#cbd5e2); border-radius:6px; padding:.3em .6em; cursor:pointer; background:var(--tl-surface,#fff); }
       .tl-wf summary::-webkit-details-marker { display:none; }
       .tl-wf-kind-menu, .tl-wf-status-list, .tl-wf-doc-actions { position:absolute; top:calc(100% + 5px); left:0; z-index:12; display:flex; flex-direction:column; gap:4px; padding:6px; min-width:10em; border:1px solid var(--tl-border,#cbd5e2); border-radius:8px; background:var(--tl-surface,#fff); box-shadow:0 8px 24px #0003; }
@@ -1226,11 +1316,12 @@ window.__ModuleLoader__.load({
       .tl-wf-doc-actions::-webkit-scrollbar { width:5px; }
       .tl-wf-doc-actions::-webkit-scrollbar-thumb { background:var(--tl-muted,#68778c); border-radius:5px; }
       .tl-wf-status-list { right:0; left:auto; font-size:.9em; }
-      .tl-wf-overflow-zoom, .tl-wf-view-level { display:none; }
+      .tl-wf-overflow-zoom { display:flex; flex-direction:column; gap:.25em; }
+      .tl-wf-view-level { display:none; }
       .tl-wf-overflow-zoom > button { text-align:left; white-space:normal; }
       .tl-wf-view-actions .tl-wf-status-list { position:static; min-width:0; max-height:none; border:0; box-shadow:none; }
       @container (max-height:24em) {
-        .tl-wf-view-tools > button:not([aria-label="适应全部节点"]) { display:none; }
+        .tl-wf-view-tools > button:not([aria-label="适应全部节点"]):not(.tl-wf-view-action) { display:none; }
         .tl-wf-overflow-zoom { display:flex; flex-direction:column; gap:.25em; }
         .tl-wf-view-level { display:inline; }
       }
@@ -1238,8 +1329,15 @@ window.__ModuleLoader__.load({
       .tl-wf-execution-actions, .tl-wf-view-actions { position:absolute; z-index:24; top:calc(100% + 4px); left:0; box-sizing:border-box; min-width:10em; max-width:calc(100cqw - 16px); display:flex; flex-direction:column; gap:.25em; padding:.4em; border:1px solid var(--tl-border,#cbd5e2); border-radius:var(--tl-corner-radius,6px); background:var(--tl-surface,#fff); box-shadow:0 8px 24px #0003; }
       .tl-wf-execution-actions > button, .tl-wf-view-actions > button { text-align:left; white-space:normal; }
       .tl-wf :is(.tl-wf-doc-actions,.tl-wf-execution-actions,.tl-wf-view-actions,.tl-wf-kind-menu,.tl-wf-status-list) { box-sizing:border-box; overflow:auto; overscroll-behavior:contain; scrollbar-gutter:stable; }
-      .tl-wf-view-tools { display:flex; flex-wrap:wrap; align-items:center; gap:4px; min-width:0; margin-left:auto; }
+      .tl-wf-view-tools { display:flex; flex:0 1 auto; flex-wrap:wrap; align-items:center; gap:4px; min-width:0; }
+      .tl-wf-view-action { flex:none; color:var(--tl-ink); }
+      .tl-wf-view-action.is-unavailable:disabled { opacity:.42; cursor:not-allowed; }
+      .tl-wf-category-counts { flex:none; max-width:100%; overflow:hidden; color:var(--tl-muted); font-size:.8em; white-space:nowrap; text-overflow:ellipsis; }
+      .tl-wf-counts { flex:none; color:var(--tl-muted,#68778c); font-size:.82em; white-space:nowrap; }
       .tl-wf-view-tools button { flex-shrink:0; }
+      .tl-wf-canvas-hint,.tl-wf-counts { position:absolute; bottom:5px; z-index:3; pointer-events:none; color:var(--tl-muted,#8b93a7); font-size:.78em; opacity:.85; }
+      .tl-wf-canvas-hint { left:9px; }
+      .tl-wf-counts { right:9px; white-space:nowrap; }
       .tl-wf-toolbar input, .tl-wf-toolbar select, .tl-wf-toolbar button { font:inherit; min-width:0; max-width:100%; box-sizing:border-box; }
       .tl-wf-toolbar input, .tl-wf-toolbar select { background:var(--tl-surface,#fff); color:inherit; border:1px solid var(--tl-border,#cbd5e2); border-radius:6px; padding:.3em .5em; }
       .tl-wf-toolbar button, .tl-wf-toolbar summary { padding:.2em .45em; }
@@ -1260,7 +1358,7 @@ window.__ModuleLoader__.load({
       .tl-wf-message ul { margin:2px 0 0 18px; padding:0; color:var(--tl-danger,#c0392b); }
       .tl-wf-body { flex:1 1 0; min-height:0; min-width:0; display:flex; position:relative; }
       .tl-wf-surface { flex:1; min-height:0; min-width:0; position:relative; overflow:hidden; cursor:grab; touch-action:none;
-        background-color:var(--tl-surface-soft,#f4f7fb); background-image:radial-gradient(var(--tl-border,#cbd5e2) 1px, transparent 1px); background-size:20px 20px; }
+        background-color:var(--tl-surface-soft,#0b0d12); background-image:radial-gradient(circle, color-mix(in srgb,var(--tl-muted,#8b93a7) 20%,transparent) 1px, transparent 1px); background-size:20px 20px; }
       .tl-wf-layer { position:absolute; inset:0; transform-origin:0 0; }
       .tl-wf-edges { position:absolute; left:0; top:0; width:4000px; height:3000px; overflow:visible; }
       .tl-wf-edge { fill:none; stroke:var(--tl-muted,#8b97ab); stroke-width:2; pointer-events:stroke; cursor:pointer; }
@@ -1269,9 +1367,10 @@ window.__ModuleLoader__.load({
       .tl-wf-edge.is-flowing { stroke:var(--tl-accent,#356fc4); stroke-dasharray:6 6; animation:tl-wf-flow .6s linear infinite; }
       .tl-wf-edge.is-preview { stroke-dasharray:4 4; pointer-events:none; }
       @keyframes tl-wf-flow { to { stroke-dashoffset:-12; } }
-      .tl-wf-node { position:absolute; box-sizing:border-box; display:flex; align-items:center; gap:.6em; padding:.7em .8em;
-        background:var(--tl-surface,#fff); border:1px solid var(--tl-border,#cbd5e2); border-left:3px solid var(--tl-wf-color); border-radius:8px;
+      .tl-wf-node { position:absolute; box-sizing:border-box; display:flex; align-items:center; gap:.45em; padding:.45em .55em;
+        background:var(--tl-surface,#131722); border:1px solid var(--tl-border,#232a3a); border-left:3px solid var(--tl-wf-color); border-radius:8px;
         box-shadow:0 1px 3px rgba(0,0,0,.12); cursor:pointer; user-select:none; transition:opacity .3s, box-shadow .3s; font-size:inherit; }
+      .tl-wf-node-category-bar { position:absolute; left:2px; top:0; bottom:0; width:2px; border-radius:2px 0 0 2px; background:var(--tl-wf-category-color); pointer-events:none; }
       .tl-wf-node:focus-visible { outline:2px solid var(--tl-accent,#356fc4); outline-offset:2px; }
       .tl-wf-node.is-selected { outline:1px solid var(--tl-accent,#356fc4); outline-offset:1px; box-shadow:0 0 10px color-mix(in srgb,var(--tl-accent,#356fc4) 22%,transparent); }
       .tl-wf-icon { flex:none; align-self:flex-start; width:1.65em; height:1.65em; display:grid; place-items:center; border-radius:5px; font-size:1em; color:#fff; background:var(--tl-wf-color); }
@@ -1297,9 +1396,9 @@ window.__ModuleLoader__.load({
       .tl-wf-node.is-waiting .tl-wf-badge i { border-radius:0; }
       @keyframes tl-wf-pulse { 50% { filter:brightness(1.08); } }
       @media (prefers-reduced-motion: reduce) { .tl-wf-node, .tl-wf-edge { animation:none !important; } }
-      .tl-wf-port { position:absolute; top:50%; box-sizing:border-box; width:.85em; height:.85em; transform:translateY(-50%); border-radius:50%; background:var(--tl-surface,#fff); border:2px solid var(--tl-wf-color); }
-      .tl-wf-port.is-in { left:calc(-.425em - 3px); }
-      .tl-wf-port.is-out { right:calc(-.425em - 1px); cursor:crosshair; }
+      .tl-wf-port { position:absolute; top:50%; box-sizing:border-box; width:.8em; height:.8em; transform:translateY(-50%); border-radius:50%; background:var(--tl-surface,#131722); border:2px solid var(--tl-wf-category-color,var(--tl-wf-color)); }
+      .tl-wf-port.is-in { left:calc(-.4em - 3px); }
+      .tl-wf-port.is-out { right:calc(-.4em - 1px); cursor:crosshair; }
       .tl-wf-dialog-backdrop { position:absolute; inset:0; z-index:20; display:grid; place-items:center; background:color-mix(in srgb,var(--tl-surface-soft,#f4f7fb) 20%,transparent); }
       .tl-wf-inspector { position:absolute; box-sizing:border-box; width:min(40em,100%); max-height:100%; min-height:0; display:flex; flex-direction:column; border:1px solid var(--tl-accent,#356fc4); border-radius:12px; box-shadow:0 0 0 1px color-mix(in srgb,var(--tl-accent,#356fc4) 35%,transparent),0 14px 44px #0004; background:var(--tl-surface,#fff); }
       .tl-wf-dialog-header { display:flex; gap:8px; align-items:center; justify-content:space-between; padding:.7em .85em .35em; }

@@ -4653,3 +4653,34 @@ html[data-business-iframe="true"][data-business-browser-mode] .customer-context-
 @container customer-analysis-column (max-width: 540px) {
   .alias-resolve-card { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Embedded file companions share the local workflow panes' compact dock density. */
+html[data-business-iframe="true"][data-business-browser-mode] .file-view-switch button,
+html[data-business-iframe="true"][data-business-browser-mode] .file-pane-tools [data-file-refresh] {
+  width: calc(25px * var(--wb-ui-scale));
+  min-width: calc(25px * var(--wb-ui-scale));
+  min-height: calc(25px * var(--wb-ui-scale));
+}
+html[data-business-iframe="true"][data-business-browser-mode] .file-list-scroll[data-display-mode="rows"] .file-list-item {
+  min-height: calc(27px * var(--wb-ui-scale));
+  gap: calc(8px * var(--wb-ui-scale));
+  padding: calc(4px * var(--wb-ui-scale)) calc(8px * var(--wb-ui-scale));
+}
+html[data-business-iframe="true"][data-business-browser-mode] .file-list-scroll[data-display-mode="rows"] .file-type-icon {
+  width: calc(18px * var(--wb-ui-scale));
+  min-width: calc(18px * var(--wb-ui-scale));
+  height: calc(18px * var(--wb-ui-scale));
+}
+html[data-business-iframe="true"][data-business-browser-mode] .file-list-scroll[data-display-mode="rows"] .file-type-icon svg {
+  width: calc(16px * var(--wb-ui-scale));
+  height: calc(16px * var(--wb-ui-scale));
+}
+html[data-business-iframe="true"][data-business-browser-mode] .file-preview-empty {
+  align-self: center;
+  width: min(100%, 760px);
+  margin: auto;
+  padding: calc(16px * var(--wb-ui-scale));
+  border: 1px solid var(--line);
+  border-radius: calc(9px * var(--wb-ui-scale));
+  background: var(--surface);
+}

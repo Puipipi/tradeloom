@@ -2173,6 +2173,36 @@ onNativeAccountOverlayState(listener) {
   electron.ipcRenderer.on('source-shell:account-overlay-state', receive);
   return () => electron.ipcRenderer.off('source-shell:account-overlay-state', receive);
 },
+workflowCanvasToolbarState: (value) => electron.ipcRenderer.invoke('source-shell:workflowCanvasToolbarState', value),
+onWorkflowCanvasToolbarActionRequested(listener) {
+  const receive = (_event, value) => {
+    const descriptor = value?.descriptor;
+    if (!value || Object.keys(value).sort().join(',') !== 'action,descriptor'
+      || !['start','refresh'].includes(value.action)
+      || !descriptor || !['componentKey,generation,kind,panelId,sceneId','accountGeneration,componentKey,generation,kind,panelId,sceneId'].includes(Object.keys(descriptor).sort().join(','))
+      || descriptor.kind !== 'scene-component' || descriptor.componentKey !== 'workflow-canvas-native'
+      || typeof descriptor.sceneId !== 'string' || !descriptor.sceneId || typeof descriptor.panelId !== 'string' || !descriptor.panelId
+      || !Number.isSafeInteger(descriptor.generation) || descriptor.generation < 0) return;
+    if (descriptor.accountGeneration !== undefined && (!Number.isSafeInteger(descriptor.accountGeneration) || descriptor.accountGeneration < 0)) return;
+    listener(Object.freeze({ action: value.action, descriptor: Object.freeze({ ...descriptor }) }));
+  };
+  electron.ipcRenderer.on('source-shell:workflow-canvas-toolbar-action', receive);
+  return () => electron.ipcRenderer.off('source-shell:workflow-canvas-toolbar-action', receive);
+},
+onWorkflowCanvasToolbarDockStateChanged(listener) {
+  const receive = (_event, value) => {
+    const descriptor = value?.descriptor;
+    if (!value || Object.keys(value).sort().join(',') !== 'available,descriptor' || typeof value.available !== 'boolean'
+      || !descriptor || !['componentKey,generation,kind,panelId,sceneId','accountGeneration,componentKey,generation,kind,panelId,sceneId'].includes(Object.keys(descriptor).sort().join(','))
+      || descriptor.kind !== 'scene-component' || descriptor.componentKey !== 'workflow-canvas-native'
+      || typeof descriptor.sceneId !== 'string' || !descriptor.sceneId || typeof descriptor.panelId !== 'string' || !descriptor.panelId
+      || !Number.isSafeInteger(descriptor.generation) || descriptor.generation < 0
+      || (descriptor.accountGeneration !== undefined && (!Number.isSafeInteger(descriptor.accountGeneration) || descriptor.accountGeneration < 0))) return;
+    listener(Object.freeze({ descriptor: Object.freeze({ ...descriptor }), available: value.available }));
+  };
+  electron.ipcRenderer.on('source-shell:workflow-canvas-toolbar-dock-state', receive);
+  return () => electron.ipcRenderer.off('source-shell:workflow-canvas-toolbar-dock-state', receive);
+},
 nativeSurfaceMounted: (descriptor) => electron.ipcRenderer.invoke(DESKTOP_IPC.nativeSurfaceMounted, descriptor),
 onSceneDraftFlushRequested(listener) {
   const receive = (_event, value) => {

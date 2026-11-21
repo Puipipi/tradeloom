@@ -17,16 +17,16 @@
   "patch": "desktop-identity.patch",
   "additions": {
     "lib/main.js": {
-      "bytes": 1113204,
-      "sha256": "d977d08e2dfdeef4dc4d79508e6d7dbd893fadde7d652b52fb4d568c3227aaec"
+      "bytes": 1113315,
+      "sha256": "ad481e24219e45664a9093309a58d198974d941d547c975844249e53bc64875c"
     },
     "lib/operation-report-worker.js": {
       "bytes": 185600,
       "sha256": "bce69b578f7f9f66788517a4b03c27634d6be25ec3ebebca0a8f9f33cd916d00"
     },
     "lib/preload-app.cjs": {
-      "bytes": 149120,
-      "sha256": "ff39c7df5701bfa1f400fe109b5b50d0d34907ec6d27ba581c7d8a4ae7634b8a"
+      "bytes": 151689,
+      "sha256": "d8f42a3baa172eb4538bc9ba4aad23dfd0e3a34cbe4e47130a979a1002ac6772"
     },
     "lib/preload-mandatory.cjs": {
       "bytes": 1033,
@@ -93,12 +93,12 @@
       "sha256": "0636255c17e62f1bf30211b34d8663f316c543adbec4edc7643883a849e4dd6b"
     },
     "lib/tradeloom-source-shell/source-preload.cjs": {
-      "bytes": 10318,
-      "sha256": "638af8fd961d82256fa921b95ca599aad0f6be4f28c9452b39a6e616605ccc37"
+      "bytes": 10383,
+      "sha256": "f633d368f7eb8493bb95e80217955bc05309336f178347c73751fc8582bb2222"
     },
     "lib/tradeloom-source-shell/source-shell-controller.mjs": {
-      "bytes": 164576,
-      "sha256": "502e34399a9f0c1feaaf22764aca7b5d9bbb051775c970c71661773f899bbbb7"
+      "bytes": 164708,
+      "sha256": "2fec62ae0efe9084a69bd55aa7e0402925075db3a459f4baa0fb3dfe516cb52c"
     },
     "lib/tradeloom-source-shell/surface-owner.mjs": {
       "bytes": 4927,
@@ -121,8 +121,8 @@
       "sha256": "9560e2f94fa32c7aaa243b1393edb019bf977a70ca6b2bbfcfc9d7783711ab59"
     },
     "lib/tradeloom/installed-bootstrap.mjs": {
-      "bytes": 53650,
-      "sha256": "59589a14a456a7373570cf25d90df7c9f7181a45b893430959191cc9128d4433"
+      "bytes": 54001,
+      "sha256": "02dab6646291bfa462065251b51784d79eb2767531db692771919708e2826188"
     },
     "lib/tradeloom/plugin-seed.mjs": {
       "bytes": 14648,
@@ -265,12 +265,12 @@
       "sha256": "7e2cdb6592de4456295d455056a1d5ca500cf8ef3c759aef90ceba66c76b5849"
     },
     "renderer/source-shell/replica-ui/business-bridge.css": {
-      "bytes": 7527,
-      "sha256": "4ddaf678ff77e1f323f9fcd6b7e7ed7e8fee3d6395aa0f833f3021128fbe3bb7"
+      "bytes": 12898,
+      "sha256": "00801ae07a991e911804f55582f4e623410ba703b4b8374d73cb94876585de79"
     },
     "renderer/source-shell/replica-ui/business-bridge.js": {
-      "bytes": 109689,
-      "sha256": "6a298ae43583655de480b02130ca3669c5e209a297fd05fce559c060fbc54cf3"
+      "bytes": 121241,
+      "sha256": "b1b28f1b1ac36f0414f90a9f5daf6939b2dda71745b1be62173a74d66ab45fcc"
     },
     "renderer/source-shell/replica-ui/business-file-bridge.js": {
       "bytes": 13570,
@@ -297,16 +297,16 @@
       "sha256": "79c8eb54adcbaea1022084a2273d16e88bf22e7f9c1885211fcc25537c7b3c88"
     },
     "renderer/source-shell/replica-ui/panel-interactions.css": {
-      "bytes": 4499,
-      "sha256": "415fe4ee6cabc74ef089d41181e88ed6a6d726b04148b4c7f3cd5301eeb34100"
+      "bytes": 5564,
+      "sha256": "3c706a13c1e85ed19a178e606ad761fddac100ee683b3b44f491a2daa264784c"
     },
     "renderer/source-shell/replica-ui/panel-interactions.js": {
-      "bytes": 125457,
-      "sha256": "c19137c742bf00c2034f1ffd3db7af0645d821e25d725ccea2d63b1a4b5f8c49"
+      "bytes": 126033,
+      "sha256": "693587a58bd60bb72bbc5709d1d6247014f7d658c4c3779b2476f13f03eb4d95"
     },
     "renderer/source-shell/replica-ui/renderer.js": {
-      "bytes": 130225,
-      "sha256": "81be3b7ac79cfb45ee5a579ac3f4bcb7acd061ec16a7684c343102896353406d"
+      "bytes": 130106,
+      "sha256": "d8f728757955f3ca265f3e89cb60efd876a610b8817ac3c7045ac47a4af5e513"
     },
     "renderer/source-shell/replica-ui/replica-adapter.js": {
       "bytes": 121246,
@@ -314,11 +314,11 @@
     },
     "renderer/source-shell/replica-ui/scenes-data.js": {
       "bytes": 7673,
-      "sha256": "aea774b822a3390102d668641f603a7be18bffb9c0395d208f881ea2e255fc41"
+      "sha256": "5449d879c3b0f95d69f7e6bcb33e25a669f9160bccac75c077f6aabf9c514223"
     },
     "renderer/source-shell/replica-ui/scenes.json": {
       "bytes": 7568,
-      "sha256": "e1618ece6a3ebe9eacbf12932211090ec90241b42d38cd0b51568aaf19325852"
+      "sha256": "4c97738caccb753c8c6e651c00025b98f59f08d5ff1f5b6532f8a21f0aa58ace"
     },
     "renderer/source-shell/replica-ui/style.css": {
       "bytes": 41525,
@@ -353,8 +353,8 @@
       "sha256": "3a26fa7e41ae13718a2a12b4ea03a83bdb1383a491811f8e556aa93b6fb02f7f"
     },
     "renderer/source-shell/replica-ui/panel-tabs.js": {
-      "bytes": 11902,
-      "sha256": "1e58c755d44bc3b2812dd7be8165d104838000c5b9b774a3eb408a2748e42cb7"
+      "bytes": 11954,
+      "sha256": "7038aeb6a7226f8b2c0fdee8789e267d78fbea2b5b28821a435ff6e129801f3b"
     },
     "renderer/source-shell/replica-ui/pdf-preview-bootstrap.js": {
       "bytes": 228,
@@ -1195,14 +1195,18 @@
     "lib/tradeloom/erpnext-config.mjs": {
       "bytes": 4336,
       "sha256": "e7adb8265323c51c894c27616f33cbbcee0805e1c9a447ab7e59ae5453b41c33"
+    },
+    "renderer/source-shell/replica-ui/WORKFLOW_FILES_UI_LICENSE.txt": {
+      "bytes": 1081,
+      "sha256": "882722787d0c45217622caf61bfd37eb0fb719b5ea33738b94bc714c79932f05"
     }
   },
   "sources": {
     "lib/main.js": {
       "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/main.js",
       "preimage": {
-        "bytes": 1113204,
-        "sha256": "a3a31096be135435698ee0d009c6375fd9d0a596b59c91419a8536d6c69909cd"
+        "bytes": 1113315,
+        "sha256": "691dea754a5337cbb34ee306264ea3f8bd721e49f02b8098a30546daf23cc963"
       },
       "replace": {
         "from": "function desktopClientVersion() {\n\treturn \"0.2.2-rc.2\";",
@@ -1220,8 +1224,8 @@
     "lib/preload-app.cjs": {
       "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/preload-app.cjs",
       "preimage": {
-        "bytes": 149120,
-        "sha256": "ff39c7df5701bfa1f400fe109b5b50d0d34907ec6d27ba581c7d8a4ae7634b8a"
+        "bytes": 151689,
+        "sha256": "d8f42a3baa172eb4538bc9ba4aad23dfd0e3a34cbe4e47130a979a1002ac6772"
       }
     },
     "lib/preload-mandatory.cjs": {
@@ -1339,15 +1343,15 @@
     "lib/tradeloom-source-shell/source-preload.cjs": {
       "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/tradeloom-source-shell/source-preload.cjs",
       "preimage": {
-        "bytes": 10318,
-        "sha256": "638af8fd961d82256fa921b95ca599aad0f6be4f28c9452b39a6e616605ccc37"
+        "bytes": 10383,
+        "sha256": "f633d368f7eb8493bb95e80217955bc05309336f178347c73751fc8582bb2222"
       }
     },
     "lib/tradeloom-source-shell/source-shell-controller.mjs": {
       "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/tradeloom-source-shell/source-shell-controller.mjs",
       "preimage": {
-        "bytes": 164576,
-        "sha256": "502e34399a9f0c1feaaf22764aca7b5d9bbb051775c970c71661773f899bbbb7"
+        "bytes": 164708,
+        "sha256": "2fec62ae0efe9084a69bd55aa7e0402925075db3a459f4baa0fb3dfe516cb52c"
       }
     },
     "lib/tradeloom-source-shell/surface-owner.mjs": {
@@ -1388,8 +1392,8 @@
     "lib/tradeloom/installed-bootstrap.mjs": {
       "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/tradeloom/installed-bootstrap.mjs",
       "preimage": {
-        "bytes": 53650,
-        "sha256": "59589a14a456a7373570cf25d90df7c9f7181a45b893430959191cc9128d4433"
+        "bytes": 54001,
+        "sha256": "02dab6646291bfa462065251b51784d79eb2767531db692771919708e2826188"
       }
     },
     "lib/tradeloom/plugin-seed.mjs": {
@@ -1640,15 +1644,15 @@
     "renderer/source-shell/replica-ui/business-bridge.css": {
       "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/business-bridge.css",
       "preimage": {
-        "bytes": 7527,
-        "sha256": "4ddaf678ff77e1f323f9fcd6b7e7ed7e8fee3d6395aa0f833f3021128fbe3bb7"
+        "bytes": 12898,
+        "sha256": "00801ae07a991e911804f55582f4e623410ba703b4b8374d73cb94876585de79"
       }
     },
     "renderer/source-shell/replica-ui/business-bridge.js": {
       "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/business-bridge.js",
       "preimage": {
-        "bytes": 109689,
-        "sha256": "6a298ae43583655de480b02130ca3669c5e209a297fd05fce559c060fbc54cf3"
+        "bytes": 121241,
+        "sha256": "b1b28f1b1ac36f0414f90a9f5daf6939b2dda71745b1be62173a74d66ab45fcc"
       }
     },
     "renderer/source-shell/replica-ui/business-file-bridge.js": {
@@ -1696,22 +1700,22 @@
     "renderer/source-shell/replica-ui/panel-interactions.css": {
       "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/panel-interactions.css",
       "preimage": {
-        "bytes": 4499,
-        "sha256": "415fe4ee6cabc74ef089d41181e88ed6a6d726b04148b4c7f3cd5301eeb34100"
+        "bytes": 5564,
+        "sha256": "3c706a13c1e85ed19a178e606ad761fddac100ee683b3b44f491a2daa264784c"
       }
     },
     "renderer/source-shell/replica-ui/panel-interactions.js": {
       "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/panel-interactions.js",
       "preimage": {
-        "bytes": 125457,
-        "sha256": "c19137c742bf00c2034f1ffd3db7af0645d821e25d725ccea2d63b1a4b5f8c49"
+        "bytes": 126033,
+        "sha256": "693587a58bd60bb72bbc5709d1d6247014f7d658c4c3779b2476f13f03eb4d95"
       }
     },
     "renderer/source-shell/replica-ui/renderer.js": {
       "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/renderer.js",
       "preimage": {
-        "bytes": 130225,
-        "sha256": "81be3b7ac79cfb45ee5a579ac3f4bcb7acd061ec16a7684c343102896353406d"
+        "bytes": 130106,
+        "sha256": "d8f728757955f3ca265f3e89cb60efd876a610b8817ac3c7045ac47a4af5e513"
       }
     },
     "renderer/source-shell/replica-ui/replica-adapter.js": {
@@ -1725,14 +1729,14 @@
       "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/scenes-data.js",
       "preimage": {
         "bytes": 7673,
-        "sha256": "aea774b822a3390102d668641f603a7be18bffb9c0395d208f881ea2e255fc41"
+        "sha256": "5449d879c3b0f95d69f7e6bcb33e25a669f9160bccac75c077f6aabf9c514223"
       }
     },
     "renderer/source-shell/replica-ui/scenes.json": {
       "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/scenes.json",
       "preimage": {
         "bytes": 7568,
-        "sha256": "e1618ece6a3ebe9eacbf12932211090ec90241b42d38cd0b51568aaf19325852"
+        "sha256": "4c97738caccb753c8c6e651c00025b98f59f08d5ff1f5b6532f8a21f0aa58ace"
       }
     },
     "renderer/source-shell/replica-ui/style.css": {
@@ -1794,8 +1798,8 @@
     "renderer/source-shell/replica-ui/panel-tabs.js": {
       "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/panel-tabs.js",
       "preimage": {
-        "bytes": 11902,
-        "sha256": "1e58c755d44bc3b2812dd7be8165d104838000c5b9b774a3eb408a2748e42cb7"
+        "bytes": 11954,
+        "sha256": "7038aeb6a7226f8b2c0fdee8789e267d78fbea2b5b28821a435ff6e129801f3b"
       }
     },
     "renderer/source-shell/replica-ui/pdf-preview-bootstrap.js": {
@@ -3267,20 +3271,27 @@
         "bytes": 4336,
         "sha256": "e7adb8265323c51c894c27616f33cbbcee0805e1c9a447ab7e59ae5453b41c33"
       }
+    },
+    "renderer/source-shell/replica-ui/WORKFLOW_FILES_UI_LICENSE.txt": {
+      "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/WORKFLOW_FILES_UI_LICENSE.txt",
+      "preimage": {
+        "bytes": 1081,
+        "sha256": "882722787d0c45217622caf61bfd37eb0fb719b5ea33738b94bc714c79932f05"
+      }
     }
   },
   "finalOverlay": {
     "patch": "host-bridge-rc3.patch",
     "preimages": {
       "lib/main.js": {
-        "bytes": 1113204,
-        "sha256": "d977d08e2dfdeef4dc4d79508e6d7dbd893fadde7d652b52fb4d568c3227aaec"
+        "bytes": 1113315,
+        "sha256": "ad481e24219e45664a9093309a58d198974d941d547c975844249e53bc64875c"
       }
     },
     "postimages": {
       "lib/main.js": {
-        "bytes": 1113240,
-        "sha256": "911494550bde6ff0a8a532e32c0dd9743beb1cc70d729a5fe4ec380646d19951"
+        "bytes": 1113351,
+        "sha256": "89c5ef84a2f34c031b64b7e1b0a6c89280de712a5be515fc1b4f10c53ef7af8d"
       }
     }
   }

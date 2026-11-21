@@ -969,12 +969,10 @@ function initScenarioTabBar(opts) {
 function panelHead(meta) {
   const head = el('div', 'panel-header')
   const grip = make('span', 'grip', '⠿'); grip.title = '拖拽移动面板'
-  const badge = el('span', 'panel-badge', String((meta._idx || 0) + 1).padStart(2, '0'))
-  badge.title = '面板序号'
   const identity = el('div', 'panel-identity')
   identity.append(el('strong', 'panel-title', meta.title))
   if (meta.sub) identity.append(el('span', 'panel-sub', meta.sub))
-  head.append(grip, badge, identity)
+  head.append(grip, identity)
   return { head, grip, identity }
 }
 
@@ -1028,7 +1026,7 @@ function makePanel(meta, idx) {
   wrap.__meta = { ...meta, _idx: idx }
   wrap.__defaultLayoutGeometry = layoutGeometry(meta)
   applyGeom(wrap)
-  const { head, grip, identity } = panelHead({ ...meta, _idx: idx })
+  const { head, grip, identity } = panelHead(meta)
 
   // 所有面板都可纵向延长；双击全屏仍由 panel-interactions 单独处理。
   const controls = make('div', 'panel-controls')
@@ -1217,7 +1215,7 @@ function attachDrag(panel, handle, grip) {
   }
   const start = e => {
     if (e.button !== 0) return
-    if (e.target.closest('.icon-control, .panel-expand, .pi-component-tabs')) return
+    if (e.target.closest('.icon-control, .panel-expand, .pi-component-tabs, .workflow-header-actions')) return
     if (expandedStateOf(panel)) return
     if (pending || dragging || activePanelDragCancel) return
     const rect = panel.getBoundingClientRect()
