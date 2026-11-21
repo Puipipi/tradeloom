@@ -195,8 +195,8 @@
         "sha256": "63f1a125d08d469895d1e55cf54bad9fc76f97ddd94f7370eb69385c438bbc9b"
       },
       "client.js": {
-        "bytes": 248483,
-        "sha256": "4481d2ac41aea0070e95c03f983aa130ede3a0a9484007f584cf1aa3d95d354c"
+        "bytes": 248556,
+        "sha256": "0b91f85c708fc226c1eb02b22722c0134226948446e59d8a89430a498d2d4c46"
       },
       "client.mcp-runtime.js": {
         "bytes": 337,
@@ -227,12 +227,12 @@
         "sha256": "aaa9018b50cd114202ada9223c8d07214a9193a5aa0e7043fc96fe8faa5e7111"
       },
       "client.source-native.js": {
-        "bytes": 38674,
-        "sha256": "00fb98c355024cec70d8a0ff1c0daef02883136ffadcea5279f30665cef1a7a4"
+        "bytes": 40591,
+        "sha256": "9a4a79a8e5388f135af3bcd4495078eeaa115961065626d14184d67c4ad7ef75"
       },
       "client.workflow.js": {
-        "bytes": 109129,
-        "sha256": "307dc92e798b08a3bcff91ae8217c01eb602f41d64bd004e6262c8d52e68d249"
+        "bytes": 109574,
+        "sha256": "02616132ab427cc2365f954d0b0e40a4b425d86dfaaa53153dbb55667bf3202a"
       },
       "cordis.patch.yml": {
         "bytes": 16222,
@@ -513,8 +513,8 @@
         "sha256": "63f1a125d08d469895d1e55cf54bad9fc76f97ddd94f7370eb69385c438bbc9b"
       },
       "client.js": {
-        "bytes": 248483,
-        "sha256": "4481d2ac41aea0070e95c03f983aa130ede3a0a9484007f584cf1aa3d95d354c"
+        "bytes": 248556,
+        "sha256": "0b91f85c708fc226c1eb02b22722c0134226948446e59d8a89430a498d2d4c46"
       },
       "client.mcp-runtime.js": {
         "bytes": 337,
@@ -545,12 +545,12 @@
         "sha256": "aaa9018b50cd114202ada9223c8d07214a9193a5aa0e7043fc96fe8faa5e7111"
       },
       "client.source-native.js": {
-        "bytes": 38674,
-        "sha256": "00fb98c355024cec70d8a0ff1c0daef02883136ffadcea5279f30665cef1a7a4"
+        "bytes": 40591,
+        "sha256": "9a4a79a8e5388f135af3bcd4495078eeaa115961065626d14184d67c4ad7ef75"
       },
       "client.workflow.js": {
-        "bytes": 109129,
-        "sha256": "307dc92e798b08a3bcff91ae8217c01eb602f41d64bd004e6262c8d52e68d249"
+        "bytes": 109574,
+        "sha256": "02616132ab427cc2365f954d0b0e40a4b425d86dfaaa53153dbb55667bf3202a"
       },
       "cordis.patch.yml": {
         "bytes": 16222,
