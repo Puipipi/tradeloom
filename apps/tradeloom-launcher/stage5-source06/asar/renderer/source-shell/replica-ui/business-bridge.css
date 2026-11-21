@@ -61,6 +61,24 @@
 .business-native-placement:focus-visible { outline: 2px solid var(--focus-edge); outline-offset: 1px; }
 .business-native-placement svg { display: block; width: 14px; height: 14px; }
 .business-native-placement[hidden] { display: none; }
+.panel-header:has(.business-assistant-tabs) .panel-title,
+.panel-header:has(.business-assistant-tabs) .panel-sub { display: none; }
+.panel-header:has(.business-assistant-tabs) .panel-identity { flex: none; }
+.business-assistant-tabs { display:flex; flex:1; min-width:0; overflow:auto; align-items:center; gap:2px; touch-action:auto; scrollbar-width:none; }
+.business-assistant-tabs > button { flex:none; max-width:12em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; background:transparent; color:inherit; font:inherit; border:0; border-bottom:2px solid transparent; padding:2px 6px; cursor:pointer; }
+.business-assistant-tabs > button[aria-selected="true"] { border-bottom-color:var(--accent); }
+.business-assistant-tabs > button:focus-visible { outline:2px solid var(--focus-edge); outline-offset:-2px; }
+.business-assistant-tab-close {
+  flex: 0 0 auto;
+  width: 20px;
+  padding: 2px 3px !important;
+  border-bottom-color: transparent !important;
+  opacity: .72;
+}
+.business-assistant-tab-close:hover,
+.business-assistant-tab-close:focus-visible { opacity: 1; color: var(--err); }
+.business-assistant-menu { min-width: 150px; }
+.source-assistant-empty { color: var(--text-dim); cursor: default; }
 
 /* Local workflow directories share the existing workbench file and preview panels. */
 .tl-workflow-directory-host { display:flex; flex-direction:column; min-height:0 }

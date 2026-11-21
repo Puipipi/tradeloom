@@ -613,6 +613,21 @@
     window.removeEventListener?.('resize', closeMenu)
   }
 
+  function adoptMenu(element, anchor, panel) {
+    closeMenu()
+    menu = { element, button: anchor, panel, anchor }
+    document.addEventListener('pointerdown', onOutsideMenu, true)
+    document.addEventListener('mousedown', onOutsideMenu, true)
+    document.addEventListener('keydown', onMenuKey, true)
+    window.addEventListener?.('blur', closeMenu)
+    window.addEventListener?.('resize', closeMenu)
+  }
+
+  function dismissMenu(element) {
+    if (menu?.element === element) closeMenu()
+    else element?.remove?.()
+  }
+
   function onOutsideMenu(event) {
     if (menu && !menu.element.contains(event.target) && event.target !== menu.button) closeMenu()
   }
@@ -665,7 +680,9 @@
       return
     }
     if (label === '添加助手') {
-      ownerPanel?.dispatchEvent(new CustomEvent('source-assistant-add', { bubbles: true }))
+      const openChooser = window.businessBridge?.openAssistantTabChooser
+      if (typeof openChooser === 'function') void openChooser(ownerPanel)
+      else announce(explanation)
       return
     }
     if (label === '关闭面板') {
@@ -2488,6 +2505,7 @@
   }
 
   function start() {
+    window.sourcePanelInteractions = Object.freeze({ adoptMenu, dismissMenu })
     if (window.sourcePanelTabs) Object.assign(window.sourcePanelTabs, { getSceneInfo: sceneGridInfo, slotRects: releasedSlotRects })
     scan(document)
     observer = new MutationObserver(records => {

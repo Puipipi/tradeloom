@@ -711,14 +711,18 @@
     if (value.status === 'context-mounted') {
       record.note.textContent = '助手会话已挂载。'
       record.note.dataset.state = 'ready'
+      record.note.hidden = true
       void syncRole(record)
     } else if (value.status === 'unbound') {
+      record.note.hidden = false
       record.note.textContent = '此角色会话尚未绑定；未创建新会话。'
       record.note.dataset.state = 'error'
     } else if (value.status === 'owned-elsewhere') {
+      record.note.hidden = false
       record.note.textContent = record.placement === 'popped-out' ? '此助手已在独立窗口中打开。' : '此助手当前由其他窗口使用。'
       record.note.dataset.state = 'error'
     } else if (value.status === 'error' || value.status === 'unavailable') {
+      record.note.hidden = false
       record.note.textContent = '原生助手暂时不可用。'
       record.note.dataset.state = 'error'
     }
@@ -792,6 +796,185 @@
       return Promise.resolve({ ok: false, reason: 'unsupported' })
     }
     return requestPlacement(record, intent)
+  }
+
+  function renderAssistantTabBar(record) {
+    const group = record.assistantTabs
+    if (!group || !isCurrentRole(record)) return
+    const header = record.panel?.querySelector('.panel-header')
+    if (!header) return
+    let bar = group.bar
+    if (!bar?.isConnected) {
+      bar = document.createElement('div')
+      bar.className = 'business-assistant-tabs'
+      bar.setAttribute('role', 'tablist')
+      bar.setAttribute('aria-label', '助手标签')
+      const controls = header.querySelector('.panel-controls')
+      header.insertBefore(bar, controls || null)
+      group.bar = bar
+    }
+    const tabs = [{ roleId: group.fixedRoleId, label: group.fixedLabel, fixed: true }, ...group.tabs.values()]
+    bar.replaceChildren(...tabs.flatMap(tab => {
+      const button = document.createElement('button')
+      button.type = 'button'
+      button.setAttribute('role', 'tab')
+      button.setAttribute('aria-selected', String(tab.roleId === group.activeRoleId))
+      button.dataset.assistantTabRole = tab.roleId
+      button.textContent = tab.label
+      button.addEventListener('click', event => { event.stopPropagation(); return selectAssistantTab(record, tab.roleId) })
+      if (tab.fixed) return [button]
+      const close = document.createElement('button')
+      close.type = 'button'
+      close.className = 'business-assistant-tab-close'
+      close.setAttribute('aria-label', `关闭${tab.label}`)
+      close.title = `关闭${tab.label}`
+      close.textContent = '×'
+      close.addEventListener('click', event => { event.stopPropagation(); return closeAssistantTab(record, tab.roleId) })
+      return [button, close]
+    }))
+  }
+
+  async function selectAssistantTab(record, roleId) {
+    const group = record.assistantTabs
+    const tab = roleId === group?.fixedRoleId
+      ? { roleId, target: group.fixedTarget }
+      : group?.tabs.get(roleId)
+    if (!tab || !tab.target || !isCurrentRole(record) || state.sceneTransitionPending) return
+    if (group.activeRoleId === roleId && record.target?.panelId === tab.target.panelId) return
+    const generation = ++group.switchGeneration
+    const previous = record.target
+    const hadSurface = record.created && previous && record.placement !== 'popped-out'
+    record.syncRevision++
+    if (hadSurface) {
+      try { await app.harnessSurface.setVisible(previous.sceneId, previous.panelId, false) } catch { /* The next target remains independently selectable. */ }
+    }
+    if (!isCurrentRole(record) || generation !== group.switchGeneration) return
+    record.visible = false
+    record.created = false
+    record.status = 'loading'
+    record.placement = 'docked'
+    record.target = tab.target
+    group.activeRoleId = roleId
+    renderAssistantTabBar(record)
+    record.note.hidden = false
+    record.note.dataset.state = 'loading'
+    record.note.textContent = '正在切换助手会话…'
+    try {
+      const result = await app.harnessSurface.create(tab.target.sceneId, tab.target.panelId)
+      if (!isCurrentRole(record) || generation !== group.switchGeneration) {
+        if (result?.status !== 'owned-elsewhere' && result?.placement !== 'popped-out') {
+          await app.harnessSurface.setVisible(tab.target.sceneId, tab.target.panelId, false).catch(() => {})
+        }
+        return
+      }
+      record.created = result?.status !== 'owned-elsewhere' && typeof result?.status === 'string'
+      record.status = result?.status || 'unavailable'
+      if (result?.placement) record.placement = result.placement
+      onRoleStatus({ ...result, sceneId: tab.target.sceneId, panelId: tab.target.panelId })
+      if (!record.created) return
+      const status = typeof app.harnessSurface.status === 'function'
+        ? await app.harnessSurface.status(tab.target.sceneId, tab.target.panelId).catch(() => undefined) : undefined
+      if (!isCurrentRole(record) || generation !== group.switchGeneration) return
+      if (status?.status) onRoleStatus({ ...status, sceneId: tab.target.sceneId, panelId: tab.target.panelId })
+      if (record.status === 'context-mounted') await syncRole(record)
+    } catch {
+      if (isCurrentRole(record) && generation === group.switchGeneration) {
+        record.status = 'error'
+        record.note.hidden = false
+        record.note.dataset.state = 'error'
+        record.note.textContent = '无法打开此助手会话。'
+      }
+    }
+  }
+
+  async function closeAssistantTab(record, roleId) {
+    const group = record.assistantTabs
+    if (!group || roleId === group.fixedRoleId || !group.tabs.has(roleId) || !isCurrentRole(record)) return
+    const wasActive = group.activeRoleId === roleId
+    group.tabs.delete(roleId)
+    if (!isCurrentRole(record)) return
+    if (wasActive) group.activeRoleId = group.fixedRoleId
+    renderAssistantTabBar(record)
+    if (wasActive) await selectAssistantTab(record, group.fixedRoleId)
+  }
+
+  async function openAssistantTabChooser(panel) {
+    const record = state.roleRecord
+    const group = record?.assistantTabs
+    if (!group || record.panel !== panel || !isCurrentRole(record)) return
+    const generation = ++group.chooserGeneration
+    let options
+    try {
+      if (typeof app?.harnessSurface?.assistantTabCatalog !== 'function') throw new Error('catalog-unavailable')
+      options = await app.harnessSurface.assistantTabCatalog(group.sceneId, group.hostPanelId)
+    } catch {
+      if (isCurrentRole(record) && generation === group.chooserGeneration) {
+        record.note.hidden = false
+        record.note.dataset.state = 'error'
+        record.note.textContent = '可用助手清单暂不可用。'
+      }
+      return
+    }
+    if (!isCurrentRole(record) || generation !== group.chooserGeneration || !Array.isArray(options)) return
+    const candidates = options.filter(option => option && typeof option.roleId === 'string'
+      && typeof option.panelId === 'string' && !group.tabs.has(option.roleId) && option.roleId !== group.fixedRoleId)
+    const menu = document.createElement('div')
+    menu.className = 'pi-menu business-assistant-menu'
+    menu.setAttribute('role', 'menu')
+    menu.setAttribute('aria-label', '添加助手')
+    menu.setAttribute('popover', 'manual')
+    if (!candidates.length) {
+      const empty = document.createElement('div')
+      empty.className = 'pi-menu-item source-assistant-empty'
+      empty.textContent = '没有其他可用助手'
+      menu.append(empty)
+    } else for (const option of candidates) {
+      const item = document.createElement('button')
+      item.type = 'button'
+      item.className = 'pi-menu-item'
+      item.setAttribute('role', 'menuitem')
+      item.textContent = option.label
+      item.addEventListener('click', () => {
+        window.sourcePanelInteractions?.dismissMenu?.(menu)
+        try { menu.hidePopover?.() } catch {}
+        menu.remove()
+        if (!isCurrentRole(record) || group.tabs.has(option.roleId)) return
+        group.tabs.set(option.roleId, { roleId: option.roleId, panelId: option.panelId,
+          label: typeof option.label === 'string' && option.label ? option.label : option.roleId,
+          target: { sceneId: group.sceneId, panelId: option.panelId, roleId: option.roleId } })
+        renderAssistantTabBar(record)
+        return selectAssistantTab(record, option.roleId)
+      })
+      menu.append(item)
+    }
+    document.body.append(menu)
+    try { menu.showPopover?.() } catch {}
+    const anchor = group.bar?.getBoundingClientRect() ?? panel.getBoundingClientRect()
+    menu.style.top = `${Math.max(8, Math.min(anchor.bottom + 5, window.innerHeight - menu.offsetHeight - 8))}px`
+    menu.style.left = `${Math.max(8, Math.min(anchor.left, window.innerWidth - menu.offsetWidth - 8))}px`
+    if (candidates.length) menu.querySelector?.('button')?.focus?.()
+    else { menu.setAttribute('tabindex', '-1'); menu.focus?.() }
+    window.sourcePanelInteractions?.adoptMenu?.(menu, group.bar, panel)
+  }
+
+  function initializeAssistantTabs(record, roleId, target) {
+    const role = state.config?.raw.roles.find(item => item.id === roleId)
+    record.assistantTabs = {
+      sceneId: target.sceneId, hostPanelId: target.panelId, fixedRoleId: roleId,
+      fixedLabel: typeof role?.label === 'string' && role.label ? role.label : roleId,
+      fixedTarget: target, activeRoleId: roleId, tabs: new Map(), switchGeneration: 0, chooserGeneration: 0,
+    }
+    renderAssistantTabBar(record)
+  }
+
+  function disposeAssistantTabs(record) {
+    if (record.assistantTabs) record.assistantTabs.switchGeneration++
+    record.assistantTabs?.bar?.remove()
+    for (const menu of document.querySelectorAll('.business-assistant-menu')) {
+      window.sourcePanelInteractions?.dismissMenu?.(menu)
+      menu.remove()
+    }
+    record.assistantTabs = undefined
   }
 
   function openSceneRotation(panel) {
@@ -954,6 +1137,7 @@
       state.roleQueue = Promise.resolve(state.roleQueue).catch(() => {}).then(async () => {
         previous.disposed = true
         previous.syncRevision++
+        disposeAssistantTabs(previous)
         try { await app.harnessSurface.setVisible(previous.target.sceneId, previous.target.panelId, false) } catch { /* Preserve existing view; the next owner reports its own state. */ }
         previous.visible = false
       })
@@ -980,6 +1164,7 @@
         return
       }
       record.target = target
+      if (typeof app?.harnessSurface?.assistantTabCatalog === 'function') initializeAssistantTabs(record, roleId, target)
       const result = await app.harnessSurface.create(target.sceneId, target.panelId)
       if (!isCurrentRole(record)) {
         const active = state.roleRecord
@@ -1014,6 +1199,7 @@
     return () => {
       record.disposed = true
       record.syncRevision++
+      disposeAssistantTabs(record)
       state.roleObserver?.unobserve?.(content)
       record.placementButton?.remove()
       record.skillsButton?.remove()
@@ -1917,6 +2103,7 @@
     sceneSelected: onSceneChanged,
     renderBusinessPanel,
     renderRolePanel,
+    openAssistantTabChooser,
     renderWorkflowPanel,
     renderCompanion,
     requestRolePlacement,
