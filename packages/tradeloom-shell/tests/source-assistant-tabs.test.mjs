@@ -120,17 +120,22 @@ for (const scenario of [
     assert.equal(group.activeRoleId, scenario.addedRole)
     assert.equal(record.status, 'context-mounted')
     assert.equal(group.bar.children[0].textContent, scenario.fixedLabel, 'fixed helper remains first and has no close button')
-    assert.equal(group.bar.children.filter(node => node.className === 'business-assistant-tab-close').length, 1)
+    assert.equal(group.bar.children[0].dataset.assistantFixed, 'true')
+    const closeControl = group.bar.children[1].children[1]
+    assert.equal(closeControl.className, 'business-assistant-tab-close')
 
     await funcs.selectAssistantTab(record, scenario.fixedRole)
     assert.equal(group.activeRoleId, scenario.fixedRole)
     assert.equal(record.target.panelId, scenario.panelId)
     await funcs.selectAssistantTab(record, scenario.addedRole)
     assert.equal(group.activeRoleId, scenario.addedRole)
+    assert.equal(group.bar.children[1].children[0].dataset.assistantTabRole, scenario.addedRole,
+      'the selected tab stays in the pinned header lane beside its close control')
+    assert.equal(group.bar.children[1].children[0].getAttribute('aria-selected'), 'true')
     const alias = `assistant-tab:${scenario.panelId}:${scenario.addedRole}`
     assert.ok(calls.some(call => call[0] === 'create' && call[2] === alias))
 
-    await funcs.closeAssistantTab(record, scenario.addedRole)
+    await closeControl.click()
     assert.equal(group.tabs.has(scenario.addedRole), false)
     assert.equal(group.activeRoleId, scenario.fixedRole)
     assert.equal(record.target.panelId, scenario.panelId)
@@ -139,6 +144,16 @@ for (const scenario of [
     assert.equal(calls.some(call => call[0] === 'delete-session'), false, 'closing a tab does not remove its existing session')
   })
 }
+
+test('narrow assistant header keeps fixed, selected, and close lanes constrained', () => {
+  const css = readFileSync(resolve(sourceRoot, 'replica-ui/business-bridge.css'), 'utf8')
+  assert.match(css, /\.business-assistant-tabs\s*\{[^}]*min-width:0[^}]*overflow:hidden/)
+  assert.match(css, /\.business-assistant-tabs > button,\s*\.business-assistant-tab-current > button,\s*\.business-assistant-tab > button\s*\{[^}]*min-width:28px/)
+  assert.match(css, /\.business-assistant-tabs > button\[data-assistant-fixed\]\s*\{[^}]*flex:0 1 5em/)
+  assert.match(css, /\.business-assistant-tab-current\s*\{[^}]*min-width:48px/)
+  assert.match(css, /\.business-assistant-tab-close\s*\{[^}]*flex:\s*0 0 20px !important/)
+  assert.match(css, /\.business-assistant-tabs-scroll\s*\{[^}]*min-width:0[^}]*overflow-x:auto/)
+})
 
 test('production source entry loads the business bridge that owns assistant tabs', () => {
   assert.match(entrySource, /<script src="replica-ui\/business-bridge\.js"><\/script>/)

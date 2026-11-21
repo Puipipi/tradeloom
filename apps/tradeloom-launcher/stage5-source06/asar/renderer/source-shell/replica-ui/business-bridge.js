@@ -813,16 +813,19 @@
       header.insertBefore(bar, controls || null)
       group.bar = bar
     }
-    const tabs = [{ roleId: group.fixedRoleId, label: group.fixedLabel, fixed: true }, ...group.tabs.values()]
-    bar.replaceChildren(...tabs.flatMap(tab => {
+    const makeTabButton = (tab, fixed = false) => {
       const button = document.createElement('button')
       button.type = 'button'
       button.setAttribute('role', 'tab')
       button.setAttribute('aria-selected', String(tab.roleId === group.activeRoleId))
       button.dataset.assistantTabRole = tab.roleId
+      if (fixed) button.dataset.assistantFixed = 'true'
       button.textContent = tab.label
+      button.title = tab.label
       button.addEventListener('click', event => { event.stopPropagation(); return selectAssistantTab(record, tab.roleId) })
-      if (tab.fixed) return [button]
+      return button
+    }
+    const makeCloseButton = tab => {
       const close = document.createElement('button')
       close.type = 'button'
       close.className = 'business-assistant-tab-close'
@@ -830,8 +833,30 @@
       close.title = `关闭${tab.label}`
       close.textContent = '×'
       close.addEventListener('click', event => { event.stopPropagation(); return closeAssistantTab(record, tab.roleId) })
-      return [button, close]
-    }))
+      return close
+    }
+    const children = [makeTabButton({ roleId: group.fixedRoleId, label: group.fixedLabel }, true)]
+    const active = group.tabs.get(group.activeRoleId)
+    if (active) {
+      const current = document.createElement('div')
+      current.className = 'business-assistant-tab-current'
+      current.append(makeTabButton(active), makeCloseButton(active))
+      children.push(current)
+    }
+    const remaining = [...group.tabs.values()].filter(tab => tab.roleId !== group.activeRoleId)
+    if (remaining.length) {
+      const scroll = document.createElement('div')
+      scroll.className = 'business-assistant-tabs-scroll'
+      scroll.setAttribute('aria-label', '其他已添加助手')
+      for (const tab of remaining) {
+        const item = document.createElement('div')
+        item.className = 'business-assistant-tab'
+        item.append(makeTabButton(tab), makeCloseButton(tab))
+        scroll.append(item)
+      }
+      children.push(scroll)
+    }
+    bar.replaceChildren(...children)
   }
 
   async function selectAssistantTab(record, roleId) {
