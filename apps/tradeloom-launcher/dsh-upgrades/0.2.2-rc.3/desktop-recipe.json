@@ -265,12 +265,12 @@
       "sha256": "7e2cdb6592de4456295d455056a1d5ca500cf8ef3c759aef90ceba66c76b5849"
     },
     "renderer/source-shell/replica-ui/business-bridge.css": {
-      "bytes": 6704,
-      "sha256": "cfe0770e715872bb31f62c61dda211392407677594b85d7b4ae70fe8e89f8a83"
+      "bytes": 7417,
+      "sha256": "f4da74ed1131d943727c96a5eca5f3771450d9f602f97d3541a0d84ff5220fb8"
     },
     "renderer/source-shell/replica-ui/business-bridge.js": {
-      "bytes": 108083,
-      "sha256": "6155c9d4754f411dab5e1722973a0adef427b7683e0d7c63b3956d1f43fb330b"
+      "bytes": 109067,
+      "sha256": "9fd99fc0b23600edb0367547af4ab32d482aad152381ceb0517c540cfd6c7e4d"
     },
     "renderer/source-shell/replica-ui/business-file-bridge.js": {
       "bytes": 13570,
@@ -1640,15 +1640,15 @@
     "renderer/source-shell/replica-ui/business-bridge.css": {
       "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/business-bridge.css",
       "preimage": {
-        "bytes": 6704,
-        "sha256": "cfe0770e715872bb31f62c61dda211392407677594b85d7b4ae70fe8e89f8a83"
+        "bytes": 7417,
+        "sha256": "f4da74ed1131d943727c96a5eca5f3771450d9f602f97d3541a0d84ff5220fb8"
       }
     },
     "renderer/source-shell/replica-ui/business-bridge.js": {
       "source": "apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/business-bridge.js",
       "preimage": {
-        "bytes": 108083,
-        "sha256": "6155c9d4754f411dab5e1722973a0adef427b7683e0d7c63b3956d1f43fb330b"
+        "bytes": 109067,
+        "sha256": "9fd99fc0b23600edb0367547af4ab32d482aad152381ceb0517c540cfd6c7e4d"
       }
     },
     "renderer/source-shell/replica-ui/business-file-bridge.js": {
