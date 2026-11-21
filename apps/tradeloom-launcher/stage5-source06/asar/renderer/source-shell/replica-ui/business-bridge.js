@@ -1298,6 +1298,18 @@
       link.click()
       setTimeout(() => URL.revokeObjectURL(url), 30_000)
     }
+    const filePath = (directory, name) => {
+      const separator = /\\/.test(directory.path) ? '\\' : '/'
+      return directory.path.replace(/[\\/]+$/, '') + separator + name
+    }
+    const copySelectedPath = async () => {
+      try {
+        if (!window.navigator?.clipboard?.writeText || !workflow.directory || !workflow.selected) throw new Error('clipboard unavailable')
+        await window.navigator.clipboard.writeText(filePath(workflow.directory, workflow.selected.name))
+        workflow.error = '已复制文件路径。'
+      } catch { workflow.error = '无法复制文件路径。' }
+      refresh()
+    }
     const refresh = () => { for (const render of workflow.panes) render() }
     async function request(operation, id) {
       if (!isCurrent()) return
@@ -1367,9 +1379,12 @@
       if (files) {
         actions.append(button('打开', () => void request('pick'), workflow.busy))
         actions.append(button('上一级', () => void request('up'), workflow.busy || !showLocal || !directory.canGoUp))
+        if (directory) actions.append(button('重读', () => void request('current'), workflow.busy))
         if (directory) actions.append(button('关闭目录', () => void request('revoke'), workflow.busy))
       } else if (selected) {
-        actions.append(button('返回目录', () => { workflow.selected = null; refresh() }, workflow.busy))
+        actions.append(button('重读', () => void request('preview', selected.id), workflow.busy))
+        actions.append(button('复制路径', () => void copySelectedPath(), workflow.busy))
+        actions.append(button('关闭预览', () => { workflow.selected = null; refresh() }, workflow.busy))
         actions.append(button('下载', () => void request('download', selected.id), workflow.busy))
       }
       if (actions.childElementCount) header.append(actions)
@@ -1412,6 +1427,19 @@
             kind.className = 'tl-workflow-directory-kind'
             kind.textContent = folder ? '文件夹' : '文件'
             entry.append(kind)
+            if (!folder) {
+              const size = document.createElement('span')
+              size.className = 'tl-workflow-directory-size'
+              size.textContent = Number.isFinite(item.size) ? `${item.size.toLocaleString()} B` : ''
+              entry.append(size)
+              const modified = document.createElement('time')
+              modified.className = 'tl-workflow-directory-modified'
+              if (Number.isFinite(item.modifiedAt)) {
+                modified.dateTime = new Date(item.modifiedAt).toISOString()
+                modified.textContent = new Date(item.modifiedAt).toLocaleString()
+              }
+              entry.append(modified)
+            }
           }
           entries.append(entry)
         }

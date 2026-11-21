@@ -74,7 +74,7 @@ function createWorkflowFiles() {
         if (!info || (!info.isDirectory() && !info.isFile())) continue
         const id = randomUUID(), kind = info.isDirectory() ? 'folder' : 'file'
         entries.set(id, { name: item.name, kind, target: child, identity: info })
-        names.push({ id, name: item.name, kind })
+        names.push({ id, name: item.name, kind, size: Number(info.size), modifiedAt: Number(info.mtimeMs) })
       }
     } finally {
       await dir.close()
