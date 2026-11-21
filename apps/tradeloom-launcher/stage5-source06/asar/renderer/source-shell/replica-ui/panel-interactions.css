@@ -58,15 +58,6 @@
   box-shadow: 0 18px 64px var(--surface-shadow);
 }
 
-.panel.pi-animating {
-  transition:
-    left 320ms cubic-bezier(.22, .61, .36, 1),
-    top 320ms cubic-bezier(.22, .61, .36, 1),
-    width 320ms cubic-bezier(.22, .61, .36, 1),
-    height 320ms cubic-bezier(.22, .61, .36, 1),
-    box-shadow 320ms ease;
-}
-
 .pi-slot {
   min-width: 0;
   min-height: 0;

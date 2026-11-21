@@ -471,6 +471,7 @@
       const next = { ...full, tree, topology: treeTopology(tree), geometry: info.geometry, geometrySignature: info.signature }
       resizeTrees.set(info.sceneId, next)
       positionTreePanels(grid, tree)
+      saveSplitTree(info.sceneId, next)
       geometryHandled = true
     }
     const projection = closedPanelProjection
@@ -485,6 +486,66 @@
     }
     if (geometryHandled) event.preventDefault()
     if (geometryHandled || projection) updateResizeHandles()
+  }
+
+  function withoutTreeLeaf(node, id) {
+    if (node.kind === 'leaf') return node.id === id ? null : { ...node }
+    const first = withoutTreeLeaf(node.first, id), second = withoutTreeLeaf(node.second, id)
+    if (!first) return second
+    if (!second) return first
+    return { ...node, first, second }
+  }
+
+  function insertTreeLeaf(node, targetId, insertedId, axis, side) {
+    if (node.kind === 'leaf') {
+      if (node.id !== targetId) return { ...node }
+      const inserted = { kind: 'leaf', id: insertedId }
+      return side === 'before'
+        ? { kind: 'split', axis, boundary: 0, ratio: 0.5, first: inserted, second: { ...node } }
+        : { kind: 'split', axis, boundary: 0, ratio: 0.5, first: { ...node }, second: inserted }
+    }
+    return { ...node, first: insertTreeLeaf(node.first, targetId, insertedId, axis, side), second: insertTreeLeaf(node.second, targetId, insertedId, axis, side) }
+  }
+
+  function setTreePaths(node, path = 'r') {
+    if (node.kind === 'leaf') return { ...node }
+    return { ...node, path, first: setTreePaths(node.first, `${path}0`), second: setTreePaths(node.second, `${path}1`) }
+  }
+
+  function insertPanelSlot(event) {
+    const { source, target, axis, side } = event.detail || {}
+    const grid = source?.closest?.('#grid')
+    const info = grid && sceneGridInfo(grid)
+    const sourceId = source?.dataset?.panelId, targetId = target?.dataset?.panelId
+    if (!info || !sourceId || !targetId || sourceId === targetId
+      || !['x', 'y'].includes(axis) || !['before', 'after'].includes(side)) return
+    const state = treeFor(info)
+    if (!state || !treeLeafIds(state.tree).includes(sourceId) || !treeLeafIds(state.tree).includes(targetId)) return
+    const remainder = withoutTreeLeaf(state.tree, sourceId)
+    if (!remainder || !treeLeafIds(remainder).includes(targetId)) return
+    const tree = setTreePaths(insertTreeLeaf(remainder, targetId, sourceId, axis, side))
+    if (!validSplitTree(tree, info.geometry.map(item => item.id))) return
+    state.tree = tree
+    state.topology = treeTopology(tree)
+    state.geometry = info.geometry.map(item => ({ ...item }))
+    state.geometrySignature = info.signature
+    resizeTrees.set(info.sceneId, state)
+    positionTreePanels(grid, tree)
+    saveSplitTree(info.sceneId, state)
+    const projection = closedPanelProjection
+    if (projection && projection.panels.every((panel, index) => panel === info.panels[index])) {
+      const leaves = treeLeafIds(projection.tree)
+      if (leaves.includes(sourceId) && leaves.includes(targetId)) {
+        const projected = setTreePaths(insertTreeLeaf(withoutTreeLeaf(projection.tree, sourceId), targetId, sourceId, axis, side))
+        if (validSplitTree(projected, [...leaves])) {
+          projection.tree = projected
+          projection.key = JSON.stringify([info.sceneId, info.geometry, [...activePanelSlots(info).keys()]])
+          applyClosedPanelReflow(grid, info, projected)
+        }
+      }
+    }
+    event.preventDefault()
+    updateResizeHandles()
   }
 
   function updateClosedProjectionHandles(grid, info) {
@@ -2035,7 +2096,9 @@
   }
 
   function prefersReducedMotion() {
-    return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
+    // This surface has its own explicit motion preference; do not let the OS
+    // preference make these controls disagree with the vertical expand control.
+    return document.documentElement.classList.contains('reduce-motion')
   }
 
   const panelMotions = new WeakMap()
@@ -2135,7 +2198,7 @@
 
     if (reversed) setRect(panel, reversed)
     endGeometry ??= panelGeometryProof.begin([panel], 'restore')
-    panel.classList.add('pi-animating')
+    panel.classList.add('panel-anim')
     // Commit the current fixed geometry before scheduling the restored grid geometry.
     panel.getBoundingClientRect()
     if (!target) {
@@ -2163,7 +2226,7 @@
     if (states.get(panel) !== state) return
     if (state.originalStyle == null) panel.removeAttribute('style')
     else panel.setAttribute('style', state.originalStyle)
-    panel.classList.remove('pi-maximized', 'pi-animating')
+    panel.classList.remove('pi-maximized', 'panel-anim')
     state.slot?.remove()
     states.delete(panel)
     setFullscreenButton(state.fullButton, false)
@@ -2265,7 +2328,7 @@
     requestAnimationFrame(() => {
       if (states.get(panel) !== state || state.pending) { endGeometry('superseded'); motion?.finish(false); return }
       if (!panel.isConnected) { cleanupDetached(panel); endGeometry('detached'); motion?.finish(false); return }
-      panel.classList.add('pi-animating')
+      panel.classList.add('panel-anim')
       const latest = grid.getBoundingClientRect()
       setRect(panel, latest)
       transitionDone(panel, () => {
@@ -2275,7 +2338,7 @@
           motion?.finish(false)
           return
         }
-        panel.classList.remove('pi-animating')
+        panel.classList.remove('panel-anim')
         updateResizeHandles()
         endGeometry()
         motion?.finish(true)
@@ -2441,6 +2504,7 @@
     window.addEventListener('resize', onResize)
     window.addEventListener('scene-configuration-layout', updateConfiguredGeometry)
     window.addEventListener('scene-panel-slot-swap', updateSwappedPanelSlots)
+    window.addEventListener('scene-panel-slot-insert', insertPanelSlot)
     window.addEventListener('scene-panel-tabs-changed', () => {
       const grid = document.getElementById('grid')
       applyClosedPanels(grid)

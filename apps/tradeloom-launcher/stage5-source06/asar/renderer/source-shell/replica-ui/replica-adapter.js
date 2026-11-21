@@ -442,12 +442,7 @@
   function movingPanel() {
     const panel = findTarget()?.closest('.panel-chat')
     if (!panel) return null
-    const hasGhost = !!document.querySelector('#grid .drop-ghost')
-    const dragging = state.dragPanel === panel && panel.classList.contains('dragging') && hasGhost
-    if (state.dragPanel === panel && !hasGhost) {
-      state.dragPanel = undefined
-      state.dragPointerId = undefined
-    }
+    const dragging = state.dragPanel === panel && panel.classList.contains('dragging')
     const animating = panel.classList.contains('panel-anim') && state.suppressedMotionPanel !== panel
     return dragging || animating ? { panel, dragging, animating } : null
   }
@@ -462,7 +457,6 @@
 
   function roleDragIsActive(record) {
     return state.roleDragPanel === record.panel && record.panel?.classList.contains('dragging')
-      && !!document.querySelector('#grid .drop-ghost')
   }
 
   function roleMotionIsActive(record) {
@@ -507,7 +501,7 @@
   function trackRoleDragStart(event) {
     if (event.button !== 0 || event.target?.closest?.('.icon-control, .panel-expand')) return
     const panel = event.target?.closest?.('#grid .panel-chat[data-panel-id]')
-    if (!panel || !panel.classList.contains('dragging')) return
+    if (!panel || panel.classList.contains('panel-expanded')) return
     const record = [...state.roleSurfaces.values()].find(item => item.panel === panel && item.created && item.placement === 'docked')
     if (!record) return
     state.roleDragPanel = panel
@@ -1407,6 +1401,7 @@
     const rect = record.content?.getBoundingClientRect?.()
     return !state.disposed && record.content?.isConnected === true && record.sceneId === currentSceneId()
       && rect && rect.width > 0 && rect.height > 0 && record.panel?.isConnected === true
+      && !roleDragIsActive(record)
       && !(state.accountChatMode && state.target?.sceneId === record.sceneId && state.target?.panelId === record.panelId)
       && getComputedStyle(record.panel).display !== 'none' && !record.panel.hidden
       && !modalVisible() && !menuVisible()

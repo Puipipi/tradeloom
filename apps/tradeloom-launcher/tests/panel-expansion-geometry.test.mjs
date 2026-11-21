@@ -98,7 +98,7 @@ test('scene dock owns managed panel slot swaps before the renderer applies templ
   const renderer = await readFile(rendererPath, 'utf8')
   const interactionsPath = new URL('../stage5-source06/asar/renderer/source-shell/replica-ui/panel-interactions.js', import.meta.url)
   const interactions = await readFile(interactionsPath, 'utf8')
-  const swapSource = functionSource(renderer, 'function swapGeom(a, b) {', '/* ============================================================')
+  const swapSource = functionSource(renderer, 'function swapGeom(a, b, drop) {', '/* ============================================================')
   const makePanel = (id, geometry) => ({ dataset: { panelId: id, ...geometry }, __meta: { ...geometry }, style: {} })
   const a = makePanel('workflow', { col: '2', row: '1', w: '2', h: '2' })
   const b = makePanel('preview', { col: '1', row: '3', w: '1', h: '2' })

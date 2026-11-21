@@ -1209,7 +1209,7 @@ function attachDrag(panel, handle, grip) {
     panel.style.translate = `${dx}px ${dy}px`
     const target = findSnapTarget(point.x, point.y, panel)
     grid.querySelectorAll('.panel').forEach(p => p.classList.remove('snap-target'))
-    if (target) target.classList.add('snap-target')
+    if (target) target.panel.classList.add('snap-target')
   }
   const cancel = () => end({ pointerId: pending?.pointerId }, true)
   const onLostPointerCapture = e => {
@@ -1273,7 +1273,7 @@ function attachDrag(panel, handle, grip) {
     } catch { /* capture can be lost before pointerup */ }
     if (!wasDragging) return
     restoreStyle(state)
-    if (target && target !== panel) swapGeom(panel, target)
+    if (target && target.panel !== panel) swapGeom(panel, target.panel, target)
   }
   handle.addEventListener('pointerdown', start)
   handle.addEventListener('pointermove', move)
@@ -1291,15 +1291,33 @@ function findSnapTarget(x, y, self) {
   grid.querySelectorAll('.panel').forEach(p => {
     if (p === self || p.classList.contains('pi-closed') || p.classList.contains('pi-tab-inactive')) return
     const r = p.getBoundingClientRect()
-    const cx = r.left + r.width / 2, cy = r.top + r.height / 2
-    const d = Math.hypot(cx - x, cy - y)
-    if (d < bestDist) { bestDist = d; best = p }
+    const dx = Math.max(r.left - x, 0, x - r.right)
+    const dy = Math.max(r.top - y, 0, y - r.bottom)
+    const d = Math.hypot(dx, dy)
+    if (d >= bestDist) return
+    bestDist = d
+    const nx = (x - (r.left + r.width / 2)) / Math.max(1, r.width / 2)
+    const ny = (y - (r.top + r.height / 2)) / Math.max(1, r.height / 2)
+    const horizontal = Math.abs(nx) >= Math.abs(ny)
+    best = {
+      panel: p,
+      axis: horizontal ? 'x' : 'y',
+      side: horizontal ? (nx < 0 ? 'before' : 'after') : (ny < 0 ? 'before' : 'after'),
+      insert: dx > 0 || dy > 0 || Math.max(Math.abs(nx), Math.abs(ny)) >= 0.72,
+    }
   })
   return bestDist < 260 ? best : null
 }
-function swapGeom(a, b) {
+function swapGeom(a, b, drop) {
   a = window.sourcePanelTabs?.slotPanel(a) ?? a
   b = window.sourcePanelTabs?.slotPanel(b) ?? b
+  if (drop?.insert) {
+    const insert = new CustomEvent('scene-panel-slot-insert', {
+      detail: { source: a, target: b, axis: drop.axis, side: drop.side }, cancelable: true,
+    })
+    window.dispatchEvent(insert)
+    if (insert.defaultPrevented) return true
+  }
   for (const k of ['col', 'row', 'w', 'h']) {
     const t = a.dataset[k]; a.dataset[k] = b.dataset[k]; b.dataset[k] = t
   }
@@ -1313,6 +1331,7 @@ function swapGeom(a, b) {
   const event = new CustomEvent('scene-panel-slot-swap', { detail: [a, b], cancelable: true })
   window.dispatchEvent(event)
   if (!event.defaultPrevented) { applyGeom(a); applyGeom(b) }
+  return false
 }
 
 /* ============================================================
