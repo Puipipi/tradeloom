@@ -5630,6 +5630,8 @@ const DESKTOP_IPC = {
 	accountSidebarCommandReceived: "dsh-desktop:account-sidebar-command-received",
 	pluginInventoryRequest: "dsh-desktop:plugin-inventory-request",
 	pluginInventoryResult: "dsh-desktop:plugin-inventory-result",
+	pluginNavigationRequest: "dsh-desktop:plugin-navigation-request",
+	pluginNavigationResult: "dsh-desktop:plugin-navigation-result",
 	modelCatalogRequest: "dsh-desktop:model-catalog-request",
 	modelCatalogResult: "dsh-desktop:model-catalog-result",
 	settingsOpenRequest: "dsh-desktop:settings-open-request",
@@ -25645,6 +25647,11 @@ async function main() {
 		assertDesktopSender(event, ["app"]);
 		if (!sourceMode || sourceController === void 0) throw new Error("source shell: inventory unavailable");
 		sourceController.completePluginInventory(event.sender, event.senderFrame, request, result);
+	});
+	ipcMain.handle(DESKTOP_IPC.pluginNavigationResult, (event, request, result) => {
+		assertDesktopSender(event, ["app"]);
+		if (!sourceMode || sourceController === void 0) throw new Error("source shell: plugin navigation unavailable");
+		sourceController.completePluginNavigation(event.sender, event.senderFrame, request, result);
 	});
 	ipcMain.handle(DESKTOP_IPC.modelCatalogResult, (event, request, result) => {
 		assertDesktopSender(event, ["app"]);

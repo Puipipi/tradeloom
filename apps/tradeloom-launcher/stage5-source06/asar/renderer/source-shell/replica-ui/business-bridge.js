@@ -898,8 +898,8 @@
     const button = document.createElement('button')
     button.type = 'button'
     button.className = 'icon-control business-native-skills'
-    button.title = '当前助手技能'
-    button.setAttribute('aria-label', '当前助手技能')
+    button.title = 'DSH Skills（当前会话）'
+    button.setAttribute('aria-label', 'DSH Skills（当前会话）')
     const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
     icon.setAttribute('viewBox', '0 0 24 24')
     icon.setAttribute('width', '16')
@@ -1696,6 +1696,11 @@
     if (!isDesktop()) return { ok: false, reason: 'unavailable' }
     try {
       if (name === 'plugins') return { ok: true, value: await app.pluginInventory() }
+      if (name === 'open-plugin-manager') {
+        if (typeof app.openPluginManager !== 'function') return { ok: false, reason: 'unavailable' }
+        const value = await app.openPluginManager()
+        return value?.opened === true ? { ok: true, value } : { ok: false, reason: 'unavailable' }
+      }
       if (name === 'models') return { ok: true, value: await app.modelCatalog() }
       if (name === 'settings') return { ok: true, value: await app.settingsOpen() }
       if (name === 'mobile') return { ok: true, value: await app.mobileLink() }

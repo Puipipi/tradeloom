@@ -3215,6 +3215,7 @@ window.__ModuleLoader__.load({
               const nativeSurface = await require.async('./client.source-native.js')
               registerAccountMobileLink(ctx, bridge)
               nativeSurface.registerAccountInventory(ctx, bridge)
+              nativeSurface.registerAccountPluginNavigation(ctx, bridge)
               nativeSurface.registerAccountModelCatalog(ctx, bridge)
               nativeSurface.registerAccountSettings(ctx, bridge)
               layout = ctx.layout

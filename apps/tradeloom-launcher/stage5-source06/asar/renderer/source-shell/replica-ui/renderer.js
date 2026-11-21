@@ -1655,6 +1655,18 @@ function showSkills() {
   }).catch(() => { if (current()) body.replaceChildren(el('div', 'modal-note', '当前助手的 Skill 暂不可读。')) })
 }
 
+function showNativePluginManager() {
+  if (!window.businessBridge?.isDesktop?.()) return disconnectedModal('DSH 插件管理', '浏览器预览不能打开 DSH 原生插件管理页。')
+  openModal('DSH 插件管理', body => body.append(el('div', 'modal-note', '正在打开 DSH 原生插件管理页…')))
+  const body = $('#modal-body')
+  const current = () => $('#modal-mask').style.display !== 'none' && $('#modal-title').textContent === 'DSH 插件管理'
+  void window.businessBridge.globalAction('open-plugin-manager').then(result => {
+    if (!current()) return
+    if (result?.ok) { closeModal(); return }
+    body.replaceChildren(el('div', 'modal-note', 'DSH 原生插件管理页暂不可用；没有显示本地示例清单。'))
+  }).catch(() => { if (current()) body.replaceChildren(el('div', 'modal-note', 'DSH 原生插件管理页暂不可用。')) })
+}
+
 function agentDataError(reason) {
   if (reason === 'not-mounted') return '原生工作区尚未挂载。'
   if (reason === 'forbidden') return '当前无权读取助手配置。'
@@ -1695,6 +1707,7 @@ function showTools() {
       ['ERPNext 服务', '打开原生 ERPNext 状态组件窗口。', showERPNextService],
       ['助手能力', '读取当前助手的配置、MCP 与 Skill 状态。', showAssistantCapabilities],
       ['应用 / 编辑', '打开原生应用或编辑菜单。', showAppsEditor],
+      ['DSH 插件管理', '打开 DSH 原生插件管理页。', showNativePluginManager],
       ['场景配置', '编辑现有场景或复制创建自建场景。', showSceneConfiguration],
       ['引擎程序快照', '保存、预览并在正常停机后恢复受控程序代际。', showEngineGenerations],
       ['已注册工具', '读取桌面宿主中的已注册工具目录。', showRegisteredTools],

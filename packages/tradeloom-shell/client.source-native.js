@@ -367,13 +367,13 @@ window.__ModuleLoader__.load({
             onPointerDownCapture:event=>{if(!identityConfirmed){event.preventDefault();event.stopPropagation()}} },
             h(SessionProvider,{key:JSON.stringify(descriptor),session:state.reference},content)),
           notice ? h('div',{role:'alert'},notice, !identityConfirmed ? h('button',{type:'button',onClick:()=>setIdentityProbe(value=>value+1)},'重新确认当前面板') : null) : null,
-          skillCatalogue ? h('dialog', { ref: skillDialog, className: 'tl-bound-skills', 'aria-label': '当前助手技能', onCancel: () => skillsControl.current?.close() },
-            h('header', null, h('strong', null, '当前助手技能'), h('button', { type: 'button', onClick: () => skillsControl.current?.close(), 'aria-label': '关闭技能目录' }, '关闭')),
-            h('p', null, '仅显示本会话技能；管理请使用左上角原生全局界面。'),
-            skillCatalogue.phase === 'loading' ? h('p', { role: 'status' }, '正在读取当前助手技能…')
-              : skillCatalogue.phase === 'error' ? h('p', { role: 'alert' }, '当前助手技能暂不可读，请稍后重试。')
+          skillCatalogue ? h('dialog', { ref: skillDialog, className: 'tl-bound-skills', 'aria-label': 'DSH Skills（当前会话）', onCancel: () => skillsControl.current?.close() },
+            h('header', null, h('strong', null, 'DSH Skills（当前会话）'), h('button', { type: 'button', onClick: () => skillsControl.current?.close(), 'aria-label': '关闭 DSH Skills 目录' }, '关闭')),
+            h('p', null, '这里只读取当前会话的 DSH Skills。会话技能可在输入框输入 / 后选择；DSH 没有全局 Skills 管理页。'),
+            skillCatalogue.phase === 'loading' ? h('p', { role: 'status' }, '正在读取当前会话的 DSH Skills…')
+              : skillCatalogue.phase === 'error' ? h('p', { role: 'alert' }, '当前会话的 DSH Skills 暂不可读，请稍后重试。')
               : skillCatalogue.skills.length ? h('ul', null, ...skillCatalogue.skills.map((skill, index) => h('li', { key: index }, h('strong', null, skill.name), h('p', null, skill.description))))
-                : h('p', null, '当前助手没有返回可用技能。')) : null)
+                : h('p', null, '当前会话没有可用的 DSH Skills。')) : null)
       }
       function RoleSurfaceFactory({ renderSlot }) { return renderSlot('tradeloom.role.surface', {}) }
       function RoleSurfaceCaller({ renderFactorySlot }) { return renderFactorySlot('tradeloom.role.surface-factory', {}) }
@@ -402,6 +402,30 @@ window.__ModuleLoader__.load({
         })
         return ()=>{live=false;stopRequest()}
       },'source-account-plugin-inventory')
+    }
+    function registerAccountPluginNavigation(ctx, bridge) {
+      if (typeof ctx.effect !== 'function' || typeof bridge?.nativeSurfaceDescriptor !== 'function'
+        || typeof bridge?.onPluginNavigationRequested !== 'function' || typeof bridge?.pluginNavigationResult !== 'function') throw Error('plugin navigation bridge unavailable')
+      ctx.effect(() => {
+        let live = true
+        const stop = bridge.onPluginNavigationRequested(async request => {
+          const current = await bridge.nativeSurfaceDescriptor().catch(() => undefined)
+          if (!live || current?.kind !== 'account' || current.generation !== request?.generation) return
+          try {
+            const navigation = ctx.get('pluginNavigation')
+            if (request.action === 'openList' && !Object.hasOwn(request, 'packageName') && typeof navigation?.openList === 'function') navigation.openList()
+            else if (request.action === 'openBundle' && typeof request.packageName === 'string' && typeof navigation?.openBundle === 'function') navigation.openBundle(request.packageName)
+            else throw Error('plugin navigation unavailable')
+            const after = await bridge.nativeSurfaceDescriptor()
+            if (!live || after?.kind !== 'account' || after.generation !== current.generation) return
+            await bridge.pluginNavigationResult(request, { opened: true })
+          } catch {
+            const after = await bridge.nativeSurfaceDescriptor().catch(() => undefined)
+            if (live && after?.kind === 'account' && after.generation === current.generation) await bridge.pluginNavigationResult(request, { error: 'unavailable' }).catch(() => {})
+          }
+        })
+        return () => { live = false; stop() }
+      }, 'source-account-plugin-navigation')
     }
     function registerAccountModelCatalog(ctx, bridge) {
       if (typeof ctx.effect !== 'function' || typeof bridge?.onModelCatalogRequested !== 'function' || typeof bridge?.modelCatalogResult !== 'function') throw Error('model catalog bridge unavailable')
@@ -546,7 +570,7 @@ window.__ModuleLoader__.load({
         }
       }, 'source-account-settings')
     }
-    return { register, registerAccountInventory, registerAccountModelCatalog, registerAccountSettings, registerAccountSidebarControls }
+    return { register, registerAccountInventory, registerAccountPluginNavigation, registerAccountModelCatalog, registerAccountSettings, registerAccountSidebarControls }
   },
 })
 

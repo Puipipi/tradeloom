@@ -50,6 +50,8 @@ accountSidebarCommand: "dsh-desktop:account-sidebar-command",
 accountSidebarCommandReceived: "dsh-desktop:account-sidebar-command-received",
 pluginInventoryRequest: "dsh-desktop:plugin-inventory-request",
 pluginInventoryResult: "dsh-desktop:plugin-inventory-result",
+pluginNavigationRequest: "dsh-desktop:plugin-navigation-request",
+pluginNavigationResult: "dsh-desktop:plugin-navigation-result",
 modelCatalogRequest: "dsh-desktop:model-catalog-request",
 modelCatalogResult: "dsh-desktop:model-catalog-result",
 settingsOpenRequest: "dsh-desktop:settings-open-request",
@@ -2102,6 +2104,7 @@ subscribe(listener) {
 			}
 },
 pluginInventoryResult: (request, result) => electron.ipcRenderer.invoke(DESKTOP_IPC.pluginInventoryResult, request, result),
+pluginNavigationResult: (request, result) => electron.ipcRenderer.invoke(DESKTOP_IPC.pluginNavigationResult, request, result),
 modelCatalogResult: (request, result) => electron.ipcRenderer.invoke(DESKTOP_IPC.modelCatalogResult, request, result),
 settingsOpenResult: (request, result) => electron.ipcRenderer.invoke(DESKTOP_IPC.settingsOpenResult, request, result),
 settingsOpenClaim: (request) => electron.ipcRenderer.invoke(DESKTOP_IPC.settingsOpenClaim, request),
@@ -2141,6 +2144,21 @@ onPluginInventoryRequested(listener) {
 			electron.ipcRenderer.on(DESKTOP_IPC.pluginInventoryRequest, handler);
 			return () => {
 				electron.ipcRenderer.off(DESKTOP_IPC.pluginInventoryRequest, handler);
+			};
+		},
+onPluginNavigationRequested(listener) {
+			const handler = (_event, value) => {
+				if (!value || typeof value !== "object" || Array.isArray(value)
+					|| !Number.isSafeInteger(value.requestId) || value.requestId < 0
+					|| !Number.isSafeInteger(value.generation) || value.generation < 0
+					|| !["openList", "openBundle"].includes(value.action)
+					|| (value.action === "openBundle" && (typeof value.packageName !== "string" || !value.packageName || value.packageName.length > 200))
+					|| Object.keys(value).sort().join(",") !== (value.action === "openList" ? "action,generation,requestId" : "action,generation,packageName,requestId")) return;
+				listener(value);
+			};
+			electron.ipcRenderer.on(DESKTOP_IPC.pluginNavigationRequest, handler);
+			return () => {
+				electron.ipcRenderer.off(DESKTOP_IPC.pluginNavigationRequest, handler);
 			};
 		},
 nativeSurfaceDescriptor: () => electron.ipcRenderer.invoke(DESKTOP_IPC.nativeSurfaceDescriptor),
