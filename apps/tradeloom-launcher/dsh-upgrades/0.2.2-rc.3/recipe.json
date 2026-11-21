@@ -351,8 +351,8 @@
         "sha256": "e279172f4e053cb0247a446e8209ce6fe22c76f40d17b7f903cc76416fbb7d4d"
       },
       "client.workflow.js": {
-        "bytes": 125436,
-        "sha256": "b4d2f391f4851b7fb9373753a8808982a5e43745c9c99d0c5d489d8c91123e4e"
+        "bytes": 131336,
+        "sha256": "d26e00091cd21bb5a70d5e91b4eb550466df1945e207a22f1a3b53b5defca4f8"
       },
       "skills/wf-planner/SKILL.md": {
         "bytes": 4983,
@@ -391,8 +391,8 @@
         "sha256": "0eeae4c4bb7b7cbbd8b29e145e60289d3381d0d10715dafd5b7b70f83920ebb1"
       },
       "workflow-files.js": {
-        "bytes": 13031,
-        "sha256": "f20f57c5a99e0bdd2920531c4a48a1e411d739bbc3df2ccda7d8d3d41cca1b1f"
+        "bytes": 13712,
+        "sha256": "7ffca8098ec26dfc84d1ae12e440980dee15e3d45d6ed62be98aec9ee90eb92b"
       },
       "workflow-native-executor.js": {
         "bytes": 25627,
@@ -669,8 +669,8 @@
         "sha256": "e279172f4e053cb0247a446e8209ce6fe22c76f40d17b7f903cc76416fbb7d4d"
       },
       "client.workflow.js": {
-        "bytes": 125436,
-        "sha256": "b4d2f391f4851b7fb9373753a8808982a5e43745c9c99d0c5d489d8c91123e4e"
+        "bytes": 131336,
+        "sha256": "d26e00091cd21bb5a70d5e91b4eb550466df1945e207a22f1a3b53b5defca4f8"
       },
       "skills/wf-planner/SKILL.md": {
         "bytes": 4983,
@@ -709,8 +709,8 @@
         "sha256": "0eeae4c4bb7b7cbbd8b29e145e60289d3381d0d10715dafd5b7b70f83920ebb1"
       },
       "workflow-files.js": {
-        "bytes": 13031,
-        "sha256": "f20f57c5a99e0bdd2920531c4a48a1e411d739bbc3df2ccda7d8d3d41cca1b1f"
+        "bytes": 13712,
+        "sha256": "7ffca8098ec26dfc84d1ae12e440980dee15e3d45d6ed62be98aec9ee90eb92b"
       },
       "workflow-native-executor.js": {
         "bytes": 25627,
@@ -807,8 +807,8 @@
     },
     "inventory": {
       "fileCount": 79,
-      "bytes": 3092663,
-      "sha256": "e386b334ddf80cdd46e3c91b9b7a8083c6d1d573253184e09ea02380076a0eda"
+      "bytes": 3099244,
+      "sha256": "117a6748ab08ea0d2714187dac9b9d39c3f8ad2967903fdd316294f3d901c60b"
     },
     "validatorInput": {
       "source": "apps/tradeloom-launcher/installed-bootstrap.mjs",
