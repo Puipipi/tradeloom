@@ -17,7 +17,6 @@ from workbench.models import (
 from ..materials.rules import BLOCKING, evaluate_line
 from ..materials.store import load_items
 
-_LINE_FIELDS = ("material", "quantity", "unit")
 _INTEGER = re.compile(r"(?:0|[1-9][0-9]*)\Z")
 _ERROR_STATUS = {
     "candidate_not_found": 404, "requirement_not_found": 404,
@@ -45,13 +44,34 @@ def _present_text(cells: Any) -> list[str]:
     return values
 
 
+def _optional_unit(cells: Any) -> list[str] | None:
+    """单位列可选：未映射或单元格非文本时按空串处理，不猜测单位。"""
+    if cells is None:
+        return None
+    if not isinstance(cells, list):
+        raise RequirementLineError("row_shape_mismatch")
+    values = []
+    for cell in cells:
+        if not isinstance(cell, dict):
+            raise RequirementLineError("row_shape_mismatch")
+        if cell.get("state") == "present":
+            value = cell.get("value")
+            values.append(value if isinstance(value, str) else ("" if value is None else str(value)))
+        else:
+            values.append("")
+    return values
+
+
 def _row_payloads(candidate: IntakeCandidate) -> list[dict[str, Any]]:
     fields = candidate.typed_payload.get("fields", {})
-    columns = {name: _present_text(fields.get(name)) for name in _LINE_FIELDS}
+    columns = {name: _present_text(fields.get(name)) for name in ("material", "quantity")}
+    unit_values = _optional_unit(fields.get("unit"))
     lengths = {len(values) for values in columns.values()}
     if len(lengths) != 1:
         raise RequirementLineError("row_shape_mismatch")
     count = lengths.pop()
+    if unit_values is not None and len(unit_values) != count:
+        raise RequirementLineError("row_shape_mismatch")
     if count == 0:
         raise RequirementLineError("empty_rows")
     provenance = candidate.provenance.get("material", [])
@@ -62,7 +82,7 @@ def _row_payloads(candidate: IntakeCandidate) -> list[dict[str, Any]]:
             "position": index + 1,
             "material": columns["material"][index].strip(),
             "quantity": columns["quantity"][index].strip(),
-            "unit": columns["unit"][index].strip(),
+            "unit": (unit_values[index] if unit_values else "").strip(),
             "source": source if isinstance(source, dict) else {},
         })
     return rows

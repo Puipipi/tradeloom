@@ -185,6 +185,31 @@ class RequirementLineFlowTests(TestCase):
         self.assertFalse(replay["applied"])
         self.assertEqual(replay["total"], first["total"])
 
+    def test_line_unit_column_is_optional(self):
+        source = self._upload(_xlsx({
+            "A": ["物料", "彩灯带", "主控制器"],
+            "B": ["数量", 12, 2],
+        }), "lines-nounit.xlsx", "lines-nounit-source")
+        preview = self._post(f"/api/intake/sources/{source['id']}/previews", {}, "lines-nounit-preview")["preview"]
+        mapping = self._post(f"/api/intake/previews/{preview['id']}/mappings", {
+            "schema_version": 1,
+            "candidate_type": "production_instruction_line",
+            "source_sha256": source["sha256"],
+            "expected_revision": 0,
+            "fields": {
+                "material": {"cells": [{"sheet_index": 1, "coordinate": "A2"},
+                                       {"sheet_index": 1, "coordinate": "A3"}]},
+                "quantity": {"cells": [{"sheet_index": 1, "coordinate": "B2"},
+                                       {"sheet_index": 1, "coordinate": "B3"}]},
+            },
+        }, "lines-nounit-mapping")["mapping"]
+        candidate = self._post(f"/api/intake/mappings/{mapping['id']}/candidates", {}, "lines-nounit-candidate")["candidate"]
+        result = self._apply_lines(candidate["id"], self.requirement_id, "lines-nounit-apply")
+        self.assertTrue(result["applied"])
+        self.assertEqual(result["total"], 2)
+        self.assertEqual(result["blocked"], 0)
+        self.assertEqual([line["unit"] for line in result["lines"]], ["", ""])
+
     def test_row_shape_mismatch_is_rejected(self):
         source = self._upload(_xlsx({
             "A": ["物料", "彩灯带", "主控制器"],

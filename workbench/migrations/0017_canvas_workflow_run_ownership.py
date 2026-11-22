@@ -1,6 +1,7 @@
 import uuid
 
 from django.db import migrations, models
+from django.db.migrations.exceptions import IrreversibleError
 
 
 def create_run_namespace(apps, schema_editor):
@@ -11,7 +12,7 @@ def create_run_namespace(apps, schema_editor):
 
 
 def refuse_unsafe_reverse(apps, schema_editor):
-    raise migrations.IrreversibleError(
+    raise IrreversibleError(
         "Workflow run ownership columns contain fencing state; keep this migration applied."
     )
 
