@@ -25450,7 +25450,7 @@ async function main() {
 			if (!data || data.version !== 1 || !data.folders || typeof data.folders !== "object" || Array.isArray(data.folders)) return {};
 			const folders = Object.create(null);
 			for (const [id, folder] of Object.entries(data.folders)) {
-				if (/^wf-[A-Za-z0-9_-]{1,120}$/.test(id) && typeof folder === "string" && isAbsolute(folder) && folder.length <= 32767) folders[id] = folder;
+				if (/^[a-z0-9][a-z0-9_-]{0,47}$/.test(id) && typeof folder === "string" && isAbsolute(folder) && folder.length <= 32767) folders[id] = folder;
 			}
 			return folders;
 		} catch (error) {
@@ -25461,7 +25461,7 @@ async function main() {
 	};
 	const saveSourceWorkflowProjectFolders = async (folders) => {
 		if (!folders || typeof folders !== "object" || Array.isArray(folders)
-			|| !Object.entries(folders).every(([id, folder]) => /^wf-[A-Za-z0-9_-]{1,120}$/.test(id) && typeof folder === "string" && isAbsolute(folder) && folder.length <= 32767)) {
+			|| !Object.entries(folders).every(([id, folder]) => /^[a-z0-9][a-z0-9_-]{0,47}$/.test(id) && typeof folder === "string" && isAbsolute(folder) && folder.length <= 32767)) {
 			throw new Error("source shell: invalid workflow project folder preference");
 		}
 		await writeFileAtomic(sourceWorkflowProjectFoldersFile, JSON.stringify({ version: 1, folders }, null, 2) + "\n", { mode: 384, dirMode: 448 });

@@ -843,7 +843,7 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
   async function workflowProjectFolderRequest(event, request) {
     if (!request || Object.keys(request).sort().join(',') !== 'operation,workflowId'
       || !['pick', 'open', 'status'].includes(request.operation)
-      || typeof request.workflowId !== 'string' || !/^wf-[A-Za-z0-9_-]{1,120}$/.test(request.workflowId)) throw Error('invalid workflow project folder request')
+      || typeof request.workflowId !== 'string' || !/^[a-z0-9][a-z0-9_-]{0,47}$/.test(request.workflowId)) throw Error('invalid workflow project folder request')
     const workflowId = request.workflowId
     const owned = controller.resolveGuest(event.sender, event.senderFrame)
     const item = sceneComponent
@@ -882,7 +882,7 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
     if (request.operation === 'status') {
       const folders = await loadWorkflowProjectFolders()
       await assertBinding()
-      const folder = folders?.[workflowId]
+      const folder = folders && Object.prototype.hasOwnProperty.call(folders, workflowId) ? folders[workflowId] : undefined
       return typeof folder === 'string' && isAbsolute(folder) && folder.length <= 32767
         ? { saved: true, name: basename(folder) } : { saved: false }
     }
@@ -900,7 +900,7 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
       const folders = Object.create(null)
       if (saved && typeof saved === 'object' && !Array.isArray(saved)) {
         for (const [id, value] of Object.entries(saved)) {
-          if (/^wf-[A-Za-z0-9_-]{1,120}$/.test(id) && typeof value === 'string' && isAbsolute(value) && value.length <= 32767) folders[id] = value
+          if (/^[a-z0-9][a-z0-9_-]{0,47}$/.test(id) && typeof value === 'string' && isAbsolute(value) && value.length <= 32767) folders[id] = value
         }
       }
       folders[workflowId] = selected.path
@@ -911,7 +911,7 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
     }
     const folders = await loadWorkflowProjectFolders()
     await assertBinding()
-    const expectedPath = folders?.[workflowId]
+    const expectedPath = folders && Object.prototype.hasOwnProperty.call(folders, workflowId) ? folders[workflowId] : undefined
     if (typeof expectedPath !== 'string' || !isAbsolute(expectedPath) || expectedPath.length > 32767) throw Error('workflow project folder not saved')
     const view = await requestWorkflowFiles({ operation: 'open-root', expectedPath, sessionId: binding.sessionId, bindingRevision: binding.bindingRevision })
     await assertBinding()

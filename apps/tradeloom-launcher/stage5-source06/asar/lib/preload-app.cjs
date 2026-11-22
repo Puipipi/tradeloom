@@ -2178,7 +2178,7 @@ workflowProjectFolder: (request) => {
 	if (!request || typeof request !== "object" || Array.isArray(request)
 		|| Object.keys(request).sort().join(",") !== "operation,workflowId"
 		|| !["pick", "open", "status"].includes(request.operation)
-		|| typeof request.workflowId !== "string" || !/^wf-[A-Za-z0-9_-]{1,120}$/.test(request.workflowId)) return Promise.reject(new Error("invalid workflow project folder request"));
+		|| typeof request.workflowId !== "string" || !/^[a-z0-9][a-z0-9_-]{0,47}$/.test(request.workflowId)) return Promise.reject(new Error("invalid workflow project folder request"));
 	return electron.ipcRenderer.invoke("source-shell:workflowProjectFolder", request);
 },
 onWorkflowCanvasToolbarActionRequested(listener) {

@@ -672,15 +672,28 @@ test('saved project folders stay workflow-bound and open only the matching curre
   await timeout(() => view.visible === true)
   const call = value => d.projectFolderRequest(value)
   await assert.rejects(call({ operation: 'pick', workflowId: 'wf-a', path: f.root }), /invalid workflow project folder request/)
+  for (const workflowId of ['A', '-bad', 'a'.repeat(49), 'bad.id']) {
+    await assert.rejects(call({ operation: 'status', workflowId }), /invalid workflow project folder request/)
+  }
   d.chosen(f.root)
   assert.deepEqual(await call({ operation: 'pick', workflowId: 'wf-a' }), { saved: true, name: path.basename(f.root) })
   assert.deepEqual(await call({ operation: 'status', workflowId: 'wf-a' }), { saved: true, name: path.basename(f.root) })
   assert.deepEqual(await call({ operation: 'status', workflowId: 'wf-b' }), { saved: false })
   assert.equal(d.projectFolders()['wf-a'], f.root)
 
+  assert.deepEqual(await call({ operation: 'pick', workflowId: 'alpha' }), { saved: true, name: path.basename(f.root) },
+    'assistant-origin workflow IDs use the same durable identifier contract')
+  assert.deepEqual(await call({ operation: 'status', workflowId: 'alpha' }), { saved: true, name: path.basename(f.root) })
+  assert.deepEqual(await call({ operation: 'open', workflowId: 'alpha' }), { opened: true, name: path.basename(f.root) })
+  assert.equal(d.projectFolders().alpha, f.root)
+  assert.deepEqual(await call({ operation: 'pick', workflowId: 'constructor' }), { saved: true, name: path.basename(f.root) },
+    'inherited Object property names are handled as ordinary valid workflow IDs')
+  assert.deepEqual(await call({ operation: 'status', workflowId: 'constructor' }), { saved: true, name: path.basename(f.root) })
+
   d.chosen(f.nested)
   assert.deepEqual(await call({ operation: 'pick', workflowId: 'wf-b' }), { saved: true, name: path.basename(f.nested) })
   await assert.rejects(call({ operation: 'open', workflowId: 'wf-a' }), /workflow files unavailable/)
+  await assert.rejects(call({ operation: 'open', workflowId: 'alpha' }), /workflow files unavailable/)
   assert.equal((await f.desktop({ operation: 'current' })).path, f.nested, 'a mismatched bookmark does not navigate the current grant')
 
   d.chosen(null)
@@ -695,6 +708,19 @@ test('saved project folders stay workflow-bound and open only the matching curre
   await assert.rejects(call({ operation: 'open', workflowId: 'wf-a' }), /workflow files unavailable/)
   assert.deepEqual(await call({ operation: 'status', workflowId: 'wf-a' }), { saved: true, name: path.basename(f.root) })
   await assert.rejects(d.app.workflowFiles({ operation: 'open-root', expectedPath: f.root }), /invalid workflow files request/)
+})
+
+test('project-folder boundaries share the durable workflow ID contract', async () => {
+  // Workflow definitions accept /^[a-z0-9][a-z0-9_-]{0,47}$/; keep preload,
+  // source-shell requests, and persisted preferences aligned with that contract.
+  const [preload, controller, main] = await Promise.all([
+    source('lib/preload-app.cjs'), source('lib/tradeloom-source-shell/source-shell-controller.mjs'), source('lib/main.js'),
+  ])
+  const contract = String.raw`/^[a-z0-9][a-z0-9_-]{0,47}$/`
+  assert.ok(preload.includes(contract))
+  assert.equal(controller.split(contract).length - 1, 2)
+  assert.equal(main.split(contract).length - 1, 2)
+  assert.ok(controller.includes('Object.prototype.hasOwnProperty.call(folders, workflowId)'))
 })
 
 test('open-root validates a saved root without accepting an arbitrary target path', async t => {
