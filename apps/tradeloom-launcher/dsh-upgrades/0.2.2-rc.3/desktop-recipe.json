@@ -17,16 +17,16 @@
   "patch": "desktop-identity.patch",
   "additions": {
     "lib/main.js": {
-      "bytes": 1114837,
-      "sha256": "6acaeea0f0dbd7b4c9acee4119a4c8fb1c632e99a5e1d083005796f0f5b45563"
+      "bytes": 1114839,
+      "sha256": "833a61395457c1888f407678832b2b1e7cbc1e3a9de82a2f3155585098669ee8"
     },
     "lib/operation-report-worker.js": {
       "bytes": 185600,
       "sha256": "bce69b578f7f9f66788517a4b03c27634d6be25ec3ebebca0a8f9f33cd916d00"
     },
     "lib/preload-app.cjs": {
-      "bytes": 152195,
-      "sha256": "e869a004d85863406582492fd609e0bc8c3742f2c0e37ceb52400c71fb5fbbfb"
+      "bytes": 152196,
+      "sha256": "03130c00528c09b82e75e120ca26c672c86ebf3856c27be08ff5087300da30b9"
     },
     "lib/preload-mandatory.cjs": {
       "bytes": 1033,
@@ -97,8 +97,8 @@
       "sha256": "7a46029c04c07c6ec57ce4d2c83d5212fd3d803e219b0150c672dfd2484e6207"
     },
     "lib/tradeloom-source-shell/source-shell-controller.mjs": {
-      "bytes": 170997,
-      "sha256": "5d6f7628793c488dbd39d53f92066665accf4759b2c9e63c4cc849d1668e9a62"
+      "bytes": 171161,
+      "sha256": "dbf77c97404e2c2260fe1f424431f1a29886b54db9c9963da9eda77a177780f8"
     },
     "lib/tradeloom-source-shell/surface-owner.mjs": {
       "bytes": 4927,
@@ -1205,8 +1205,8 @@
     "lib/main.js": {
       "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/main.js",
       "preimage": {
-        "bytes": 1114837,
-        "sha256": "49f564543ff0c4f8970401fd6359781f74077e52e4e8e1352087c022156d9364"
+        "bytes": 1114839,
+        "sha256": "390a24722662daa1eadc15250e8bd3897b1b7477913d93ae884d7cd465a1da8e"
       },
       "replace": {
         "from": "function desktopClientVersion() {\n\treturn \"0.2.2-rc.2\";",
@@ -1224,8 +1224,8 @@
     "lib/preload-app.cjs": {
       "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/preload-app.cjs",
       "preimage": {
-        "bytes": 152195,
-        "sha256": "e869a004d85863406582492fd609e0bc8c3742f2c0e37ceb52400c71fb5fbbfb"
+        "bytes": 152196,
+        "sha256": "03130c00528c09b82e75e120ca26c672c86ebf3856c27be08ff5087300da30b9"
       }
     },
     "lib/preload-mandatory.cjs": {
@@ -1350,8 +1350,8 @@
     "lib/tradeloom-source-shell/source-shell-controller.mjs": {
       "source": "apps/tradeloom-launcher/stage5-source06/asar/lib/tradeloom-source-shell/source-shell-controller.mjs",
       "preimage": {
-        "bytes": 170997,
-        "sha256": "5d6f7628793c488dbd39d53f92066665accf4759b2c9e63c4cc849d1668e9a62"
+        "bytes": 171161,
+        "sha256": "dbf77c97404e2c2260fe1f424431f1a29886b54db9c9963da9eda77a177780f8"
       }
     },
     "lib/tradeloom-source-shell/surface-owner.mjs": {
@@ -3284,14 +3284,14 @@
     "patch": "host-bridge-rc3.patch",
     "preimages": {
       "lib/main.js": {
-        "bytes": 1114837,
-        "sha256": "6acaeea0f0dbd7b4c9acee4119a4c8fb1c632e99a5e1d083005796f0f5b45563"
+        "bytes": 1114839,
+        "sha256": "833a61395457c1888f407678832b2b1e7cbc1e3a9de82a2f3155585098669ee8"
       }
     },
     "postimages": {
       "lib/main.js": {
-        "bytes": 1114873,
-        "sha256": "363fdaced190ce3651a9964f3b9586ecd1aa952c709b364f30ab21d230932f0a"
+        "bytes": 1114875,
+        "sha256": "dfee63c3f4e35cae5a248dcccfb30c56090b08ed3b8b8cd0d10ec47c4f58efeb"
       }
     }
   }
