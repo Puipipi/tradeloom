@@ -16,6 +16,7 @@ from workbench.models import (
 
 from ..materials.rules import BLOCKING, evaluate_line
 from ..materials.store import load_items
+from ..materials.variants import load_variants, resolve_variant
 
 _INTEGER = re.compile(r"(?:0|[1-9][0-9]*)\Z")
 _ERROR_STATUS = {
@@ -93,6 +94,8 @@ def _line_payload(row: ProductionRequirementLine) -> dict[str, Any]:
     return {
         "position": row.position,
         "material": row.material,
+        "variant_ref": row.variant_ref,
+        "variant_status": row.variant_status,
         "item_ref": row.item_ref,
         "item_status": row.item_status,
         "quantity": row.quantity,
@@ -119,22 +122,61 @@ def lines_summary(draft: ProductionRequirementDraft) -> dict[str, Any]:
 def _refresh_lines(draft: ProductionRequirementDraft, candidate: IntakeCandidate) -> list[ProductionRequirementLine]:
     rows = _row_payloads(candidate)
     items = load_items()
+    variants = load_variants()
     result = []
     for row in rows:
-        check = evaluate_line(
-            ref=f"line:{row['position']}", reference=row["material"],
-            quantity=row["quantity"] or None, unit=row["unit"] or None, items=items,
-        )
-        resolved = check.resolution.item
-        defaults = {
-            "material": row["material"],
-            "item_ref": ({"doctype": "Item", "name": resolved.item_code} if resolved else None),
-            "item_status": check.resolution.status,
-            "quantity": row["quantity"],
-            "unit": row["unit"],
-            "issues": [issue.to_dict() for issue in check.issues],
-            "source_refs": {"candidate_id": candidate.pk, "cell": row["source"]},
-        }
+        variant = resolve_variant(row["material"], variants)
+        if variant is not None:
+            # 机型优先：真实生产单的行是"成品×数量"；组件清单未录入时
+            # 只提示补录，不猜测组件；组件物料缺失按阻断处理。
+            variant_issues: list[dict[str, Any]] = []
+            if variant.disabled:
+                variant_issues.append({
+                    "issue_key": "disabled_variant", "item_ref": variant.variant_code,
+                    "question": "该机型已停用，请确认是否改用其他机型。", "severity": BLOCKING,
+                    "detail": {"variant_code": variant.variant_code, "name": variant.name}, "options": [],
+                })
+            if not variant.components:
+                variant_issues.append({
+                    "issue_key": "variant_components_missing", "item_ref": variant.variant_code,
+                    "question": "该机型尚未录入组件配置清单，请补录 BOM 后再核对。",
+                    "severity": "confirm", "detail": {"variant_code": variant.variant_code}, "options": [],
+                })
+            for component in variant.components:
+                check = evaluate_line(
+                    ref=f"line:{row['position']}:component:{component.position}",
+                    reference=component.item_ref,
+                    quantity=component.quantity, unit=None, items=items,
+                )
+                variant_issues.extend(issue.to_dict() for issue in check.issues)
+            defaults = {
+                "material": row["material"],
+                "variant_ref": {"doctype": "Product Variant", "name": variant.variant_code},
+                "variant_status": "resolved",
+                "item_ref": None,
+                "item_status": "unresolved",
+                "quantity": row["quantity"],
+                "unit": row["unit"],
+                "issues": variant_issues,
+                "source_refs": {"candidate_id": candidate.pk, "cell": row["source"]},
+            }
+        else:
+            check = evaluate_line(
+                ref=f"line:{row['position']}", reference=row["material"],
+                quantity=row["quantity"] or None, unit=row["unit"] or None, items=items,
+            )
+            resolved = check.resolution.item
+            defaults = {
+                "material": row["material"],
+                "variant_ref": None,
+                "variant_status": "unresolved",
+                "item_ref": ({"doctype": "Item", "name": resolved.item_code} if resolved else None),
+                "item_status": check.resolution.status,
+                "quantity": row["quantity"],
+                "unit": row["unit"],
+                "issues": [issue.to_dict() for issue in check.issues],
+                "source_refs": {"candidate_id": candidate.pk, "cell": row["source"]},
+            }
         line, _ = ProductionRequirementLine.objects.update_or_create(
             source_candidate=candidate, position=row["position"], defaults={"draft": draft, **defaults},
         )

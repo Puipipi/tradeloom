@@ -442,10 +442,11 @@ class ProductionRequirementRevision(AppendOnlyModel):
 
 
 class ProductionRequirementLine(models.Model):
-    """生产要求的明细行（物料×数量×单位），来自 production_instruction_line 打表候选。
+    """生产要求的明细行（物料/机型 × 数量 × 单位），来自 production_instruction_line 打表候选。
 
     行由候选 apply 生成并随主数据补齐重新 apply 刷新；阻断问题未清时
-    阻止生产要求确认（对应 PMC 核料闸门）。
+    阻止生产要求确认（对应 PMC 核料闸门）。行引用优先解析机型
+    （variant_ref），无机型命中时回退物料主数据（item_ref）。
     """
 
     id = models.CharField(primary_key=True, max_length=32, default=hex_uuid, editable=False)
@@ -453,6 +454,8 @@ class ProductionRequirementLine(models.Model):
     source_candidate = models.ForeignKey(IntakeCandidate, on_delete=models.PROTECT, related_name="requirement_lines")
     position = models.PositiveIntegerField()
     material = models.CharField(max_length=500)
+    variant_ref = models.JSONField(null=True, blank=True)
+    variant_status = models.CharField(max_length=24, default="unresolved")
     item_ref = models.JSONField(null=True, blank=True)
     item_status = models.CharField(max_length=24, default="unresolved")
     quantity = models.CharField(max_length=40, blank=True, default="")
@@ -1445,3 +1448,46 @@ class MaterialItem(models.Model):
 
     class Meta:
         ordering = ["item_code"]
+
+
+class ProductVariant(models.Model):
+    """机型/成品型号（P1.5）：生产单行"成品×数量"的核对基准。
+
+    与物料主数据同为人工维护的主数据（可停用，不属证据追加记录）；来源持续
+    标注在 source 字段。组件清单（BOM）由人工录入，未录入时行核对只验证
+    机型存在并给 confirm 级补录提示，不猜测组件。
+    """
+
+    id = models.CharField(primary_key=True, max_length=32, default=hex_uuid, editable=False)
+    variant_code = models.CharField(max_length=140, unique=True)
+    name = models.CharField(max_length=200)
+    disabled = models.BooleanField(default=False)
+    source = models.CharField(max_length=64, default="manual")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["variant_code"]
+
+
+class VariantComponent(models.Model):
+    """机型标准配置行（BOM）：物料 item_ref × 数量 × 角色（main/optional）。"""
+
+    class Role(models.TextChoices):
+        MAIN = "main", "标配"
+        OPTIONAL = "optional", "选配"
+
+    id = models.CharField(primary_key=True, max_length=32, default=hex_uuid, editable=False)
+    variant = models.ForeignKey(ProductVariant, on_delete=models.CASCADE, related_name="components")
+    position = models.PositiveIntegerField()
+    item_ref = models.CharField(max_length=140)
+    quantity = models.CharField(max_length=40)
+    role = models.CharField(max_length=16, choices=Role.choices, default=Role.MAIN)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["variant_id", "position", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["variant", "position"], name="uniq_variant_component_position"),
+        ]

@@ -47,6 +47,8 @@ urlpatterns = [
     path("api/materials/items", material_api.items),
     path("api/materials/items/<str:item_code>/update", material_api.item_update),
     path("api/materials/check", material_api.check),
+    path("api/variants", material_api.variants_collection),
+    path("api/variants/<str:variant_code>/update", material_api.variant_update),
     path("api/intake/sources", intake_api.source_collection),
     path("api/intake/narratives", intake_api.narrative_collection),
     path("api/intake/narratives/<str:narrative_id>/lines", intake_api.narrative_lines),
