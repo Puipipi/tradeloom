@@ -18,7 +18,7 @@ function Quote-Argument([string]$Value) {
 }
 $form = New-Object Windows.Forms.Form
 $form.Text = '织贸工作台 · 企业服务器'
-$form.ClientSize = New-Object Drawing.Size(650,480)
+$form.ClientSize = New-Object Drawing.Size(650,540)
 $form.FormBorderStyle = 'FixedDialog'; $form.MaximizeBox=$false
 $form.StartPosition='CenterScreen'
 $form.Font=New-Object Drawing.Font('Microsoft YaHei UI',10)
@@ -36,22 +36,25 @@ function New-Button([string]$Text,[int]$X,[int]$Width) {
 $start=New-Button '启动服务' 24 110
 $refresh=New-Button '刷新状态' 144 110
 $open=New-Button '打开管理控制台' 264 160
+$mail=New-Button '登录安全设置' 434 185
 $admin=New-Object Windows.Forms.GroupBox
-$admin.Text='首次管理员（由您自行设置）';$admin.Location=New-Object Drawing.Point(24,247);$admin.Size=New-Object Drawing.Size(600,170);$admin.Enabled=$false;$form.Controls.Add($admin)
+$admin.Text='首次管理员（由您自行设置）';$admin.Location=New-Object Drawing.Point(24,247);$admin.Size=New-Object Drawing.Size(600,215);$admin.Enabled=$false;$form.Controls.Add($admin)
 function New-Field([string]$Text,[int]$Y,[bool]$Secret) {
   $l=New-Object Windows.Forms.Label;$l.Text=$Text;$l.Location=New-Object Drawing.Point(16,($Y+3));$l.Size=New-Object Drawing.Size(80,26);$admin.Controls.Add($l)
   $box=New-Object Windows.Forms.TextBox;$box.Location=New-Object Drawing.Point(100,$Y);$box.Size=New-Object Drawing.Size(270,28);$box.UseSystemPasswordChar=$Secret;$box.MaxLength=$(if($Secret){4096}else{150});$admin.Controls.Add($box);return $box
 }
 $username=New-Field '账号' 28 $false
-$password=New-Field '密码' 65 $true
-$confirmation=New-Field '确认密码' 102 $true
+$email=New-Field '绑定邮箱' 65 $false
+$email.MaxLength=254
+$password=New-Field '密码' 102 $true
+$confirmation=New-Field '确认密码' 139 $true
 $create=New-Object Windows.Forms.Button;$create.Text='创建首个管理员';$create.Location=New-Object Drawing.Point(400,65);$create.Size=New-Object Drawing.Size(175,40);$admin.Controls.Add($create)
-$footer=New-Object Windows.Forms.Label;$footer.Text='关闭窗口会保留正在运行的服务。账号密码不会由启动器保存。';$footer.Location=New-Object Drawing.Point(24,435);$footer.Size=New-Object Drawing.Size(600,30);$form.Controls.Add($footer)
+$footer=New-Object Windows.Forms.Label;$footer.Text='正常登录需要邮箱验证码。已有账号可在“登录安全设置”补绑邮箱并配置 SMTP。关闭窗口保留服务。';$footer.Location=New-Object Drawing.Point(24,480);$footer.Size=New-Object Drawing.Size(600,45);$form.Controls.Add($footer)
 $open.Enabled=$false
 $timer=New-Object Windows.Forms.Timer;$timer.Interval=150
 function Begin-Operation([string]$Action,[string]$Payload='') {
   if ($null -ne $script:job) { return }
-  $start.Enabled=$refresh.Enabled=$open.Enabled=$admin.Enabled=$false
+  $start.Enabled=$refresh.Enabled=$open.Enabled=$admin.Enabled=$mail.Enabled=$false
   $status.ForeColor=[Drawing.Color]::FromArgb(40,55,80)
   $status.Text=$(if($Action -eq 'start'){'正在准备服务，首次安装可能需要几分钟…'}else{'正在检查，请稍候…'})
   try {
@@ -88,7 +91,8 @@ $timer.Add_Tick({
     if($result.ok){$status.ForeColor=[Drawing.Color]::FromArgb(25,100,65)}else{$status.ForeColor=[Drawing.Color]::Firebrick}
     $admin.Enabled=[bool]($result.ok -and $result.running -and -not $result.has_admin)
     $open.Enabled=[bool]($result.ok -and $result.running -and $result.has_admin)
-    if($result.has_admin){$username.Clear();$password.Clear();$confirmation.Clear()}
+    $mail.Enabled=[bool]($result.ok -and $result.running)
+    if($result.has_admin){$username.Clear();$email.Clear();$password.Clear();$confirmation.Clear()}
   } catch {
     $status.ForeColor=[Drawing.Color]::Firebrick;$status.Text='后台未返回有效结果。请确认完整服务器包及当前 Windows 账号权限。'
   } finally {
@@ -98,10 +102,47 @@ $timer.Add_Tick({
 $start.Add_Click({Begin-Operation 'start'})
 $refresh.Add_Click({Begin-Operation 'status'})
 $open.Add_Click({Begin-Operation 'open'})
+$mail.Add_Click({
+  $dialog=New-Object Windows.Forms.Form
+  $dialog.Text='登录安全设置 · 本机服务器维护';$dialog.ClientSize=New-Object Drawing.Size(540,530)
+  $dialog.StartPosition='CenterParent';$dialog.FormBorderStyle='FixedDialog';$dialog.MaximizeBox=$false
+  $tabs=New-Object Windows.Forms.TabControl;$tabs.Dock='Fill';$dialog.Controls.Add($tabs)
+  $binding=New-Object Windows.Forms.TabPage;$binding.Text='绑定内部账号邮箱';$tabs.Controls.Add($binding)
+  $smtp=New-Object Windows.Forms.TabPage;$smtp.Text='验证码发信 SMTP';$tabs.Controls.Add($smtp)
+  function Dialog-Field($Page,[string]$Text,[int]$Y,[bool]$Secret=$false) {
+    $label=New-Object Windows.Forms.Label;$label.Text=$Text;$label.Location=New-Object Drawing.Point(20,$Y);$label.Size=New-Object Drawing.Size(130,27);$Page.Controls.Add($label)
+    $box=New-Object Windows.Forms.TextBox;$box.Location=New-Object Drawing.Point(155,$Y);$box.Size=New-Object Drawing.Size(330,28);$box.MaxLength=4096;$box.UseSystemPasswordChar=$Secret;$Page.Controls.Add($box);return $box
+  }
+  $account=Dialog-Field $binding '已有织贸内部账号' 35
+  $address=Dialog-Field $binding '绑定邮箱' 85
+  $notice=New-Object Windows.Forms.Label;$notice.Text='只补绑邮箱，不改密码、角色、权限或启停。不会创建业务登录会话；旧验证码和登录需要重新验证。';$notice.Location=New-Object Drawing.Point(20,140);$notice.Size=New-Object Drawing.Size(470,85);$binding.Controls.Add($notice)
+  $saveEmail=New-Object Windows.Forms.Button;$saveEmail.Text='保存绑定邮箱';$saveEmail.Location=New-Object Drawing.Point(155,240);$saveEmail.Size=New-Object Drawing.Size(200,38);$binding.Controls.Add($saveEmail)
+  $hostBox=Dialog-Field $smtp 'SMTP 主机' 25
+  $portBox=Dialog-Field $smtp '端口' 72
+  $security=New-Object Windows.Forms.ComboBox;$security.DropDownStyle='DropDownList';$null=$security.Items.AddRange(@('ssl','starttls'));$security.SelectedIndex=0;$security.Location=New-Object Drawing.Point(155,119);$security.Size=New-Object Drawing.Size(330,28);$smtp.Controls.Add($security)
+  $securityLabel=New-Object Windows.Forms.Label;$securityLabel.Text='加密方式';$securityLabel.Location=New-Object Drawing.Point(20,119);$smtp.Controls.Add($securityLabel)
+  $sender=Dialog-Field $smtp '发件邮箱' 166
+  $smtpUser=Dialog-Field $smtp 'SMTP 账号' 213
+  $smtpPassword=Dialog-Field $smtp 'SMTP 授权密码' 260 $true
+  $smtpNotice=New-Object Windows.Forms.Label;$smtpNotice.Text='完整配置由服务器 DPAPI 加密保存，密码不回读。不自动发送测试邮件；不会从网站或样例猜测配置。';$smtpNotice.Location=New-Object Drawing.Point(20,310);$smtpNotice.Size=New-Object Drawing.Size(470,70);$smtp.Controls.Add($smtpNotice)
+  $saveSmtp=New-Object Windows.Forms.Button;$saveSmtp.Text='保存发信配置';$saveSmtp.Location=New-Object Drawing.Point(155,400);$saveSmtp.Size=New-Object Drawing.Size(200,38);$smtp.Controls.Add($saveSmtp)
+  $saveEmail.Add_Click({
+    if(-not $account.Text -or -not $address.Text){[Windows.Forms.MessageBox]::Show($dialog,'请填写已有内部账号及绑定邮箱。') | Out-Null;return}
+    $payload=@{operation='bind-email';username=$account.Text;email=$address.Text} | ConvertTo-Json -Compress
+    $dialog.Close();Begin-Operation 'mail' $payload;$payload=$null
+  })
+  $saveSmtp.Add_Click({
+    $smtpPort=0
+    if(-not [int]::TryParse($portBox.Text,[ref]$smtpPort) -or -not $hostBox.Text -or -not $sender.Text -or -not $smtpUser.Text -or -not $smtpPassword.Text){[Windows.Forms.MessageBox]::Show($dialog,'请填写完整 SMTP 配置和有效端口。') | Out-Null;return}
+    $payload=@{operation='smtp';smtp=@{host=$hostBox.Text;port=$smtpPort;security=[string]$security.SelectedItem;from_email=$sender.Text;username=$smtpUser.Text;password=$smtpPassword.Text}} | ConvertTo-Json -Compress
+    $smtpPassword.Clear();$dialog.Close();Begin-Operation 'mail' $payload;$payload=$null
+  })
+  try{$null=$dialog.ShowDialog($form)}finally{$smtpPassword.Clear();$dialog.Dispose()}
+})
 $create.Add_Click({
   if($password.Text -cne $confirmation.Text){[Windows.Forms.MessageBox]::Show($form,'两次密码不一致。','请检查') | Out-Null;return}
-  if([string]::IsNullOrWhiteSpace($username.Text) -or -not $password.Text){[Windows.Forms.MessageBox]::Show($form,'请填写账号和密码。') | Out-Null;return}
-  $payload=@{username=$username.Text;password=$password.Text} | ConvertTo-Json -Compress
+  if([string]::IsNullOrWhiteSpace($username.Text) -or -not $email.Text -or -not $password.Text){[Windows.Forms.MessageBox]::Show($form,'请填写账号、绑定邮箱和密码。') | Out-Null;return}
+  $payload=@{username=$username.Text;email=$email.Text;password=$password.Text} | ConvertTo-Json -Compress
   $password.Clear();$confirmation.Clear()
   Begin-Operation 'create' $payload
   $payload=$null
@@ -115,7 +156,7 @@ if ($Probe) {
     if ($form.Text -ne '织贸工作台 · 企业服务器' -or $form.Controls.Count -lt 8 -or
         $start.Text -ne '启动服务' -or $open.Text -ne '打开管理控制台' -or
         -not $password.UseSystemPasswordChar -or -not $confirmation.UseSystemPasswordChar -or
-        $username.Text -or $password.Text -or $confirmation.Text -or $null -ne $script:job) {
+        $username.Text -or $email.Text -or $password.Text -or $confirmation.Text -or $null -ne $script:job) {
       throw '完整窗体自检失败。'
     }
     exit 0

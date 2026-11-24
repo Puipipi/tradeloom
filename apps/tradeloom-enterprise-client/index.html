@@ -19,13 +19,15 @@
   <h1>登录织贸</h1>
   <p>使用企业提供的域名或公网 IP 和织贸内部账号登录。</p>
   <form id="connect-form">
-    <label for="server-origin">域名或公网 IP</label>
+    <div id="password-step"><label for="server-origin">域名或公网 IP</label>
     <input id="server-origin" type="text" autocomplete="off" spellcheck="false" placeholder="trade.example.com 或 203.0.113.10:8443" required>
     <label for="username">织贸内部账号</label>
     <input id="username" autocomplete="off" maxlength="150" required>
     <label for="password">密码</label>
     <input id="password" type="password" autocomplete="off" required>
-    <button type="submit">登录</button>
+    </div>
+    <div id="email-step" hidden><p>验证码已发送至管理员绑定的邮箱，5 分钟内有效。</p><label for="email-code">邮箱验证码</label><input id="email-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}"><button id="resend-code" type="button">重新发送验证码</button><button id="restart-login" type="button">返回账号密码</button></div>
+    <button id="login-button" type="submit">登录</button>
   </form>
   <p id="status" role="status" aria-live="polite"></p>
   <script src="renderer.js"></script>

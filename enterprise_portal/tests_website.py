@@ -4,7 +4,8 @@ from unittest.mock import Mock, patch
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
-from django.test import Client, TestCase, SimpleTestCase
+from django.test import SimpleTestCase
+from .testing import EmailVerifiedClient as Client, EmailVerifiedTestCase as TestCase
 
 from .management.commands.configure_enterprise_groups import Command
 from . import operations_ai, operations

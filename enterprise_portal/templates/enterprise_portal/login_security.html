@@ -1,0 +1,10 @@
+{% load static %}<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>登录安全 · 织贸企业服务</title><link rel="stylesheet" href="{% static 'enterprise_portal/console.css' %}"></head><body><main>
+<h1>登录安全</h1><a href="/enterprise/console/">返回服务器管理</a>
+<p>正常 Web、管理后台和个人端均要求密码及邮箱验证码。本机授权运维入口只用于服务器管理，不能登录业务。未绑定邮箱或邮件未配置时，由服务器本机操作人员在此完成维护，也可使用本机 CLI。</p>
+{% if error %}<p role="alert">{{ error }}</p>{% endif %}{% for message in messages %}<p role="status">{{ message }}</p>{% endfor %}
+<h2>内部账号绑定邮箱</h2><p>只更新邮箱，不改变密码、权限、用户组、启停和数据。修改后原验证码与正常登录会话需要重新验证。</p>
+<form method="post">{% csrf_token %}<input type="hidden" name="action" value="email">{{ binding.as_p }}<button>保存绑定邮箱</button></form>
+<table><thead><tr><th>内部账号</th><th>绑定邮箱</th><th>状态</th></tr></thead><tbody>{% for account in accounts %}<tr><td>{{ account.username }}</td><td>{{ account.email|default:"未绑定" }}</td><td>{{ account.is_active|yesno:"正常,停用" }}</td></tr>{% endfor %}</tbody></table>
+<h2>验证码发信配置</h2><p>SMTP 状态：{% if smtp_configured %}已配置{% else %}未配置{% endif %}。配置由服务器使用 DPAPI 加密保存，不回读密码；保存时需重新填写完整配置。请使用发件服务商提供的授权密码，SSL 或 STARTTLS 必选。不会自动给列表账号发测试邮件。</p>
+<form method="post" autocomplete="off">{% csrf_token %}<input type="hidden" name="action" value="smtp">{{ smtp.as_p }}<button>保存 SMTP 配置</button></form>
+</main></body></html>

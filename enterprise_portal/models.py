@@ -5,6 +5,19 @@ from django.db import models
 from workbench.models import Task
 
 
+class EmailLoginChallenge(models.Model):
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    token = models.CharField(max_length=64, unique=True)
+    code_digest = models.CharField(max_length=64, blank=True)
+    email = models.EmailField()
+    credential_version = models.CharField(max_length=64)
+    expires_at = models.DateTimeField()
+    last_sent_at = models.DateTimeField()
+    window_started_at = models.DateTimeField()
+    sends_in_window = models.PositiveSmallIntegerField(default=0)
+    attempts_left = models.PositiveSmallIntegerField(default=5)
+
+
 class WebsiteNotice(models.Model):
     """Singleton notice for the authenticated enterprise home."""
     id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)

@@ -8,11 +8,22 @@ from django.views.generic import RedirectView
 
 from enterprise_portal import views
 from enterprise_portal.business import read as business_read
+from enterprise_portal.email_login import sign_in
+
+
+def admin_login(request, extra_context=None):
+    # AdminSite must never mint a password-only session through its own LoginView.
+    from django.shortcuts import redirect
+    from urllib.parse import urlencode
+    return redirect("/accounts/login/?" + urlencode({"next": "/admin/"}))
+
+
+admin.site.login = admin_login
 
 
 urlpatterns = [
     path("", RedirectView.as_view(url=reverse_lazy("enterprise-home"), permanent=False)),
-    path("accounts/login/", auth_views.LoginView.as_view(template_name="enterprise_portal/login.html"), name="login"),
+    path("accounts/login/", sign_in, name="login"),
     path("accounts/logout/", LogoutView.as_view(next_page=reverse_lazy("login")), name="logout"),
     path("admin/", admin.site.urls),
     path("enterprise/", views.home, name="enterprise-home"),

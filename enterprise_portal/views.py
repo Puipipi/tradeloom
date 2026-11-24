@@ -28,7 +28,11 @@ def _visible_entries(user):
 @login_required
 @require_GET
 def capabilities(request):
-    response = JsonResponse(policy_payload(request.user))
+    payload = policy_payload(request.user)
+    from .email_login import VERIFIED, fingerprint
+    from django.utils.crypto import constant_time_compare
+    payload["authentication"] = {"email_verified": constant_time_compare(str(request.session.get(VERIFIED, "")), fingerprint(request.user))}
+    response = JsonResponse(payload)
     response["Cache-Control"] = "no-store"
     return response
 

@@ -78,7 +78,7 @@ class CredentialStore:
         _secure_directory(self.root)
 
     def _path(self, slot):
-        if slot not in SLOTS:
+        if slot not in (*SLOTS, "smtp_configuration"):
             raise ValueError("Unknown credential slot")
         path = self.root / (slot + ".dpapi")
         if path.is_symlink() or (path.exists() and getattr(path.stat(), "st_file_attributes", 0) & 0x400):

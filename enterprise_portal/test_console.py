@@ -2,7 +2,8 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
 from django.contrib.contenttypes.models import ContentType
 from django.core.management import call_command
-from django.test import TestCase, override_settings
+from django.test import override_settings
+from .testing import EmailVerifiedTestCase as TestCase
 from django.urls import include, path
 
 urlpatterns = [path("enterprise/console/", include("enterprise_portal.console_urls"))]
