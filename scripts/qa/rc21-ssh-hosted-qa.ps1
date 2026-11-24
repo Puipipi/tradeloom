@@ -369,26 +369,31 @@ try {
   Write-QaStatus 'POLICY_PREFLIGHT_PASS'
 
   $script:stage = 'create-synthetic-identities-and-key'
-  $script:failureCode = 'synthetic_identity_or_key'
+  $script:failureCode = 'local_group_create_failed'
   New-LocalGroup -Name $sshGroupName -Description 'Disposable RC21 hosted SSH QA group' | Out-Null
   $plainPassword = 'Qx!2' + [Guid]::NewGuid().ToString('N') + 'z!'
   $securePassword = ConvertTo-SecureString $plainPassword -AsPlainText -Force
   try {
+    $script:failureCode = 'local_user_create_failed'
     New-LocalUser -Name $script:testUserName -Password $securePassword -PasswordNeverExpires `
       -AccountNeverExpires -Description 'Disposable RC21 hosted SSH QA identity' | Out-Null
   } finally {
     $securePassword.Dispose()
     $plainPassword = $null
   }
+  $script:failureCode = 'local_user_read_failed'
   $testUser = Get-LocalUser -Name $script:testUserName
   if (-not $testUser.Enabled) { throw 'The synthetic SSH test identity was not enabled.' }
   $script:testUserSid = [Security.Principal.SecurityIdentifier]$testUser.SID
 
   $keyStem = Join-Path $script:workRoot 'client-ed25519'
+  $script:failureCode = 'client_keygen_failed'
   Invoke-QuietNative -Executable $sshKeygenExe -Arguments @('-q', '-t', 'ed25519', '-N', '""', '-f', $keyStem, '-C', 'rc21-hosted-qa') `
     -FailureMessage 'The synthetic client key could not be generated.'
   $publicKeyPath = "$keyStem.pub"
+  $script:failureCode = 'client_public_key_missing'
   if (-not (Test-Path -LiteralPath $publicKeyPath -PathType Leaf)) { throw 'The synthetic public key file is missing.' }
+  $script:failureCode = 'authorized_keys_directory_acl_failed'
   Assert-NoReparsePoint -Path $script:authRoot
   $adminSid = [Security.Principal.SecurityIdentifier]::new('S-1-5-32-544')
   $systemSid = [Security.Principal.SecurityIdentifier]::new('S-1-5-18')
@@ -403,7 +408,9 @@ try {
     @{ Sid=$serviceSid; Rights=[Security.AccessControl.FileSystemRights]::ReadAndExecute },
     @{ Sid=$script:testUserSid; Rights=[Security.AccessControl.FileSystemRights]::ReadAndExecute }
   )
+  $script:failureCode = 'authorized_keys_write_failed'
   [IO.File]::WriteAllText($authFile, [IO.File]::ReadAllText($publicKeyPath).Trim() + "`n", [Text.Encoding]::ASCII)
+  $script:failureCode = 'authorized_keys_file_acl_failed'
   Set-AuthorizedKeysAcl -Path $authFile -Owner $script:testUserSid -ServiceSid $serviceSid
 
   $knownHosts = Join-Path $script:workRoot 'known_hosts'
@@ -477,7 +484,11 @@ try {
   Write-QaStatus 'RC21_HOSTED_SSH_GROUP_QA_PASS'
 } catch {
   $script:exitCode = 1
-  [Console]::Error.WriteLine("RC21_HOSTED_SSH_QA_FAIL code=$($script:failureCode)")
+  $errorType = $_.Exception.GetType().Name -replace '[^A-Za-z0-9_.-]', '_'
+  $errorType = $errorType.Substring(0, [Math]::Min(64, $errorType.Length))
+  $errorId = ([string]$_.FullyQualifiedErrorId -replace '[^A-Za-z0-9_.-]', '_')
+  $errorId = $errorId.Substring(0, [Math]::Min(80, $errorId.Length))
+  [Console]::Error.WriteLine("RC21_HOSTED_SSH_QA_FAIL code=$($script:failureCode) type=$errorType id=$errorId")
 } finally {
   try {
     if ($script:serviceStartedByQa) {
