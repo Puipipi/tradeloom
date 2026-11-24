@@ -20,6 +20,8 @@ from .operations_store import CredentialStore, StoreUnavailable, SLOTS
 
 
 class OperationsTests(unittest.TestCase):
+    databases = {"default"}
+
     def setUp(self):
         self.factory = RequestFactory()
         self.user = Mock(is_authenticated=True, is_active=True, pk=7)
