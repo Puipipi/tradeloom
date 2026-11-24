@@ -59,3 +59,19 @@ Probe 与功能测试不替代实际窗口呈现、鼠标点击及远程桌面�
 `python scripts/tests/verify-launch-visibility.py --launcher Start-ServerGui.vbs` 在独立、从不切换激活的 Windows desktop 对象中运行真实 VBS → WinPS → 完整产品窗体。明确的 `-VisibilityProbe` 仅关闭后台状态调用，检查自身窗体及控制台原生可见性后自行关闭；不会读安装配置或调用服务。原 style 0 回路退出 2（窗体隐藏）；正常 style 1 配合 PowerShell Hidden 后退出 0（窗体可见、控制台隐藏）。含中文、空格和单引号的包路径也通过；原 `-Probe` 仍通过。
 
 此程序验证首窗显示意图，不构成用户实际桌面呈现、控制台瞬时闪现或远端双击验收。未启动或重启业务服务。
+
+## 原生窗口主题
+
+原生服务器窗口沿用 RC19 个人端／控制台的背景、面板、边框、正文、次要文字和主操作配色，正文使用 Segoe UI（中文由 Windows 字体回退），保持现有字段、布局、标签顺序和确认流程。启动、创建与保存为主操作；其余为次操作。主窗口、管理助手、绑定邮箱及 SMTP 页使用同一主题。
+
+每次启动读取 Windows `AppsUseLightTheme`；高对比度设置优先，使用 SystemColors、原生按钮和标签页，不覆盖系统高对比方案。深色模式下对禁用按钮、标签与组标题补绘可读的次要文字，保留禁用状态；错误通过原有明确文字表达，不仅依赖颜色。原启动器首窗可见性修复保持不变。
+
+视觉复测在独立、从不激活的 Windows desktop 对象中进行：
+
+```powershell
+python scripts/tests/verify-launch-visibility.py --launcher Start-ServerGui.vbs --theme Light --output-root <新的隔离目录>
+python scripts/tests/verify-launch-visibility.py --launcher Start-ServerGui.vbs --theme Dark --output-root <新的隔离目录>
+python scripts/tests/verify-launch-visibility.py --launcher Start-ServerGui.vbs --theme HighContrast --output-root <新的隔离目录>
+```
+
+测试仅通过明确的 `-Probe` 参数强制配色，生成空白账号／密码与合成数据目录的 DrawToBitmap 图，不读配置、不调用后台。包括管理员启用／禁用、管理助手和两页登录安全设置。HighContrast 测试强制选择 SystemColors 分支，不改变主机辅助功能设置；实际用户高对比方案、缩放与远程桌面呈现仍需在部署环境验看。普通 `-Probe` 与 `-VisibilityProbe` 继续可用。

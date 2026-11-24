@@ -4,10 +4,14 @@ import ctypes as c
 from ctypes import wintypes as w
 import os
 from pathlib import Path
+import struct
+import subprocess
 import uuid
 
 p = argparse.ArgumentParser()
 p.add_argument('--launcher', required=True)
+p.add_argument('--theme', choices=['Light', 'Dark', 'HighContrast'])
+p.add_argument('--output-root')
 a = p.parse_args()
 assert os.name == 'nt'
 user = c.WinDLL('user32', use_last_error=True)
@@ -55,7 +59,17 @@ try:
     assert kernel.SetInformationJobObject(job, 9, c.byref(limits), c.sizeof(limits))
     startup = Startup(); startup.cb = c.sizeof(startup); startup.desktop = desktop_name
     launcher = Path(a.launcher).resolve()
-    command = c.create_unicode_buffer('"' + os.environ['WINDIR'] + '\\System32\\cscript.exe" //nologo "' + str(launcher) + '" -VisibilityProbe')
+    if a.theme:
+        assert a.output_root, 'Visual probe requires an isolated output root'
+        output = Path(a.output_root).resolve() / a.theme
+        output.mkdir(parents=True, exist_ok=False)
+        args = [os.environ['WINDIR'] + '\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+                '-NoLogo', '-NoProfile', '-STA', '-ExecutionPolicy', 'RemoteSigned',
+                '-File', str(launcher.parent / 'scripts/ServerWindow.ps1'), '-Probe',
+                '-VisualProbeTheme', a.theme, '-VisualProbeDirectory', str(output)]
+    else:
+        args = [os.environ['WINDIR'] + '\\System32\\cscript.exe', '//nologo', str(launcher), '-VisibilityProbe']
+    command = c.create_unicode_buffer(subprocess.list2cmdline(args))
     assert kernel.CreateProcessW(None, command, None, None, False, 0x14, None,
                                  str(launcher.parent), c.byref(startup), c.byref(info)), c.WinError(c.get_last_error())
     assert kernel.AssignProcessToJobObject(job, info.process), c.WinError(c.get_last_error())
@@ -64,7 +78,14 @@ try:
     result = w.DWORD(); assert kernel.GetExitCodeProcess(info.process, c.byref(result))
     print('launcher_exit=' + str(result.value), flush=True)
     assert result.value == 0, {2: 'Product form hidden', 3: 'Console visible', 4: 'Visibility not sampled'}.get(result.value, 'Launcher failed')
-    print('PASS: own product form visible, own console hidden; private desktop never activated')
+    if a.theme:
+        for name, size in [('server', (650, 540)), ('management', (624, 260)),
+                           ('email', (540, 530)), ('smtp', (540, 530))]:
+            raw = (output / (name + '.png')).read_bytes()
+            assert raw[:8] == b'\x89PNG\r\n\x1a\n' and struct.unpack('>II', raw[16:24]) == size
+        print('PASS: ' + a.theme + ' synthetic main/management/email/SMTP snapshots; private desktop never activated')
+    else:
+        print('PASS: own product form visible, own console hidden; private desktop never activated')
 finally:
     if info.thread: kernel.CloseHandle(info.thread)
     if info.process: kernel.CloseHandle(info.process)
