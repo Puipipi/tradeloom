@@ -14,10 +14,13 @@ async function harness(edition, argv = []) {
     return { ok: !!policy, url, json: async () => policy }
   } }
   class Window extends EventEmitter {
-    constructor() { super(); this.url = ''; this.webContents = new EventEmitter(); this.webContents.session = ses; this.webContents.getURL = () => this.url; this.webContents.setWindowOpenHandler = () => {}; windows.push(this) }
+    constructor() { super(); this.url = ''; this.webContents = new EventEmitter(); this.webContents.session = ses; this.webContents.getURL = () => this.url; this.webContents.mainFrame = {};  this.webContents.setWindowOpenHandler = () => {}; windows.push(this) }
     loadFile(file) { this.url = require('node:url').pathToFileURL(file).href; return Promise.resolve() }
     loadURL(url) { this.url = url; this.webContents.emit('did-finish-load'); return Promise.resolve() }
     isDestroyed() { return false }
+    show() {}
+    focus() {}
+    destroy() {}
     close() {}
     static fromWebContents(contents) { return windows.find(w => w.webContents === contents) }
   }
@@ -28,14 +31,15 @@ async function harness(edition, argv = []) {
   }
   const fakeFs = { existsSync: () => true, readFileSync: file => { if (edition && file.endsWith('edition.json')) return JSON.stringify({ edition }); throw Object.assign(Error('empty config'), { code: 'ENOENT' }) }, mkdirSync() {}, writeFileSync() {}, renameSync() {} }
   vm.runInNewContext(fs.readFileSync(path.join(root, 'main.cjs'), 'utf8'), {
-    require: name => name === 'electron' ? electron : name === 'node:fs' ? fakeFs : name === './security.cjs' ? require('../security.cjs') : require(name),
+    require: name => name === 'electron' ? electron : name === 'node:fs' ? fakeFs : name === './security.cjs' ? require('../security.cjs') : name === './login.cjs' ? { signIn: async () => true, sessionPolicy: async () => null } : require(name),
     __dirname: root, process: { argv, platform: 'win32' }, setTimeout: () => 0, console, URL,
   })
   await flush()
   const settings = windows[0]
-  const event = { sender: settings.webContents, senderFrame: { url: settings.url } }
+  settings.webContents.mainFrame.url = settings.url;
+  const event = { sender: settings.webContents, senderFrame: settings.webContents.mainFrame }
   const item = label => menu[0].submenu.find(x => x.label === label)
-  return { paths, item, opened: () => opened, setPolicy: value => { policy = value }, async connect() { await handlers['enterprise:connect'](event, 'https://example.invalid'); await flush() }, handlers, event }
+  return { paths, item, opened: () => opened, setPolicy: value => { policy = value }, async connect() { await handlers['enterprise:sign-in'](event, { serverOrigin: 'https://example.invalid', username: 'synthetic', password: 'synthetic' }); await flush() }, handlers, event }
 }
 
 test('packaged editions select distinct profile and session paths before ready; generic unchanged', async () => {
@@ -83,4 +87,7 @@ test('technician ops menus do not grant local Workbench and remote settings IPC 
   assert.equal(h.item('服务端助手').enabled, true)
   assert.equal(h.item('打开本地完整工作台').enabled, false)
   assert.throws(() => h.handlers['enterprise:get-config']({ ...h.event, senderFrame: { url: 'https://example.invalid/enterprise/' } }))
+  const unknown = { getURL: () => h.event.sender.getURL(), mainFrame: h.event.senderFrame }
+  assert.throws(() => h.handlers['enterprise:get-config']({ sender: unknown, senderFrame: unknown.mainFrame }))
+  assert.throws(() => h.handlers['enterprise:get-config']({ ...h.event, senderFrame: { url: h.event.sender.getURL() } }))
 })

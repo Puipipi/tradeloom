@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; form-action 'none'">
-  <title>连接企业服务器 - TradeLoom</title>
+  <title>登录织贸 - TradeLoom</title>
   <style>
     body { margin: 0; padding: 28px; color: #e7edf5; background: #111820; font: 14px system-ui, sans-serif; }
     h1 { margin: 0 0 10px; font-size: 20px; }
@@ -16,12 +16,16 @@
   </style>
 </head>
 <body>
-  <h1>连接企业服务器</h1>
-  <p>输入企业提供的 HTTPS 服务器地址。登录账号由服务器验证；此客户端只记住服务器地址。</p>
+  <h1>登录织贸</h1>
+  <p>使用企业提供的域名或公网 IP 和织贸内部账号登录。</p>
   <form id="connect-form">
-    <label for="server-origin">服务器地址</label>
-    <input id="server-origin" type="url" autocomplete="url" spellcheck="false" placeholder="https://trade.example.com" required>
-    <button type="submit">连接</button>
+    <label for="server-origin">域名或公网 IP</label>
+    <input id="server-origin" type="text" autocomplete="off" spellcheck="false" placeholder="trade.example.com 或 203.0.113.10:8443" required>
+    <label for="username">织贸内部账号</label>
+    <input id="username" autocomplete="off" maxlength="150" required>
+    <label for="password">密码</label>
+    <input id="password" type="password" autocomplete="off" required>
+    <button type="submit">登录</button>
   </form>
   <p id="status" role="status" aria-live="polite"></p>
   <script src="renderer.js"></script>

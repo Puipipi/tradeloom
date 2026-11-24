@@ -6,10 +6,11 @@
 
 1. 如需从源码运行，在此目录执行 `npm install`，Electron 版本固定为 45.4.1。
 2. 使用仓库中的 `scripts/package-enterprise-client.ps1` 生成 Windows 文件夹包，将 `dist/TradeLoom 企业服务器客户端` 整个目录交付，双击其中的 `TradeLoom 企业服务器客户端.exe` 即可。
-3. 输入企业提供的服务器地址，例如 `https://trade.example.com`。地址保存在本机 Electron userData 的 `enterprise-client.json`；企业密码不会由客户端保存。
-4. 客户端打开服务器同源 `/enterprise/`。未登录时 Django 继续跳转到同源 `/accounts/login/`。使用企业已有账号登录，数据和权限由该服务器处理。
+3. 在同一登录页填写域名或公网 IP（可带端口）、织贸内部账号和密码。账号、密码初始为空。裸域名、IPv4 和方括号 IPv6 默认使用 HTTPS；显式 HTTPS 也可使用。登录成功后只将 origin 写入本机 `enterprise-client.json`，不保存账号或密码。
+4. 登录由 main 通过同源 Django `/accounts/login/` 的 CSRF 与 Session 完成，不向远程页面注入密码，不新增登录 API。必须收到本次登录成功的同源 `/enterprise/` 重定向并验证会话后才接管窗口。错密、证书错误和连接失败保留原连接配置。
+5. 已存服务端会话有效时启动直接续用；失效则返回同一三字段登录页。菜单「个人端 → 连接台账服务」可更换连接或重新登录。
 
-服务器地址必须为 HTTPS；只允许 `http://127.0.0.1` 或 `http://[::1]` 用于受控本机开发调试。输入只接受 origin（协议、主机名和可选端口），不接受 URL 账号、路径、查询参数或片段。
+公网服务器必须使用 HTTPS，证书校验保持启用；只允许显式 `http://127.0.0.1` 或 `http://[::1]` 用于受控本机开发调试。不接受 URL 内嵌账号、路径、查询参数、片段或跨源登录跳转。
 
 本地设置窗口拥有最小 preload API。远程企业页面不设置 preload，启用 `sandbox` 和 `contextIsolation`，禁用 `nodeIntegration`；只允许同源请求、跳转，不允许打开外部窗口。网页登录使用独立、按服务器 origin 隔离的持久 Electron session，不与 DSH/桌面工作台登录共享。
 
