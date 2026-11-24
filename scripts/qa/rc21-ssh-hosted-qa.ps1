@@ -71,19 +71,54 @@ function Set-DirectoryAcl([string]$Path, [Security.Principal.SecurityIdentifier]
 }
 
 function Set-AuthorizedKeysAcl([string]$Path, [Security.Principal.SecurityIdentifier]$Owner,
-                               [Security.Principal.SecurityIdentifier]$ServiceSid) {
-  $acl = [Security.AccessControl.FileSecurity]::new()
+                               [Security.Principal.SecurityIdentifier]$ServiceSid,
+                               [Security.Principal.SecurityIdentifier]$AdminSid,
+                               [Security.Principal.SecurityIdentifier]$SystemSid,
+                               [string]$IcaclsExe) {
+  $acl = [IO.File]::GetAccessControl($Path)
   $acl.SetAccessRuleProtection($true, $false)
-  $acl.SetOwner($Owner)
-  $ownerRule = [Security.AccessControl.FileSystemAccessRule]::new(
-    $Owner, [Security.AccessControl.FileSystemRights]::FullControl,
-    [Security.AccessControl.AccessControlType]::Allow)
-  $serviceRule = [Security.AccessControl.FileSystemAccessRule]::new(
-    $ServiceSid, [Security.AccessControl.FileSystemRights]::Read,
-    [Security.AccessControl.AccessControlType]::Allow)
-  $null = $acl.AddAccessRule($ownerRule)
-  $null = $acl.AddAccessRule($serviceRule)
+  foreach ($sid in @($AdminSid, $SystemSid, $ServiceSid, $Owner)) {
+    $acl.PurgeAccessRules($sid)
+  }
+  $desired = @(
+    @{ Sid=$AdminSid; Rights=[Security.AccessControl.FileSystemRights]::FullControl },
+    @{ Sid=$SystemSid; Rights=[Security.AccessControl.FileSystemRights]::FullControl }
+  )
+  if ($ServiceSid.Value -cne $SystemSid.Value) {
+    $desired += @{ Sid=$ServiceSid; Rights=[Security.AccessControl.FileSystemRights]::Read }
+  }
+  $desired += @(
+    @{ Sid=$Owner; Rights=[Security.AccessControl.FileSystemRights]::Read }
+  )
+  foreach ($entry in $desired) {
+    $rule = [Security.AccessControl.FileSystemAccessRule]::new(
+      $entry.Sid, $entry.Rights, [Security.AccessControl.AccessControlType]::Allow)
+    $null = $acl.AddAccessRule($rule)
+  }
+  # Preserve administrator WRITE_DAC in the DACL before changing the owner.
   [IO.File]::SetAccessControl($Path, $acl)
+  Invoke-QuietNative -Executable $IcaclsExe -Arguments @($Path, '/setowner', ('*' + $Owner.Value)) `
+    -FailureMessage 'The synthetic authorized_keys owner could not be set.'
+
+  $verified = [IO.File]::GetAccessControl($Path)
+  $actualOwner = $verified.GetOwner([Security.Principal.SecurityIdentifier]).Value
+  $rules = @($verified.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]))
+  $expected = [Collections.Generic.Dictionary[string, Security.AccessControl.FileSystemRights]]::new([StringComparer]::OrdinalIgnoreCase)
+  foreach ($entry in $desired) {
+    $expectedRule = [Security.AccessControl.FileSystemAccessRule]::new(
+      $entry.Sid, $entry.Rights, [Security.AccessControl.AccessControlType]::Allow)
+    $expected.Add($entry.Sid.Value, $expectedRule.FileSystemRights)
+  }
+  if ($actualOwner -cne $Owner.Value -or -not $verified.AreAccessRulesProtected -or
+      $rules.Count -ne $expected.Count) { throw 'The synthetic authorized_keys owner or DACL did not match.' }
+  foreach ($rule in $rules) {
+    $sidValue = $rule.IdentityReference.Value
+    if (-not $expected.ContainsKey($sidValue) -or $rule.IsInherited -or
+        $rule.AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow -or
+        $rule.FileSystemRights -ne $expected[$sidValue]) {
+      throw 'The synthetic authorized_keys DACL did not match.'
+    }
+  }
 }
 
 function Test-LocalTcpListener([int]$Port) {
@@ -411,7 +446,9 @@ try {
   $script:failureCode = 'authorized_keys_write_failed'
   [IO.File]::WriteAllText($authFile, [IO.File]::ReadAllText($publicKeyPath).Trim() + "`n", [Text.Encoding]::ASCII)
   $script:failureCode = 'authorized_keys_file_acl_failed'
-  Set-AuthorizedKeysAcl -Path $authFile -Owner $script:testUserSid -ServiceSid $serviceSid
+  $icaclsExe = Join-Path $env:WINDIR 'System32\icacls.exe'
+  Set-AuthorizedKeysAcl -Path $authFile -Owner $script:testUserSid -ServiceSid $serviceSid `
+    -AdminSid $adminSid -SystemSid $systemSid -IcaclsExe $icaclsExe
 
   $knownHosts = Join-Path $script:workRoot 'known_hosts'
   if ($service.StartMode -eq 'Disabled') {
