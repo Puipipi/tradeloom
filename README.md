@@ -2,6 +2,8 @@
 
 English / [简体中文](README_cn.md)
 
+[Windows two-role quick start / 双端入门（6.18 candidate）](docs/windows-two-role-quickstart.md): enterprise ledger server, role-based login, and the separate personal workbench. Candidate acceptance is still in progress; the stable desktop download remains below.
+
 ## Windows Electron desktop app
 
 **Download the complete Windows x64 desktop package:** [Stage 6.17 release page](https://github.com/Puipipi/tradeloom/releases/tag/stage6.17-windows-x64) · [ZIP](https://github.com/Puipipi/tradeloom/releases/download/stage6.17-windows-x64/TradeLoom-stage6.17-Windows-x64-full.zip) · [SHA-256 file](https://github.com/Puipipi/tradeloom/releases/download/stage6.17-windows-x64/SHA256SUMS.txt).

@@ -2,6 +2,8 @@
 
 [English](README.md) / 简体中文
 
+**[Windows 双端快速入门（6.18 候选版）](docs/windows-two-role-quickstart.md)**：企业台账服务、两种业务角色登录与独立个人工作台。候选版仍在验收；稳定版完整桌面下载入口保留如下。
+
 ## Windows Electron 桌面版
 
 **下载 Windows x64 完整桌面版：**[Stage 6.17 发布页](https://github.com/Puipipi/tradeloom/releases/tag/stage6.17-windows-x64) · [完整 ZIP](https://github.com/Puipipi/tradeloom/releases/download/stage6.17-windows-x64/TradeLoom-stage6.17-Windows-x64-full.zip) · [SHA-256 校验文件](https://github.com/Puipipi/tradeloom/releases/download/stage6.17-windows-x64/SHA256SUMS.txt)。
