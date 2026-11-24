@@ -3,7 +3,8 @@
   [string]$DataRoot = (Join-Path $env:LOCALAPPDATA 'TradeLoomEnterpriseServer'),
   [int]$Port = 27417,
   [string]$ExternalHttpsUrl = '',
-  [int]$PostgresPort = 56427
+  [int]$PostgresPort = 56427,
+  [switch]$DeferAdministratorSetup
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'EnterpriseServerHttps.ps1')
@@ -195,7 +196,9 @@ try {
   Invoke-Checked $python @('-B', 'manage.py', 'check') 'Django configuration check failed.'
   Invoke-Checked $python @('-B', 'manage.py', 'migrate', '--noinput') 'Database migrations failed.'
   Invoke-Checked $python @('-B', 'manage.py', 'configure_enterprise_groups') 'Default business groups setup failed.'
-  Invoke-Checked $python @('-B', 'manage.py', 'createsuperuser') 'Boss administrator creation failed.'
+  if (-not $DeferAdministratorSetup) {
+    Invoke-Checked $python @('-B', 'manage.py', 'createsuperuser') 'Boss administrator creation failed.'
+  }
 } finally {
   Pop-Location
   Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue
