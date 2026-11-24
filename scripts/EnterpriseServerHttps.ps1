@@ -72,7 +72,10 @@ function Invoke-EnterpriseHealthRequest {
     [switch]$TrustedHttpsProxyHeader
   )
 
+  Add-Type -AssemblyName System.Net.Http
   $handler = [System.Net.Http.HttpClientHandler]::new()
+  # This request is always to our loopback health endpoint, never an external origin.
+  $handler.UseProxy = $false
   $handler.AllowAutoRedirect = $false
   $client = [System.Net.Http.HttpClient]::new($handler)
   $client.Timeout = [TimeSpan]::FromSeconds(2)

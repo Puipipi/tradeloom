@@ -1,5 +1,5 @@
 // Synthetic-account acceptance through the production Electron main process.
-const { app, BrowserWindow } = require('electron')
+const { app, BrowserWindow, Menu } = require('electron')
 const fs = require('node:fs')
 const path = require('node:path')
 const { normalizeServerOrigin } = require('../security.cjs')
@@ -40,6 +40,10 @@ app.whenReady().then(async () => {
   let remote
   try {
     const settings = await waitForSettingsWindow()
+    const initialConfig = await settings.webContents.executeJavaScript('window.tradeloomEnterprise.getConfig()')
+    if (initialConfig.serverOrigin !== '') throw new Error('fresh client contains a preconfigured server')
+    const workbenchMenu = Menu.getApplicationMenu()?.items.flatMap((item) => item.submenu?.items || []).find((item) => item.label === '打开完整工作台')
+    if (!workbenchMenu) throw new Error('local workbench menu is missing')
     await settings.webContents.executeJavaScript(`window.tradeloomEnterprise.connect(${JSON.stringify(origin)})`)
     remote = BrowserWindow.getAllWindows().find((win) => win !== settings && !win.isDestroyed())
     if (!remote) throw new Error('production main did not open the enterprise window')
@@ -54,7 +58,7 @@ app.whenReady().then(async () => {
     if (after.loginStillPresent || new URL(after.url).origin !== origin || new URL(after.url).pathname !== '/enterprise/' || /server error/i.test(after.title)) {
       throw new Error('Django login did not render the authenticated enterprise page')
     }
-    const result = { client: 'TradeLoom Enterprise Electron smoke', accountLabel: label, origin, entryPath, initialLoginPath: loginPath, loginFormHadCsrf: before.hasCsrf, loggedIn: true, sameOrigin: true, remotePreloadAbsent: !after.preloadVisible, remoteNodeAbsent: !after.nodeVisible, title: after.title, finalPath: new URL(after.url).pathname }
+    const result = { client: 'TradeLoom Enterprise Electron smoke', accountLabel: label, origin, entryPath, initialOriginEmpty: true, localWorkbenchMenuPresent: true, localWorkbenchMenuEnabled: workbenchMenu.enabled, initialLoginPath: loginPath, loginFormHadCsrf: before.hasCsrf, loggedIn: true, sameOrigin: true, remotePreloadAbsent: !after.preloadVisible, remoteNodeAbsent: !after.nodeVisible, title: after.title, finalPath: new URL(after.url).pathname }
     fs.writeFileSync(path.resolve(evidenceFile), JSON.stringify(result, null, 2), { mode: 0o600 })
     console.log(JSON.stringify({ status: 'ok', ...result }))
     app.exit(0)

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, session } = require('electron')
+const { app, BrowserWindow, ipcMain, session, Menu, dialog, shell } = require('electron')
 const fs = require('node:fs')
 const path = require('node:path')
 const { createHash } = require('node:crypto')
@@ -12,6 +12,24 @@ const SMOKE_STANDALONE = process.argv.includes('--smoke-standalone')
 const SMOKE_ENTERPRISE = process.argv.includes('--smoke-enterprise')
 if (SMOKE_STANDALONE || SMOKE_ENTERPRISE) app.setPath('userData', path.join(app.getPath('temp'), 'TradeLoomEnterpriseSmoke', String(process.pid)))
 let productWindow = null
+
+// Local application menu only. Remote pages cannot supply an executable path.
+function installLocalMenu() {
+  const workbench = path.join(path.dirname(app.getPath('exe')), 'Workbench', '启动工作台.exe')
+  Menu.setApplicationMenu(Menu.buildFromTemplate([{
+    label: '个人端',
+    submenu: [
+      { label: '连接台账服务', click: () => localSettingsWindow() },
+      { label: '打开完整工作台', enabled: fs.existsSync(workbench), click: () => {
+        shell.openPath(workbench).then((error) => {
+          if (error) dialog.showErrorBox('无法打开完整工作台', '请确认个人端目录中的 Workbench 程序完整。')
+        })
+      } },
+      { type: 'separator' },
+      { role: 'quit', label: '退出个人端' },
+    ],
+  }]))
+}
 
 function configPath() {
   return path.join(app.getPath('userData'), 'enterprise-client.json')
@@ -114,6 +132,7 @@ ipcMain.handle('enterprise:connect', (event, rawOrigin) => {
 })
 
 app.whenReady().then(() => {
+  installLocalMenu()
   localSettingsWindow(!SMOKE_STANDALONE && !SMOKE_ENTERPRISE)
 })
 
