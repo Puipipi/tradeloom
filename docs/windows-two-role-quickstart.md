@@ -1,6 +1,13 @@
 # Windows 双端快速入门（6.18 候选版）
 
-本页说明企业台账服务与个人完整工作台的使用边界。计划预发布版本为 `v6.18.0-rc.1`；候选包仍在验收，尚未发布。稳定版完整工作台继续从 [Stage 6.17 发布页](https://github.com/Puipipi/tradeloom/releases/tag/stage6.17-windows-x64) 下载，使用[原桌面部署说明](windows-desktop-deployment.md)。候选版资产名称以最终发布页为准。
+本页说明企业台账服务与个人完整工作台的使用边界。计划预发布版本为 [`v6.18.0-rc.1`](https://github.com/Puipipi/tradeloom/releases/tag/v6.18.0-rc.1)；候选包仍在验收，尚未发布，该链接在发布后生效。稳定版完整工作台继续从 [Stage 6.17 发布页](https://github.com/Puipipi/tradeloom/releases/tag/stage6.17-windows-x64) 下载，使用[原桌面部署说明](windows-desktop-deployment.md)。
+
+| 候选资产 | 安装位置与用途 |
+|---|---|
+| `TradeLoom-Server-Windows-x64-v6.18.0-rc.1.zip` | 在服务器电脑解压，运行企业台账服务 |
+| `TradeLoom-Personal-Windows-x64-v6.18.0-rc.1.zip` | 在个人电脑完整解压，包含企业连接客户端和个人完整工作台 |
+
+发布后从上述版本页下载所需资产及 `SHA256SUMS.txt`，先校验再解压。完整保留解压目录结构。
 
 ## 1. 安装企业台账服务
 
