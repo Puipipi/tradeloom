@@ -1,13 +1,14 @@
 Option Explicit
-Dim args, i, name, command, shell, fso, root, ps
+Dim args, i, name, command, shell, fso, root, ps, exitCode
 Set args = WScript.Arguments
 Set shell = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 root = fso.GetParentFolderName(WScript.ScriptFullName)
 ps = shell.ExpandEnvironmentStrings("%WINDIR%") & "\System32\WindowsPowerShell\v1.0\powershell.exe"
-command = Q(ps) & " -NoLogo -NoProfile -STA -ExecutionPolicy RemoteSigned -File " & Q(root & "\scripts\ServerWindow.ps1")
+command = Q(ps) & " -NoLogo -NoProfile -STA -WindowStyle Hidden -ExecutionPolicy RemoteSigned -File " & Q(root & "\scripts\ServerWindow.ps1")
 If args.Count = 1 Then
   If LCase(args(0)) = "-probe" Then WScript.Quit shell.Run(command & " -Probe", 0, True)
+  If LCase(args(0)) = "-visibilityprobe" Then WScript.Quit shell.Run(command & " -VisibilityProbe", 1, True)
 End If
 If args.Count Mod 2 <> 0 Then
   MsgBox "Invalid arguments: each option requires a value.", 16, "TradeLoom Enterprise Server"
@@ -23,7 +24,20 @@ For i = 0 To args.Count - 1 Step 2
       WScript.Quit 1
   End Select
 Next
-shell.Run command, 0, False
+' Keep normal first-window intent; PowerShell hides only its own console.
+' Wait for the window process so an immediate failure cannot disappear silently.
+On Error Resume Next
+exitCode = shell.Run(command, 1, True)
+If Err.Number <> 0 Then
+  Err.Clear
+  MsgBox "The server window could not start. Please contact server support with this Server package version.", 16, "TradeLoom Enterprise Server"
+  WScript.Quit 1
+End If
+On Error GoTo 0
+If exitCode <> 0 Then
+  MsgBox "The server window closed unexpectedly. Please contact server support with this Server package version.", 16, "TradeLoom Enterprise Server"
+  WScript.Quit exitCode
+End If
 Function Q(value)
   Dim j, c, n, result
   result = Chr(34): n = 0

@@ -3,7 +3,8 @@
   [string]$RuntimeSource = '',
   [int]$Port = 27417,
   [int]$PostgresPort = 56427,
-  [switch]$Probe
+  [switch]$Probe,
+  [switch]$VisibilityProbe
 )
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms
@@ -195,7 +196,7 @@ $create.Add_Click({
   Begin-Operation 'create' $payload
   $payload=$null
 })
-$form.Add_Shown({Begin-Operation 'status'})
+if(-not $VisibilityProbe){$form.Add_Shown({Begin-Operation 'status'})}
 $form.Add_FormClosing({param($sender,$eventArgs)
   if($null -ne $script:job){$eventArgs.Cancel=$true;[Windows.Forms.MessageBox]::Show($form,'正在处理，请等待结果后关闭窗口。服务不会因关闭窗口而停止。') | Out-Null}
 })
@@ -220,5 +221,28 @@ if ($Probe) {
     if($script:probeAction){throw '未支持意图不应派发。'}
     exit 0
   } finally { $timer.Dispose(); $managementDialog.Dispose(); $form.Dispose() }
+}
+if($VisibilityProbe) {
+  # Test only this process's own windows; the harness runs on a private desktop.
+  Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class TradeLoomOwnWindowProbe {
+  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hwnd);
+  [DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow();
+}
+'@
+  $script:visibilityExit=4
+  $visibilityTimer=New-Object Windows.Forms.Timer;$visibilityTimer.Interval=500
+  $visibilityTimer.Add_Tick({
+    $visibilityTimer.Stop()
+    $visible=[TradeLoomOwnWindowProbe]::IsWindowVisible($form.Handle)
+    $consoleVisible=[TradeLoomOwnWindowProbe]::IsWindowVisible([TradeLoomOwnWindowProbe]::GetConsoleWindow())
+    $script:visibilityExit=if(-not $visible){2}elseif($consoleVisible){3}else{0}
+    $form.Close()
+  })
+  $visibilityTimer.Start()
+  try{$null=$form.ShowDialog()}finally{$visibilityTimer.Dispose();$timer.Dispose();$managementDialog.Dispose();$form.Dispose()}
+  exit $script:visibilityExit
 }
 try { $null=$form.ShowDialog() } finally { $timer.Dispose();$managementDialog.Dispose();$form.Dispose() }
