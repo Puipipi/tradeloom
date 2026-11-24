@@ -28,7 +28,10 @@ def _visible_entries(user):
 @login_required
 @require_GET
 def capabilities(request):
-    payload = policy_payload(request.user)
+    from .policy import ui_policy_snapshot
+    if request.GET and (set(request.GET) != {"ui"} or request.GET.getlist("ui") != ["1"]):
+        return JsonResponse({"detail": "能力查询参数无效。"}, status=400)
+    payload = ui_policy_snapshot(request.user) if request.GET else policy_payload(request.user)
     from .email_login import VERIFIED, fingerprint
     from django.utils.crypto import constant_time_compare
     payload["authentication"] = {"email_verified": constant_time_compare(str(request.session.get(VERIFIED, "")), fingerprint(request.user))}
