@@ -48,5 +48,5 @@
     {% if entries %}<ul>{% for entry in entries %}<li>{{ entry.created_at }} · {{ entry.created_by.get_username }}{% if can_view_business and entry.task %} · {{ entry.task.title }}{% endif %}{% if entry.factory_group %} · {{ entry.factory_group.name }}{% endif %} · {{ entry.body }}</li>{% endfor %}</ul>{% else %}<p>暂无可访问的登记记录。</p>{% endif %}
   </section>
   </main>
-</body>
+{% include "enterprise_portal/live_permissions.html" %}</body>
 </html>

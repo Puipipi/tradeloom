@@ -304,6 +304,7 @@
   }
   credentialForm.addEventListener("submit", event => { event.preventDefault(); credentialAction("set"); });
   byId("delete-credential").addEventListener("click", () => credentialAction("delete"));
+  window.addEventListener('enterprise-policy-ready', refresh);
   refresh();
   refreshNotice();
 })();

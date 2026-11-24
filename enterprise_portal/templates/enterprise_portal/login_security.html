@@ -7,4 +7,4 @@
 <table><thead><tr><th>内部账号</th><th>绑定邮箱</th><th>状态</th></tr></thead><tbody>{% for account in accounts %}<tr><td>{{ account.username }}</td><td>{{ account.email|default:"未绑定" }}</td><td>{{ account.is_active|yesno:"正常,停用" }}</td></tr>{% endfor %}</tbody></table>
 <h2>验证码发信配置</h2><p>SMTP 状态：{% if smtp_configured %}已配置{% else %}未配置{% endif %}。配置由服务器使用 DPAPI 加密保存，不回读密码；保存时需重新填写完整配置。请使用发件服务商提供的授权密码，SSL 或 STARTTLS 必选。不会自动给列表账号发测试邮件。</p>
 <form method="post" autocomplete="off">{% csrf_token %}<input type="hidden" name="action" value="smtp">{{ smtp.as_p }}<button>保存 SMTP 配置</button></form>
-</main></body></html>
+</main>{% include "enterprise_portal/live_permissions.html" %}</body></html>

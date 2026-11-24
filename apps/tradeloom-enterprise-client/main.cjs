@@ -41,29 +41,61 @@ const pendingSignIns = new WeakSet()
 let settingsWindow = null
 const emailChallenges = new Map()
 
-async function authorized(capability = "local_workbench") {
+let policyRequest = null
+let installedMenuState = ''
+
+function policyContext() {
   const win = productWindow
-  const origin = connectedOrigin
-  const epoch = authorizationEpoch
-  if (!win || win.isDestroyed() || !origin) return false
-  try {
-    if (new URL(win.webContents.getURL()).origin !== origin) return false
-    const response = await win.webContents.session.fetch(`${origin}/enterprise/capabilities/`, { redirect: 'error', cache: 'no-store' })
-    // Electron net.fetch can return an empty Response.url. The request is fixed
-    // to the connected origin and redirects are rejected above.
-    if (!response.ok || response.redirected === true || (response.url && response.url !== `${origin}/enterprise/capabilities/`)) return false
-    const policy = await response.json()
-    return epoch === authorizationEpoch && win === productWindow && !win.isDestroyed()
-      && policy.configuration_conflict !== true
-      && policy.capabilities?.[capability] === true
-      && (capability !== 'local_workbench' || (policy.role === 'owner' && policy.capabilities?.owner_tools === true))
-  } catch { return false }
+  if (!win || win.isDestroyed() || !connectedOrigin) return null
+  const url = win.webContents.getURL()
+  try { if (new URL(url).origin !== connectedOrigin) return null } catch { return null }
+  return { win, url, origin: connectedOrigin, epoch: authorizationEpoch }
+}
+
+function currentContext(context) {
+  return context && context.win === productWindow && !context.win.isDestroyed()
+    && context.epoch === authorizationEpoch && context.origin === connectedOrigin
+    && context.url === context.win.webContents.getURL()
+}
+
+async function currentPolicy() {
+  const context = policyContext()
+  if (!context) return null
+  if (policyRequest) {
+    const existing = policyRequest
+    const result = await existing.promise
+    if (!currentContext(context)) return null
+    if (existing.context.win === context.win && existing.context.epoch === context.epoch && existing.context.url === context.url) return result
+    return currentPolicy()
+  }
+  const request = { context }
+  request.promise = (async () => {
+    try {
+      const url = `${context.origin}/enterprise/capabilities/?ui=1`
+      const response = await context.win.webContents.session.fetch(url, { redirect: 'error', cache: 'no-store', credentials: 'include', signal: AbortSignal.timeout(8000) })
+      if (!response.ok || response.redirected || (response.url && response.url !== url)) return null
+      const policy = await response.json()
+      return currentContext(context) ? policy : null
+    } catch { return null }
+    finally { if (policyRequest === request) policyRequest = null }
+  })()
+  policyRequest = request
+  return request.promise
+}
+
+function permits(policy, capability) {
+  return policy && policy.configuration_conflict !== true && policy.capabilities?.[capability] === true
+    && (capability !== 'local_workbench' || (policy.role === 'owner' && policy.capabilities?.owner_tools === true))
+}
+
+async function authorized(capability = 'local_workbench') {
+  return Boolean(permits(await currentPolicy(), capability))
 }
 
 async function refreshLocalMenu() {
-  const epoch = authorizationEpoch
-  const [owner, ops] = await Promise.all([authorized(), authorized("server_ops")])
-  if (epoch === authorizationEpoch) installLocalMenu(owner, ops)
+  const context = policyContext()
+  const policy = await currentPolicy()
+  if (currentContext(context)) installLocalMenu(Boolean(permits(policy, 'local_workbench')), Boolean(permits(policy, 'server_ops')))
 }
 
 async function openOwnerPage(relative) {
@@ -74,6 +106,9 @@ async function openOwnerPage(relative) {
 // Local application menu only. Remote pages cannot supply an executable path.
 function installLocalMenu(owner = false, ops = false) {
   const workbench = path.join(path.dirname(app.getPath('exe')), 'Workbench', '启动工作台.exe')
+  const state = `${owner && fs.existsSync(workbench)}:${ops}`
+  if (state === installedMenuState) return
+  installedMenuState = state
   Menu.setApplicationMenu(Menu.buildFromTemplate([{
     label: '个人端',
     submenu: [
@@ -191,7 +226,13 @@ async function connect(rawOrigin, settingsWindow) {
     }
     await refreshLocalMenu()
   })
+  const poll = setInterval(() => {
+    if (candidate === productWindow && !candidate.isDestroyed() && candidate.isVisible() && !candidate.isMinimized()) refreshLocalMenu()
+  }, 5000)
+  candidate.on('focus', () => refreshLocalMenu())
+  candidate.on('show', () => refreshLocalMenu())
   candidate.on('closed', () => {
+    clearInterval(poll)
     if (candidate === productWindow) { productWindow = null; authorizationEpoch += 1; installLocalMenu(false) }
   })
   const targetUrl = enterpriseUrl(serverOrigin)

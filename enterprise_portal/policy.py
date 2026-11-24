@@ -121,3 +121,26 @@ def policy_payload(user):
 
 def can_use_server_operations(user):
     return capability_policy(user)["server_ops"]
+
+
+def ui_policy_snapshot(user):
+    """Authorization metadata only: no business rows, credentials or providers."""
+    import hashlib
+    import json
+    caps = capability_policy(user)
+    groups = list(user.groups.order_by("pk").values_list("pk", "name"))
+    state = {"user": user.pk, "active": user.is_active, "staff": user.is_staff,
+             "superuser": user.is_superuser, "groups": groups,
+             "permissions": sorted(user.get_all_permissions()), "capabilities": caps}
+    revision = hashlib.sha256(json.dumps(state, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    return {"ui_revision": revision, "capabilities": caps,
+            "console_access": not any(name == "工厂登记员" for _, name in groups) and bool(caps["server_ops"] or (user.is_staff and user.has_perm("auth.view_user"))),
+            "role": "owner" if is_enterprise_owner(user) else "registrar" if any(name == "工厂登记员" for _, name in groups) else "member",
+            "configuration_conflict": any(name == "工厂登记员" for _, name in groups) and any(name == "企业老板" for _, name in groups)}
+
+
+def live_policy_context(request):
+    if not request.user.is_authenticated or request.session.get("_tradeloom_local_console") is not None:
+        return {}
+    revision = getattr(request, "enterprise_policy_revision", None)
+    return {"enterprise_policy_revision": revision or ui_policy_snapshot(request.user)["ui_revision"]}
