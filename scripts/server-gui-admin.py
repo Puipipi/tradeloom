@@ -32,16 +32,29 @@ def main():
     from django.contrib.auth import get_user_model
     from django.contrib.auth.password_validation import validate_password
     from django.core.exceptions import ValidationError
+    from django.core.validators import validate_email
     from django.db import connection, transaction
     User = get_user_model()
     if action == "status":
-        return {"ok": True, "has_admin": User.objects.filter(is_superuser=True).exists()}
-    if action != "create":
+        from enterprise_portal.login_mail import configured
+        return {"ok": True, "has_admin": User.objects.filter(is_superuser=True).exists(), "smtp_configured": configured()}
+    if action not in {"create", "mail"}:
         return {"ok": False, "message": "不支持的管理员操作。"}
     # Read a single bounded JSON document. Never print the payload or exceptions.
     payload = json.loads(sys.stdin.readline(65537))
+    if action == "mail":
+        from enterprise_portal.login_security import bind_email
+        from enterprise_portal import login_mail
+        if payload.get("operation") == "smtp" and set(payload) == {"operation", "smtp"}:
+            login_mail.configure(payload["smtp"])
+        elif payload.get("operation") == "bind-email" and set(payload) == {"operation", "username", "email"}:
+            bind_email(payload["username"], payload["email"])
+        else:
+            return {"ok": False, "message": "邮件设置参数无效。"}
+        return {"ok": True, "has_admin": User.objects.filter(is_superuser=True).exists(), "smtp_configured": login_mail.configured(), "message": "登录安全设置已保存；未创建登录会话或修改账号权限。"}
     username = payload.get("username", "").strip()
     password = payload.get("password", "")
+    email = payload.get("email", "").strip().lower()
     if not username or not password or len(password) > 4096:
         return {"ok": False, "message": "请填写账号和密码（密码最多 4096 字符）。"}
     with transaction.atomic():
@@ -50,12 +63,13 @@ def main():
             cursor.execute("SELECT pg_advisory_xact_lock(618, 1401)")
         if User.objects.filter(is_superuser=True).exists():
             return {"ok": False, "message": "已有管理员，拒绝重复创建。请使用原账号登录。"}
-        user = User(username=username, is_staff=True, is_superuser=True, is_active=True)
+        user = User(username=username, email=email, is_staff=True, is_superuser=True, is_active=True)
         try:
+            validate_email(email)
             user.full_clean(exclude=["password", "last_login", "date_joined"])
             validate_password(password, user)
         except ValidationError:
-            return {"ok": False, "message": "账号或密码未通过校验：账号须有效且未使用；密码至少 8 位，不能过于常见、全为数字或与账号相似。"}
+            return {"ok": False, "message": "账号、邮箱或密码未通过校验：账号须有效且未使用，邮箱须有效；密码至少 8 位，不能过于常见、全为数字或与账号相似。"}
         user.set_password(password)
         user.save()
     return {"ok": True, "has_admin": True, "message": "首个管理员已创建，请打开管理控制台登录。"}

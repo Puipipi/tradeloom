@@ -4,7 +4,8 @@ import re
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
-from django.test import Client, TestCase
+from django.test import override_settings
+from .testing import EmailVerifiedClient as Client, EmailVerifiedTestCase as TestCase
 from django.utils import timezone
 
 from enterprise_portal.management.commands.configure_enterprise_groups import Command
@@ -148,13 +149,19 @@ class EnterprisePortalAccessTests(TestCase):
         Command().handle()
         self.assertTrue(self.registrar_group.permissions.filter(pk=extra.pk).exists())
 
+    @override_settings(ENTERPRISE_LOGIN_MAIL_TEST_BACKEND='django.core.mail.backends.locmem.EmailBackend')
     def test_csrf_logout_and_disabled_account(self):
+        self.registrar.email = 'registrar@example.invalid'; self.registrar.save(update_fields=['email'])
         client = Client(enforce_csrf_checks=True)
         page = client.get("/accounts/login/")
         csrf = re.search(rb'name="csrfmiddlewaretoken" value="([^"]+)"', page.content).group(1).decode()
         response = client.post("/accounts/login/", {
             "username": "registrar", "password": "Registrar-test-pass-123", "csrfmiddlewaretoken": csrf,
         })
+        self.assertEqual(response.status_code, 200)
+        from django.core import mail
+        code = re.search(r'\b([0-9]{6})\b', mail.outbox[-1].body).group(1)
+        response = client.post('/accounts/login/', {'action': 'verify', 'code': code, 'csrfmiddlewaretoken': csrf})
         self.assertEqual(response.status_code, 302)
         self.assertEqual(client.post("/enterprise/entries", {"body": "csrf-required"}).status_code, 403)
         page = client.get("/enterprise/")
@@ -170,7 +177,7 @@ class EnterprisePortalAccessTests(TestCase):
             "username": inactive.username, "password": "Inactive-test-pass-123", "csrfmiddlewaretoken": login_csrf,
         })
         self.assertEqual(denied.status_code, 200)
-        self.assertContains(denied, "用户名或密码不正确")
+        self.assertContains(denied, "账号或密码不正确")
 
 
 class EnterprisePolicyBoundaryTests(TestCase):

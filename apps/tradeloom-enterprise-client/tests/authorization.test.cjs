@@ -31,7 +31,7 @@ async function harness(edition, argv = []) {
   }
   const fakeFs = { existsSync: () => true, readFileSync: file => { if (edition && file.endsWith('edition.json')) return JSON.stringify({ edition }); throw Object.assign(Error('empty config'), { code: 'ENOENT' }) }, mkdirSync() {}, writeFileSync() {}, renameSync() {} }
   vm.runInNewContext(fs.readFileSync(path.join(root, 'main.cjs'), 'utf8'), {
-    require: name => name === 'electron' ? electron : name === 'node:fs' ? fakeFs : name === './security.cjs' ? require('../security.cjs') : name === './login.cjs' ? { signIn: async () => true, sessionPolicy: async () => null } : require(name),
+    require: name => name === 'electron' ? electron : name === 'node:fs' ? fakeFs : name === './security.cjs' ? require('../security.cjs') : name === './login.cjs' ? { signIn: async () => ({ step: 'email_code' }), verifyCode: async () => true, resendCode: async () => true, sessionPolicy: async () => null } : require(name),
     __dirname: root, process: { argv, platform: 'win32' }, setTimeout: () => 0, console, URL,
   })
   await flush()
@@ -39,7 +39,7 @@ async function harness(edition, argv = []) {
   settings.webContents.mainFrame.url = settings.url;
   const event = { sender: settings.webContents, senderFrame: settings.webContents.mainFrame }
   const item = label => menu[0].submenu.find(x => x.label === label)
-  return { paths, item, opened: () => opened, setPolicy: value => { policy = value }, async connect() { await handlers['enterprise:sign-in'](event, { serverOrigin: 'https://example.invalid', username: 'synthetic', password: 'synthetic' }); await flush() }, handlers, event }
+  return { paths, item, opened: () => opened, setPolicy: value => { policy = value }, async connect() { await handlers['enterprise:sign-in'](event, { serverOrigin: 'https://example.invalid', username: 'synthetic', password: 'synthetic' }); await handlers['enterprise:verify-code'](event, '123456'); await flush() }, handlers, event }
 }
 
 test('packaged editions select distinct profile and session paths before ready; generic unchanged', async () => {

@@ -1,5 +1,5 @@
 ﻿param(
-  [ValidateSet('status','start','create','open')][string]$Action = 'status',
+  [ValidateSet('status','start','create','open','mail')][string]$Action = 'status',
   [string]$DataRoot = (Join-Path $env:LOCALAPPDATA 'TradeLoomEnterpriseServer'),
   [string]$RuntimeSource = '',
   [int]$Port = 27417,
@@ -118,12 +118,12 @@ try {
     $state = Get-OwnedState
   }
   if (-not $state.running) {
-    if ($Action -in @('create','open')) { throw '请先启动本安装的服务。' }
+    if ($Action -in @('create','open','mail')) { throw '请先启动本安装的服务。' }
     $state.ok=$true; $state | ConvertTo-Json -Compress; exit 0
   }
-  if ($Action -eq 'create') {
+  if ($Action -in @('create','mail')) {
     $payload = [Console]::ReadLine()
-    $result = Invoke-AdminHelper $state 'create' $payload
+    $result = Invoke-AdminHelper $state $Action $payload
     $payload = $null
   } else { $result = Invoke-AdminHelper $state 'status' }
   if (-not $result.ok) { $result | ConvertTo-Json -Compress; exit 1 }
@@ -131,7 +131,7 @@ try {
     if (-not $result.has_admin) { throw '请先自行创建首个管理员。' }
     & (Join-Path $PSScriptRoot 'Open-ServerConsole.ps1') -DataRoot $root *> $null
   }
-  @{ ok=$true; installed=$true; running=$true; has_admin=[bool]$result.has_admin; message= $(if ($Action -eq 'create') { '首个管理员已创建。请打开管理控制台登录。' } elseif ($result.has_admin) { '服务运行正常。已有管理员，请使用原账号登录。' } else { '服务运行正常。请在下方自行填写首个管理员账号和密码。' }) } | ConvertTo-Json -Compress
+  @{ ok=$true; installed=$true; running=$true; has_admin=[bool]$result.has_admin; smtp_configured=[bool]$result.smtp_configured; message= $(if ($Action -eq 'mail') { '登录安全设置已保存；未创建业务登录会话。' } elseif ($Action -eq 'create') { '首个管理员已创建。请先配置验证码发信，再使用两步登录。' } elseif ($result.has_admin) { '服务运行正常。可在“登录安全设置”补绑账号邮箱和配置发信。' } else { '服务运行正常。请在下方自行填写首个管理员账号、邮箱和密码。' }) } | ConvertTo-Json -Compress
 } catch {
   @{ ok=$false; message=$_.Exception.Message } | ConvertTo-Json -Compress
   exit 1

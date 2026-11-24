@@ -4,7 +4,7 @@ const path = require('node:path')
 const { createHash } = require('node:crypto')
 const { pathToFileURL } = require('node:url')
 const { normalizeServerOrigin, enterpriseUrl, isSameOriginRequest } = require('./security.cjs')
-const { signIn, sessionPolicy } = require('./login.cjs')
+const { signIn, verifyCode, resendCode, sessionPolicy } = require('./login.cjs')
 
 app.setName('TradeLoom Enterprise Client')
 const SETTINGS_PARTITION = 'persist:tradeloom-enterprise-settings'
@@ -39,6 +39,7 @@ let authorizationEpoch = 0
 const settingsWindows = new Set()
 const pendingSignIns = new WeakSet()
 let settingsWindow = null
+const emailChallenges = new Map()
 
 async function authorized(capability = "local_workbench") {
   const win = productWindow
@@ -135,7 +136,7 @@ function localSettingsWindow(show = true) {
   settingsWindow = win
   const contents = win.webContents
   settingsWindows.add(contents)
-  win.on('closed', () => { settingsWindows.delete(contents); if (settingsWindow === win) settingsWindow = null })
+  win.on('closed', () => { settingsWindows.delete(contents); emailChallenges.delete(contents); if (settingsWindow === win) settingsWindow = null })
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   win.webContents.on('will-navigate', (event, target) => {
     if (target !== pathToFileURL(path.join(__dirname, 'index.html')).href) event.preventDefault()
@@ -234,9 +235,33 @@ ipcMain.handle('enterprise:sign-in', async (event, credentials) => {
   try {
     const { serverOrigin, username, password } = credentials || {}
     const origin = normalizeServerOrigin(serverOrigin)
-    await signIn(serverSession(origin), origin, username, password)
-    return await connect(origin, BrowserWindow.fromWebContents(event.sender))
+    const result = await signIn(serverSession(origin), origin, username, password)
+    emailChallenges.set(event.sender, origin)
+    return result
   } finally { pendingSignIns.delete(event.sender) }
+})
+
+for (const [channel, operation] of [['enterprise:verify-code', verifyCode], ['enterprise:resend-code', resendCode]]) {
+  ipcMain.handle(channel, async (event, code) => {
+    requireSettingsSender(event)
+    const origin = emailChallenges.get(event.sender)
+    if (!origin) throw new Error('请先验证账号密码。')
+    if (pendingSignIns.has(event.sender)) throw new Error('正在登录，请稍候。')
+    pendingSignIns.add(event.sender)
+    try {
+      const result = await operation(serverSession(origin), origin, code)
+      if (channel === 'enterprise:resend-code') return result
+      const connected = await connect(origin, BrowserWindow.fromWebContents(event.sender))
+      emailChallenges.delete(event.sender)
+      return connected
+    } finally { pendingSignIns.delete(event.sender) }
+  })
+}
+
+ipcMain.handle('enterprise:restart-login', event => {
+  requireSettingsSender(event)
+  if (pendingSignIns.has(event.sender)) throw new Error('正在登录，请稍候。')
+  emailChallenges.delete(event.sender)
 })
 
 app.whenReady().then(async () => {

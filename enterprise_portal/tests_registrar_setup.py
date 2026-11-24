@@ -1,7 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
 from django.core.management import call_command
-from django.test import Client, TestCase
+from .testing import EmailVerifiedClient as Client, EmailVerifiedTestCase as TestCase
 
 from .models import EnterpriseEntry
 

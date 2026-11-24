@@ -5,7 +5,7 @@ from datetime import date
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
 from django.core.management import call_command
-from django.test import TestCase
+from .testing import EmailVerifiedTestCase as TestCase
 from django.utils import timezone
 
 from workbench.models import (Task, Product, Customer, CustomerAlias, CustomerEvent,

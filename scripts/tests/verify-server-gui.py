@@ -44,7 +44,7 @@ record('PS5.1 service status and pending administrator',run('status').get('has_a
 weak=run('create',{'username':'验收管理员','password':'12345678'})
 record('Django weak password rejected',not weak['ok'],weak['message'])
 password='验证!'+secrets.token_urlsafe(24)
-payload={'username':'验收管理员','password':password}
+payload={'username':'验收管理员','email':'synthetic-admin@example.invalid','password':password}
 with concurrent.futures.ThreadPoolExecutor(2) as pool:
     attempts=list(pool.map(lambda _:run('create',payload),range(2)))
 record('Concurrent first creation exactly once',sum(bool(r['ok']) for r in attempts)==1,[r['message'] for r in attempts])
@@ -57,8 +57,8 @@ csrf=re.search(r'name="csrfmiddlewaretoken" value="([^"]+)"',page).group(1)
 data=urllib.parse.urlencode({'username':payload['username'],'password':password,'csrfmiddlewaretoken':csrf,'next':'/enterprise/console/'}).encode()
 response=opener.open(urllib.request.Request(url,data=data,headers={'Referer':url}))
 body=response.read().decode()
-record('Chinese username and Unicode password HTTP boss login',response.status==200 and '/enterprise/console/' in response.url,{'status':response.status,'url':response.url})
-record('Authenticated console contains business management',('控制台' in body or 'console' in body.lower()))
+record('Chinese username and Unicode password cannot bypass missing SMTP verification',response.status==200 and '/accounts/login/' in response.url and '验证码暂时无法发送' in body,{'status':response.status,'url':response.url})
+record('Password stage has no authenticated session','/accounts/login/' in opener.open(f'http://127.0.0.1:{options.port}/enterprise/console/').url)
 config=(ROOT/'server-config.json').read_bytes()
 pid=(ROOT/'django.pid').read_bytes()
 app_hash=hashlib.sha256((ROOT/'app/manage.py').read_bytes()).hexdigest()

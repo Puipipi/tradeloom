@@ -56,6 +56,7 @@
     <details><summary>该组当前显式权限声明</summary>{% for permission in group_projection.permissions %}<p><code>{{ permission }}</code></p>{% empty %}<p>没有显式权限声明。</p>{% endfor %}</details>
     {% else %}<p>暂无用户组。</p>{% endif %}
   </section>{% endif %}
+  <p><a href="/enterprise/console/login-security/">登录安全：绑定邮箱与验证码发信配置（服务器管理员 / 本机授权运维）</a></p>
   <section id="operations" aria-labelledby="operations-title">
     <div class="section-header"><h2 id="operations-title">服务与凭据</h2><button id="refresh-status" type="button">刷新状态</button></div>
     <p>查看网站健康、数据库类型与凭据配置状态。凭据仅显示是否配置，不显示密钥原文。</p>
