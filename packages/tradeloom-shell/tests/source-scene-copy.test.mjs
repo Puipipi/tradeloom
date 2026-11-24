@@ -69,7 +69,8 @@ test('Windows source maps the order scene to explicit Host panels and the /order
   const dimensions = id => Object.fromEntries(defaults.scenes.find(scene => scene.id === id).panels.map(panel => [panel.id, [panel.col, panel.row, panel.w, panel.h]]))
   assert.deepEqual(dimensions('products')['business-main'], [1, 1, 3, 3])
   assert.deepEqual(dimensions('order-production')['business-main'], [1, 1, 3, 3])
-  assert.deepEqual(dimensions('agent-center')['business-main'], [1, 1, 3, 2])
+  // Accepted 9fd303a layout: tall canvas beside plan/files, with preview/chat below.
+  assert.deepEqual(dimensions('agent-center')['business-main'], [1, 1, 2, 3])
   assert.deepEqual(dimensions('deliverables').preview, [3, 1, 2, 4])
 
   const routeStart = bridge.indexOf('function routeForPath(path) {')
