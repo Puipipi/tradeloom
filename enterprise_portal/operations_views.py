@@ -58,19 +58,40 @@ def ssh_policy(request):
 @csrf_protect
 @require_POST
 def assistant(request):
-    if _denied(request):
-        return JsonResponse({"detail": "无服务器运维权限。"}, status=403)
+    from . import operations_registrars as registrars
     try:
-        data = _payload(request, ("command", "message"))
-        if set(data) == {"command"}:
-            result = {"result": operations.execute(data["command"], request.user), "effect": "read", "proposal": None}
-        elif set(data) == {"message"}:
-            from .operations_ai import route
-            result = route(data["message"], request.user)
+        data = _payload(request, ("command", "message", "consent", "registrar", "proposal", "decision"))
+        # Resolve bound proposals even after management permission is revoked:
+        # the service consumes failed confirmations rather than reviving them.
+        if set(data) == {"proposal", "decision"}:
+            result = registrars.resolve(request, data["proposal"], data["decision"])
         else:
-            raise ValueError()
+            if _denied(request):
+                return JsonResponse({"detail": "无服务器运维权限。"}, status=403)
+            if set(data) == {"registrar"}:
+                result = registrars.prepare(request, data["registrar"])
+            elif set(data) == {"command"}:
+                result = {"result": operations.execute(data["command"], request.user), "effect": "read", "proposal": None}
+            elif "message" in data and set(data) <= {"message", "consent"}:
+                message = data["message"]
+                notice = isinstance(message, str) and (message.strip().startswith(("发布公告", "替换公告")) or message.strip() == "撤下公告")
+                command = None if notice else registrars.parse(message)
+                if command is not None:
+                    result = registrars.prepare(request, command)
+                else:
+                    from .operations_ai import route
+                    result = route(data["message"], request.user, consent=data.get("consent") is True)
+            else:
+                raise ValueError()
+    except registrars.Rejected as error:
+        payload = {"detail": error.detail, "proposal": None}
+        if error.current is not None:
+            payload["current"] = error.current
+        response = JsonResponse(payload, status=error.status)
+        response["Cache-Control"] = "no-store"
+        return response
     except PermissionError:
-        return JsonResponse({"detail": "仅企业老板可准备公告草稿。"}, status=403)
+        return JsonResponse({"detail": "当前角色无权准备此管理变更。"}, status=403)
     except (ValueError, TypeError):
         return JsonResponse({"detail": "请选择受支持的助手命令。"}, status=400)
     response = JsonResponse(result)

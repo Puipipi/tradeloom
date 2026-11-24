@@ -38,7 +38,7 @@ def classify(message, key):
     return choice["action"]
 
 
-def route(message, user):
+def route(message, user, *, consent=False):
     if not operations.can_operate(user):
         raise PermissionError("Operations permission required")
     if not isinstance(message, str):
@@ -65,10 +65,16 @@ def route(message, user):
                 raise ValueError("Notice text must contain 1 to 500 plain-text characters")
             return {"result": {"detail": "已准备完整公告草稿；请核对正文并在公告表单明确确认发布。正文仅在本应用处理，未发送模型。"},
                     "effect": "proposal", "proposal": {"action": "prepare_website_notice", "text": text, "notice": current()}}
+    if "登记员" in message:
+        return {"result": {"detail": "登记员命令请通过当前助手的账号状态控件提交；未调用模型。"},
+                "effect": "unavailable", "proposal": None}
     if not 1 <= len(message) <= 500:
         raise ValueError("Invalid message")
     unavailable = {"result": {"detail": "自然语言助手暂不可用，请使用固定诊断命令。"},
                    "effect": "unavailable", "proposal": None}
+    if consent is not True:
+        return {"result": {"detail": "尚未同意外发本次问题；未调用模型。请勾选同意，或使用本地登记员命令/手动检查。"},
+                "effect": "consent_required", "proposal": None}
     try:
         store = operations.vault()
         if not store.metadata()["deepseek_api_key"]["configured"]:
