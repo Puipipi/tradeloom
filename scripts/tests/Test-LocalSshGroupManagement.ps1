@@ -10,7 +10,7 @@ function Reset-Fixture {
 function Get-TLSSHPolicy {
   $script:policyCalls++
   $hash = if ($script:changeAt -and $script:policyCalls -ge $script:changeAt) { 'b' * 64 } else { 'a' * 64 }
-  return [pscustomobject]@{ eligible=$script:eligible; group='tradeloom-ssh-users'; fingerprint=$hash; reason='synthetic'; service=@{status='stopped'} }
+  return [pscustomobject]@{ eligible=$script:eligible; group='tradeloom-ssh-users'; fingerprint=$hash; reason='synthetic'; config_state='read'; config_reasons=@('match_not_evaluated'); service=@{status='stopped'} }
 }
 function Test-TLSSHAdministrator { return $script:admin }
 function Get-LocalGroup { param($Name,$ErrorAction)
@@ -40,6 +40,11 @@ function Assert-True($condition,[string]$message) { if (-not $condition) { throw
 function Assert-Rejected([scriptblock]$operation) { $denied=$false; try { & $operation | Out-Null } catch { $denied=$true }; Assert-True $denied 'Expected refusal' }
 
 Reset-Fixture
+$check = Invoke-LocalSshGroup -Action Check
+Assert-True ($check.ConfigState -eq 'read' -and $check.ConfigReasons -contains 'match_not_evaluated' -and -not $check.Changed -and -not $check.LoginVerified -and $script:writes -eq 0) 'Check diagnostics were missing or performed a mutation'
+Write-Output 'READ_ONLY_CHECK_DIAGNOSTICS=PASS'
+
+$script:policyCalls = 0
 $result = Invoke-LocalSshGroup -Action Grant -UserSid $script:userSid -Confirm:$false
 Assert-True ($result.Changed -and $script:writes -eq 1 -and -not $result.LoginVerified) 'Grant did not verify membership'
 Assert-True (-not (Invoke-LocalSshGroup -Action Grant -UserSid $script:userSid -Confirm:$false).Changed) 'Grant was not idempotent'

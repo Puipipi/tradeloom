@@ -172,7 +172,8 @@
     } catch (error) { byId("cloudflare-feedback").textContent = error.message; clearCloudflare(); }
     finally { button.disabled = false; byId("refresh-cloudflare").disabled = false; }
   });
-  const sshLabels = {service:"OpenSSH 服务",query_state:"服务查询结果",status:"运行状态",start_type:"启动类型",configuration_source:"配置来源",config:"配置读取",state:"读取状态",partial:"存在解析限制",reasons:"限制原因（原始代码）",directive_counts:"用户与组规则数量",auth_flags:"认证开关声明",declared_names:"配置声明的 Windows 名称",allowusers:"AllowUsers",denyusers:"DenyUsers",allowgroups:"AllowGroups",denygroups:"DenyGroups",passwordauthentication:"密码认证",pubkeyauthentication:"公钥认证",limitations:"检查范围与限制"};
+  const sshLabels = {service:"OpenSSH 服务",query_state:"服务查询结果",status:"运行状态",start_type:"启动类型",configuration_source:"配置来源",config:"配置读取",state:"读取状态",partial:"存在解析限制",reasons:"解析原因",directive_counts:"用户与组规则数量",auth_flags:"认证开关声明",declared_names:"配置声明的 Windows 名称",allowusers:"AllowUsers",denyusers:"DenyUsers",allowgroups:"AllowGroups",denygroups:"DenyGroups",passwordauthentication:"密码认证",pubkeyauthentication:"公钥认证",limitations:"检查范围与限制"};
+  const sshReasons = {malformed:"配置行格式不受支持",match_not_evaluated:"Match 条件段未评估",include_not_followed:"Include 内容未展开",too_many_declarations:"规则条目超过检查上限",repeated_auth_flag:"认证开关重复声明"};
   const sshValues = {ok:"已查询",not_installed:"未安装",denied:"权限不足",unavailable:"不可用",unsupported:"当前平台不支持",stopped:"已停止",running:"运行中",pending:"状态变更中",unknown:"未知",manual:"手动",automatic:"自动",disabled:"已禁用",default:"系统默认配置",customized:"自定义配置",read:"已读取",missing:"配置不存在",unsafe:"不安全路径，未读取",too_large:"配置过大，未读取",not_inspected:"未检查",yes:"yes（配置声明）",no:"no（配置声明）",unspecified:"未声明"};
   function renderSsh(target, data) {
     target.replaceChildren();
@@ -181,7 +182,7 @@
       const dt = document.createElement("dt"), dd = document.createElement("dd");
       dt.textContent = sshLabels[key] || key;
       if (value && typeof value === "object" && !Array.isArray(value)) renderSsh(dd, value);
-      else dd.textContent = Array.isArray(value) ? (value.join("、") || "无") : typeof value === "boolean" ? (value ? "是" : "否") : (sshValues[value] || String(value ?? "未知"));
+      else dd.textContent = Array.isArray(value) ? (value.map(item => key === "reasons" ? (sshReasons[item] || String(item)) : String(item)).join("、") || "无") : typeof value === "boolean" ? (value ? "是" : "否") : (sshValues[value] || String(value ?? "未知"));
       list.append(dt, dd);
     }); target.append(list);
   }

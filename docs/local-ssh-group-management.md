@@ -15,6 +15,6 @@ Get-LocalUser -Name '已有本机用户名' | Select-Object SID, Enabled
 .\Manage-SshAccess.ps1 -Action Revoke -UserSid '<已核对的普通本机用户SID>'
 ```
 
-Check 不枚举用户或成员；List 和变更要求 OS 管理员。目标须为同机现有普通本机用户，Grant 要求启用；域账号、高权限身份及复杂成员关系拒绝。变更有明确确认，WhatIf 不写；确认前后核对策略与成员快照，遇并发变化失败，不自动回滚别人的操作。
+Check 不枚举用户或成员；返回的 `ConfigState` 与 `ConfigReasons` 仅是读取状态和固定解析原因代码，不包含配置声明值。`partial_policy_manual_review` 表示存在无法安全判定的策略，不会推断某个用户能否登录。List 和变更要求 OS 管理员。目标须为同机现有普通本机用户，Grant 要求启用；域账号、高权限身份及复杂成员关系拒绝。变更有明确确认，WhatIf 不写；确认前后核对策略与成员快照，遇并发变化失败，不自动回滚别人的操作。
 
 组成员资格不证明有效 SSH 登录，磁盘规则也不证明服务已加载。Revoke 不终止已建立会话。工具返回 `LoginVerified=false`；真实 Grant/Revoke 和登录需由 OS 管理员另行安排验收。

@@ -53,7 +53,7 @@ function Invoke-LocalSshGroup {
   if ([IntPtr]::Size -ne 8 -or $PSVersionTable.PSVersion.Major -lt 5) { throw 'Use 64-bit Windows PowerShell 5.1 or newer.' }
   if ($Action -eq 'Check') {
     $policy = Get-TLSSHPolicy
-    return [pscustomobject]@{ Action='Check'; EligiblePolicy=[bool]$policy.eligible; Reason=$policy.reason; Service=$policy.service; Group=$script:TLSSHGroupName; LoginVerified=$false; Changed=$false }
+    return [pscustomobject]@{ Action='Check'; EligiblePolicy=[bool]$policy.eligible; Reason=$policy.reason; ConfigState=$policy.config_state; ConfigReasons=@($policy.config_reasons); Service=$policy.service; Group=$script:TLSSHGroupName; LoginVerified=$false; Changed=$false }
   }
   if (-not (Test-TLSSHAdministrator)) { throw 'Run in an elevated Windows administrator PowerShell. Application roles do not grant OS permissions.' }
   if ($Action -in @('Grant','Revoke') -and -not $UserSid) { throw 'Grant and Revoke require the existing local user SID.' }
