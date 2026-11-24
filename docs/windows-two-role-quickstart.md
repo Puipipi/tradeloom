@@ -1,13 +1,13 @@
-# Windows 双端快速入门（6.18 候选版）
+# Windows 双端快速入门（6.18 预发布版）
 
-本页说明企业台账服务与个人完整工作台的使用边界。计划预发布版本为 [`v6.18.0-rc.1`](https://github.com/Puipipi/tradeloom/releases/tag/v6.18.0-rc.1)；候选包仍在验收，尚未发布，该链接在发布后生效。稳定版完整工作台继续从 [Stage 6.17 发布页](https://github.com/Puipipi/tradeloom/releases/tag/stage6.17-windows-x64) 下载，使用[原桌面部署说明](windows-desktop-deployment.md)。
+本页说明企业台账服务与个人完整工作台的使用边界。下载 [`v6.18.0-rc.1` 预发布版](https://github.com/Puipipi/tradeloom/releases/tag/v6.18.0-rc.1)。稳定版完整工作台继续从 [Stage 6.17 发布页](https://github.com/Puipipi/tradeloom/releases/tag/stage6.17-windows-x64) 下载，使用[原桌面部署说明](windows-desktop-deployment.md)。
 
-| 候选资产 | 安装位置与用途 |
+| 资产 | 安装位置与用途 |
 |---|---|
 | `TradeLoom-Server-Windows-x64-v6.18.0-rc.1.zip` | 在服务器电脑解压，运行企业台账服务 |
 | `TradeLoom-Personal-Windows-x64-v6.18.0-rc.1.zip` | 在个人电脑完整解压，包含企业连接客户端和个人完整工作台 |
 
-发布后从上述版本页下载所需资产及 `SHA256SUMS.txt`，先校验再解压。完整保留解压目录结构。
+从上述版本页下载所需资产及 `SHA256SUMS.txt`，先校验再解压。完整保留解压目录结构。
 
 ## 1. 安装企业台账服务
 
@@ -42,4 +42,4 @@
 
 ## 当前验证范围
 
-本轮隔离环境的企业 PostgreSQL/HTTP 与两种角色 Electron 登录、同工厂共享及不同工厂隔离、Windows PowerShell 5.1 首次安装和停启验证已通过。详细范围见[双端技术边界与验证记录](server-personal-windows.md)。菜单点击与干净新开完整工作台仍待最终 Windows 验收；当前存在完整工作台安装清单阻塞，不能将本页视作候选包已交付或完整实机验收通过的记录。
+本轮隔离环境的企业 PostgreSQL/HTTP 与两种角色 Electron 登录、同工厂共享及不同工厂隔离、Windows PowerShell 5.1 首次安装和停启验证已通过。Windows 完整工作台干净启动后可见业务总览和工作流；浅色、固定深色及跟随系统浅色切换已验证并留存截图。详细范围见[双端技术边界与验证记录](server-personal-windows.md)。测试环境未配置模型，未发送实际 AI 会话；跨设备 HTTPS 部署亦不属于本次通过范围。

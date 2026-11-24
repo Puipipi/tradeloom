@@ -1,6 +1,6 @@
 # Windows 服务端与个人端
 
-用户安装与登录步骤见 [Windows 双端快速入门](windows-two-role-quickstart.md)。本文保留技术边界和本轮验证范围；候选资产仍待打包与完整工作台启动验收。
+用户安装与登录步骤见 [Windows 双端快速入门](windows-two-role-quickstart.md)。本文保留技术边界和本轮验证范围。
 
 服务端运行独立 Django 台账服务和 PostgreSQL。个人端先打开服务器连接窗口，由用户填写地址，再使用服务端创建的账号登录。程序包不附带账号、密码、连接地址或用户设置。
 
@@ -20,4 +20,6 @@
 - `electron-owner.json`、`electron-registrar.json`：真实 Electron 生产 main 连接上述服务并用两种合成角色登录成功，远程页面无 preload 与 Node。`electron-menu.json` 另外确认全新配置地址为空、存在工作台菜单；未附工作台的独立客户端菜单禁用且登录正常。
 - `C:/tl618-next/server-personal-install-qa`：真实安装独立运行时、数据库与迁移；交互终端自行输入合成管理员，创建成功。修复 Windows PowerShell 5.1 未加载 `System.Net.Http` 导致健康检查误报；实测同一入口重复启动复用服务、停止、再次启动及停止。健康检查仅直连固定 loopback，不更改代理配置。
 
-证据目录含隔离测试凭据，不应分发；只交付本说明和不含凭据的结果。以上为真实本机 HTTP/数据库/Electron 验证，不代表跨设备 HTTPS 部署或完整工作台菜单点击的桌面验收。打包后仍须核对 Workbench 文件及入口。
+完整工作台另经 Windows 干净启动验证，业务总览与工作流可见，浅色→固定深色→跟随系统浅色切换成功并留存截图。测试环境未配置模型，未发送实际 AI 会话。
+
+证据目录含隔离测试凭据，不应分发；只交付本说明和不含凭据的结果。上述验证不代表跨设备 HTTPS 部署。

@@ -2,7 +2,7 @@
 
 [English](README.md) / 简体中文
 
-**[Windows 双端快速入门（6.18 候选版）](docs/windows-two-role-quickstart.md)**：企业台账服务、两种业务角色登录与独立个人工作台。候选版仍在验收；稳定版完整桌面下载入口保留如下。
+**[Windows 双端快速入门（6.18 预发布版）](docs/windows-two-role-quickstart.md)**：企业台账服务、两种业务角色登录与独立个人工作台。稳定版完整桌面下载入口保留如下。
 
 ## Windows Electron 桌面版
 
