@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { runInNewContext } from 'node:vm'
 import { randomUUID } from 'node:crypto'
-import { SCENE_COMPONENT_CATALOG, validateSceneComponentCatalog } from '../scene-layout.js'
+import { SCENE_COMPONENT_CATALOG, validateSceneComponentCatalog, validateSceneConfig } from '../scene-layout.js'
 
 async function openConfiguration(defaults, app) {
   const source = await readFile(new URL('../../../apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/renderer.js', import.meta.url), 'utf8')
@@ -177,6 +177,16 @@ test('the current desktop selector and both projections accept a second catalog 
 test('copying a scene uses the configuration form and saves only on explicit apply', async () => {
   const { modal, find, byText, saves, focused } = await openConfiguration(defaults)
   const trigger = byText('button', '复制为新场景')
+  const blankTrigger = byText('button', '新建空白场景')
+  const selector = modal.children.find(element => element.tag === 'select')
+  const actionRow = modal.children.find(element => element.children.includes(trigger))
+  const editableFields = modal.children.find(element => element.tag === 'div' && element.children.some(child => child.tag === 'label'
+    && child.children[0].children?.includes('场景名称')))
+  assert.ok(actionRow.children.includes(blankTrigger), 'copy and blank-scene actions are grouped together')
+  assert.ok(modal.children.indexOf(selector) < modal.children.indexOf(actionRow)
+    && modal.children.indexOf(actionRow) < modal.children.indexOf(editableFields),
+  'creation controls appear beside the scene selector before variable panel fields')
+  assert.ok(byText('button', '保存并应用'), 'save remains available in the dialog')
   trigger.click()
   const label = find(modal, element => element.tag === 'label' && element.children[0].children?.includes('新场景标识'))
   const input = label.children[1]
@@ -184,7 +194,6 @@ test('copying a scene uses the configuration form and saves only on explicit app
   assert.equal(modal.children.find(element => element.children.includes(label)).hidden, false)
   assert.equal(focused(), input)
   const confirm = byText('button', '确认复制')
-  const selector = modal.children.find(element => element.tag === 'select')
   input.value = 'runs'; confirm.click()
   assert.equal(selector.value, 'runs')
   input.value = 'Invalid'; confirm.click()
@@ -220,6 +229,45 @@ test('copying a scene uses the configuration form and saves only on explicit app
   }
 })
 
+test('creating a blank scene saves safely, reopens with its assistant only, and preserves business routes', async () => {
+  const originalRoutes = structuredClone(defaults.businessRoutes)
+  const first = await openConfiguration(defaults)
+  first.byText('button', '新建空白场景').click()
+  const form = first.modal.children.find(item => item.tag === 'div' && item.children.some(child => child.tag === 'label'
+    && child.children[0].children?.includes('新场景名称')))
+  const input = first.find(form, item => item.tag === 'input')
+  input.value = '商品场景工作区'
+  first.byText('button', '确认新建空白场景').click()
+  const selector = first.modal.children.find(item => item.tag === 'select')
+  const newSceneId = selector.value
+  assert.match(newSceneId, /^custom-[a-f0-9-]{36}$/)
+  assert.equal(selector.children.find(option => option.value === newSceneId).children[0], '商品场景工作区')
+  first.byText('button', '保存并应用').click()
+  assert.equal(first.saves.length, 1)
+  const saved = first.saves[0].configuration
+  validateSceneConfig(saved)
+  assert.deepEqual(saved.businessRoutes, originalRoutes)
+  const newScene = saved.scenes.find(scene => scene.id === newSceneId)
+  const blank = newScene
+  assert.deepEqual(Array.from(blank.panels, panel => panel.type), ['native-chat'])
+  assert.equal(blank.roleId, defaults.scenes[0].roleId)
+
+  const base = '../../../apps/tradeloom-launcher/stage5-source06/asar/renderer/source-shell/replica-ui/'
+  const shell = await readFile(new URL(base + 'scenes-data.js', import.meta.url), 'utf8')
+  const projectionSource = await readFile(new URL(base + 'renderer.js', import.meta.url), 'utf8')
+  const projectionContext = { window: {} }
+  runInNewContext(shell, projectionContext)
+  projectionContext.configurationTemplates = projectionContext.window.__SCENES__.scenes
+  runInNewContext(projectionSource.slice(projectionSource.indexOf('const hostPanelFor'), projectionSource.indexOf('function applyTrustedSceneConfiguration')), projectionContext)
+  const reopened = await openConfiguration({ ...defaults, scenes: saved.scenes, configurationRevision: 'reopened' })
+  const reopenedSelector = reopened.modal.children.find(item => item.tag === 'select')
+  reopenedSelector.value = newSceneId; reopenedSelector.change()
+  const savedBlank = saved.scenes.find(scene => scene.id === newSceneId)
+  const uiScene = projectionContext.projectTrustedScene(savedBlank)
+  assert.equal(uiScene.id, newSceneId)
+  assert.deepEqual(Array.from(uiScene.panels, panel => panel.type), ['chat'])
+})
+
 test('a full custom template prompts for space, then adds and moves two independent instances', async () => {
   const copy = structuredClone(defaults.scenes.find(scene => scene.id === 'runs'))
   copy.id = 'runs-instance-fixture'; copy.templateSceneId = 'runs'
@@ -231,7 +279,7 @@ test('a full custom template prompts for space, then adds and moves two independ
   scenePicker.value = copy.id; scenePicker.change()
   byText('button', '添加组件').click()
   assert.match(JSON.stringify(modal), /没有可用位置/)
-  const fields = modal.children[2]
+  const fields = modal.children.find(element => element.tag === 'div' && element.children.some(item => item.tag === 'strong' && item.children[0] === 'business-main'))
   const inputInPanel = (panelId, label) => {
     const begin = fields.children.findIndex(item => item.tag === 'strong' && item.children[0] === panelId)
     const tail = fields.children.slice(begin + 1)

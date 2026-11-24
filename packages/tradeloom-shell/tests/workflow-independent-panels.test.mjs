@@ -94,8 +94,16 @@ test('opening node counts repositions the existing view menu, and a category ite
     assert.equal(actions.style.top, '29px', 'closing the counts restores the shorter downward menu')
 
     const category = [...window.document.querySelectorAll('.tl-wf-category')].find(item => item.querySelector('summary').textContent === '输入')
+    const categorySummary = category.querySelector('summary')
+    category.getBoundingClientRect = () => ({ left: 20, top: 40, right: 120, bottom: 65, width: 100, height: 25 })
+    categorySummary.getBoundingClientRect = () => ({ left: 20, top: 40, right: 80, bottom: 65, width: 60, height: 25 })
+    const categoryMenu = category.querySelector('.tl-wf-kind-menu')
+    categoryMenu.getBoundingClientRect = () => ({ left: 20, top: 65, right: 140, bottom: 165, width: 120, height: 100 })
+    Object.defineProperty(categoryMenu, 'scrollHeight', { configurable: true, get: () => 100 })
     await click(category.querySelector('summary'))
     assert.equal(category.open, true)
+    assert.equal(Number.parseFloat(categoryMenu.style.top) + category.getBoundingClientRect().top
+      - categorySummary.getBoundingClientRect().bottom, 0, 'the category submenu starts at the summary edge with no pointer gap')
     const option = category.querySelector('button')
     await act(async () => { option.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true })); option.click() })
     assert.equal(category.open, false)
@@ -300,7 +308,9 @@ test('actual WorkflowCanvas exposes the reference header and canvas controls in 
  assert.match(workflowCss,/\.tl-wf-category\.is-unavailable \{[^\n]+border-style:dashed/,'unavailable category controls remain visibly distinct')
  assert.match(workflowCss,/\.tl-wf-toolbar button\.tl-wf-category\.is-unavailable:disabled \{ opacity:1;/,'unavailable category text is not faded out')
  assert.match(workflowCss,/\.tl-wf-tabs > \[aria-selected="true"\] \{ border-color:transparent; border-bottom:2px solid var\(--tl-accent/,'selected canvas tab uses a light accent marker instead of a full heavy border')
- assert.match(workflowCss,/\.tl-wf-tabs-row > \.tl-wf-new-workflow \{ flex:none; min-width:2em;/,'the adjacent plus control keeps its fixed compact tab size')
+ assert.match(workflowCss,/\.tl-wf-tabs \{ display:flex; flex:0 1 auto; gap:\.1em; min-width:0; overflow-x:auto;/,'canvas tabs keep their natural width, stay adjacent to the plus control, and keep horizontal overflow on narrow panels')
+ assert.match(workflowCss,/\.tl-wf-tabs-row > \.tl-wf-new-workflow \{ flex:none; width:1\.8em; min-width:1\.8em;/,'the adjacent plus control stays fixed and compact')
+ assert.match(workflowCss,/@container \(max-width:30em\) \{ \.tl-wf-tab-count \{ display:none; \}/,'the count yields space to tabs in narrow panels')
  const tabRow=all(f.tree).find(n=>n.props.className==='tl-wf-tabs-row')
  assert.deepEqual(tabRow.children.slice(0,2).map(n=>n.props.className),['tl-wf-tabs','tl-wf-new-workflow'])
  assert.equal(label(tabRow.children[1]),'+')
@@ -315,11 +325,16 @@ test('actual WorkflowCanvas exposes the reference header and canvas controls in 
  assert.deepEqual(all(categories[2]).filter(n=>n.type==='button').map(label),[...f.catalog.agents.map(item=>`${item.icon??actualKinds('agent').icon} ${item.label}`),`${actualKinds('external').icon} ${actualKinds('external').label}（仅模拟）`])
  assert.equal(typeof categories[0].props.onMouseEnter,'function')
  assert.equal(typeof categories[0].props.onMouseLeave,'function')
- const hoverMenu={open:false,ownerDocument:{activeElement:null},contains:()=>false}
+ let pointerInside=false
+ const hoverMenu={open:false,ownerDocument:{activeElement:null},contains:target=>target?.inside===true||pointerInside}
  categories[0].props.onMouseEnter({currentTarget:hoverMenu});assert.equal(hoverMenu.open,true,'hover opens the node submenu')
+ pointerInside=true
+ categories[0].props.onMouseLeave({currentTarget:hoverMenu,relatedTarget:{inside:true}});assert.equal(hoverMenu.open,true,'moving the pointer from the category into its menu keeps the submenu open')
+ pointerInside=false
  categories[0].props.onMouseLeave({currentTarget:hoverMenu});assert.equal(hoverMenu.open,false,'leaving the category closes an unfocused submenu')
- hoverMenu.open=true;hoverMenu.ownerDocument.activeElement={};hoverMenu.contains=()=>true
+ hoverMenu.open=true;hoverMenu.ownerDocument.activeElement={};pointerInside=true
  categories[0].props.onMouseLeave({currentTarget:hoverMenu});assert.equal(hoverMenu.open,true,'keyboard focus keeps the submenu open after pointer exit')
+ pointerInside=false
  const calls=[];f.context.onFetch=async(url,options)=>{calls.push({url,body:options.body&&JSON.parse(options.body)});return{ok:true,status:200,json:async()=>({workflow:f.doc,catalog:f.catalog,workflows:[f.doc],schemaVersion:1,ok:true,executionMode:'native_dsh',action:'list',runs:[]})}}
  await buttons[0].props.onClick();assert.equal(calls[0].body.action,'save')
  calls.length=0;buttons[1].props.onClick();await new Promise(r=>setTimeout(r,0));assert.equal(calls[0].body.action,'list')
@@ -772,4 +787,16 @@ test('old Host configurations keep their declared four panels even with an added
  host.panels.push({id:'custom-workspace',type:'native-workspace',optional:true,title:'Custom',col:4,row:3,w:1,h:2})
  assert.equal(validateSceneConfig(config),config);const before=JSON.stringify(host),result=c.projectTrustedScene(host)
  assert.equal(result.workflowLayoutGap,'custom-legacy-layout');assert.equal(result.panels.length,4);assert.equal(result.panels.find(p=>p.id==='workflow-main').col,1);assert.equal(result.panels.find(p=>p.id==='workflow-main').w,3);assert.equal(JSON.stringify(host),before)
+})
+
+test('node editor remains non-modal and new nodes do not overlap existing graph',()=>{
+ const f=loadWorkflow()
+ all(f.tree).find(n=>n.props.className?.startsWith('tl-wf-node')).props.onDoubleClick()
+ const edited=f.render()
+ assert.equal(all(edited).find(n=>n.props.className==='tl-wf-surface').props.inert,undefined)
+ assert.notEqual(all(edited).find(n=>n.props.role==='dialog').props['aria-modal'],true)
+ const category=all(edited).find(n=>n.props.className==='tl-wf-category'&&label(n.children[0]).includes('内容节点'))
+ all(category).find(n=>n.type==='button').props.onClick({currentTarget:{closest:()=>({open:true,querySelector:()=>({focus(){}})})}})
+ const nodes=f.state[2].nodes, a=nodes[0].position,b=nodes.at(-1).position
+ assert.ok(Math.abs(a.x-b.x)>=190||Math.abs(a.y-b.y)>=96,'new node must not overlap prior node')
 })

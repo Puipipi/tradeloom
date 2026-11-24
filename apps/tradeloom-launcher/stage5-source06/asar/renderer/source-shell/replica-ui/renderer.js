@@ -16,6 +16,25 @@ const isComponentInstance = panel => /^component-[a-z0-9-]{1,38}$/.test(panel.id
 function projectTrustedScene(scene) {
   const template = configurationTemplates.find(value => value.id === (scene.templateSceneId ?? scene.id))
   if (!template) throw Error('scene template unavailable')
+  if (scene.id === 'erpnext') {
+    const host = scene.panels.find(panel => panel.id === 'business-main' && panel.type === 'erpnext-status')
+    const panel = template.panels.find(value => value.id === 'business-main' && value.type === 'erpnext-status')
+    if (!host || !panel) throw Error('ERPNext status panel unavailable')
+    return { ...template, id: scene.id, name: scene.label, templateSceneId: scene.templateSceneId,
+      panels: [{ ...panel, hostPanelId: host.id, title: host.title || panel.title,
+        col: 1, row: 1, w: template.cols, h: template.rows }] }
+  }
+  // A deliberately blank custom scene still needs the required native chat
+  // panel for the Host schema. Project only that panel instead of restoring
+  // every panel from its presentation template.
+  if (scene.templateSceneId && scene.panels.length === 1 && scene.panels[0].type === 'native-chat') {
+    const panel = template.panels.find(value => value.type === 'chat')
+    const host = scene.panels[0]
+    if (!panel) throw Error('scene chat template unavailable')
+    return { ...template, id: scene.id, name: scene.label, templateSceneId: scene.templateSceneId,
+      panels: [{ ...panel, hostPanelId: host.id, roleId: host.roleId ?? scene.roleId,
+        title: host.title, col: host.col, row: host.row, w: host.w, h: host.h }] }
+  }
   // Preserve the accepted shell's own account/web/plugin panels and ids. Only
   // fields actually owned by the Host scene document are updated here.
   const panels = template.panels.map(panel => {
@@ -83,7 +102,7 @@ async function showSceneConfiguration() {
   const document = structuredClone(Object.fromEntries(['version', 'grid', 'businessRoutes', 'scenes'].map(key => [key, actual[key]])))
   let selected = document.scenes.find(value => value.id === currentTab) ?? document.scenes[0]
   openModal('场景配置', body => {
-    const note = el('div', 'modal-note', '保存以版本校验防止覆盖他人的修改。受影响角色面板须先保存文字草稿；附件边界会另行确认。')
+    const note = el('div', 'modal-note', '编辑所选场景后点“保存并应用”。复制保留现有面板；新建空白场景只含必需的助手面板。保存会校验版本，且不会覆盖助手设置。')
     const fields = el('div', 'scene-configuration-fields'), selector = make('select')
     const redraw = () => {
       selector.replaceChildren(...visibleConfiguredScenes(document).map(scene => { const option = make('option', '', scene.label); option.value = scene.id; return option }))
@@ -162,7 +181,7 @@ async function showSceneConfiguration() {
       }
     }
     selector.addEventListener('change', () => { selected = document.scenes.find(scene => scene.id === selector.value); redraw() })
-    const clone = make('button', '', '复制为新场景'), remove = make('button', '', '移除自建场景')
+    const clone = make('button', '', '复制为新场景'), blank = make('button', '', '新建空白场景'), remove = make('button', '', '删除自建场景')
     clone.type = remove.type = 'button'
     const cloneId = make('input')
     cloneId.type = 'text'
@@ -189,10 +208,36 @@ async function showSceneConfiguration() {
       delete next.defaultBusinessRoute
       document.scenes.push(next); selected = next; redraw(); closeClone()
     })
+    const blankLabel = make('input')
+    blankLabel.type = 'text'; blankLabel.maxLength = 100
+    const confirmBlank = make('button', '', '确认新建空白场景'), cancelBlank = make('button', '', '取消新建')
+    confirmBlank.type = cancelBlank.type = 'button'
+    const blankFields = el('div', 'scene-configuration-fields',
+      el('label', 'mdl-row', el('span', '', '新场景名称'), blankLabel), confirmBlank, cancelBlank)
+    blankFields.hidden = true
+    blank.addEventListener('click', () => { blankFields.hidden = false; blankLabel.focus() })
+    const closeBlank = () => { blankFields.hidden = true; blankLabel.value = ''; blank.focus() }
+    cancelBlank.addEventListener('click', closeBlank)
+    confirmBlank.addEventListener('click', () => {
+      const label = blankLabel.value.trim()
+      if (!label || label.length > 100 || document.scenes.length >= 16) {
+        note.textContent = '请输入不超过 100 个字符的场景名称，且场景数量不能超过 16 个。'; return
+      }
+      const id = `custom-${crypto.randomUUID()}`
+      if (document.scenes.some(scene => scene.id === id)) { note.textContent = '场景标识冲突，请重试。'; return }
+      const base = actual.scenes.find(scene => scene.id === 'runs') ?? actual.scenes[0]
+      const chat = base?.panels.find(panel => panel.type === 'native-chat')
+      if (!base || !chat) { note.textContent = '当前没有可用的助手面板模板，未创建场景。'; return }
+      const next = { id, label, templateSceneId: base.templateSceneId ?? base.id, roleId: selected.roleId,
+        panels: [{ id: 'native-chat', type: 'native-chat', title: chat.title, roleId: selected.roleId,
+          col: 1, row: 1, w: 4, h: 4 }] }
+      document.scenes.push(next); selected = next; redraw(); closeBlank()
+    })
     remove.addEventListener('click', () => {
       if (!selected.templateSceneId || Object.values(document.businessRoutes).some(route => route.sceneId === selected.id)) { note.textContent = '现有业务入口场景不能在此移除。'; return }
       document.scenes = document.scenes.filter(scene => scene !== selected); selected = document.scenes[0]; redraw()
     })
+    const sceneActions = el('div', 'scene-configuration-actions', clone, blank)
     const save = make('button', '', '保存并应用'), retry = make('button', '', '应用已保存配置')
     save.type = retry.type = 'button'
     async function perform(operation) {
@@ -209,7 +254,7 @@ async function showSceneConfiguration() {
       return result
     }))
     retry.addEventListener('click', () => void perform(() => window.app.applySceneConfiguration()))
-    body.append(note, selector, fields, clone, cloneFields, remove, save, retry); redraw()
+    body.append(note, selector, sceneActions, cloneFields, blankFields, fields, remove, save, retry); redraw()
   })
 }
 
@@ -366,6 +411,15 @@ function renderNeutralTabContent(body, title, description) {
    面板渲染器（静态界面示例，无业务连接）
    ============================================================ */
 const rendererRegistry = {
+
+  /* ---- ERPNext 原生状态组件 ---- */
+  'erpnext-status'(panel, content) {
+    if (typeof window.businessBridge?.renderErpNextStatusPanel === 'function') {
+      return window.businessBridge.renderErpNextStatusPanel(panel, content)
+    }
+    content.textContent = 'ERPNext 状态页面暂不可用。'
+    return () => content.replaceChildren()
+  },
 
   /* ---- 文档预览 ---- */
   doc(panel, content) {
@@ -1013,6 +1067,26 @@ function setPanelExpandControl(button, expanded) {
   button.title = label
 }
 
+function refreshPanel(wrap) {
+  const meta = wrap?.__meta
+  const body = wrap?.querySelector('.panel-content')
+  if (!meta || !body || wrap.classList.contains('pi-closed') || wrap.classList.contains('pi-tab-inactive')) return false
+  try { cleanups.get(meta.id)?.() } catch { /* panel cleanup is best-effort */ }
+  body.replaceChildren()
+  cleanups.set(meta.id, (rendererRegistry[meta.type] || unsupportedRenderer)(meta, body))
+  return true
+}
+
+function refreshCurrentScenePanels() {
+  // Canvas drafts, assistant conversations and connector status are stateful
+  // operations; their own controls remain the authoritative refresh actions.
+  const stateful = new Set(['canvas', 'chat', 'erpnext-status'])
+  for (const panel of grid.querySelectorAll(':scope > .panel')) {
+    if (panel.__meta?.sceneId !== currentTab || stateful.has(panel.__meta?.type)) continue
+    refreshPanel(panel)
+  }
+}
+
 function layoutGeometry({ id, col, row, w, h }) {
   return { id, col, row, w, h }
 }
@@ -1040,12 +1114,6 @@ function makePanel(meta, idx) {
     else expandPanel(wrap, exp)
   })
   identity.append(exp)
-  const refresh = iconBtn(createReplicaIcon('M20 11a8 8 0 1 0-2 6M20 4v7h-7'), '刷新面板', () => {
-    try { cleanups.get(meta.id)?.() } catch { /* ignore */ }
-    const body = wrap.querySelector('.panel-content'); body.replaceChildren()
-    cleanups.set(meta.id, (rendererRegistry[meta.type] || unsupportedRenderer)(meta, body))
-  })
-  controls.append(refresh)
   head.append(controls)
 
   const content = make('div', 'panel-content')
@@ -1196,6 +1264,37 @@ function collapsePanel(wrap) {
 /* ---- 面板拖拽移动 + 自动吸附到网格（交互保留） ---- */
 function attachDrag(panel, handle, grip) {
   let pending = null, dragging = false, moveFrame = null, latestPoint = null
+  let dropHint = null
+  const clearDropHint = () => {
+    if (!dropHint) return
+    dropHint.element.remove()
+    dropHint.panel.classList.remove('snap-target', 'snap-insert-target', 'snap-swap-target', 'snap-insert-left', 'snap-insert-right', 'snap-insert-top', 'snap-insert-bottom')
+    dropHint = null
+  }
+  const updateDropHint = target => {
+    const key = target ? `${target.panel.dataset.panelId}:${target.insert ? 'insert' : 'swap'}:${target.directionKey || 'center'}` : ''
+    if ((dropHint?.key || '') === key) return
+    clearDropHint()
+    if (!target) return
+    const header = target.panel.querySelector('.panel-header')
+    if (!header) return
+    const element = document.createElement('span')
+    element.className = 'panel-drop-hint'
+    element.setAttribute('role', 'status')
+    if (target.insert) {
+      const marker = { left: '←', right: '→', top: '↑', bottom: '↓' }[target.directionKey] || '↔'
+      element.textContent = `${marker} 插入`
+      element.title = `从${target.direction}插入面板`
+    } else {
+      element.textContent = '⇄ 交换'
+      element.title = '与此面板交换位置'
+    }
+    const controls = header.querySelector('.panel-controls')
+    header.insertBefore(element, controls || null)
+    target.panel.classList.add('snap-target', target.insert ? 'snap-insert-target' : 'snap-swap-target')
+    if (target.insert) target.panel.classList.add(`snap-insert-${target.directionKey}`)
+    dropHint = { key, panel: target.panel, element }
+  }
   const restoreStyle = state => {
     if (state.originalStyle === null) panel.removeAttribute('style')
     else panel.setAttribute('style', state.originalStyle)
@@ -1205,9 +1304,7 @@ function attachDrag(panel, handle, grip) {
     const dx = (point.x - pending.x) / pending.scaleX
     const dy = (point.y - pending.y) / pending.scaleY
     panel.style.translate = `${dx}px ${dy}px`
-    const target = findSnapTarget(point.x, point.y, panel)
-    grid.querySelectorAll('.panel').forEach(p => p.classList.remove('snap-target'))
-    if (target) target.panel.classList.add('snap-target')
+    updateDropHint(findSnapTarget(point.x, point.y, panel))
   }
   const cancel = () => end({ pointerId: pending?.pointerId }, true)
   const onLostPointerCapture = e => {
@@ -1215,7 +1312,7 @@ function attachDrag(panel, handle, grip) {
   }
   const start = e => {
     if (e.button !== 0) return
-    if (e.target.closest('.icon-control, .panel-expand, .pi-component-tabs, .workflow-header-actions')) return
+    if (e.target.closest('.icon-control, .panel-expand, .pi-component-tabs, .workflow-header-actions, .business-assistant-tab-row, .source-assistant-tabs')) return
     if (expandedStateOf(panel)) return
     if (pending || dragging || activePanelDragCancel) return
     const rect = panel.getBoundingClientRect()
@@ -1264,8 +1361,8 @@ function attachDrag(panel, handle, grip) {
     latestPoint = null
     window.removeEventListener('blur', cancel)
     if (activePanelDragCancel === cancel) activePanelDragCancel = null
-    panel.classList.remove('dragging', 'snap-target')
-    grid.querySelectorAll('.panel').forEach(p => p.classList.remove('snap-target'))
+    panel.classList.remove('dragging')
+    clearDropHint()
     try {
       if (handle.hasPointerCapture?.(state.pointerId)) handle.releasePointerCapture(state.pointerId)
     } catch { /* capture can be lost before pointerup */ }
@@ -1302,6 +1399,8 @@ function findSnapTarget(x, y, self) {
       axis: horizontal ? 'x' : 'y',
       side: horizontal ? (nx < 0 ? 'before' : 'after') : (ny < 0 ? 'before' : 'after'),
       insert: dx > 0 || dy > 0 || Math.max(Math.abs(nx), Math.abs(ny)) >= 0.72,
+      direction: horizontal ? (nx < 0 ? '左侧' : '右侧') : (ny < 0 ? '上方' : '下方'),
+      directionKey: horizontal ? (nx < 0 ? 'left' : 'right') : (ny < 0 ? 'top' : 'bottom'),
     }
   })
   return bestDist < 260 ? best : null
@@ -1704,11 +1803,8 @@ function showTools() {
     ...(native ? [
       ['ERPNext 服务', '打开原生 ERPNext 状态组件窗口。', showERPNextService],
       ['助手能力', '读取当前助手的配置、MCP 与 Skill 状态。', showAssistantCapabilities],
-      ['应用 / 编辑', '打开原生应用或编辑菜单。', showAppsEditor],
-      ['DSH 插件管理', '打开 DSH 原生插件管理页。', showNativePluginManager],
-      ['场景配置', '编辑现有场景或复制创建自建场景。', showSceneConfiguration],
-      ['引擎程序快照', '保存、预览并在正常停机后恢复受控程序代际。', showEngineGenerations],
-      ['已注册工具', '读取桌面宿主中的已注册工具目录。', showRegisteredTools],
+      ['场景配置', '编辑所选场景、复制面板配置，或新建空白场景。', showSceneConfiguration],
+      ['引擎程序快照', '备份受控程序；预览差异后可在正常停机时恢复。', showEngineGenerations],
     ] : []),
   ]
   openModal('工作台工具', body => {
@@ -1732,16 +1828,10 @@ function showTools() {
 }
 
 function showERPNextService() {
-  if (!window.businessBridge?.isDesktop?.()) return disconnectedModal('ERPNext 服务', '浏览器预览不能挂载原生 ERPNext 状态组件。')
-  openModal('ERPNext 服务', body => body.append(el('div', 'modal-note', '正在挂载并打开原生 ERPNext 状态窗口…')))
-  const body = $('#modal-body')
-  const current = () => $('#modal-mask').style.display !== 'none' && $('#modal-title').textContent === 'ERPNext 服务'
+  if (!window.businessBridge?.isDesktop?.()) return disconnectedModal('ERPNext 服务', '浏览器预览不能打开桌面 ERPNext 场景。')
   void window.businessBridge.globalAction('erpnext-status').then(result => {
-    if (!current()) return
-    if (!result?.ok) { body.replaceChildren(el('div', 'modal-note', 'ERPNext 原生状态组件暂不可用；没有报告服务已连接。')); return }
-    body.replaceChildren(el('div', 'modal-note', `原生状态窗口：${result.value.placement === 'popped-out' ? '已打开或聚焦' : '已挂载'}。`),
-      el('div', 'modal-note', `组件状态：${result.value.status || '未提供'}。此状态不代表 ERPNext 业务服务已通过健康检查。`))
-  }).catch(() => { if (current()) body.replaceChildren(el('div', 'modal-note', 'ERPNext 原生状态组件暂不可用。')) })
+    if (!result?.ok) disconnectedModal('ERPNext 服务', 'ERPNext 场景当前不可用，请从工作台导航中打开该场景。')
+  }).catch(() => disconnectedModal('ERPNext 服务', 'ERPNext 场景当前不可用，请从工作台导航中打开该场景。'))
 }
 function showLocalPreview(title, description) {
   openModal(title, body => {
@@ -1779,6 +1869,36 @@ function showAssistantCapabilities() {
 }
 
 function mountAssistantCapabilities(host) {
+  let themeRevision = 0
+  const applyTheme = snapshot => {
+    if (!snapshot || !['light', 'dark'].includes(snapshot.colorScheme)) return false
+    themeRevision++
+    document.documentElement.dataset.theme = snapshot.colorScheme
+    document.documentElement.style.colorScheme = snapshot.colorScheme
+    return true
+  }
+  const sourceTheme = window.app?.sourceTheme
+  let sourceThemeOff
+  const onTheme = event => { applyTheme(event.detail) }
+  const onNativeTheme = snapshot => { applyTheme(snapshot) }
+  const onPageHide = () => {
+    window.removeEventListener('business-theme-state', onTheme)
+    sourceThemeOff?.()
+    sourceThemeOff = undefined
+  }
+  window.addEventListener('business-theme-state', onTheme)
+  window.addEventListener('pagehide', onPageHide, { once: true })
+  if (typeof sourceTheme?.onChanged === 'function') {
+    try { sourceThemeOff = sourceTheme.onChanged(onNativeTheme) } catch { /* Snapshot still supplies initial theme. */ }
+  }
+  if (typeof sourceTheme?.getSnapshot === 'function') {
+    void sourceTheme.getSnapshot().then(snapshot => { if (themeRevision === 0) applyTheme(snapshot) }).catch(() => {})
+  } else {
+    const initialTheme = window.businessBridge?.whenInitialThemeReady?.()
+    if (initialTheme && typeof initialTheme.then === 'function') void initialTheme.then(snapshot => {
+      if (themeRevision === 0) applyTheme(snapshot)
+    }).catch(() => {})
+  }
   const list = el('nav', 'assistant-capability-list')
   list.setAttribute('aria-label', '能力分组')
   const content = el('section', 'assistant-capability-detail')
@@ -1877,9 +1997,9 @@ function applyUiScale(value) {
     return
   }
   const presets = {
-    0.9: ['12px', '12px', '10.5px', '36px', '45px', '36px', '30px', '4px', '4px', '26px', '18px', '243px'],
-    1: ['13px', '13px', '11.5px', '38px', '48px', '40px', '34px', '5px', '5px', '28px', '20px', '270px'],
-    1.1: ['14px', '14px', '12.5px', '42px', '54px', '44px', '38px', '6px', '6px', '31px', '22px', '297px'],
+    0.9: ['12px', '12px', '10.5px', '34px', '43px', '30px', '28px', '4px', '4px', '24px', '17px', '243px'],
+    1: ['13px', '13px', '11.5px', '36px', '46px', '32px', '31px', '4px', '4px', '25px', '18px', '270px'],
+    1.1: ['14px', '14px', '12.5px', '38px', '50px', '34px', '34px', '5px', '5px', '27px', '19px', '297px'],
   }
   const [font, tabFont, titleFont, titlebar, titlebarLeading, scenebar, icon, gap, padding, panelHeader, control, sidebar] = presets[scale]
   const root = document.documentElement.style
@@ -2247,6 +2367,9 @@ function setStatus(text, _busy) {
 }
 
 function initTitlebarOverflow() {
+  // A detached scene has a deliberately fixed, small chrome: its refresh
+  // action must never move into an overflow menu that the scene window hides.
+  if (document.body.classList.contains('solo')) return
   const controls = document.getElementById('titlebar-controls')
   const actionGroup = document.getElementById('titlebar-action-controls')
   const trigger = document.getElementById('btn-toolbar-overflow')
@@ -2447,7 +2570,7 @@ async function readNativeCaptionOverlay() {
 
 function initTitlebar(nativeCaptionOverlay = false) {
   document.getElementById('btn-refresh').addEventListener('click', () => {
-    if (currentTab) loadScenario(currentTab)
+    if (currentTab) refreshCurrentScenePanels()
   })
   const mobile = document.getElementById('btn-mobile')
   if (mobile && window.businessBridge?.isDesktop?.()) {
@@ -2551,7 +2674,13 @@ async function boot() {
   else currentTab = getSavedActiveScene(data.scenes) || data.scenes[0]?.id || null
   if (params.get('solo') === '1') {
     document.body.classList.add('solo')
-    document.title = `织贸工作台 · ${data.scenes.find(s => s.id === currentTab)?.name || '场景'}（独立窗口）`
+    const sceneName = data.scenes.find(s => s.id === currentTab)?.name || '场景'
+    document.title = `织贸工作台 · ${sceneName}（独立窗口）`
+    const identity = el('span', 'solo-window-identity', `场景独立窗口 · ${sceneName}`)
+    identity.setAttribute('role', 'status')
+    identity.setAttribute('aria-label', `场景独立窗口 · ${sceneName}`)
+    identity.title = identity.textContent
+    document.getElementById('titlebar-action-controls')?.append(identity)
   }
   initTheme()
   initUiPreferences()

@@ -32,6 +32,21 @@ const TRUNCATION_TARGETS = [
   'dsh/node_modules/@deepseek-ai/dsh-client-ui-attachment/lib/client.js',
 ]
 
+export function applyExactTextReplacements(text, replacements) {
+  if (typeof text !== 'string' || !Array.isArray(replacements)) throw new TypeError('invalid_source_transform')
+  let output = text
+  for (const replacement of replacements) {
+    if (typeof replacement.from !== 'string' || !replacement.from
+      || typeof replacement.to !== 'string' || !Number.isSafeInteger(replacement.count) || replacement.count < 1) {
+      throw new Error('invalid_source_transform')
+    }
+    const count = output.split(replacement.from).length - 1
+    if (count !== replacement.count) throw new Error('source_transform_anchor_count: expected ' + replacement.count + ', found ' + count)
+    output = output.split(replacement.from).join(replacement.to)
+  }
+  return output
+}
+
 export function parseArgs(argv) {
   const args = { dryRun: false }
   for (let index = 0; index < argv.length; index += 1) {
@@ -154,6 +169,18 @@ async function loadRecipe(version) {
       if (!Number.isSafeInteger(pin.bytes) || pin.bytes < 0 || !/^[a-f0-9]{64}$/.test(pin.sha256)) throw new Error('invalid_recipe_pin')
     }
   }
+  const sourceTransforms = recipe.sourceTransforms ?? []
+  if (!Array.isArray(sourceTransforms)) throw new Error('invalid_source_transforms')
+  for (const transform of sourceTransforms) {
+    if (typeof transform.path !== 'string' || !transform.path.startsWith('dsh/')
+      || !recipe.preimages[transform.path] || !recipe.postimages[transform.path]
+      || !Array.isArray(transform.replacements) || transform.replacements.length === 0) throw new Error('invalid_source_transform_target')
+    safeTarget(repoRoot, transform.path)
+    for (const replacement of transform.replacements) {
+      if (typeof replacement.from !== 'string' || !replacement.from
+        || typeof replacement.to !== 'string' || !Number.isSafeInteger(replacement.count) || replacement.count < 1) throw new Error('invalid_source_transform')
+    }
+  }
   const copies = recipe.copies ?? []
   for (const copy of copies) {
     safeTarget(repoRoot, copy.source)
@@ -173,6 +200,18 @@ async function verifyImages(workDir, images, phase) {
     if (bytes.length !== pin.bytes || createHash('sha256').update(bytes).digest('hex') !== pin.sha256) throw new Error(`${phase}_mismatch: ${rel}`)
   }
   return Object.keys(images).length
+}
+
+async function applySourceTransforms(workDir, recipe) {
+  const rows = []
+  for (const transform of recipe.sourceTransforms ?? []) {
+    const path = safeTarget(workDir, transform.path)
+    const text = await readFile(path, 'utf8')
+    const output = applyExactTextReplacements(text, transform.replacements)
+    await writeFile(path, output)
+    rows.push({ path: transform.path, replacements: transform.replacements.length })
+  }
+  return rows
 }
 
 async function installBrowserBootstrap(workDir, recipe) {
@@ -318,6 +357,7 @@ async function main() {
 
     const blocking = report.patches.filter(item => !item.ok)
     if (!blocking.length) {
+      report.sourceTransforms = await applySourceTransforms(workDir, recipe)
       await installBrowserBootstrap(workDir, recipe)
       report.appliedPatches = [...recipe.patches]
       report.repaired = await repairTruncation(workDir)

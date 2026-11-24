@@ -4,7 +4,7 @@ window.__ModuleLoader__.load({
   factory(require) {
     const React = require('react'), h = React.createElement
     const gatewayApi = require('@deepseek-ai/dsh-api-gateway/client')
-    const valid = d => d && d.kind === 'role' && typeof d.roleId === 'string' && d.roleId && typeof d.bindingRevision === 'string' && /^(0|[1-9][0-9]{0,63})$/.test(d.bindingRevision) && typeof d.sceneId === 'string' && typeof d.panelId === 'string' && typeof d.sessionId === 'string' && d.sessionId && ['chat','files'].includes(d.surface) && Number.isSafeInteger(d.generation)
+    const valid = d => d && d.kind === 'role' && typeof d.roleId === 'string' && d.roleId && typeof d.bindingRevision === 'string' && /^(0|[1-9][0-9]{0,63})$/.test(d.bindingRevision) && typeof d.sceneId === 'string' && typeof d.panelId === 'string' && typeof d.sessionId === 'string' && d.sessionId && ['chat','files'].includes(d.surface) && Number.isSafeInteger(d.generation) && (d.assistantPreset === undefined || d.assistantPreset === true)
     const same = (a,b) => valid(a) && valid(b) && Object.keys(a).length === Object.keys(b).length && Object.keys(b).every(k => a[k] === b[k])
     const reportRoleGuestPhase = (descriptor, phase) => {
       if (!valid(descriptor)) return
@@ -24,6 +24,10 @@ window.__ModuleLoader__.load({
       .tl-bound-skills > header { display:flex;align-items:center;justify-content:space-between;gap:12px; }
       .tl-bound-skills ul { list-style:none;padding:0;display:grid;gap:12px; }
       .tl-bound-skills p { color:var(--dsw-alias-label-secondary);white-space:pre-wrap; }
+      html[data-tl-native-theme] [data-source-owned-role] {
+        --dsw-alias-bg-layer-1:var(--tl-native-panel);
+        background:var(--tl-native-panel,var(--dsw-alias-bg-layer-1));
+      }
       [data-source-native-root] {
         --dsw-font-family:var(--tl-font-family,"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif);
         font-family:var(--dsw-font-family);container-type:size;
@@ -258,7 +262,8 @@ window.__ModuleLoader__.load({
           })
           async function open() {
             const sessions=ctx.sessions, list=sessions?.list
-            if (!list?.getSnapshot || typeof list.subscribe!=='function' || typeof sessions.retain !== 'function' || typeof sessions.refresh !== 'function') throw Error('session service unavailable')
+            const exactPresetSession=descriptor.assistantPreset===true
+            if (typeof sessions.retain !== 'function' || (!exactPresetSession && (!list?.getSnapshot || typeof list.subscribe!=='function' || typeof sessions.refresh !== 'function'))) throw Error('session service unavailable')
             const connection=ctx.get?.('connection')
             if (!connection?.generation?.getSnapshot || typeof connection.generation.subscribe!=='function' || !['answer','none'].includes(connection.interactions)) throw Error('connection readiness service unavailable')
             const liveNow=()=>live&&!waitAbort.signal.aborted
@@ -270,7 +275,7 @@ window.__ModuleLoader__.load({
                 if(!generation)return
                 reportRoleGuestPhase(descriptor,'generation-wait-end')
               }
-              catalog=list.getSnapshot()
+              if(!exactPresetSession)catalog=list.getSnapshot()
             } else {
               reportRoleGuestPhase(descriptor,'loader-wait-start')
               const loader=ctx.get?.('loader')
@@ -278,6 +283,35 @@ window.__ModuleLoader__.load({
               await loader.await()
               if(!liveNow()){reportRoleGuestPhase(descriptor,'not-live');return}
               reportRoleGuestPhase(descriptor,'loader-wait-end')
+            }
+            if(exactPresetSession) {
+              if(!same(await bridge.nativeSurfaceDescriptor(),descriptor) || !liveNow() || !same(descriptor,latest.current))return
+              reportRoleGuestPhase(descriptor,'exact-session-catalog-start')
+              let summary
+              try {
+                const response=await fetch('/tradeloom/assistant-presets/session-access',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sessionId:descriptor.sessionId})})
+                const result=await response.json()
+                summary=result?.summary
+                if(!response.ok || result?.authorized!==true || !summary || Object.keys(summary).sort().join(',')!=='agentAvailable,blank,running,sessionId,updatedAt'
+                  || summary.sessionId!==descriptor.sessionId || !Number.isSafeInteger(summary.updatedAt)
+                  || typeof summary.agentAvailable!=='boolean' || typeof summary.running!=='boolean' || typeof summary.blank!=='boolean'
+                  || typeof ctx.sessions.handleSessionAdded!=='function')throw Error('exact assistant session metadata unavailable')
+                ctx.sessions.handleSessionAdded(summary)
+                reportRoleGuestPhase(descriptor,'exact-session-catalog-end')
+              } catch {
+                reportRoleGuestPhase(descriptor,'exact-session-catalog-error')
+                throw Error('exact assistant session metadata unavailable')
+              }
+              if(!liveNow() || !same(await bridge.nativeSurfaceDescriptor(),descriptor) || !same(descriptor,latest.current))return
+              reportRoleGuestPhase(descriptor,'exact-session-retain-start')
+              try { reference=sessions.retain(descriptor.sessionId,{source:'sourceNativeAssistantPreset'}) }
+              catch { reportRoleGuestPhase(descriptor,'exact-session-retain-error'); throw Error('exact assistant session unavailable') }
+              if(!reference?.ready || typeof reference.release!=='function')throw Error('invalid exact assistant session reference')
+              await reference.ready
+              if(!liveNow() || !same(await bridge.nativeSurfaceDescriptor(),descriptor) || !same(descriptor,latest.current))return
+              reportRoleGuestPhase(descriptor,'exact-session-retain-ready')
+              setState({phase:'ready',reference,sessionId:descriptor.sessionId})
+              return
             }
             let refreshed=false
             let listProbeStarted=false

@@ -19,6 +19,19 @@ const { createSourceShellController } = await import(new URL('lib/tradeloom-sour
 const source = name => readFile(new URL(name, asar), 'utf8')
 const defaults = JSON.parse(await readFile(new URL('scenes.json', business), 'utf8'))
 
+test('scene-memory origin grant recheck preserves the physical seat and configured binding seat', async () => {
+  const main = await source('lib/main.js')
+  const start = main.indexOf('const guest = controller.resolveGuest(sender, frame);', main.indexOf('DESKTOP_IPC.sceneMemoryOriginGrant'))
+  const end = main.indexOf('throw new Error("scene-memory origin: role guest changed while grant was pending")', start)
+  assert.ok(start >= 0 && end > start, 'the role origin-grant recheck remains in Main')
+  const handler = main.slice(start, end)
+  assert.match(handler, /const physicalSeat = \{ sceneId: guest\.sceneId, panelId: guest\.panelId \}/)
+  assert.match(handler, /current\.sceneId !== physicalSeat\.sceneId \|\| current\.panelId !== physicalSeat\.panelId/,
+    'moving a guest while the grant is pending still rejects the request')
+  assert.match(handler, /\(current\.bindingSceneId \?\? current\.sceneId\) !== source\.sceneId \|\| \(current\.bindingPanelId \?\? current\.panelId\) !== source\.panelId/,
+    'the verified configured role binding remains independently checked')
+})
+
 test('authorized directory cards share the existing navigation and single-file preview', {
   skip: !process.env.TRADELOOM_DOM_MODULE,
 }, async () => {
@@ -101,6 +114,64 @@ test('authorized directory cards share the existing navigation and single-file p
     window.close()
   }
 })
+
+test('scene UI directory authority isolates opaque scopes and does not grant AI tool access', async t => {
+  const fixture = await scope(t)
+  const centerScope = crypto.randomUUID(), productScope = crypto.randomUUID()
+  const center = await fixture.sceneUi({ scope: centerScope, request: { operation: 'pick' }, chosen: fixture.root })
+  const product = await fixture.sceneUi({ scope: productScope, request: { operation: 'pick' }, chosen: fixture.outside })
+  assert.equal(center.path, fixture.root)
+  assert.equal(product.path, fixture.outside)
+  const centerFile = center.entries.find(entry => entry.name === 'top.md')
+  assert.ok(centerFile)
+  await assert.rejects(fixture.sceneUi({ scope: productScope, request: { operation: 'preview', id: centerFile.id }, chosen: null }))
+  const preview = await fixture.sceneUi({ scope: centerScope, request: { operation: 'preview', id: centerFile.id }, chosen: null })
+  assert.deepEqual(preview.preview, { type: 'text/plain', data: '# top test data' })
+  assert.equal(await fixture.sceneUi({ scope: centerScope, request: { operation: 'revoke' }, chosen: null }), null)
+  assert.equal(await fixture.sceneUi({ scope: centerScope, request: { operation: 'current' }, chosen: null }), null)
+  assert.equal((await fixture.tool({ operation: 'current' })).error_code, 'workflow_directory_unavailable', 'scene UI grants are not visible to the AI file tool')
+})
+
+test('source-shell scene file API binds native folder picks to the active configured scene and rejects stale or untrusted requests', async t => {
+  const fixture = await scope(t)
+  const d = await desktop(t, fixture)
+  const eligible = ['center', 'user-profile', 'products', 'order-production', 'deliverables', 'agent-center']
+  for (const id of eligible) assert.deepEqual(await d.app.setActiveScene(id), { sceneId: id })
+  await d.app.setActiveScene('runs')
+  await assert.rejects(d.app.sceneFiles({ operation: 'current' }), /scene files owner rejected/)
+  await assert.rejects(d.app.sceneFiles({ operation: 'pick', chosen: fixture.root }), /invalid scene files request/)
+
+  await d.app.setActiveScene('center')
+  d.chosen(fixture.root)
+  const center = await d.app.sceneFiles({ operation: 'pick' })
+  assert.equal(center.path, fixture.root)
+  const centerFile = center.entries.find(entry => entry.name === 'top.md')
+  const centerPreview = await d.app.sceneFiles({ operation: 'preview', id: centerFile.id })
+  assert.deepEqual(centerPreview.preview, { type: 'text/plain', data: '# top test data' })
+  assert.deepEqual(await d.app.sceneFiles({ operation: 'open-directory' }), { ok: true })
+  assert.equal(d.openedFiles.at(-1).operation, 'open-directory')
+
+  await d.app.setActiveScene('products')
+  d.chosen(fixture.outside)
+  const products = await d.app.sceneFiles({ operation: 'pick' })
+  assert.equal(products.path, fixture.outside)
+  await assert.rejects(d.app.sceneFiles({ operation: 'preview', id: centerFile.id }))
+  assert.equal((await d.app.setActiveScene('center')).sceneId, 'center')
+  assert.equal((await d.app.sceneFiles({ operation: 'current' })).path, fixture.root, 'switching scenes keeps the prior scene grant private and available')
+
+  d.chosen(null)
+  assert.equal(await d.app.sceneFiles({ operation: 'pick' }), null, 'cancelled native selection does not revoke the current grant')
+  assert.equal((await d.app.sceneFiles({ operation: 'current' })).path, fixture.root)
+  await assert.rejects(d.handlers.get('source-shell:sceneFiles')({ sender: {}, senderFrame: {} }, { operation: 'current' }), /rejected sender/)
+
+  const delayed = d.delaySceneFileReply('current')
+  const stale = d.app.sceneFiles({ operation: 'current' })
+  await delayed.entered
+  await d.app.setActiveScene('runs')
+  delayed.release()
+  await assert.rejects(stale, /scene files owner changed/)
+  assert.equal(typeof d.app.workflowFiles, 'function', 'existing AI workflow file API remains separate')
+})
 const sdkTools = replay ? await import(pathToFileURL(path.join(replay, 'sdk/dsh/node_modules/@deepseek-ai/dsh-tools/lib/index.js'))) : null
 const timeout = async predicate => {
   for (let i = 0; i < 200; i++) {
@@ -175,7 +246,7 @@ async function scope(t) {
   const desktop = request => authority.desktop({
     sessionId: state.roles.center.sessionId, bindingRevision: state.roleBindingRevisions.center, ...request,
   })
-  return { owned, root, nested, outside, state, authority, desktop, tool, other,
+  return { owned, root, nested, outside, state, authority, desktop, sceneUi: input => authority.sceneUi(input), tool, other,
     holdBindingRead(remaining) {
       const pause = { remaining, entered: Promise.withResolvers(), resume: Promise.withResolvers() }
       pendingStateRead = pause
@@ -235,7 +306,7 @@ async function privateControl(mainSource, authority, onChanged) {
       .split('\n').filter(line => /^[+ ]\t/.test(line)).map(line => line.slice(1)).join('\n')
   const hostMessage = new Function('application', 'send', 'message',
     'const stopping = undefined;\n' + between(hostProgram,
-      '\t\tif (message.type === "workflow-files")', '\t\tif (message.type === "scene-memory-origin-grant")'))
+      '\t\tif (message.type === "scene-files")', '\t\tif (message.type === "scene-memory-origin-grant")'))
   const subscribe = new Function('ctx', 'send', 'return ' + between(hostProgram,
     '\tctx.get("workflowFileAuthority")?.onDirectoryChange(', '\tcontrol.registerSceneMemoryOriginGrant'))
   const ctx = { get: name => name === 'workflowFileAuthority' ? authority : undefined }
@@ -247,11 +318,12 @@ async function privateControl(mainSource, authority, onChanged) {
     queueMicrotask(() => hostMessage(application, send, message))
     callback(null)
   }
-  const methods = new Function('return ({'
+  const methods = new Function('isAbsolute', 'return ({'
     + between(mainSource, '\tasync control(request,', '\t/**')
     + ','
     + between(mainSource, '\tasync workflowFiles(request)', '\tasync issueSceneMemoryOriginGrant')
-    + '})')()
+      .replace('\n\tasync sceneFiles', ',\n\tasync sceneFiles')
+    + '})')(path.isAbsolute)
   const validator = new Function(between(mainSource, 'function isDesktopHostEvent(', 'async function exitsWithin')
     + ';return isDesktopHostEvent')()
   const main = Object.assign(methods, {
@@ -261,7 +333,7 @@ async function privateControl(mainSource, authority, onChanged) {
   new Function('child', 'isDesktopHostEvent', between(mainSource,
     '\t\tchild.on("message", (message) => {', '\t\tchild.once("error"')).call(main, child, validator)
   const stop = subscribe(ctx, send)
-  return { request: main.workflowFiles.bind(main), stop }
+  return { request: main.workflowFiles.bind(main), sceneFiles: main.sceneFiles.bind(main), stop }
 }
 
 async function desktop(t, fixture, configuration = defaults) {
@@ -297,13 +369,14 @@ async function desktop(t, fixture, configuration = defaults) {
     picker + '\nreturn installDesktopDirectoryPicker')(ipcMain, { directoryPick: 'picker:existing' }, {
     async showOpenDialog(parent, options) {
       assert.equal(parent, primary)
-      assert.match(options.title, /授权工作流中心助手/)
+      if (options.title) assert.match(options.title, /授权工作流中心助手|选择本地文件目录/)
       chooserCalls++
       return pendingPicker ?? { canceled: chosen === null, filePaths: chosen === null ? [] : [chosen] }
     },
   }, () => { throw Error('unowned native picker') })(() => primary, () => undefined, () => true)
   const wire = await privateControl(mainSource, fixture.authority, () => controller.workflowFilesChanged())
   let delayedFileReply
+  let delayedSceneFileReply
   let projectFolders = Object.create(null)
   const openedFiles = []
   const controller = createSourceShellController({
@@ -328,6 +401,17 @@ async function desktop(t, fixture, configuration = defaults) {
       if (input.operation === delayedFileReply?.operation) {
         const pending = delayedFileReply
         delayedFileReply = undefined
+        pending.entered.resolve()
+        await pending.resume.promise
+      }
+      return result
+    },
+    pickSceneDirectory: pick.pickForSceneFiles,
+    requestSceneFiles: async input => {
+      const result = await wire.sceneFiles(input.scope, input.request, input.chosen)
+      if (input.request.operation === delayedSceneFileReply?.operation) {
+        const pending = delayedSceneFileReply
+        delayedSceneFileReply = undefined
         pending.entered.resolve()
         await pending.resume.promise
       }
@@ -420,6 +504,10 @@ async function desktop(t, fixture, configuration = defaults) {
     delayFileReply(operation) {
       delayedFileReply = { operation, entered: Promise.withResolvers(), resume: Promise.withResolvers() }
       return { entered: delayedFileReply.entered.promise, release: delayedFileReply.resume.resolve }
+    },
+    delaySceneFileReply(operation) {
+      delayedSceneFileReply = { operation, entered: Promise.withResolvers(), resume: Promise.withResolvers() }
+      return { entered: delayedSceneFileReply.entered.promise, release: delayedSceneFileReply.resume.resolve }
     },
     acknowledgeCanvas(view) {
       const contents = view.webContents
@@ -767,10 +855,10 @@ test('the main-process opener revalidates the resolved file and current binding'
   const actionSource = between(mainSource,
     '\t\t\topenWorkflowFile: async (operation, resolved, authorize) => {',
     '\n\t\t\tresolveNativeTheme:')
-  const action = new Function('shell', 'fsPromises', 'isAbsolute', 'return ({' + actionSource.trim().replace(/,$/, '') + '}).openWorkflowFile')
+  const action = new Function('shell', 'fsPromises', 'isAbsolute', 'openConfiguredErpNextWorkbench', 'return ({' + actionSource.trim().replace(/,$/, '') + '}).openWorkflowFile')
   const calls = []
   const shell = { async openPath(value) { calls.push(['open', value]); return '' }, showItemInFolder(value) { calls.push(['reveal', value]) } }
-  const open = action(shell, fsPromises, value => path.isAbsolute(value))
+  const open = action(shell, fsPromises, value => path.isAbsolute(value), async () => ({ opened: true }))
   let authorizationChecks = 0
   const authorize = async () => { authorizationChecks++ }
   await open('open', resolved, authorize)

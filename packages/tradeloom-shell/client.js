@@ -393,9 +393,8 @@ window.__ModuleLoader__.load({
     function sendBusinessTheme(frame) {
       if (!frame?.contentWindow || !['light', 'dark'].includes(activeColorScheme)) return
       try {
-        const palette = activeResolvedPalette = resolveWorkbenchPalette()
+        const palette = activeResolvedPalette
         if (!palette) return
-        applyThemeTokensToDocument(palette)
         frame.contentWindow.postMessage({ type: 'tradeloom:theme', colorScheme: activeColorScheme, palette, ui: workbenchUiTokens }, window.location.origin)
       } catch { /* A frame may be navigating; its next load sends the current theme. */ }
     }
@@ -430,12 +429,10 @@ window.__ModuleLoader__.load({
         // the resolved scheme before they read it, without moving DOM writes.
         activeColorScheme = colorScheme
         // The scene chunk subscribes to the same event and publishes a snapshot
-        // synchronously. Update the shared UI tokens first so its immediate
-        // render cannot capture the previous density. Palette work remains on
-        // the next frame to avoid changing the color-token update cadence.
+        // synchronously. Resolve and deliver one palette in the same turn,
+        // before rendering any pane with the new scheme.
         syncWorkbenchFontSize(snapshot)
-        if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(() => refreshThemeSnapshot(colorScheme))
-        else Promise.resolve().then(() => refreshThemeSnapshot(colorScheme))
+        refreshThemeSnapshot(colorScheme)
       }
       const removeThemeChangeListener = ctx.on?.('theme/change', onThemeChange)
       removeThemeBridge = () => {
@@ -1206,10 +1203,24 @@ window.__ModuleLoader__.load({
         h('button', { type: 'button', onClick: () => setAttempt(value => value + 1) }, '重试'))
       if (state.loading || typeof sceneApi?.ERPNextStatus !== 'function') return h('p', { className: 'tl-source-erpnext-state', role: 'status' }, '正在加载 ERPNext 状态…')
       return h('div', { 'data-source-erpnext-panel': 'true', style: {
-        display: 'flex', flex: '1 1 0', minWidth: 0, minHeight: 0,
+        display: 'flex', flex: '1 1 0', flexDirection: 'column', minWidth: 0, minHeight: 0,
         overflow: 'auto', color: 'var(--tl-theme-text)',
       } },
         h('style', { 'data-source-erpnext-style': 'true' }, `
+          [data-source-erpnext-panel] .tl-pane-state { box-sizing:border-box; display:flex; flex:0 0 auto; flex-direction:column; align-items:flex-start; gap:var(--tl-space-2); max-width:100%; padding:var(--tl-space-3); border:1px solid var(--tl-theme-border); border-radius:var(--tl-corner-radius); background:var(--tl-theme-panel); color:var(--tl-theme-text); }
+          [data-source-erpnext-panel] .tl-pane-state-icon { display:grid; width:34px; height:34px; place-items:center; color:var(--tl-theme-muted); }
+          [data-source-erpnext-panel] .tl-pane-state-icon > svg { display:block; width:100%; height:100%; }
+          [data-source-erpnext-panel] .tl-pane-state-symbol { display:inline-flex; align-items:center; justify-content:center; gap:var(--tl-space-2); }
+          [data-source-erpnext-panel] .tl-pane-state-spinner { box-sizing:border-box; display:block; width:13px; height:13px; border:2px solid var(--tl-theme-border); border-top-color:var(--tl-theme-accent); border-radius:50%; animation:tl-erpnext-spin 850ms linear infinite; }
+          [data-source-erpnext-panel] .tl-pane-state-title { max-width:100%; margin:0; color:var(--tl-theme-text); font-size:var(--tl-font-body); }
+          [data-source-erpnext-panel] .tl-pane-state-description { max-width:min(100%,42em); margin:0; color:var(--tl-theme-muted); font-size:var(--tl-font-compact); line-height:1.4; overflow-wrap:anywhere; }
+          [data-source-erpnext-panel] .tl-pane-state-action { box-sizing:border-box; display:inline-flex; min-height:var(--tl-control-height); align-items:center; justify-content:center; padding:var(--tl-space-1) var(--tl-space-2); border:1px solid var(--tl-theme-border); border-radius:var(--tl-corner-radius); background:var(--tl-theme-panel); color:var(--tl-theme-text); font:inherit; font-size:var(--tl-font-compact); cursor:pointer; }
+          [data-source-erpnext-panel] .tl-pane-state-action:focus-visible { outline:2px solid var(--tl-theme-accent); outline-offset:2px; }
+          [data-source-erpnext-panel] .tl-erpnext-entry-actions { display:flex; flex:0 0 auto; flex-wrap:wrap; align-items:center; gap:var(--tl-space-2); padding:var(--tl-space-2) 0; }
+          [data-source-erpnext-panel] .tl-erpnext-entry-actions a { display:inline-flex; min-height:var(--tl-control-height); align-items:center; padding:0 var(--tl-space-3); border-radius:var(--tl-corner-radius); background:var(--tl-theme-accent); color:var(--tl-theme-on-accent, #fff); font-size:var(--tl-font-compact); text-decoration:none; }
+          [data-source-erpnext-panel] .tl-erpnext-entry-actions a:focus-visible { outline:2px solid var(--tl-theme-accent); outline-offset:2px; }
+          @keyframes tl-erpnext-spin { to { transform:rotate(1turn); } }
+          @media (prefers-reduced-motion: reduce) { [data-source-erpnext-panel] .tl-pane-state-spinner { animation:none; } }
           [data-source-erpnext-panel] .tl-erpnext-status { display:flex; flex:1 1 0; flex-direction:column; gap:var(--tl-space-2); min-width:0; min-height:0; color:var(--tl-theme-text); }
           [data-source-erpnext-panel] .tl-erpnext-status-heading,[data-source-erpnext-panel] .tl-erpnext-controls,[data-source-erpnext-panel] .tl-erpnext-pagination,[data-source-erpnext-panel] .tl-erpnext-detail-heading { display:flex; align-items:center; flex-wrap:wrap; gap:var(--tl-space-2); }
           [data-source-erpnext-panel] .tl-erpnext-status-heading h3,[data-source-erpnext-panel] .tl-erpnext-detail-heading h4 { flex:1 1 auto; margin:0; font-size:var(--tl-font-body); }
@@ -2966,13 +2977,33 @@ window.__ModuleLoader__.load({
     async function installSourceNativeThemeBridge(ctx, bridge, initial) {
       const sourceTheme = bridge?.sourceTheme
       if (typeof sourceTheme?.onChanged !== 'function' || typeof sourceTheme?.getSnapshot !== 'function') throw Error('native theme bridge unavailable')
-      let disposed = false, sequence = 0
+      let disposed = false, sequence = 0, presentation
+      // Main's validated snapshot is presentation authority only. Reflect the
+      // official ThemePresenter attributes immediately; the Host mirror below
+      // remains the sole source of durable settings and never writes from guests.
+      const present = snapshot => {
+        if (disposed || !['light', 'dark'].includes(snapshot?.colorScheme)
+          || !['light', 'dark', 'system'].includes(snapshot?.preference)) return
+        presentation = snapshot
+        const root = globalThis.document?.documentElement, body = globalThis.document?.body
+        if (!root || !body) return
+        root.style.colorScheme = snapshot.colorScheme
+        root.setAttribute('data-ds-theme-source', snapshot.preference === 'system' ? 'system' : snapshot.colorScheme)
+        if (snapshot.colorScheme === 'dark') body.setAttribute('data-ds-dark-theme', '')
+        else body.removeAttribute('data-ds-dark-theme')
+        if (initial.kind === 'role' && /^#[0-9a-f]{6}$/i.test(snapshot.palette?.panel ?? '')) {
+          root.style.setProperty('--tl-native-panel', snapshot.palette.panel)
+          root.setAttribute('data-tl-native-theme', '')
+        }
+      }
+      const offPresentation = ctx.on?.('theme/change', () => { if (presentation) present(presentation) })
       const same = (a, b) => a && b && Object.keys(a).length === Object.keys(b).length && Object.keys(a).every(key => a[key] === b[key])
       const currentOwner = value => value && value.kind === initial.kind && Number.isSafeInteger(value.generation)
         && (value.kind !== 'role' || (typeof value.roleId === 'string' && value.roleId && typeof value.sessionId === 'string' && value.sessionId
           && typeof value.bindingRevision === 'string' && /^(0|[1-9][0-9]{0,63})$/.test(value.bindingRevision)))
       const refresh = async snapshot => {
         const ticket = ++sequence
+        present(snapshot)
         if (!snapshot || !['light', 'dark', 'system'].includes(snapshot.preference)) return
         const before = await bridge.nativeSurfaceDescriptor()
         if (disposed || ticket !== sequence || !currentOwner(before)) return
@@ -2988,11 +3019,14 @@ window.__ModuleLoader__.load({
         ctx.configForms.describe().acceptView(view)
       }
       const update = value => { void refresh(value).catch(() => { if (!disposed && initial.kind === 'role') reportRoleGuestPhase(initial, 'theme-sync-error') }) }
-      const readCurrent = () => { void sourceTheme.getSnapshot().then(update).catch(() => {}) }
+      const readCurrent = async () => {
+        const ticket = sequence
+        try { const value = await sourceTheme.getSnapshot(); if (!disposed && ticket === sequence) await refresh(value) } catch {}
+      }
       const offTheme = sourceTheme.onChanged(update)
-      const offOwner = bridge.onNativeSurfaceChanged(() => { sequence++; readCurrent() })
-      ctx.effect(() => () => { disposed = true; sequence++; offTheme(); offOwner() }, 'source native theme invalidation')
-      await sourceTheme.getSnapshot().then(refresh).catch(() => {})
+      const offOwner = bridge.onNativeSurfaceChanged(() => { sequence++; presentation = undefined; void readCurrent() })
+      ctx.effect(() => () => { disposed = true; sequence++; offTheme(); offOwner(); offPresentation?.() }, 'source native theme invalidation')
+      await readCurrent()
     }
 
     function registerAccountMobileLink(ctx, bridge) {
@@ -3153,10 +3187,21 @@ window.__ModuleLoader__.load({
               }
               ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: 'source-native', inject: () => ({}) }, SourceSceneComponent))
               function SourceSceneRootPresenter({ renderFactorySlot }) {
-                return h('div', { 'data-source-owned-scene-component': descriptor.componentKey,
-                  style: { position: 'relative', height: '100%', minHeight: 0, minWidth: 0 } },
-                  h('style', null, 'body:has([data-source-owned-scene-component]) .dshwv-root { display: none; }'),
-                  h(SourceSceneComponent, { renderFactorySlot }))
+                const [portalHost, setPortalHost] = React.useState(null)
+                React.useLayoutEffect(() => {
+                  const host = window.document.createElement('div')
+                  host.dataset.sourceOwnedScenePortal = descriptor.componentKey
+                  host.style.cssText = 'position:fixed;inset:0;z-index:2147483000;overflow:hidden;background:var(--tl-theme-canvas,#fff)'
+                  window.document.body.append(host)
+                  setPortalHost(host)
+                  return () => host.remove()
+                }, [])
+                if (!portalHost) return null
+                return ReactDOM.createPortal(h(React.Fragment, null,
+                  h('style', null, 'body:has([data-source-owned-scene-component]) .dshwv-root { display: none !important; }'),
+                  h('div', { 'data-source-owned-scene-component': descriptor.componentKey,
+                    style: { position: 'relative', width: '100%', height: '100%', minHeight: 0, minWidth: 0 } },
+                  h(SourceSceneComponent, { renderFactorySlot }))), portalHost)
               }
               ctx.slots.inject('root', () => ctx.slots.register({ name: 'root', priority: -1 }, SourceSceneRootPresenter))
               ctx.layout.selectPanel('source-native')

@@ -219,6 +219,10 @@ function createWorkflowFiles() {
 export function createWorkflowFileAuthority(ctx, readState = async () => (await createStateStore()).read()) {
   const files = createWorkflowFiles()
   const directoryListeners = new Set()
+  // UI folders are independent of AI role sessions. The only caller is the
+  // authenticated desktop control channel; each scope token is minted by the
+  // trusted launcher for one window/scene pair and is never renderer input.
+  const uiScopes = new Map()
   let scope
 
   async function assertBinding(expected) {
@@ -250,6 +254,27 @@ export function createWorkflowFileAuthority(ctx, readState = async () => (await 
   }
 
   return Object.freeze({
+    async sceneUi(input) {
+      if (!input || Object.keys(input).sort().join(',') !== 'chosen,request,scope'
+        || typeof input.scope !== 'string' || !uuid.test(input.scope)
+        || !input.request || typeof input.request !== 'object' || Array.isArray(input.request)) throw reject()
+      const { scope: token, request, chosen } = input
+      const operation = request.operation
+      const hasEntry = ['enter', 'preview', 'download', 'open', 'reveal'].includes(operation)
+      if (!['pick', 'current', 'revoke', 'up', 'enter', 'preview', 'download', 'open', 'reveal', 'open-directory'].includes(operation)
+        || Object.keys(request).sort().join(',') !== (hasEntry ? 'id,operation' : 'operation')
+        || hasEntry && (typeof request.id !== 'string' || !uuid.test(request.id))
+        || operation === 'pick' && (typeof chosen !== 'string' || !path.isAbsolute(chosen))
+        || operation !== 'pick' && chosen !== null) throw reject()
+      let owner = uiScopes.get(token)
+      if (operation === 'revoke' && !owner) return null
+      if (!owner) { owner = Object.freeze({}); uiScopes.set(token, owner) }
+      const result = await files(owner, request, async () => {
+        if (uiScopes.get(token) !== owner) throw reject()
+      }, chosen ?? undefined)
+      if (operation === 'revoke') uiScopes.delete(token)
+      return result
+    },
     onDirectoryChange(listener) {
       directoryListeners.add(listener)
       return () => directoryListeners.delete(listener)

@@ -7,9 +7,9 @@
 @import url("./palette.css");
 :root{
   --ui-font-size:13px; --ui-font-tab-size:13px; --ui-font-title-size:11.5px;
-  --ui-titlebar-height:38px; --ui-titlebar-leading:48px; --ui-scenebar-height:40px;
+  --ui-titlebar-height:36px; --ui-titlebar-leading:46px; --ui-scenebar-height:32px;
   --ui-icon-width:34px; --ui-grid-gap:5px; --ui-grid-padding:5px;
-  --ui-panel-header-height:28px; --ui-control-size:20px; --ui-sidebar-width:270px;
+  --ui-panel-header-height:25px; --ui-control-size:18px; --ui-sidebar-width:270px;
   --radius:8px;
   --mono:"Cascadia Code","Consolas","Courier New",monospace;
   --sans:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;
@@ -181,7 +181,7 @@ body.native-caption-overlay #titlebar-window-controls{display:none}
   border-bottom:1px solid var(--border);
   position:relative;z-index:20;
 }
-.scenebar-inner{display:flex;align-items:center;gap:12px;width:100%;padding:0 14px}
+.scenebar-inner{display:flex;align-items:center;gap:8px;width:100%;padding:0 10px;min-width:0}
 .scenebar-label{
   color:var(--text-dim);font-size:var(--ui-font-tab-size,12px);font-weight:600;letter-spacing:1.5px;
   text-transform:uppercase;white-space:nowrap;
@@ -278,12 +278,12 @@ html[data-theme="light"] .tab.active{color:var(--accent)}
   transition:box-shadow .12s ease;
 }
 .panel.pi-closed,.panel.pi-tab-inactive{display:none!important}
-.pi-component-tabs{display:flex;flex:1;min-width:0;overflow:auto;gap:2px;touch-action:none;scrollbar-width:none}
+.pi-component-tabs{display:flex;flex:1 1 2em;min-width:0;overflow:auto;gap:2px;touch-action:none;scrollbar-width:none}
 .pi-component-tabs button{flex:none;max-width:12em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:transparent;color:inherit;font:inherit;border:0;border-bottom:2px solid transparent;padding:2px 6px;cursor:grab}
 .pi-component-tabs button[aria-selected="true"]{border-bottom-color:var(--accent)}
 .pi-tab-split-preview{position:fixed;z-index:10001;pointer-events:none;border:2px solid var(--accent);border-radius:var(--radius);background:color-mix(in srgb,var(--accent) 14%,transparent)}
 .panel-header:has(.pi-component-tabs) .panel-title,.panel-header:has(.pi-component-tabs) .panel-sub{display:none}
-.panel-header:has(.pi-component-tabs) .panel-identity{flex:none}
+.panel-header:has(.pi-component-tabs) .panel-identity{flex:0 1 auto;min-width:0}
 #grid > .panel.pi-closed-reflow:not(.panel-expanded):not(.pi-maximized) {
   position:absolute!important;
   grid-area:1 / 1 / -1 / -1!important;
@@ -301,6 +301,16 @@ html[data-theme="light"] .tab.active{color:var(--accent)}
   box-shadow:0 16px 40px var(--surface-shadow),0 0 0 1px var(--accent);
 }
 .panel.snap-target{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
+.panel.snap-insert-left{box-shadow:inset 5px 0 0 var(--accent),0 0 0 2px var(--accent-soft)}
+.panel.snap-insert-right{box-shadow:inset -5px 0 0 var(--accent),0 0 0 2px var(--accent-soft)}
+.panel.snap-insert-top{box-shadow:inset 0 5px 0 var(--accent),0 0 0 2px var(--accent-soft)}
+.panel.snap-insert-bottom{box-shadow:inset 0 -5px 0 var(--accent),0 0 0 2px var(--accent-soft)}
+.panel-drop-hint{
+  flex:0 0 auto;max-width:108px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  padding:3px 6px;border:1px solid var(--accent);border-radius:5px;
+  background:var(--bg-panel-hover);color:var(--text);font:600 10px/1 var(--ui-font,sans-serif);
+  box-shadow:0 2px 8px rgba(0,0,0,.25);pointer-events:none
+}
 .drop-ghost{
   position:absolute;z-index:50;pointer-events:none;
   border:1.5px dashed var(--cyan);border-radius:var(--radius);
@@ -312,6 +322,7 @@ html[data-theme="light"] .tab.active{color:var(--accent)}
   border-bottom:1px solid var(--line);cursor:grab;user-select:none;
 }
 .panel-header:active{cursor:grabbing}
+.panel-header>*{min-width:0}
 .grip{color:var(--text-mute);font-size:11px;letter-spacing:-1px;cursor:grab}
 .panel-identity{flex:1;min-width:0;display:flex;align-items:center;gap:7px}
 .panel-title{font-size:var(--ui-font-title-size,11.5px);font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -324,7 +335,7 @@ html[data-theme="light"] .tab.active{color:var(--accent)}
 .source-assistant-tab-button{max-width:112px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 4px}
 .source-assistant-tab-button:hover,.source-assistant-tab-close:hover{color:var(--text)}
 .source-assistant-tab-close{width:16px;padding:0;font-size:13px}
-.panel-controls{display:flex;align-items:center;gap:3px}
+.panel-controls{display:flex;flex:0 0 auto;align-items:center;gap:3px;margin-inline-start:auto;position:relative;z-index:2}
 .icon-control{
   width:var(--ui-control-size,20px);height:var(--ui-control-size,20px);border-radius:4px;display:inline-flex;align-items:center;
   justify-content:center;color:var(--text-dim);font-size:11px;
@@ -364,8 +375,16 @@ html[data-theme="light"] .tab.active{color:var(--accent)}
   .panel-title{flex:1;min-width:0}
   .panel-sub{display:none}
   .panel-controls{gap:0}
-  .panel-controls>.icon-control[aria-label="刷新面板"],
   .panel-controls>.pi-fullscreen{display:none}
+}
+@container (max-width:300px){
+  .panel-header{gap:2px;padding-inline:3px}
+  .grip{display:none}
+  .panel-identity{gap:2px}
+  .panel-sub{display:none}
+  .panel-controls{gap:0}
+  .panel-expand{width:22px;height:20px}
+  .panel-expand svg{width:17px;height:16px}
 }
 /* 展开态：坐标由 JS 内联设置（position:fixed），这里只留外观 */
 .panel.panel-expanded{
@@ -436,6 +455,7 @@ html[data-theme="light"] .tab.active{color:var(--accent)}
   margin-top:12px;padding:9px 12px;border-radius:8px;font-size:11px;line-height:1.7;
   background:var(--modal-note-bg);border:1px solid var(--modal-note-border);color:var(--text-dim);
 }
+.scene-configuration-actions{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 6px}
 .mdl-row{
   display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;
 }
@@ -462,6 +482,9 @@ html[data-theme="light"] .tab.active{color:var(--accent)}
 .assistant-capability-window{display:grid;grid-template-columns:minmax(150px,30%) minmax(0,1fr);height:100dvh}
 .assistant-capability-sidebar,.assistant-capability-detail{overflow:auto;padding:14px;overflow-wrap:anywhere}
 .assistant-capability-sidebar{background:var(--panel-header);border-right:1px solid var(--line)}
+.assistant-capability-window .capability-empty{color:var(--text-2)}
+.assistant-capability-window .capability-action{color:var(--text-2)}
+.assistant-capability-window .capability-action:disabled{opacity:.78;color:var(--text-2)}
 .assistant-capability-list,.assistant-capability-group{display:grid;gap:5px;margin-top:8px}
 .assistant-capability-list button{text-align:left;min-width:0}
 .assistant-capability-list button[aria-current=true]{background:var(--surface-context);color:var(--text)}
@@ -656,5 +679,20 @@ html.reduce-motion *::after{scroll-behavior:auto!important;animation-duration:.0
 
 /* 分离窗口：一个窗口只放一个场景 → 隐藏场景标签栏，腾出的高度全给面板 */
 body.solo #scenebar{display:none}
+body.solo #ui-sidebar-toggle,
+body.solo #ui-sidebar-backdrop,
+body.solo #ui-sidebar{display:none!important}
+body.solo .titlebar-drag{padding-left:12px;gap:8px}
+body.solo #titlebar-action-controls>*:not(#btn-refresh):not(.solo-window-identity),
+body.solo #toolbar-overflow-menu,
+body.solo #btn-toolbar-overflow{display:none!important}
+body.solo #titlebar-action-controls{gap:4px;padding:0 4px;min-width:0;flex:0 1 auto}
+body.solo #titlebar-controls{min-width:0;max-width:calc(100% - 48px);flex:0 1 auto}
+body.solo #btn-refresh{width:30px;height:28px;border-radius:5px}
+body.solo .solo-window-identity{
+  display:block;flex:0 1 auto;min-width:0;max-width:min(40vw,360px);box-sizing:border-box;height:26px;line-height:24px;
+  padding:0 9px;border:1px solid var(--border);border-radius:5px;background:var(--bg-panel);color:var(--text);font-size:12px;font-weight:500;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:default;-webkit-app-region:drag
+}
 
 .reserved-copy{padding:12px;color:var(--text-mute);font-size:11px}

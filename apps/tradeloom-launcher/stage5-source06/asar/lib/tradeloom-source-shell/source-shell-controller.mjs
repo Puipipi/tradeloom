@@ -1,7 +1,7 @@
 import { cpus, totalmem, freemem } from 'node:os'
 import { appendFile, mkdir, statfs } from 'node:fs/promises'
 import { basename, isAbsolute, join } from 'node:path'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { createSurfaceOwner } from './surface-owner.mjs'
 const SOURCE_URL = 'dsh-app://app/source-shell/renderer/source-entry.html'
 const ASSISTANT_CAPABILITIES_KEY = 'assistant-capabilities-native'
@@ -32,7 +32,7 @@ function validPanelGeometryRecord(value) {
   }
   return true
 }
-export function createSourceShellController({ BrowserWindow, WebContentsView, ipcMain, appPreload, sourcePreload, ownedPartition, getConfig, saveConfig, confirmConfigurationChange, engineGenerationAction, onNativeDescriptorChanged = () => {}, resolveBinding, sceneRotationPreview = async () => { throw Error('scene rotation unavailable') }, sceneRotationConfirm = async () => { throw Error('scene rotation unavailable') }, sceneRotationStatus = async () => { throw Error('scene rotation unavailable') }, sceneRotationResume = async () => { throw Error('scene rotation unavailable') }, sceneRotationCancel = async () => { throw Error('scene rotation unavailable') }, sceneRotationAbandon = async () => { throw Error('scene rotation unavailable') }, installProtocol, primaryWindow, getNativeCaptionFallback, resolveNativeTheme, subscribeNativeTheme, hasNativeModal = () => false, pickWorkflowDirectory, requestWorkflowFiles, openWorkflowFile, loadWorkflowProjectFolders = async () => ({}), saveWorkflowProjectFolders = async () => { throw Error('workflow project folder persistence unavailable') }, updateOwnership = () => {}, createRegistry = createSurfaceOwner, loadUiScale = async () => 1, saveUiScale = async () => { throw Error('UI scale persistence unavailable') }, loadSceneOrder = async () => ({saved:false,ids:[]}), saveSceneOrder = async () => { throw Error('scene order persistence unavailable') }, inventoryTimeoutMs = 5000, systemInfo = { cpus, totalmem, freemem }, diskStat = statfs, getKnownFolders, openKnownFolder, attachAccountShortcuts, resetAccountShortcuts, observeFailure = () => {}, observePhase = () => {}, writeUi18Diagnostic = appendFile }) {
+export function createSourceShellController({ BrowserWindow, WebContentsView, ipcMain, appPreload, sourcePreload, ownedPartition, getConfig, saveConfig, confirmConfigurationChange, engineGenerationAction, onNativeDescriptorChanged = () => {}, resolveBinding, listAssistantPresets = async () => [], createAssistantSession = async () => { throw Error('assistant session unavailable') }, createAssistantRoleSession = async () => { throw Error('assistant role session unavailable') }, sceneRotationPreview = async () => { throw Error('scene rotation unavailable') }, sceneRotationConfirm = async () => { throw Error('scene rotation unavailable') }, sceneRotationStatus = async () => { throw Error('scene rotation unavailable') }, sceneRotationResume = async () => { throw Error('scene rotation unavailable') }, sceneRotationCancel = async () => { throw Error('scene rotation unavailable') }, sceneRotationAbandon = async () => { throw Error('scene rotation unavailable') }, installProtocol, primaryWindow, getNativeCaptionFallback, resolveNativeTheme, subscribeNativeTheme, hasNativeModal = () => false, pickWorkflowDirectory, requestWorkflowFiles, pickSceneDirectory, requestSceneFiles, openWorkflowFile, openErpNextWorkbench = async () => { throw Error('ERPNext workbench unavailable') }, loadWorkflowProjectFolders = async () => ({}), saveWorkflowProjectFolders = async () => { throw Error('workflow project folder persistence unavailable') }, updateOwnership = () => {}, createRegistry = createSurfaceOwner, loadUiScale = async () => 1, saveUiScale = async () => { throw Error('UI scale persistence unavailable') }, loadSceneOrder = async () => ({saved:false,ids:[]}), saveSceneOrder = async () => { throw Error('scene order persistence unavailable') }, inventoryTimeoutMs = 5000, systemInfo = { cpus, totalmem, freemem }, diskStat = statfs, getKnownFolders, openKnownFolder, attachAccountShortcuts, resetAccountShortcuts, observeFailure = () => {}, observePhase = () => {}, writeUi18Diagnostic = appendFile }) {
   if (!appPreload || !sourcePreload || !ownedPartition || typeof getConfig !== 'function' || typeof resolveBinding !== 'function' || typeof installProtocol !== 'function' || typeof resolveNativeTheme !== 'function' || typeof subscribeNativeTheme !== 'function') throw new Error('missing trusted desktop configuration')
   let initialSourcePaint;
   let configurationQueue = Promise.resolve(), configurationEpoch = 0
@@ -92,6 +92,7 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
   let accountOverlay;
   let controller, main, accountPopout, accountPopoutCreating, registry, config, account, accountGlobalPanel, sceneComponent, erpNextStatusComponent, accountSidebar, accountSidebarOpen=false, accountSidebarWidthDip=340, accountSidebarRequest=0, accountSidebarCreating, accountCreating, closed = false, generation = 0, uiScale=1, orderSaved=false, orderMigrationAllowed=true, orderQueue=Promise.resolve(), sourceThemeSnapshot, sourceThemeMaterials, releaseNativeTheme, sourceThemePublisher, pendingSourceThemePreference, themeRequest, themeSequence=0
   const windows = new Map(), nativeCaptionWindows = new WeakSet(), views = new Map(), assistantRoleTabTargets = new Map(), rolePopouts = new Map(), rolePopoutCreating = new Map(), closingRolePopouts = new Set(), componentPopouts = new Map(), componentPopoutCreating = new Map(), closingComponentPopouts = new Set(), channels = [], focusedGuests = new Map(), inventoryRequests = new Map(), pluginNavigationRequests = new Map(), modelRequests = new Map(), settingsRequests = new Map(), mobileLinkRequests = new Map()
+  const activeSceneByWindow = new WeakMap(), activeSceneRevisionByWindow = new WeakMap(), sceneFileScopes = new WeakMap(), sceneFileScopeWindows = new WeakSet()
   let inventorySequence=0
   let accountOverlayRequest, accountOverlayState = {requestId:0,generation:0,eligible:false}
   const ui18DiagnosticRoot = 'C:\\Users\\23825\\AppData\\Local\\Temp\\tradeloom-launch-diag-20261031\\ui18-controller-runtime-diagnostic-20261101'
@@ -150,6 +151,84 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
     return window
   }
   const scene = id => { const value = config.scenes.find(s => s.id === id); if (!value) throw new Error('unknown scene'); return value }
+  const supportsSceneFiles = id => {
+    const value = config?.scenes?.find(item => item.id === id)
+    return Boolean(value && ['files', 'preview'].every((panelId, index) => {
+      const path = index === 0 ? '/artifacts#files' : '/artifacts#preview'
+      return value.panels?.some(panel => panel.id === panelId && panel.type === 'business-iframe' && panel.path === path)
+    }))
+  }
+  const fixedSceneForWindow = window => [...windows].find(([id, value]) => id !== 'main' && value === window)?.[0]
+  function sceneFileScope(window, sceneId) {
+    let scopes = sceneFileScopes.get(window)
+    if (!scopes) { scopes = new Map(); sceneFileScopes.set(window, scopes) }
+    let record = scopes.get(sceneId)
+    if (!record || record.epoch !== configurationEpoch) {
+      if (record) void Promise.resolve(requestSceneFiles?.({ scope: record.token, request: { operation: 'revoke' }, chosen: null })).catch(() => {})
+      record = { token: randomUUID(), epoch: configurationEpoch }
+      scopes.set(sceneId, record)
+    }
+    if (!sceneFileScopeWindows.has(window)) {
+      sceneFileScopeWindows.add(window)
+      window.once('closed', () => {
+        for (const record of sceneFileScopes.get(window)?.values() ?? []) {
+          void Promise.resolve(requestSceneFiles?.({ scope: record.token, request: { operation: 'revoke' }, chosen: null })).catch(() => {})
+        }
+        sceneFileScopes.delete(window)
+        activeSceneByWindow.delete(window)
+        activeSceneRevisionByWindow.delete(window)
+      })
+    }
+    return record.token
+  }
+  function activateSceneForWindow(event, sceneId) {
+    const window = assertWindow(event)
+    const fixedScene = fixedSceneForWindow(window)
+    if (typeof sceneId !== 'string' || !config?.scenes?.some(item => item.id === sceneId)
+      || window !== main && (!fixedScene || fixedScene !== sceneId || !windows.has(fixedScene))) throw Error('active scene owner rejected')
+    activeSceneByWindow.set(window, sceneId)
+    activeSceneRevisionByWindow.set(window, (activeSceneRevisionByWindow.get(window) ?? 0) + 1)
+    return { sceneId }
+  }
+  async function sceneFilesRequest(event, request) {
+    const operation = request?.operation
+    const hasEntry = ['enter', 'preview', 'download', 'open', 'reveal'].includes(operation)
+    if (!request || !['pick', 'current', 'revoke', 'up', 'enter', 'preview', 'download', 'open', 'reveal', 'open-directory'].includes(operation)
+      || Object.keys(request).sort().join(',') !== (hasEntry ? 'id,operation' : 'operation')
+      || hasEntry && (typeof request.id !== 'string' || !/^[0-9a-f-]{36}$/i.test(request.id))) throw Error('invalid scene files request')
+    const window = assertWindow(event), fixedScene = fixedSceneForWindow(window)
+    if (closed || window !== main && !fixedScene) throw Error('scene files owner rejected')
+    const sceneId = window === main ? activeSceneByWindow.get(window) : fixedScene
+    if (!sceneId || !supportsSceneFiles(sceneId)) throw Error('scene files owner rejected')
+    const frame = event.senderFrame, revision = activeSceneRevisionByWindow.get(window) ?? 0, epoch = configurationEpoch
+    const assertOwner = () => {
+      if (closed || window.isDestroyed() || assertWindow(event) !== window || event.senderFrame !== frame
+        || frame !== window.webContents.mainFrame || configurationEpoch !== epoch || !supportsSceneFiles(sceneId)
+        || (window === main ? activeSceneByWindow.get(window) !== sceneId || (activeSceneRevisionByWindow.get(window) ?? 0) !== revision : fixedSceneForWindow(window) !== sceneId)) {
+        throw Error('scene files owner changed')
+      }
+    }
+    await assertOwner()
+    let chosen = null
+    if (operation === 'pick') {
+      if (typeof pickSceneDirectory !== 'function' || hasNativeModal(window)) throw Error('scene directory picker unavailable')
+      chosen = await pickSceneDirectory(window)
+      await assertOwner()
+      if (chosen === null) return null
+      if (typeof chosen !== 'string' || !isAbsolute(chosen) || chosen.length > 32767) throw Error('scene directory selection unavailable')
+    }
+    if (typeof requestSceneFiles !== 'function') throw Error('scene files unavailable')
+    const scope = sceneFileScope(window, sceneId)
+    const value = await requestSceneFiles({ scope, request, chosen })
+    await assertOwner()
+    if (operation === 'open' || operation === 'reveal' || operation === 'open-directory') {
+      const targetOperation = operation === 'reveal' ? 'reveal' : operation === 'open-directory' ? 'open-directory' : 'open'
+      await openWorkflowFile(targetOperation, value, assertOwner)
+      await assertOwner()
+      return { ok: true }
+    }
+    return value
+  }
   let assistantCapabilitiesWindow
   async function openAssistantCapabilities(event, sceneId) {
     const owner = assertWindow(event)
@@ -188,6 +267,14 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
     }
     return { componentKey: ASSISTANT_CAPABILITIES_KEY, role: item.role }
   }
+  function assertAssistantCapabilitiesThemeWindow(event) {
+    const item = assistantCapabilitiesWindow
+    if (!item || item.window.isDestroyed() || event.sender !== item.window.webContents
+      || event.senderFrame !== event.sender.mainFrame || event.senderFrame?.url !== ASSISTANT_CAPABILITIES_URL) {
+      throw Error('assistant capabilities theme sender rejected')
+    }
+    return item.window
+  }
   const normalizeOrder = ids => {const result=[];for(const raw of Array.isArray(ids)?ids:[]){if(typeof raw!=='string')continue;const id=raw.trim();if(!id || result.includes(id))continue;result.push(id);if(result.length===200)break}return result}
   const orderedScenes = ids => {const saved=normalizeOrder(ids),byId=new Map(config.scenes.map(s=>[s.id,s]));const ordered=saved.map(id=>byId.get(id)).filter(Boolean).concat(config.scenes.filter(s=>!saved.includes(s.id)));return ordered.filter(s=>s.first).concat(ordered.filter(s=>!s.first))}
   const orderState = () => ({saved:orderSaved,ids:config.scenes.map(s=>s.id)})
@@ -198,6 +285,9 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
     const request=themeRequest;if(!request)return
     themeRequest=undefined;pendingSourceThemePreference=undefined;clearTimeout(request.timer)
     request.event.sender.removeListener('destroyed',request.callerDestroyed)
+    // Only undo a preview that differs from durable material. Successful
+    // writes already published that material before completing the request.
+    if (request.dispatched && sourceThemeMaterials && request.preference !== sourceThemeMaterials.preference) publishCanonicalTheme()
     request.resolve(ok===true)
   }
   const dispatchThemeRequest = () => {
@@ -211,6 +301,9 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
       request.item=account;request.contents=account.view.webContents;request.frame=sourceThemePublisher.frame
       request.metadata={requestId:request.id,generation:account.generation};request.dispatched=true;pendingSourceThemePreference=undefined
       request.contents.send('source-shell:theme-preference-event',request.preference,request.metadata)
+      // Preview only after validating the current account publisher/owner.
+      // Settings authority remains in the official account form write.
+      publishCanonicalTheme()
       ui18Diagnostic('theme','preference-dispatched',ui18AccountFields());return true
     } catch { finishThemeRequest(false);return false }
   }
@@ -235,7 +328,7 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
   }
   const canonicalThemeSnapshot = () => {
     if (!sourceThemeMaterials) return undefined
-    const preference = sourceThemeMaterials.preference
+    const preference = themeRequest?.dispatched ? themeRequest.preference : sourceThemeMaterials.preference
     const resolved = resolveNativeTheme(preference)
     const colorScheme = preference === 'system' ? resolved : preference
     return safeThemeSnapshot({preference, colorScheme, palette:sourceThemeMaterials.palettes[colorScheme], ui:sourceThemeMaterials.ui})
@@ -243,7 +336,7 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
   const publishCanonicalTheme = () => {
     if (closed || !sourceThemeMaterials) return
     const snapshot = canonicalThemeSnapshot()
-    const sourceWindows = new Set([...windows.values(), ...rolePopouts.values(), ...componentPopouts.values(), ...(accountPopout ? [accountPopout] : [])])
+    const sourceWindows = new Set([...windows.values(), ...rolePopouts.values(), ...componentPopouts.values(), ...(accountPopout ? [accountPopout] : []), ...(assistantCapabilitiesWindow ? [assistantCapabilitiesWindow.window] : [])])
     let sendCount = 0
     const mainTargetIncluded = sourceWindows.has(main)
     for (const sourceWindow of sourceWindows) {
@@ -285,7 +378,7 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
     for(const item of [...views.values(),...(account?[account]:[]),...(sceneComponent?[sceneComponent]:[]),...(erpNextStatusComponent?[erpNextStatusComponent]:[])])applyBounds(item)
     if(accountSidebar)applyAccountSidebarBounds(accountSidebar)
   }
-  const descriptor = item => item.kind === 'account' ? {kind:'account',generation:item.generation,businessNavigation:'shell'} : item.kind==='account-sidebar' ? {kind:'account-sidebar',generation:item.generation,accountGeneration:item.accountGeneration} : item.kind==='scene-component' ? {kind:'scene-component',componentKey:item.componentKey,sceneId:item.sceneId,panelId:item.panelId,generation:item.generation,...(account?{accountGeneration:account.generation}:{})} : {kind:'role',sceneId:item.bindingSceneId ?? item.sceneId,panelId:item.bindingPanelId ?? item.panelId,roleId:item.roleId,sessionId:item.sessionId,bindingRevision:item.bindingRevision,surface:item.surface,generation:item.generation,...(account?{accountGeneration:account.generation}:{})}
+  const descriptor = item => item.kind === 'account' ? {kind:'account',generation:item.generation,businessNavigation:'shell'} : item.kind==='account-sidebar' ? {kind:'account-sidebar',generation:item.generation,accountGeneration:item.accountGeneration} : item.kind==='scene-component' ? {kind:'scene-component',componentKey:item.componentKey,sceneId:item.sceneId,panelId:item.panelId,generation:item.generation,...(account?{accountGeneration:account.generation}:{})} : {kind:'role',sceneId:item.bindingSceneId ?? item.sceneId,panelId:item.bindingPanelId ?? item.panelId,roleId:item.roleId,sessionId:item.sessionId,bindingRevision:item.bindingRevision,surface:item.surface,generation:item.generation,...(item.assistantPreset?{assistantPreset:true}:{}),...(account?{accountGeneration:account.generation}:{})}
   const notifyRoleLayout = item => { const contents=item.view.webContents;if(contents.isDestroyed())return;const next=descriptor(item);if(next.kind==='role')onNativeDescriptorChanged(contents,next);try { contents.send('dsh-desktop:native-surface-changed',next) } catch {} }
   const notifyGuest = item => { clearGeometryMotion(item);item.generation=++generation; item.status=item.loaded?'document-loaded':'loading';const next=descriptor(item);if(next.kind==='role')onNativeDescriptorChanged(item.view.webContents,next); try { item.view.webContents.send('dsh-desktop:native-surface-changed',next) } catch(error) { item.status='context-update-failed'; console.error('source shell: guest notification failed',error) } }
   const observedOperations = Object.freeze({
@@ -307,7 +400,7 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
     channels.push(channel)
   }
   const observeCreatePhase = phase => { try { observePhase(phase) } catch {} }
-  const roleGuestPhases = new Set(['palette-start','palette-end','palette-error','register-start','register-end','register-error','refresh-start','refresh-end','refresh-error','not-live','catalog-not-ready','catalog-missing-bound','retain-unknown-session','retain-error','invalid-reference','retain-ready-start','retain-ready-end','retain-ready-error','slot-available','slot-unavailable','mounted-start','mounted-end','mounted-error','generation-wait-start','generation-wait-end','loader-wait-start','loader-wait-end','catalog-refresh-start','catalog-refresh-end','catalog-refresh-error','terminal-error'])
+  const roleGuestPhases = new Set(['palette-start','palette-end','palette-error','register-start','register-end','register-error','refresh-start','refresh-end','refresh-error','not-live','catalog-not-ready','catalog-missing-bound','retain-unknown-session','retain-error','invalid-reference','retain-ready-start','retain-ready-end','retain-ready-error','slot-available','slot-unavailable','mounted-start','mounted-end','mounted-error','generation-wait-start','generation-wait-end','loader-wait-start','loader-wait-end','catalog-refresh-start','catalog-refresh-end','catalog-refresh-error','exact-session-catalog-start','exact-session-catalog-end','exact-session-catalog-error','exact-session-retain-start','exact-session-retain-error','exact-session-retain-ready','terminal-error'])
   const observeRoleGuestMessage = (item, args) => {
     const detailsMessage=args[0]?.message
     const message=typeof detailsMessage==='string'?detailsMessage:args[2]
@@ -774,7 +867,44 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
     if(matches.length!==1 || matches[0].sceneId!=='erpnext')throw Error('ERPNext status route unavailable')
     return matches[0]
   }
+  const closeWorkflowNodeEditor = item => {
+    const child = item?.nodeEditor
+    if (!child) return
+    item.nodeEditor = undefined
+    if (!child.isDestroyed()) child.destroy()
+  }
+  const installWorkflowNodeEditor = item => {
+    const contents = item.view.webContents
+    // A same-origin blank auxiliary document renders the existing React form through a portal.
+    // No navigation, IPC surface, new partition, or general popup permission is granted.
+    contents.setWindowOpenHandler?.(details => {
+      const guest = controller.resolveGuest(contents, contents.mainFrame)
+      if (closed || item !== sceneComponent || !item.visible || hasNativeModal(item.parent)
+        || guest?.scope !== 'scene-component' || guest.view !== item.view
+        || details.url !== 'about:blank' || details.frameName !== 'tradeloom-workflow-node-editor') return { action: 'deny' }
+      closeWorkflowNodeEditor(item)
+      const ownerBounds = item.parent.getBounds?.() ?? item.parent.getContentBounds()
+      const canvasBounds = item.view.getBounds()
+      return { action: 'allow', overrideBrowserWindowOptions: {
+        width: 380, height: 500, minWidth: 300, minHeight: 260,
+        x: ownerBounds.x + Math.min(ownerBounds.width - 380, canvasBounds.x + canvasBounds.width + 8),
+        y: ownerBounds.y + Math.max(32, canvasBounds.y),
+        parent: item.parent, modal: false, title: '节点设置', autoHideMenuBar: true,
+        webPreferences: { preload: '', contextIsolation: true, nodeIntegration: false, sandbox: true },
+      } }
+    })
+    contents.on('did-create-window', (child, details) => {
+      if (item !== sceneComponent || details.url !== 'about:blank' || details.frameName !== 'tradeloom-workflow-node-editor') { child.destroy(); return }
+      item.nodeEditor = child
+      item.nodeEditorParent = item.parent
+      child.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+      child.webContents.on('will-navigate', event => event.preventDefault())
+      child.once('closed', () => { if (item.nodeEditor === child) item.nodeEditor = undefined })
+    })
+    contents.once('destroyed', () => closeWorkflowNodeEditor(item))
+  }
   const disposeSceneComponent = item => {
+    closeWorkflowNodeEditor(item)
     if(sceneComponent===item)sceneComponent=undefined
     if(erpNextStatusComponent===item)erpNextStatusComponent=undefined
     const child=componentPopouts.get(item.componentKey)
@@ -927,6 +1057,11 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
     && item.status==='context-mounted' && !hasNativeModal(item.parent)
   const componentStatusValue = item => ({status:item?.status ?? 'unavailable',visible:item?.visible===true,placement:componentPlacement(item),componentKey:item?.componentKey,sceneId:item?.sceneId,panelId:item?.panelId,...(item?.componentKey==='workflow-canvas-native'?{toolbar:{canStart:item.toolbar?.canStart===true,canRefresh:item.toolbar?.canRefresh===true}}:{})})
   const notifySceneComponent = item => {
+    if (item.nodeEditor && item.nodeEditorParent !== item.parent) closeWorkflowNodeEditor(item)
+    else if (item.nodeEditor && !item.nodeEditor.isDestroyed()) {
+      // Native menus and overlays temporarily hide the guest too; preserve its un-applied draft.
+      if (item.visible) item.nodeEditor.showInactive(); else item.nodeEditor.hide()
+    }
     const dockOwner=componentDockOwner(item)
     if(closed || !dockOwner || dockOwner.isDestroyed())return
     const channel=item.componentKey==='workflow-canvas-native'?'source-shell:workflow-canvas-status':'source-shell:erpnext-status-event'
@@ -981,7 +1116,9 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
     if(componentPopoutCreating.has(componentKey))return componentPopoutCreating.get(componentKey)
     if(item.parent!==dockOwner)throw Error('scene component owner changed')
     const task=(async()=>{
-      const child=new BrowserWindow({frame:true,width:1040,height:760,minWidth:600,minHeight:420,show:false,webPreferences:{contextIsolation:true,nodeIntegration:false,sandbox:true}})
+      const erpNextStatus = componentKey === 'erpnext-status-native'
+      const child=new BrowserWindow({frame:true,...(erpNextStatus ? {autoHideMenuBar:true} : {}),width:1040,height:760,minWidth:600,minHeight:420,show:false,webPreferences:{contextIsolation:true,nodeIntegration:false,sandbox:true}})
+      if(erpNextStatus)child.setMenuBarVisibility?.(false)
       child.webContents.setZoomFactor(uiScale)
       const dockRect=item.rect?{...item.rect}:null,dockVisible=item.visible===true,dockIndex=Number.isInteger(item.dockIndex)&&item.dockIndex>=0?item.dockIndex:contentChildIndex(dockOwner,item.view),from=item.parent
       child.setTitle?.(componentKey==='workflow-canvas-native'?'织贸助手 · 工作流画布':'织贸助手 · ERPNext 状态')
@@ -1071,6 +1208,15 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
         throw Error('invalid initial paint acknowledgement')
       })
       bind('config', event => { assertWindow(event); return config })
+      bind('openErpNextWorkbench', async event => {
+        const window=assertWindow(event), fixedScene=fixedSceneForWindow(window)
+        const sceneId=window===main ? activeSceneByWindow.get(window) : fixedScene
+        const panel=sceneId==='erpnext' ? scene('erpnext').panels?.find(value=>value.id==='business-main') : undefined
+        if(closed || hasNativeModal(window) || panel?.type!=='erpnext-status'
+          || window!==main && (fixedScene!=='erpnext' || !windows.has('erpnext'))
+          || window===main && fixedScene!==undefined) throw Error('ERPNext workbench owner rejected')
+        return openErpNextWorkbench()
+      })
       bind('draftFlushResult', (event, value) => {
         if (!value || Object.keys(value).sort().join(',') !== 'requestId,saved' || typeof value.saved !== 'boolean') throw Error('invalid draft save result')
         const pending = draftFlushes.get(value.requestId)
@@ -1222,7 +1368,11 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
       bind('sceneRotationCancel', (event, request) => runRotationRequest(event, sceneRotationCancel, request))
       bind('sceneRotationAbandon', (event, request) => runRotationRequest(event, sceneRotationAbandon, request))
       bind('getUiScale',event=>{assertWindow(event);return uiScale})
-      bind('themeSnapshot',event=>{if(!controller.resolveGuest(event.sender,event.senderFrame))assertThemeWindow(event);return sourceThemeSnapshot})
+      bind('themeSnapshot',event=>{
+        try { assertAssistantCapabilitiesThemeWindow(event); return sourceThemeSnapshot } catch {}
+        if(!controller.resolveGuest(event.sender,event.senderFrame))assertThemeWindow(event)
+        return sourceThemeSnapshot
+      })
       bind('themePreference', (event, preference) => {
         assertThemeWindow(event)
         if(!themePreference(preference))throw Error('invalid source theme preference')
@@ -1279,6 +1429,7 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
         })
       })
       bind('workflowFiles', workflowFileRequest)
+      bind('sceneFiles', sceneFilesRequest)
       bind('workflowProjectFolder', workflowProjectFolderRequest)
       bind('workflowCanvasMount', async event => {
         const dockOwner=workflowDockOwner()
@@ -1289,6 +1440,7 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
         const view=new WebContentsView({webPreferences:{preload:appPreload,partition:ownedPartition,contextIsolation:true,nodeIntegration:false,sandbox:true}})
         const item={kind:'scene-component',componentKey:'workflow-canvas-native',sceneId:route.sceneId,panelId:route.panelId,generation:++generation,view,parent:dockOwner,status:'loading',loaded:false,visible:false,rect:null,dockedRect:null,dockedVisible:false,dockedChildIndex:-1,dockIndex:-1}
         sceneComponent=item
+        installWorkflowNodeEditor(item)
         const notify=()=>notifySceneComponent(item)
         try{
           dockOwner.contentView.addChildView(view);item.dockIndex=contentChildIndex(dockOwner,view);item.dockedChildIndex=item.dockIndex;view.setVisible(false);view.webContents.setZoomFactor(uiScale);updateOwnership(view.webContents,dockOwner);raiseAccountOverlay(dockOwner)
@@ -1389,6 +1541,7 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
        bind('windowInfo',event=>{const w=assertWindow(event); return {isMain:w===main,isAccountPopout:w===accountPopout,nativeCaption:nativeCaptionWindows.has(w),sceneId:[...windows].find(([,value])=>value===w)?.[0]}})
       bind('windowScenes',event=>{assertWindow(event); return [...windows.keys()].filter(x=>x!=='main')})
       bind('listScenarios',event=>{assertWindow(event); return config.scenes})
+      bind('setActiveScene',(event,sceneId)=>activateSceneForWindow(event,sceneId))
       bind('getScenario',(event,id)=>{assertWindow(event); return scene(id)})
       bind('getSceneOrder',event=>{assertWindow(event); return orderState()})
       const saveOrder=(event,order,migrate)=>{assertWindow(event);if(!Array.isArray(order))throw Error('invalid order');const task=orderQueue.then(async()=>{assertWindow(event);if(migrate && (orderSaved || !orderMigrationAllowed))return orderState();const next=orderedScenes(order),ids=normalizeOrder(next.map(s=>s.id));await saveSceneOrder(ids);config={...config,scenes:next};orderSaved=true;orderMigrationAllowed=false;const state=orderState();for(const w of windows.values())try{w.webContents.send('source-shell:scene-order-event',state)}catch(error){console.error('scene order notification failed',error)}return state});orderQueue=task.catch(()=>{});return task}
@@ -1471,24 +1624,39 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
         const w = assertWindow(event), hostScene = scene(hostSceneId)
         const hostPanel = hostScene.panels.find(panel => panel.id === hostPanelId && panel.type === 'native-chat')
         if (!hostPanel || (windows.get(hostSceneId) ?? main) !== w || hasNativeModal(w)) throw Error('assistant tab catalog owner rejected')
-        const epoch = configurationEpoch, entries = []
+        const epoch = configurationEpoch, entries = [], seenRoleIds = new Set(), seenPanelIds = new Set()
         for (const role of Array.isArray(config.roles) ? config.roles : []) {
-          if (!role || typeof role.id !== 'string' || role.id === (hostPanel.roleId ?? hostScene.roleId)) continue
+          if (!role || typeof role.id !== 'string' || !role.id.trim() || seenRoleIds.has(role.id)
+            || role.id === (hostPanel.roleId ?? hostScene.roleId)) continue
+          seenRoleIds.add(role.id)
           let target
           for (const targetScene of config.scenes) {
             const targetPanel = targetScene.panels.find(panel => panel.type === 'native-chat'
               && (panel.roleId ?? targetScene.roleId) === role.id)
             if (targetPanel) { target = { sceneId: targetScene.id, panelId: targetPanel.id }; break }
           }
-          if (!target) continue
-          const binding = await resolveBinding(target)
-          if (closed || epoch !== configurationEpoch || assertWindow(event) !== w) throw Error('assistant tab catalog changed')
-          if (binding?.sceneId !== target.sceneId || binding?.panelId !== target.panelId
-            || binding.bindingStatus !== 'bound' || binding.roleId !== role.id
-            || typeof binding.sessionId !== 'string' || !binding.sessionId) continue
           const panelId = `assistant-tab:${hostPanelId}:${role.id}`
-          assistantRoleTabTargets.set(key(hostSceneId, panelId), { hostPanelId, hostSceneId, roleId: role.id, targetSceneId: target.sceneId, targetPanelId: target.panelId })
+          if (seenPanelIds.has(panelId)) continue
+          seenPanelIds.add(panelId)
+          assistantRoleTabTargets.set(key(hostSceneId, panelId), { kind: 'role', hostPanelId, hostSceneId, roleId: role.id,
+            ...(target ? { targetSceneId: target.sceneId, targetPanelId: target.panelId } : {}) })
           entries.push({ panelId, roleId: role.id, label: typeof role.label === 'string' && role.label ? role.label : role.id })
+        }
+        let presetRows = []
+        try { presetRows = await listAssistantPresets() } catch { /* The configured role catalog remains usable without optional DSH presets. */ }
+        if (closed || epoch !== configurationEpoch || assertWindow(event) !== w) throw Error('assistant tab catalog changed')
+        if (!Array.isArray(presetRows)) presetRows = []
+        const seenPresets = new Set()
+        for (const preset of presetRows) {
+          if (!preset || typeof preset.id !== 'string' || !preset.id.trim() || seenPresets.has(preset.id)) continue
+          seenPresets.add(preset.id)
+          const roleId = `assistant-preset-${createHash('sha256').update(preset.id).digest('hex').slice(0, 24)}`
+          const panelId = `assistant-tab:${hostPanelId}:${roleId}`
+          if (seenRoleIds.has(roleId) || seenPanelIds.has(panelId)) continue
+          seenRoleIds.add(roleId)
+          seenPanelIds.add(panelId)
+          assistantRoleTabTargets.set(key(hostSceneId, panelId), { kind: 'preset', hostPanelId, hostSceneId, roleId, presetId: preset.id })
+          entries.push({ panelId, roleId, label: typeof preset.name === 'string' && preset.name.trim() ? preset.name.trim() : preset.id })
         }
         return entries
       })
@@ -1500,9 +1668,10 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
           : scene(sceneId).panels.find(p => p.id === panelId)
         if (!panel || !['native-chat', 'native-workspace'].includes(panel.type)) throw new Error('not a native panel')
         if (dynamic && ((windows.get(sceneId) ?? main) !== w || dynamic.hostSceneId !== sceneId
-          || !config.roles?.some(role => role.id === dynamic.roleId)
-          || !scene(dynamic.targetSceneId).panels.some(candidate => candidate.id === dynamic.targetPanelId
-            && candidate.type === 'native-chat' && (candidate.roleId ?? scene(dynamic.targetSceneId).roleId) === dynamic.roleId))) {
+          || (dynamic.kind === 'role' && (!config.roles?.some(role => role.id === dynamic.roleId)
+            || (dynamic.targetSceneId && !scene(dynamic.targetSceneId).panels.some(candidate => candidate.id === dynamic.targetPanelId
+              && candidate.type === 'native-chat' && (candidate.roleId ?? scene(dynamic.targetSceneId).roleId) === dynamic.roleId))))
+          || (dynamic.kind === 'preset' && !/^assistant-preset-[a-f0-9]{24}$/.test(dynamic.roleId)))) {
           throw Error('assistant tab target rejected')
         }
         if (views.has(key(sceneId,panelId))) {
@@ -1512,15 +1681,41 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
         }
         observeCreatePhase('binding-start')
         const capturedEpoch = configurationEpoch
-        const bindingTarget = dynamic ? { sceneId: dynamic.targetSceneId, panelId: dynamic.targetPanelId } : { sceneId, panelId }
-        const binding = await resolveBinding(bindingTarget)
+        const lazyDynamic = dynamic && (dynamic.kind === 'preset' || !dynamic.targetSceneId)
+        const bindingTarget = dynamic && dynamic.targetSceneId
+          ? { sceneId: dynamic.targetSceneId, panelId: dynamic.targetPanelId }
+          : { sceneId, panelId }
+        let binding
+        if (lazyDynamic && dynamic.kind === 'preset') {
+          const created = await createAssistantSession(dynamic.presetId)
+          if (!created || typeof created.sessionId !== 'string' || !created.sessionId
+            || typeof created.bindingRevision !== 'string' || !/^(0|[1-9][0-9]{0,63})$/.test(created.bindingRevision)) throw Error('assistant preset session unavailable')
+          binding = { ...bindingTarget, roleId: dynamic.roleId, bindingStatus: 'bound', sessionId: created.sessionId, bindingRevision: created.bindingRevision }
+        } else if (lazyDynamic) {
+          const created = await createAssistantRoleSession(dynamic.roleId)
+          if (!created || created.role !== dynamic.roleId || typeof created.sessionId !== 'string' || !created.sessionId
+            || created.binding?.sessionId !== created.sessionId || typeof created.binding?.bindingRevision !== 'string'
+            || !/^(0|[1-9][0-9]{0,63})$/.test(created.binding.bindingRevision)) throw Error('assistant role session unavailable')
+          binding = { ...bindingTarget, roleId: dynamic.roleId, bindingStatus: 'bound', sessionId: created.sessionId, bindingRevision: created.binding.bindingRevision }
+        } else {
+          binding = await resolveBinding(bindingTarget)
+          if (dynamic?.kind === 'role' && binding?.bindingStatus === 'unbound') {
+            const created = await createAssistantRoleSession(dynamic.roleId)
+            if (!created || created.role !== dynamic.roleId || typeof created.sessionId !== 'string' || !created.sessionId
+              || created.binding?.sessionId !== created.sessionId || typeof created.binding?.bindingRevision !== 'string'
+              || !/^(0|[1-9][0-9]{0,63})$/.test(created.binding.bindingRevision)) throw Error('assistant role session unavailable')
+            binding = { ...bindingTarget, roleId: dynamic.roleId, bindingStatus: 'bound', sessionId: created.sessionId, bindingRevision: created.binding.bindingRevision }
+          }
+        }
         if (capturedEpoch !== configurationEpoch || closed) throw Error('scene configuration changed during binding resolution')
         observeCreatePhase('binding-end')
         if (binding?.sceneId !== bindingTarget.sceneId || binding?.panelId !== bindingTarget.panelId
           || (dynamic && binding.roleId !== dynamic.roleId)) throw new Error('binding mismatch')
         if (binding.bindingStatus === 'unbound') return { status:'unbound' }
         if (binding.bindingStatus !== 'bound' || !binding.sessionId) throw new Error('binding unavailable')
-        const capturedBinding = captureRoleBinding(binding, bindingTarget.sceneId, bindingTarget.panelId)
+        const capturedBinding = lazyDynamic
+          ? Object.freeze({ roleId: dynamic.roleId, sessionId: binding.sessionId, bindingRevision: binding.bindingRevision })
+          : captureRoleBinding(binding, bindingTarget.sceneId, bindingTarget.panelId)
         // Recheck authority after awaiting the Host, including the hidden-seat reuse path.
         if (closed || assertWindow(event)!==w) throw new Error('owner closed')
         const surface=panel.type==='native-chat'?'chat':'files'
@@ -1538,7 +1733,7 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
           if(w===main && item?.parent===main && existing.window?.window===main && !existing.rehomed
             && item.visible===false && existing.surface===surface) {
             registry.transfer(binding.sessionId,sceneId,panelId,surface)
-            views.delete(oldKey);item.sceneId=sceneId;item.panelId=panelId;item.bindingSceneId=bindingTarget.sceneId;item.bindingPanelId=bindingTarget.panelId;item.surface=surface;Object.assign(item,capturedBinding)
+            views.delete(oldKey);item.sceneId=sceneId;item.panelId=panelId;item.bindingSceneId=lazyDynamic?sceneId:bindingTarget.sceneId;item.bindingPanelId=lazyDynamic?panelId:bindingTarget.panelId;item.assistantPreset=dynamic?.kind==='preset';item.assistantPresetId=dynamic?.kind==='preset'?dynamic.presetId:undefined;item.surface=surface;Object.assign(item,capturedBinding)
             item.status=item.loaded?'document-loaded':'loading';views.set(key(sceneId,panelId),item)
             notifyGuest(item);emit(item,item.status)
             return {status:item.status,placement:'docked'}
@@ -1548,7 +1743,7 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
         const v = new WebContentsView({ webPreferences:{ preload:appPreload, partition:ownedPartition, contextIsolation:true,nodeIntegration:false,sandbox:true,additionalArguments:['--tradeloom-account-parent-caption'] } })
         const wrapper={ get frame() { return v.webContents.mainFrame }, destroy:()=>v.webContents.destroy() }
         try { registry.attach({sceneId,panelId,sessionId:binding.sessionId,surface,view:wrapper,partition:ownedPartition}); owner(w,sceneId,panelId) } catch(error) { registry.revoke(sceneId,panelId); v.webContents.destroy(); throw error }
-        const item={sceneId,panelId,bindingSceneId:bindingTarget.sceneId,bindingPanelId:bindingTarget.panelId,...capturedBinding,surface,generation:++generation,view:v,wrapper,parent:w,status:'loading',loaded:false}; views.set(key(sceneId,panelId),item)
+        const item={sceneId,panelId,bindingSceneId:lazyDynamic?sceneId:bindingTarget.sceneId,bindingPanelId:lazyDynamic?panelId:bindingTarget.panelId,...capturedBinding,assistantPreset:dynamic?.kind==='preset',assistantPresetId:dynamic?.kind==='preset'?dynamic.presetId:undefined,surface,generation:++generation,view:v,wrapper,parent:w,status:'loading',loaded:false}; views.set(key(sceneId,panelId),item)
         w.contentView.addChildView(v); v.setVisible(false); v.webContents.setZoomFactor(uiScale); updateOwnership(v.webContents,w);raiseAccountOverlay(w)
         if(accountSidebarOpen&&accountSidebar&&accountSidebar.parent===w&&!accountGlobalPanel)w.contentView.addChildView(accountSidebar.view)
         v.webContents.on('console-message',(...args)=>{observeRoleGuestMessage(item,args);observeRoleGuestListProbeMessage(item,args)})
@@ -1653,8 +1848,16 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
         return returnRoleSeat(item,child)
       })
       bind('detach',async(event,s)=>{
-        if(assertWindow(event)!==main || windows.has(s) || hasNativeModal(main)) throw new Error('invalid detach')
-        scene(s); const child=createSourceWindow(windowOptions()); child.webContents.setZoomFactor(uiScale); let registered=false
+        if(assertWindow(event)!==main || hasNativeModal(main)) throw new Error('invalid detach')
+        scene(s)
+        const existing=windows.get(s)
+        if(existing && !existing.isDestroyed()){
+          if(existing.isMinimized?.())existing.restore?.()
+          existing.show?.();existing.focus?.()
+          return {status:'focused'}
+        }
+        if(existing)windows.delete(s)
+        const child=createSourceWindow(windowOptions()); child.webContents.setZoomFactor(uiScale); let registered=false
         child.on('close',event=>{ if(closed || !windows.has(s))return; if(hasNativeModal(child) || hasNativeModal(main)){ event.preventDefault(); return } try { relocate(s,child,main,()=>{ if(registered) registry.returnScene(s); windows.delete(s) }); for(const item of views.values()) if(item.sceneId===s) item.failed=false } catch(error) { event.preventDefault(); console.error('source shell: scene return failed', error) } })
         try { relocate(s,main,child,()=>{ registry.registerScene(s,wrap(child)); registered=true; windows.set(s,child) }) }
         catch(error) { if(error instanceof AggregateError) windows.set(s,child); else child.destroy(); throw error }
@@ -1720,7 +1923,7 @@ export function createSourceShellController({ BrowserWindow, WebContentsView, ip
       return result
     },
     menuOwner(event,sourceEditor=false) { const guest=this.resolveGuest(event.sender,event.senderFrame); if(guest) return guest.scope==='role' && guest.view.getVisible?.()===false ? {window:guest.window,editingContents:guest.window.webContents} : {window:guest.window,editingContents:event.sender,view:guest.view}; const window=assertWindow(event), remembered=focusedGuests.get(window); const owned=remembered && this.resolveGuest(remembered,remembered.mainFrame); const item=owned?.scope==='account'?account:owned?.scope==='scene-component'?componentForKey(owned.componentKey):owned?.scope==='role'?views.get(key(owned.sceneId,owned.panelId)):undefined; return {window,editingContents:!sourceEditor && owned?.window===window && item?.visible && (owned.scope!=='role' || item.view.getVisible?.()!==false)?remembered:window.webContents} },
-    resolveGuest(contents,frame) { if(sceneComponent && sceneComponent.view.webContents===contents && frame===contents.mainFrame && frame?.url===SCENE_COMPONENT_URL && sceneComponent.parent && (sceneComponent.parent===componentDockOwner(sceneComponent) || componentPopouts.get('workflow-canvas-native')===sceneComponent.parent) && !sceneComponent.parent.isDestroyed())return {window:sceneComponent.parent,view:sceneComponent.view,sceneId:sceneComponent.sceneId,panelId:sceneComponent.panelId,componentKey:sceneComponent.componentKey,scope:'scene-component'};if(erpNextStatusComponent && erpNextStatusComponent.view.webContents===contents && frame===contents.mainFrame && frame?.url===SCENE_COMPONENT_URL && erpNextStatusComponent.parent && (erpNextStatusComponent.parent===main || componentPopouts.get('erpnext-status-native')===erpNextStatusComponent.parent) && !erpNextStatusComponent.parent.isDestroyed())return {window:erpNextStatusComponent.parent,view:erpNextStatusComponent.view,sceneId:erpNextStatusComponent.sceneId,panelId:erpNextStatusComponent.panelId,componentKey:erpNextStatusComponent.componentKey,scope:'scene-component'};if(accountSidebar && account && accountSidebar.accountGeneration===account.generation && accountSidebar.view.webContents===contents && frame===contents.mainFrame && typeof frame?.url==='string' && frame.url.startsWith('dsh-app://app/') && accountSidebar.parent===account.parent && !accountSidebar.parent.isDestroyed()) return {window:accountSidebar.parent,view:accountSidebar.view,scope:'account-sidebar'}; if(account && account.view.webContents===contents && frame===contents.mainFrame && typeof frame?.url==='string' && frame.url.startsWith('dsh-app://app/') && account.parent && !account.parent.isDestroyed()) return {window:account.parent,view:account.view,scope:'account'}; for(const item of views.values()) { const seat=registry.get(item.sceneId,item.panelId); if(!item.failed && item.view.webContents===contents && frame && typeof frame.url==='string' && frame.url.startsWith('dsh-app://app/') && registry.authorizeGuest(item.wrapper,frame) && seat && !item.parent.isDestroyed()) return {window:item.parent,view:item.view,sceneId:item.sceneId,panelId:item.panelId,sessionId:item.sessionId,bindingRevision:item.bindingRevision,generation:item.generation,scope:'role'} } return undefined },
+    resolveGuest(contents,frame) { if(sceneComponent && sceneComponent.view.webContents===contents && frame===contents.mainFrame && frame?.url===SCENE_COMPONENT_URL && sceneComponent.parent && (sceneComponent.parent===componentDockOwner(sceneComponent) || componentPopouts.get('workflow-canvas-native')===sceneComponent.parent) && !sceneComponent.parent.isDestroyed())return {window:sceneComponent.parent,view:sceneComponent.view,sceneId:sceneComponent.sceneId,panelId:sceneComponent.panelId,componentKey:sceneComponent.componentKey,scope:'scene-component'};if(erpNextStatusComponent && erpNextStatusComponent.view.webContents===contents && frame===contents.mainFrame && frame?.url===SCENE_COMPONENT_URL && erpNextStatusComponent.parent && (erpNextStatusComponent.parent===main || componentPopouts.get('erpnext-status-native')===erpNextStatusComponent.parent) && !erpNextStatusComponent.parent.isDestroyed())return {window:erpNextStatusComponent.parent,view:erpNextStatusComponent.view,sceneId:erpNextStatusComponent.sceneId,panelId:erpNextStatusComponent.panelId,componentKey:erpNextStatusComponent.componentKey,scope:'scene-component'};if(accountSidebar && account && accountSidebar.accountGeneration===account.generation && accountSidebar.view.webContents===contents && frame===contents.mainFrame && typeof frame?.url==='string' && frame.url.startsWith('dsh-app://app/') && accountSidebar.parent===account.parent && !accountSidebar.parent.isDestroyed()) return {window:accountSidebar.parent,view:accountSidebar.view,scope:'account-sidebar'}; if(account && account.view.webContents===contents && frame===contents.mainFrame && typeof frame?.url==='string' && frame.url.startsWith('dsh-app://app/') && account.parent && !account.parent.isDestroyed()) return {window:account.parent,view:account.view,scope:'account'}; for(const item of views.values()) { const seat=registry.get(item.sceneId,item.panelId); if(!item.failed && item.view.webContents===contents && frame && typeof frame.url==='string' && frame.url.startsWith('dsh-app://app/') && registry.authorizeGuest(item.wrapper,frame) && seat && !item.parent.isDestroyed()) return {window:item.parent,view:item.view,sceneId:item.sceneId,panelId:item.panelId,bindingSceneId:item.bindingSceneId ?? item.sceneId,bindingPanelId:item.bindingPanelId ?? item.panelId,sessionId:item.sessionId,bindingRevision:item.bindingRevision,generation:item.generation,assistantPreset:item.assistantPreset===true,assistantPresetId:item.assistantPresetId,scope:'role'} } return undefined },
     isGuest(contents,frame) { return this.resolveGuest(contents,frame) !== undefined },
     nativeLayout(contents,frame) {
       const owned=this.resolveGuest(contents,frame)

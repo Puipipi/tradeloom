@@ -37,6 +37,8 @@ The desktop package includes the application runtime, but not an ERPNext service
 
 ## Development
 
+Enterprise server install/start/stop entry points are in the repository root: `Install-EnterpriseServer.ps1`, `Start-EnterpriseServer.ps1`, and `Stop-EnterpriseServer.ps1`; the client URL is `http://127.0.0.1:27417/enterprise/`. See the [Windows enterprise server guide](docs/enterprise-service.md).
+
 The GitHub repository contains source code; cloning it does not install or launch the Electron release. Start with [quick start](docs/quick-start.md) and [runtime preparation and upgrades](docs/upgrade-harness.md) for source-mode development. The deployment package is obtained from the [Stage 6.17 release](https://github.com/Puipipi/tradeloom/releases/tag/stage6.17-windows-x64), not from the Django development page.
 
 ## Documentation
@@ -44,6 +46,7 @@ The GitHub repository contains source code; cloning it does not install or launc
 | Entry | Read it for |
 |---|---|
 | [Windows desktop deployment](docs/windows-desktop-deployment.md) | Full package download, checksum, launch, data and upgrade steps |
+| [Django enterprise service](docs/enterprise-service.md) | Authentication, accounts/groups, loopback and HTTPS deployment |
 | [Competition scope and goals](docs/00-赛题与目标.md) | Current Topic 1 direction, official sources and remaining evidence |
 | [Acceptance matrix](docs/acceptance-matrix.md) | Scoped checks and their limits; historical entries retain their dates |
 | [Agent development](docs/agent-development.md) | Integration background and developer contracts |

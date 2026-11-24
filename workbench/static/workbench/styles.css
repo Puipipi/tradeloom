@@ -110,6 +110,43 @@ textarea {
   font: inherit;
 }
 
+/* Keep native semantics (including file pickers) while theming their chrome. */
+:where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="reset"]), select, textarea) {
+  min-width: 0;
+  max-width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: none;
+}
+
+input::placeholder,
+textarea::placeholder { color: var(--muted); opacity: 1; }
+input[type="checkbox"],
+input[type="radio"],
+input[type="range"] { accent-color: var(--accent); }
+select option,
+select optgroup { color: var(--ink); background: var(--surface); }
+
+input[type="file"]::file-selector-button {
+  margin-inline-end: 8px;
+  padding: 4px 9px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--ink);
+  background: var(--surface-soft);
+  font: inherit;
+  cursor: pointer;
+}
+input[type="file"]:not(:disabled)::file-selector-button:hover { background: var(--surface-hover); }
+:where(input, select, textarea):disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+  opacity: .6;
+}
+input[type="file"]:disabled::file-selector-button { cursor: not-allowed; }
+
 button,
 a {
   -webkit-tap-highlight-color: transparent;
@@ -2211,6 +2248,17 @@ html[data-business-iframe="true"] .intro-panel .panel-heading p {
   filter: none;
 }
 
+/* Embedded business actions use the same restrained tint as shell controls. */
+html[data-business-iframe="true"] .button.primary {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--line));
+  color: var(--ink);
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+}
+html[data-business-iframe="true"] .button.primary:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 22%, var(--surface));
+}
+
 .button.secondary {
   border-color: var(--line);
   color: var(--indigo);
@@ -3571,7 +3619,7 @@ html[data-business-iframe="true"] .intro-panel .intro-actions {
 .file-image-thumb { width: 54px; height: 42px; flex: 0 0 auto; padding: 2px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface-soft); cursor: pointer; }
 .file-image-thumb[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); }
 .file-image-thumb img { width: 100%; height: 100%; object-fit: contain; }
-.file-image-stage { min-height: 0; flex: 1 1 auto; display: grid; place-items: center; overflow: auto; overscroll-behavior: contain; background-color: #151922; background-image: linear-gradient(45deg, #242a35 25%, transparent 25%), linear-gradient(-45deg, #242a35 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #242a35 75%), linear-gradient(-45deg, transparent 75%, #242a35 75%); background-position: 0 0, 0 8px, 8px -8px, -8px 0; background-size: 16px 16px; }
+.file-image-stage { min-height: 0; flex: 1 1 auto; display: grid; place-items: center; overflow: auto; overscroll-behavior: contain; background-color: var(--surface); background-image: linear-gradient(45deg, var(--surface-soft) 25%, transparent 25%), linear-gradient(-45deg, var(--surface-soft) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, var(--surface-soft) 75%), linear-gradient(-45deg, transparent 75%, var(--surface-soft) 75%); background-position: 0 0, 0 8px, 8px -8px, -8px 0; background-size: 16px 16px; }
 .file-image-stage img { display: block; width: auto; height: auto; max-width: 100%; max-height: 100%; object-fit: contain; transform-origin: center center; }
 .file-image-stage[data-fit="false"] img { max-width: none; max-height: none; }
 .file-preview-pane [hidden] { display: none !important; }
@@ -3642,6 +3690,7 @@ html[data-business-iframe="true"][data-business-browser-mode] .file-view-switch 
 html[data-business-iframe="true"][data-business-browser-mode] .file-view-switch svg { width: 14px; height: 14px; }
 html[data-business-iframe="true"][data-business-browser-mode] .file-pane-tools .button.small { min-height: 24px; padding: 2px 5px; font-size: var(--wb-font-xs); }
 html[data-business-iframe="true"][data-business-browser-mode] .file-pane-tools [data-file-refresh] { width: 24px; min-width: 24px; min-height: 24px; display: grid; place-items: center; padding: 2px; }
+html[data-business-iframe="true"][data-business-browser-mode] .file-pane-tools [data-file-refresh] { display: none; }
 html[data-business-iframe="true"][data-business-browser-mode] .file-pane-tools [data-file-refresh] svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.4; }
 html[data-business-iframe="true"][data-business-browser-mode] .file-list-group-title { margin: 7px 5px 3px; }
 html[data-business-iframe="true"][data-business-browser-mode] .file-list-scroll[data-display-mode="rows"] .file-list-item {
@@ -4077,7 +4126,7 @@ html[data-business-iframe="true"] .orders-search {
 html[data-business-iframe="true"] .orders-search label { font-weight: 700; white-space: nowrap; }
 html[data-business-iframe="true"] .orders-search input { min-width: 0; }
 html[data-business-iframe="true"] .orders-search .button { min-width: calc(76px * var(--wb-ui-scale)); }
-html[data-business-iframe="true"] .orders-status { min-height: 1.3em; margin: calc(6px * var(--wb-ui-scale)) 0 0; color: var(--muted); }
+html[data-business-iframe="true"] .orders-status { flex: 0 0 auto; min-height: 1.3em; margin: calc(6px * var(--wb-ui-scale)) 0 0; color: var(--muted); }
 html[data-business-iframe="true"] .order-results { min-width: 0; }
 html[data-business-iframe="true"] .order-empty {
   display: grid;
@@ -4255,6 +4304,43 @@ html[data-business-iframe="true"][data-business-browser-mode] .file-list-scroll 
   min-height: 0;
   flex: 1 1 0;
   overflow: auto;
+}
+
+/* The deliverables scene renders the list and preview together inside a docked business pane. */
+html[data-business-iframe="true"][data-business-browser-mode="deliverables"] .file-browser-panel {
+  container-type: inline-size;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+html[data-business-iframe="true"][data-business-browser-mode="deliverables"] .file-browser-layout {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  grid-template-columns: minmax(220px, 0.32fr) minmax(0, 0.68fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+html[data-business-iframe="true"][data-business-browser-mode="deliverables"] .file-list-pane,
+html[data-business-iframe="true"][data-business-browser-mode="deliverables"] .file-preview-pane {
+  min-width: 0;
+  min-height: 0;
+}
+html[data-business-iframe="true"][data-business-browser-mode="deliverables"] .file-list-scroll,
+html[data-business-iframe="true"][data-business-browser-mode="deliverables"] .file-preview-source,
+html[data-business-iframe="true"][data-business-browser-mode="deliverables"] .file-preview-reader {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+@container (max-width: 640px) {
+  html[data-business-iframe="true"][data-business-browser-mode="deliverables"] .file-browser-panel { overflow: auto; }
+  html[data-business-iframe="true"][data-business-browser-mode="deliverables"] .file-browser-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(130px, 0.8fr) minmax(180px, 1.2fr);
+  }
+  html[data-business-iframe="true"][data-business-browser-mode="deliverables"] .file-list-pane,
+  html[data-business-iframe="true"][data-business-browser-mode="deliverables"] .file-preview-pane { min-height: 130px; }
 }
 
 html[data-business-iframe="true"] .home-page,
@@ -4670,10 +4756,34 @@ html[data-business-iframe="true"][data-business-browser-mode] .file-list-scroll[
   width: calc(18px * var(--wb-ui-scale));
   min-width: calc(18px * var(--wb-ui-scale));
   height: calc(18px * var(--wb-ui-scale));
+  border: 0;
+  background: transparent;
+  font-size: calc(13px * var(--wb-ui-scale));
+  line-height: 1;
 }
-html[data-business-iframe="true"][data-business-browser-mode] .file-list-scroll[data-display-mode="rows"] .file-type-icon svg {
-  width: calc(16px * var(--wb-ui-scale));
-  height: calc(16px * var(--wb-ui-scale));
+html[data-business-iframe="true"][data-business-browser-mode] .file-list-scroll[data-display-mode="grid"] .file-type-icon {
+  font-size: calc(14px * var(--wb-ui-scale));
+  line-height: 1;
+}
+html[data-business-iframe="true"][data-business-browser-mode] .file-list-empty {
+  display: grid;
+  min-height: calc(50px * var(--wb-ui-scale));
+  place-items: center;
+  margin: calc(6px * var(--wb-ui-scale)) calc(4px * var(--wb-ui-scale));
+  padding: calc(10px * var(--wb-ui-scale));
+  border: 1px solid var(--line);
+  border-radius: calc(9px * var(--wb-ui-scale));
+  background: var(--surface);
+  text-align: center;
+}
+html[data-business-iframe="true"][data-business-browser-mode="files"][data-shell-file-toolbar="true"] .file-list-pane > .file-pane-heading {
+  display: none;
+}
+html[data-business-iframe="true"][data-business-browser-mode="files"] .file-list-scroll[data-display-mode="rows"] .file-list-item[aria-current="true"],
+html[data-business-iframe="true"][data-business-browser-mode="files"] .file-list-scroll[data-display-mode="rows"] .file-list-item.is-selected {
+  border-color: transparent;
+  background: var(--surface-hover);
+  box-shadow: none;
 }
 html[data-business-iframe="true"][data-business-browser-mode] .file-preview-empty {
   align-self: center;

@@ -1,7 +1,7 @@
 /* 由 scenes.json 同步生成 —— file:// 下使用本地内联布局数据 */
 window.__SCENES__ = {
   "version": 1,
-  "note": "织贸工作台六场景布局。业务页面与助手角色按当前桌面配置绑定；缺少配置时显示不可用状态，不创建会话。",
+  "note": "织贸工作台七场景布局。业务页面与助手角色按当前桌面配置绑定；缺少配置时显示不可用状态，不创建会话。",
   "scenes": [
     {
       "id": "center",
@@ -322,6 +322,24 @@ window.__SCENES__ = {
           "row": 3,
           "w": 3,
           "h": 2
+        }
+      ]
+    },
+    {
+      "id": "erpnext",
+      "name": "ERPNext",
+      "description": "ERPNext 服务状态、受限只读业务记录与已配置实例工作台入口。",
+      "cols": 4,
+      "rows": 4,
+      "panels": [
+        {
+          "id": "business-main",
+          "title": "ERPNext 服务",
+          "type": "erpnext-status",
+          "col": 1,
+          "row": 1,
+          "w": 4,
+          "h": 4
         }
       ]
     }

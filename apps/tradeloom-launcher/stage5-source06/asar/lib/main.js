@@ -1,4 +1,5 @@
 import { validateFailureLocation } from "./main-location-validator.mjs";
+import { createNativeAccountLoginCallbackBridge } from "./native-account-login-callback.mjs";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createRequire } from "node:module";
 import { net, webContents, BrowserWindow, Menu, Notification, Tray, WebContentsView, app, clipboard, dialog, ipcMain, nativeImage, nativeTheme, powerMonitor, protocol, session, shell, systemPreferences } from "electron";
@@ -59,6 +60,8 @@ const ROLE_GUEST_PHASES = new Set([
 	"generation-wait-start", "generation-wait-end",
 	"loader-wait-start", "loader-wait-end",
 	"catalog-refresh-start", "catalog-refresh-end", "catalog-refresh-error",
+	"exact-session-catalog-start", "exact-session-catalog-end", "exact-session-catalog-error",
+	"exact-session-retain-start", "exact-session-retain-error", "exact-session-retain-ready",
 	"terminal-error",
 	"list-probe"
 ]);
@@ -557,11 +560,18 @@ function createStartupObservation(path, append = (file, content) => {
 					if (!Number.isSafeInteger(fields.attempt) || fields.attempt < 1
 						|| !['run-start', 'run-error', 'public-result-built', 'host-observe-start', 'host-observe-return', 'host-cancel-start', 'host-cancel-return', 'target-captured', 'send-start', 'send-return', 'observation-received', 'terminal-accepted', 'host-result-validated', 'primary-error', 'cleanup-start', 'cleanup-end', 'cleanup-error', 'main-cleanup-start', 'main-cleanup-end', 'main-cleanup-error'].includes(fields.phase) || ![...DOCUMENT_DIAGNOSTIC_REASONS, 'welcome-nav-capability', 'welcome-input-count', 'welcome-hero-count', 'welcome-list-conflict', 'welcome-input-state', 'welcome-input-rendered', 'welcome-hero-rendered', 'welcome-hero-branch', 'welcome-input-hit', 'welcome-document-not-visible', 'welcome-render-geometry', 'welcome-render-style', 'welcome-render-depth', 'none', 'unknown', 'webai_target_unavailable', 'webai_task_cancelled', 'webai_document_changed', 'webai_observation_stale', 'webai_input_unavailable', 'webai_send_unconfirmed', 'webai_observation_invalid', 'webai_observation_overflow', 'webai_task_response_rejected', 'webai_task_cleanup_failed', 'webai_site_protocol_unverified', 'webai_site_origin_rejected', 'webai_target_cleanup_failed'].includes(fields.reason)) return;
 					Object.assign(safe, { operation: "webai-question", attempt: fields.attempt, phase: fields.phase, reason: fields.reason });
+				} else if (fields.operation === "account-login") {
+					const phases = ["ipc-entered", "actor-accepted", "bridge-start", "bridge-ready", "bridge-failed", "watch-update", "open-start", "open-accepted", "open-failed", "stage-ipc-rejected"];
+					if (!phases.includes(fields.phase)) return;
+					safe.operation = "account-login";
+					safe.phase = fields.phase;
+					if (fields.actorScope === "account" || fields.actorScope === "account-sidebar") safe.actorScope = fields.actorScope;
+					if (["initializing", "waiting-browser", "exchanging", "committing", "succeeded", "cancelled", "expired", "failed"].includes(fields.attemptPhase)) safe.attemptPhase = fields.attemptPhase;
 				} else if (fields.operation === "origin-grant") {
-					const validPhase = ["sender", "request-shape", "source-mode", "frame", "guest", "role-identity", "provider", "recheck", "completed"].includes(fields.phase);
-					const validEndpointClass = fields.endpointClass === "session-list" || fields.endpointClass === "other";
+					const validPhase = ["sender", "request-shape", "source-mode", "frame", "guest", "role-identity", "provider", "recheck", "assistant-preset-request", "assistant-preset-recheck", "completed"].includes(fields.phase);
+					const validEndpointClass = ["session-list", "assistant-session-projections", "assistant-session-follow", "assistant-session-page", "assistant-session-prompt", "assistant-session-cancel", "other"].includes(fields.endpointClass);
 					const validResult = ["entered", "grant", "null", "error"].includes(fields.result);
-					const validCode = ["none", "unknown", "unowned_guest", "stale_role_binding", "role_session_not_durable"].includes(fields.code);
+					const validCode = ["none", "unknown", "unowned_guest", "stale_role_binding", "role_session_not_durable", "assistant-session-unavailable", "host-http-401", "host-http-403", "host-http-503", "host-changed"].includes(fields.code);
 					if (!validPhase || !validEndpointClass || !validResult || !validCode
 						|| fields.result === "error" && fields.code === "none"
 						|| fields.result !== "error" && fields.code !== "none"
@@ -5591,6 +5601,7 @@ const DESKTOP_IPC = {
 	shortcutsChanged: "dsh-desktop:shortcuts-changed",
 	shortcutsRecording: "dsh-desktop:shortcuts-recording",
 	boot: "dsh-desktop:boot",
+	accountLoginCallbackOrigin: "dsh-desktop:account-login-callback-origin",
 	enterWorkspace: "dsh-desktop:enter-workspace",
 	onboardingActive: "dsh-desktop:onboarding-active",
 	onboardingApiKey: "dsh-desktop:onboarding-api-key",
@@ -15864,6 +15875,9 @@ function isDesktopHostEvent(message, isRunId) {
 		case "workflow-files": return Number.isSafeInteger(candidate.requestId) && candidate.requestId > 0
 			&& (typeof candidate.error === "string" || candidate.result === null
 				|| typeof candidate.result === "object" && !Array.isArray(candidate.result));
+		case "scene-files": return Number.isSafeInteger(candidate.requestId) && candidate.requestId > 0
+			&& (typeof candidate.error === "string" || candidate.result === null
+				|| typeof candidate.result === "object" && !Array.isArray(candidate.result));
 		case "scene-memory-origin-grant": {
 			if (!Number.isSafeInteger(candidate.requestId)) return false;
 			if (candidate.error !== void 0) return typeof candidate.error === "string" && (candidate.errorCode === void 0 || typeof candidate.errorCode === "string");
@@ -16216,6 +16230,14 @@ var DesktopHostProcess = class {
 	async workflowFiles(request) {
 		const response = await this.control({ type: "workflow-files", request }, 15e3, "workflow files: Host request timed out", "workflow files");
 		if (response.type !== "workflow-files") throw new Error("workflow files: unexpected Host response");
+		return response.result;
+	}
+	async sceneFiles(scope, request, chosen = null) {
+		if (typeof scope !== "string" || !/^[0-9a-f-]{36}$/i.test(scope)
+			|| !request || typeof request !== "object" || Array.isArray(request)
+			|| chosen !== null && (typeof chosen !== "string" || !isAbsolute(chosen) || chosen.length > 32767)) throw new Error("invalid scene files request");
+		const response = await this.control({ type: "scene-files", scope, request, chosen }, 15e3, "scene files: Host request timed out", "scene files");
+		if (response.type !== "scene-files") throw new Error("scene files: unexpected Host response");
 		return response.result;
 	}
 	async issueSceneMemoryOriginGrant(request) {
@@ -16913,6 +16935,8 @@ function installDesktopDirectoryPicker(getWindow, resolveGuest, sourceMode = () 
 		window.focus();
 		const options = purpose === "workflow"
 			? { title: "授权工作流中心助手浏览此目录", properties: ["openDirectory"] }
+			: purpose === "scene-files"
+			? { title: "选择本地文件目录", properties: ["openDirectory"] }
 			: { properties: ["openDirectory", "createDirectory"] };
 		const result = dialog.showOpenDialog(window, options).then(({ canceled, filePaths }) => window.isDestroyed() || canceled ? null : filePaths[0] ?? null).finally(() => {
 			pending.delete(window);
@@ -16926,7 +16950,7 @@ function installDesktopDirectoryPicker(getWindow, resolveGuest, sourceMode = () 
 		assertDesktopSender(event, ["app"]);
 		return pick(window, "workspace");
 	});
-	return Object.assign((window) => pending.has(window), { pickForWorkflow: (window) => pick(window, "workflow") });
+	return Object.assign((window) => pending.has(window), { pickForWorkflow: (window) => pick(window, "workflow"), pickForSceneFiles: (window) => pick(window, "scene-files") });
 }
 //#endregion
 //#region lib/types/microphone-permissions.js
@@ -24965,6 +24989,13 @@ async function main() {
 	const applicationUrl = `${SCHEME}://app/`;
 	let hostUrl;
 	let hostCookie;
+	let accountLoginCallbackBridge;
+	let accountLoginCallbackBridgePromise;
+	const closeAccountLoginCallbackBridge = async () => {
+		const bridge = accountLoginCallbackBridge;
+		accountLoginCallbackBridge = void 0;
+		if (bridge !== void 0) await bridge.close().catch(() => void 0);
+	};
 	const browserGuests = new DesktopBrowserGuests(() => hostUrl);
 	const aiWebWindows = new DesktopAiWebWindows(() => hostUrl, (owner, state) => {
 		if (!owner.isDestroyed() && !owner.webContents.isDestroyed()) owner.webContents.send(DESKTOP_IPC.aiWebChanged, state);
@@ -24996,6 +25027,7 @@ async function main() {
 	let stopAccount;
 	let openedAttempt;
 	let returnedAttempt;
+	let watchedAccountAttempt;
 	let pendingWelcomeNotice;
 	let previousAccountStatus;
 	const assertProductSender = (event) => {
@@ -25079,7 +25111,27 @@ async function main() {
 				injections = ready.injections;
 				removeLegacyHostCookies(session.defaultSession.cookies, ready.url).catch(error => console.error("desktop: legacy Host cookie cleanup failed", error));
 				welcomeBackend = connectDesktopWelcome(ready.url, hostCookie);
-				if (productWorkspace) return;
+				if (productWorkspace) {
+					stopAccount?.();
+					const accountBackend = welcomeBackend.account;
+					stopAccount = accountBackend.watch((state) => {
+						if (quitting) return;
+						const attempt = state.attempt;
+						observeStartup("source-shell", "phase", { operation: "account-login", phase: "watch-update", attemptPhase: attempt?.phase });
+						if (attempt?.id !== void 0) watchedAccountAttempt = attempt.id;
+						if (attempt?.phase === "waiting-browser" && attempt.authorizeUrl !== void 0 && openedAttempt !== attempt.id) {
+							openedAttempt = attempt.id;
+							observeStartup("source-shell", "phase", { operation: "account-login", phase: "open-start" });
+							shell.openExternal(platformLoginUrl(attempt.authorizeUrl)).then(() => observeStartup("source-shell", "phase", { operation: "account-login", phase: "open-accepted" }), () => observeStartup("source-shell", "phase", { operation: "account-login", phase: "open-failed" }));
+						}
+						const terminal = !attempt || ["succeeded", "cancelled", "expired", "failed"].includes(attempt.phase);
+						if (terminal && watchedAccountAttempt !== void 0 && (!attempt || attempt.id === watchedAccountAttempt)) {
+							watchedAccountAttempt = void 0;
+							void closeAccountLoginCallbackBridge();
+						}
+					}, () => {}, () => {}, () => {});
+					return;
+				}
 				analyticsEnabled = await welcomeBackend.analyticsEnabled().catch(() => false);
 				if (!reportedLaunch) {
 					reportedLaunch = true;
@@ -25124,6 +25176,9 @@ async function main() {
 			stop: async () => {
 				analyticsEnabled = false;
 				stopAccount?.();
+				await closeAccountLoginCallbackBridge();
+				hostUrl = void 0;
+				hostCookie = void 0;
 				await disposeFileDrag().catch(error => console.error(error));
 				try {
 					await host.stop(requireCleanStop);
@@ -25333,6 +25388,20 @@ async function main() {
 		if (backend.host !== requestHost || hostUrl !== requestHostUrl || hostCookie !== requestHostCookie) throw sourceFailure("source shell: Host changed during request", "HOST_CHANGED");
 		return value;
 	};
+	const openConfiguredErpNextWorkbench = async () => {
+		const status = await sourceRequest("/business-api/erpnext/status");
+		if (!status || status.configured !== true || !["connected", "unavailable"].includes(status.status)
+			|| typeof status.site_url !== "string" || status.site_url.length > 2048) throw Error("ERPNext is not configured");
+		let site;
+		try { site = new URL(status.site_url); } catch { throw Error("ERPNext site URL is invalid"); }
+		const host = site.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+		const loopback = host === "localhost" || host === "::1" || /^127(?:\.\d{1,3}){3}$/.test(host);
+		if (!["https:", "http:"].includes(site.protocol) || site.protocol === "http:" && !loopback
+			|| site.username || site.password || site.search || site.hash || !/^\/(?:[A-Za-z0-9._~-]+\/)*$/u.test(site.pathname)
+			|| site.pathname.split("/").some(part => part === "." || part === "..")) throw Error("ERPNext site URL is invalid");
+		await shell.openExternal(new URL("app", site).href);
+		return { opened: true };
+	};
 	const createSourceSceneConfigLoader = (request, getHostIdentity, fail) => {
 		const inFlight = [];
 		const sameHost = (left, right) => left.host === right.host && left.url === right.url && left.cookie === right.cookie;
@@ -25485,6 +25554,7 @@ async function main() {
 			primaryWindow: window,
 			hasNativeModal: hasDirectoryModal,
 			pickWorkflowDirectory: hasDirectoryModal.pickForWorkflow,
+			pickSceneDirectory: hasDirectoryModal.pickForSceneFiles,
 			loadWorkflowProjectFolders: loadSourceWorkflowProjectFolders,
 			saveWorkflowProjectFolders: saveSourceWorkflowProjectFolders,
 			requestWorkflowFiles: async (request) => {
@@ -25492,6 +25562,13 @@ async function main() {
 				if (typeof host?.workflowFiles !== "function") throw new Error("workflow files: Host unavailable");
 				const result = await host.workflowFiles(request);
 				if (backend.host !== host) throw new Error("workflow files: Host changed");
+				return result;
+			},
+			requestSceneFiles: async ({ scope, request, chosen }) => {
+				const host = backend.host;
+				if (typeof host?.sceneFiles !== "function") throw new Error("scene files: Host unavailable");
+				const result = await host.sceneFiles(scope, request, chosen);
+				if (backend.host !== host) throw new Error("scene files: Host changed");
 				return result;
 			},
 			openWorkflowFile: async (operation, resolved, authorize) => {
@@ -25518,6 +25595,7 @@ async function main() {
 					if (error) throw new Error("workflow file open failed");
 				}
 			},
+			openErpNextWorkbench: openConfiguredErpNextWorkbench,
 			resolveNativeTheme: (preference) => {
 				if (nativeTheme.themeSource !== preference) nativeTheme.themeSource = preference;
 				return nativeTheme.shouldUseDarkColors ? "dark" : "light";
@@ -25548,6 +25626,9 @@ async function main() {
 				detail: "未变化的面板与会话保持原样。先保存受影响面板的文字草稿；未发送附件不承诺跨面板重建保留。若需保留附件，请取消并先自行处理。"
 			})).response === 1,
 			resolveBinding: (binding) => sourceRequest("/tradeloom/source-shell/resolve-binding", binding),
+			listAssistantPresets: async () => (await sourceRequest("/tradeloom/assistant-presets")).presets,
+			createAssistantSession: (presetId) => sourceRequest("/tradeloom/assistant-presets", { presetId }),
+			createAssistantRoleSession: (role) => sourceRequest("/tradeloom/session", { role }),
 			sceneRotationPreview: (request) => sourceRequest("/tradeloom/scene-rotation/preview", request),
 			sceneRotationConfirm: (request) => sourceRequest("/tradeloom/scene-rotation/confirm", request),
 			sceneRotationStatus: (request) => sourceRequest("/tradeloom/scene-rotation/status", request),
@@ -25785,16 +25866,31 @@ async function main() {
 		sourceMode,
 		controller: sourceController
 	} : { sourceMode });
+	const assistantPresetRequestTargets = (endpoint, httpMethod, bodyBytes, sessionId) => {
+		if (httpMethod !== "POST" || !["session/projections", "session/follow", "session/page", "session/prompt", "session/cancel"].includes(endpoint)) return false;
+		let request;
+		try { request = JSON.parse(Buffer.from(bodyBytes).toString("utf8")); } catch { return false; }
+		if (!request || request.type !== "client-request" || request.method !== endpoint || !request.payload || typeof request.payload !== "object" || Array.isArray(request.payload)) return false;
+		const payload = request.payload;
+		if (endpoint === "session/follow" || endpoint === "session/page") {
+			return payload.address?.kind === "session" && payload.address.sessionId === sessionId
+				&& Object.keys(payload.address).length === 2 && Object.keys(payload.address).every(key => ["kind", "sessionId"].includes(key));
+		}
+		return payload.sessionId === sessionId;
+	};
 	ipcMain.handle(DESKTOP_IPC.sceneMemoryOriginGrant, async (event, request) => {
 		let phase = "sender";
 		let endpointClass = "other";
 		const observeGrant = (result, code = "none") => {
 			try { observeStartup("source-shell", "phase", { operation: "origin-grant", phase, endpointClass, result, code }); } catch {}
 		};
-		const safeGrantCode = (error) => {
+			const safeGrantCode = (error) => {
 			try {
 				const code = error !== null && (typeof error === "object" || typeof error === "function") ? error.code : void 0;
-				return ["unowned_guest", "stale_role_binding", "role_session_not_durable"].includes(code) ? code : "unknown";
+				if (["unowned_guest", "stale_role_binding", "role_session_not_durable", "assistant-session-unavailable"].includes(code)) return code;
+				if (code === "HOST_CHANGED") return "host-changed";
+				if (code === "HOST_HTTP_ERROR" && [401, 403, 503].includes(error.httpStatus)) return `host-http-${String(error.httpStatus)}`;
+				return "unknown";
 			} catch { return "unknown"; }
 		};
 		try {
@@ -25804,7 +25900,9 @@ async function main() {
 			if (!request || typeof request.endpoint !== "string" || request.endpoint.split("/").some((segment) => segment === "" || segment === "." || segment === ".." || !/^[A-Za-z0-9_$.-]+$/.test(segment))
 				|| request.httpMethod !== "POST" || !(request.bodyBytes instanceof Uint8Array)
 				|| request.bodyBytes.byteLength === 0 || request.bodyBytes.byteLength > 2 * 1024 * 1024) throw new Error("scene-memory origin: invalid grant request");
-			endpointClass = request.endpoint === "session/list" ? "session-list" : "other";
+			endpointClass = request.endpoint === "session/list" ? "session-list"
+				: ["projections", "follow", "page", "prompt", "cancel"].includes(request.endpoint.split("/").at(-1))
+					&& request.endpoint.startsWith("session/") ? `assistant-session-${request.endpoint.split("/").at(-1)}` : "other";
 			phase = "source-mode";
 			observeGrant("entered");
 			if (!sourceMode || sourceController === void 0) { observeGrant("null"); return null; }
@@ -25819,17 +25917,39 @@ async function main() {
 				if (sender === mainWindow?.webContents) { observeGrant("null"); return null; }
 				throw new Error("scene-memory origin: request came from an unowned guest");
 			}
+			if (guest.scope === "role" && guest.assistantPreset === true && typeof guest.assistantPresetId === "string") {
+				phase = "assistant-preset-request";
+				if (!Number.isSafeInteger(guest.generation) || typeof guest.sessionId !== "string"
+					|| !assistantPresetRequestTargets(request.endpoint, request.httpMethod, request.bodyBytes, guest.sessionId)) {
+					throw new Error("scene-memory origin: assistant request is not bound to its selected session");
+				}
+				const validated = await sourceRequest("/tradeloom/assistant-presets/session-access", {
+					presetId: guest.assistantPresetId,
+					sessionId: guest.sessionId
+				});
+				phase = "assistant-preset-recheck";
+				const current = sourceController?.resolveGuest(sender, frame);
+				if (sourceController !== controller || sender.isDestroyed() || sender.mainFrame !== frame
+					|| current?.scope !== "role" || current.assistantPreset !== true
+					|| current.generation !== guest.generation || current.sceneId !== guest.sceneId || current.panelId !== guest.panelId
+					|| current.sessionId !== guest.sessionId || current.assistantPresetId !== guest.assistantPresetId) throw new Error("scene-memory origin: assistant guest changed while validating its session");
+				if (validated?.authorized !== true) throw Object.assign(new Error("scene-memory origin: assistant session is unavailable"), { code: "assistant-session-unavailable" });
+				phase = "completed";
+				observeGrant("null");
+				return null;
+			}
 			if (guest.scope !== "role") {
 				if (["account", "account-sidebar", "scene-component"].includes(guest.scope)) { observeGrant("null"); return null; }
 				throw new Error("scene-memory origin: request came from an unsupported guest");
 			}
+			const physicalSeat = { sceneId: guest.sceneId, panelId: guest.panelId };
 			phase = "role-identity";
 			const source = {
 				scope: "role",
 				guestId: sender.id,
 				generation: guest.generation,
-				sceneId: guest.sceneId,
-				panelId: guest.panelId,
+				sceneId: guest.bindingSceneId ?? guest.sceneId,
+				panelId: guest.bindingPanelId ?? guest.panelId,
 				sessionId: guest.sessionId,
 				bindingRevision: guest.bindingRevision
 			};
@@ -25842,7 +25962,8 @@ async function main() {
 			const current = sourceController?.resolveGuest(sender, frame);
 			if (sourceController !== controller || sender.isDestroyed() || sender.mainFrame !== frame
 				|| current?.scope !== "role" || current.generation !== source.generation
-				|| current.sceneId !== source.sceneId || current.panelId !== source.panelId
+				|| current.sceneId !== physicalSeat.sceneId || current.panelId !== physicalSeat.panelId
+				|| (current.bindingSceneId ?? current.sceneId) !== source.sceneId || (current.bindingPanelId ?? current.panelId) !== source.panelId
 				|| current.sessionId !== source.sessionId || current.bindingRevision !== source.bindingRevision) {
 				throw new Error("scene-memory origin: role guest changed while grant was pending");
 			}
@@ -25864,6 +25985,38 @@ async function main() {
 			injections,
 			streamBaseUrl: new URL(hostUrl).origin
 		};
+	});
+	ipcMain.handle(DESKTOP_IPC.accountLoginCallbackOrigin, async (event) => {
+		assertProductSender(event);
+		let owner;
+		if (sourceMode) {
+			owner = sourceController?.resolveGuest(event.sender, event.senderFrame);
+			if (owner?.scope !== "account" && owner?.scope !== "account-sidebar") {
+				observeStartup("source-shell", "phase", { operation: "account-login", phase: "stage-ipc-rejected" });
+				throw new Error("account callback: rejected unowned account renderer");
+			}
+		}
+		const actorScope = owner?.scope;
+		observeStartup("source-shell", "phase", { operation: "account-login", phase: "ipc-entered", actorScope });
+		observeStartup("source-shell", "phase", { operation: "account-login", phase: "actor-accepted", actorScope });
+		if (backend.host === void 0 || hostUrl === void 0) { observeStartup("source-shell", "phase", { operation: "account-login", phase: "bridge-failed" }); throw new Error("account callback: Host is unavailable"); }
+		if (accountLoginCallbackBridge !== void 0 && !accountLoginCallbackBridge.closed) { observeStartup("source-shell", "phase", { operation: "account-login", phase: "bridge-ready", actorScope }); return accountLoginCallbackBridge.origin; }
+		accountLoginCallbackBridge = void 0;
+		if (accountLoginCallbackBridgePromise === void 0) {
+			const upstream = hostUrl;
+			const upstreamOrigin = new URL(upstream).origin;
+			observeStartup("source-shell", "phase", { operation: "account-login", phase: "bridge-start", actorScope });
+			accountLoginCallbackBridgePromise = createNativeAccountLoginCallbackBridge(upstreamOrigin).then(async (bridge) => {
+				if (backend.host === void 0 || hostUrl !== upstream || quitting) {
+					await bridge.close();
+					throw new Error("account callback: Host changed while starting the loopback listener");
+				}
+				accountLoginCallbackBridge = bridge;
+				observeStartup("source-shell", "phase", { operation: "account-login", phase: "bridge-ready", actorScope });
+				return bridge;
+			}).catch((error) => { observeStartup("source-shell", "phase", { operation: "account-login", phase: "bridge-failed" }); throw error; }).finally(() => { accountLoginCallbackBridgePromise = void 0; });
+		}
+		return (await accountLoginCallbackBridgePromise).origin;
 	});
 	ipcMain.handle(DESKTOP_IPC.bootFailed, (event, message) => {
 		assertDesktopSender(event, ["app"]);

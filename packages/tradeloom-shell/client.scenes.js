@@ -2496,11 +2496,12 @@ window.__ModuleLoader__.load({
           h('div', { className: 'tl-erpnext-status-heading' }, h('h3', null, title),
             h('button', { type: 'button', onClick: checkConnection, disabled: state.loading }, '检查连接')),
           h('p', null, detail),
-          state.siteUrl ? h('a', { href: state.siteUrl, target: '_blank', rel: 'noopener noreferrer' }, '打开 ERPNext') : null,
           state.connected ? h(ERPNextRecords, { key: refreshKey, refreshKey }) : null,
         ].filter(Boolean)
       return h('section', { className: 'tl-erpnext-status', 'aria-live': 'polite' },
         h(React.Fragment, null, ...statusContent),
+        state.siteUrl ? h('div', { className: 'tl-erpnext-entry-actions' },
+          h('a', { href: `${state.siteUrl}/app`, target: '_blank', rel: 'noopener noreferrer' }, '打开 ERPNext 工作台')) : null,
         h(ERPNextQuotationDraft, { enabled: state.connected }))
     }
 
@@ -5723,6 +5724,9 @@ window.__ModuleLoader__.load({
           .tl-erpnext-status-heading h3, .tl-erpnext-detail-heading h4 { flex: 1 1 auto; margin: 0; font-size: var(--tl-font-body); }
           .tl-erpnext-status p, .tl-erpnext-source { margin: 0; color: var(--tl-muted); font-size: var(--tl-font-compact); }
           .tl-erpnext-status a { align-self: flex-start; color: var(--tl-accent); }
+          .tl-erpnext-entry-actions { display:flex; flex:0 0 auto; flex-wrap:wrap; align-items:center; gap:8px; padding:4px 0; }
+          .tl-erpnext-entry-actions a { display:inline-flex; min-height:var(--tl-control-height); align-items:center; padding:0 10px; border:1px solid var(--tl-accent); border-radius:var(--tl-corner-radius); background:var(--tl-accent); color:var(--tl-surface); font-size:var(--tl-font-compact); text-decoration:none; }
+          .tl-erpnext-entry-actions a:focus-visible { outline:2px solid var(--tl-accent); outline-offset:2px; }
           .tl-erpnext-browser { display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: 0; }
           .tl-erpnext-controls label { display: inline-flex; align-items: center; gap: 6px; color: var(--tl-muted); }
           .tl-erpnext-controls button, .tl-erpnext-controls select, .tl-erpnext-browser button,

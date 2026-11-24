@@ -1,3 +1,43 @@
+window.sourcePanelLayoutEngine = Object.freeze((() => {
+  const findPath = (node, panelId, path = '') => node.kind === 'leaf'
+    ? node.id === panelId ? path : null
+    : findPath(node.first, panelId, `${path}0`) ?? findPath(node.second, panelId, `${path}1`)
+  const insertLeaf = (node, targetId, insertedId, axis, side) => {
+    if (node.kind === 'leaf') {
+      if (node.id !== targetId) return { ...node }
+      const inserted = { kind: 'leaf', id: insertedId }
+      return side === 'before'
+        ? { kind: 'split', axis, boundary: 0, ratio: 0.5, first: inserted, second: { ...node } }
+        : { kind: 'split', axis, boundary: 0, ratio: 0.5, first: { ...node }, second: inserted }
+    }
+    return { ...node, first: insertLeaf(node.first, targetId, insertedId, axis, side), second: insertLeaf(node.second, targetId, insertedId, axis, side) }
+  }
+  const setAxisAtPath = (node, path, axis) => {
+    if (node.kind === 'leaf') return { ...node }
+    if (!path) return { ...node, axis }
+    const key = path[0] === '0' ? 'first' : 'second'
+    return { ...node, [key]: setAxisAtPath(node[key], path.slice(1), axis) }
+  }
+  const insert = (tree, targetId, insertedId, axis, side) => {
+    if (!tree || findPath(tree, targetId) === null || findPath(tree, insertedId) === null || targetId === insertedId
+      || !['x', 'y'].includes(axis) || !['before', 'after'].includes(side)) return null
+    const remove = node => node.kind === 'leaf' ? node.id === insertedId ? null : { ...node }
+      : (() => { const first = remove(node.first), second = remove(node.second); return !first ? second : !second ? first : { ...node, first, second } })()
+    const remainder = remove(tree)
+    if (!remainder || findPath(remainder, targetId) === null) return null
+    return insertLeaf(remainder, targetId, insertedId, axis, side)
+  }
+  const orientGroup = (tree, panelId, axis) => {
+    if (!tree || !['x', 'y'].includes(axis)) return null
+    const path = panelId ? findPath(tree, panelId) : ''
+    if (panelId && path === null) return null
+    if (!panelId && tree.kind === 'leaf') return null
+    const groupPath = panelId ? path.slice(0, -1) : ''
+    return setAxisAtPath(tree, groupPath, axis)
+  }
+  return Object.freeze({ insert, orientGroup })
+})());
+
 (() => {
   'use strict'
 
@@ -494,23 +534,8 @@
     if (geometryHandled || projection) updateResizeHandles()
   }
 
-  function withoutTreeLeaf(node, id) {
-    if (node.kind === 'leaf') return node.id === id ? null : { ...node }
-    const first = withoutTreeLeaf(node.first, id), second = withoutTreeLeaf(node.second, id)
-    if (!first) return second
-    if (!second) return first
-    return { ...node, first, second }
-  }
-
   function insertTreeLeaf(node, targetId, insertedId, axis, side) {
-    if (node.kind === 'leaf') {
-      if (node.id !== targetId) return { ...node }
-      const inserted = { kind: 'leaf', id: insertedId }
-      return side === 'before'
-        ? { kind: 'split', axis, boundary: 0, ratio: 0.5, first: inserted, second: { ...node } }
-        : { kind: 'split', axis, boundary: 0, ratio: 0.5, first: { ...node }, second: inserted }
-    }
-    return { ...node, first: insertTreeLeaf(node.first, targetId, insertedId, axis, side), second: insertTreeLeaf(node.second, targetId, insertedId, axis, side) }
+    return window.sourcePanelLayoutEngine.insert(node, targetId, insertedId, axis, side)
   }
 
   function setTreePaths(node, path = 'r') {
@@ -527,9 +552,9 @@
       || !['x', 'y'].includes(axis) || !['before', 'after'].includes(side)) return
     const state = treeFor(info)
     if (!state || !treeLeafIds(state.tree).includes(sourceId) || !treeLeafIds(state.tree).includes(targetId)) return
-    const remainder = withoutTreeLeaf(state.tree, sourceId)
-    if (!remainder || !treeLeafIds(remainder).includes(targetId)) return
-    const tree = setTreePaths(insertTreeLeaf(remainder, targetId, sourceId, axis, side))
+    const insertedTree = insertTreeLeaf(state.tree, targetId, sourceId, axis, side)
+    if (!insertedTree) return
+    const tree = setTreePaths(insertedTree)
     if (!validSplitTree(tree, info.geometry.map(item => item.id))) return
     state.tree = tree
     state.topology = treeTopology(tree)
@@ -542,8 +567,9 @@
     if (projection && projection.panels.every((panel, index) => panel === info.panels[index])) {
       const leaves = treeLeafIds(projection.tree)
       if (leaves.includes(sourceId) && leaves.includes(targetId)) {
-        const projected = setTreePaths(insertTreeLeaf(withoutTreeLeaf(projection.tree, sourceId), targetId, sourceId, axis, side))
-        if (validSplitTree(projected, [...leaves])) {
+        const projectedTree = insertTreeLeaf(projection.tree, targetId, sourceId, axis, side)
+        const projected = projectedTree && setTreePaths(projectedTree)
+        if (projected && validSplitTree(projected, [...leaves])) {
           projection.tree = projected
           projection.key = JSON.stringify([info.sceneId, info.geometry, [...activePanelSlots(info).keys()]])
           applyClosedPanelReflow(grid, info, projected)
@@ -664,13 +690,46 @@
     ]
   }
 
+  function arrangeSceneGroup(sceneId, panelId, axis) {
+    const grid = document.getElementById('grid')
+    const info = grid && sceneGridInfo(grid)
+    if (!info || info.sceneId !== sceneId || !['x', 'y'].includes(axis)) return false
+    const state = treeFor(info)
+    if (!state?.tree || treeLeafIds(state.tree).length < 2) { announce('当前场景没有可调整的组件组。'); return false }
+    const tree = window.sourcePanelLayoutEngine.orientGroup(state.tree, panelId, axis)
+    if (!tree) { announce('当前组件已不在场景中，请重试。'); return false }
+    if (!validSplitTree(tree, info.geometry.map(item => item.id))) { announce('当前组件组无法调整排列。'); return false }
+    state.tree = tree
+    state.topology = treeTopology(tree)
+    state.geometry = info.geometry.map(item => ({ ...item }))
+    state.geometrySignature = info.signature
+    resizeTrees.set(sceneId, state)
+    positionTreePanels(grid, tree)
+    saveSplitTree(sceneId, state)
+    updateResizeHandles()
+    announce(axis === 'x' ? '已切换为左右排列。' : '已切换为上下排列。')
+    return true
+  }
+
+  function arrangementEntries(info, panelId) {
+    if (!info || info.panels.length < 2) return []
+    return [
+      { label: panelId ? '当前组件组左右排列' : '场景主排列左右', explanation: '把当前组件组的主要分隔方向切换为左右。', arrangementAxis: 'x', arrangementPanelId: panelId },
+      { label: panelId ? '当前组件组上下排列' : '场景主排列上下', explanation: '把当前组件组的主要分隔方向切换为上下。', arrangementAxis: 'y', arrangementPanelId: panelId },
+    ]
+  }
+
   function activateMenuEntry(entry, item) {
-    const { label, explanation, forwardButton, restorePanelId, presetAction } = entry
+    const { label, explanation, forwardButton, restorePanelId, presetAction, arrangementAxis, arrangementPanelId } = entry
     const ownerPanel = menu?.panel
     const itemRect = item.getBoundingClientRect()
     closeMenu()
     if (presetAction) {
       runLayoutPreset(document.getElementById('grid'), presetAction, entry.sceneId)
+      return
+    }
+    if (arrangementAxis) {
+      arrangeSceneGroup(entry.sceneId, arrangementPanelId, arrangementAxis)
       return
     }
     if (forwardButton) {
@@ -766,9 +825,22 @@
     const panelGrid = panel?.closest?.('#grid') ?? (point ? document.getElementById('grid') : null)
     const sceneKey = panel ? sceneKeyFor(panel) : (panelGrid ? sceneGridInfo(panelGrid)?.sceneId : '')
     entries.push(...restoreEntries(sceneKey, panelGrid, panel?.dataset?.panelId))
-    if (!panel && panelGrid) entries.push(...layoutPresetEntries(sceneGridInfo(panelGrid)).map(entry => ({ ...entry, sceneId: sceneKey })))
+    if (panelGrid) {
+      const info = sceneGridInfo(panelGrid)
+      entries.push(...arrangementEntries(info, panel?.dataset?.panelId).map(entry => ({ ...entry, sceneId: sceneKey })))
+      if (!panel) entries.push(...layoutPresetEntries(info).map(entry => ({ ...entry, sceneId: sceneKey })))
+    }
     const refreshButton = panel?.querySelector?.('.panel-controls .icon-control[aria-label="刷新面板"]')
     const fullscreenButton = panel?.querySelector?.('.panel-controls .pi-fullscreen')
+    const skillsButton = panel?.querySelector?.('.panel-controls .business-native-skills')
+    if (skillsButton && getComputedStyle(skillsButton).display === 'none') {
+      entries.unshift({
+        label: skillsButton.getAttribute('aria-label') || 'DSH Skills（当前会话）',
+        explanation: '当前会话的 DSH Skills 暂时不可用。',
+        disabled: skillsButton.disabled,
+        forwardButton: skillsButton,
+      })
+    }
     if (refreshButton && getComputedStyle(refreshButton).display === 'none') {
       entries.unshift({ label: '刷新面板', explanation: '重新渲染当前面板。', forwardButton: refreshButton })
     }

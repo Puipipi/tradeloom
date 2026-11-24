@@ -1,0 +1,14 @@
+{
+  "name": "tradeloom-enterprise-client",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Standalone Electron client for a separately hosted TradeLoom enterprise server",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "package:win": "powershell -NoProfile -File ../../scripts/package-enterprise-client.ps1"
+  },
+  "devDependencies": {
+    "electron": "45.4.1"
+  }
+}

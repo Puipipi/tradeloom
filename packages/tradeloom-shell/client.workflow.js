@@ -91,7 +91,7 @@ window.__ModuleLoader__.load({
       const dialog = React.useRef(null)
       const draftRef = React.useRef(draft)
       const draftWorkflow = React.useRef(initial?.doc?.id ?? null)
-      const editorView = React.useRef(null)
+      const editorWindow = React.useRef(null)
       const currentDoc = React.useRef(doc?.id ?? null)
       const handledRefreshRequest = React.useRef(refreshRequest)
       const currentRun = React.useRef(run?.id ?? null)
@@ -120,6 +120,7 @@ window.__ModuleLoader__.load({
       const nativeResumeFocus = React.useRef(false)
       const [artifactImports, setArtifactImports] = React.useState({})
       const [nativeToolbarActive, setNativeToolbarActive] = React.useState(false)
+      const [editorTarget, setEditorTarget] = React.useState(null)
       const artifactImportControllers = React.useRef(new Map())
       const nativeSignature = JSON.stringify(doc)
       const nativeContext = React.useRef('')
@@ -498,40 +499,28 @@ window.__ModuleLoader__.load({
       }, [draft?.id])
 
       React.useEffect(() => {
-        if (!draft || !surface.current) return
-        if (!editorView.current) editorView.current = { ...view }
-        const place = () => {
-          const rect = surface.current?.getBoundingClientRect()
-          const frame = root.current?.getBoundingClientRect()
-          if (!rect || !frame || !editorView.current) return
-          const scale = editorView.current.scale, width = nodeWidth * scale, height = nodeHeight * scale, gap = 16
-          const sideWidth = Math.min(400, rect.width - width - gap * 3)
-          let layout, target
-          if (sideWidth >= 300 && rect.height >= Math.max(height + gap * 2, 260)) {
-            const panelHeight = Math.min(560, rect.height - gap * 2)
-            layout = { left: rect.width - sideWidth - gap, top: (rect.height - panelHeight) / 2, width: sideWidth, height: panelHeight, mode: 'side' }
-            target = { x: (layout.left - gap - width) / 2, y: (rect.height - height) / 2 }
-          } else if (rect.width >= width + gap * 2 && rect.height >= height + 220 + gap * 3) {
-            const panelWidth = Math.min(400, rect.width - gap * 2), panelHeight = Math.min(420, rect.height - height - gap * 3)
-            layout = { left: (rect.width - panelWidth) / 2, top: rect.height - panelHeight - gap, width: panelWidth, height: panelHeight, mode: 'stack' }
-            target = { x: (rect.width - width) / 2, y: gap }
-          } else {
-            layout = { left: gap, top: gap, width: Math.max(0, rect.width - gap * 2), height: Math.max(0, rect.height - gap * 2), mode: 'overlay-fallback' }
+        if (!draft) return
+        // The auxiliary document contains only a portal: the existing canvas owns the draft and actions.
+        const child = editorWindow.current
+        if (child && !child.closed) {
+          const onClose = () => {
+            if (editorWindow.current !== child) return
+            editorWindow.current = null; draftRef.current = null; setEditorTarget(null); setDraft(null)
           }
-          if (layout.mode === 'overlay-fallback') {
-            layout = { ...layout, left: gap, top: gap, width: Math.max(0, frame.width - gap * 2), height: Math.max(0, frame.height - gap * 2) }
-          } else {
-            layout = { ...layout, left: layout.left + rect.left - frame.left, top: layout.top + rect.top - frame.top }
-          }
-          setEditorLayout(layout)
-          if (target) setView({ x: target.x - draft.position.x * scale, y: target.y - draft.position.y * scale, scale })
+          child.addEventListener('beforeunload', onClose)
+          // A host-forced destroy may skip beforeunload (owner disposal/reparenting).
+          const timer = setInterval(() => { if (child.closed) onClose() }, 200)
+          return () => { clearInterval(timer); child.removeEventListener('beforeunload', onClose) }
         }
-        place()
-        const observer = new ResizeObserver(place)
-        observer.observe(surface.current)
-        observer.observe(root.current)
-        return () => observer.disconnect()
-      }, [draft?.id, fontSize])
+        const rect = root.current?.getBoundingClientRect()
+        setEditorLayout({ left: Math.max(8, (rect?.width ?? 400) - 368), top: 8, width: Math.min(360, (rect?.width ?? 400) - 16), height: Math.min(440, (rect?.height ?? 456) - 16), mode: 'floating' })
+      }, [draft?.id])
+
+      React.useEffect(() => () => {
+        const child = editorWindow.current
+        editorWindow.current = null
+        if (child && !child.closed) child.close()
+      }, [])
 
       const refreshList = React.useCallback(async () => {
         const value = await api('GET')
@@ -618,10 +607,27 @@ window.__ModuleLoader__.load({
       function updateNode(id, patch) { edit({ ...doc, nodes: doc.nodes.map(node => node.id === id ? { ...node, ...patch } : node) }) }
       function closeEditor() {
         setDraft(null); setEditorLayout(null)
-        if (editorView.current) setView(editorView.current)
-        editorView.current = null
+        setEditorTarget(null)
+        const child = editorWindow.current
+        editorWindow.current = null
+        if (child && !child.closed) child.close()
       }
       function openEditor(node) {
+        // Only the native workflow guest exposes this capability; ordinary pages use the local floating editor.
+        if (!editorWindow.current && typeof window.dshDesktop?.workflowNodeEditorAvailable === 'function') {
+          const child = window.open('about:blank', 'tradeloom-workflow-node-editor', 'popup,width=380,height=500')
+          if (child) {
+            child.document.title = '节点设置'
+            const host = child.document.createElement('section')
+            host.className = 'tl-wf tl-wf-auxiliary-editor'
+            host.style.cssText = 'height:100vh;font:14px sans-serif;'
+            const computed = getComputedStyle(root.current)
+            for (let i = 0; i < computed.length; i++) if (computed[i].startsWith('--')) host.style.setProperty(computed[i], computed.getPropertyValue(computed[i]))
+            child.document.body.style.cssText = 'margin:0;overflow:hidden'
+            child.document.body.appendChild(host)
+            editorWindow.current = child; setEditorTarget(host)
+          }
+        }
         draftWorkflow.current = doc.id
         draftRef.current = { ...node, model: node.model ? { ...node.model } : node.model }
         setSelected(node.id); setDraft(draftRef.current)
@@ -645,11 +651,6 @@ window.__ModuleLoader__.load({
       }
       function dialogKeys(event) {
         if (event.key === 'Escape') { event.preventDefault(); closeEditor(); return }
-        if (event.key !== 'Tab') return
-        const items = [...dialog.current.querySelectorAll('button,input,select,textarea,[tabindex="0"]')].filter(item => !item.disabled)
-        const first = items[0], last = items[items.length - 1]
-        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus() }
-        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
       }
       function fit() {
         const rect = surface.current?.getBoundingClientRect()
@@ -687,6 +688,15 @@ window.__ModuleLoader__.load({
         show('节点已整理到本地草稿，尚未保存。')
       }
       function show(text, issues = []) { setMessage(current => ({ ...current, text, issues })) }
+
+      function closeCategoryOnLeave(event) {
+        const category = event.currentTarget
+        // Keep the menu open while the pointer travels from its summary into
+        // the absolutely positioned menu. A focus check still keeps keyboard
+        // users' menu open after the pointer leaves the category.
+        if (event.relatedTarget && category.contains(event.relatedTarget)) return
+        if (!category.contains(category.ownerDocument.activeElement)) category.open = false
+      }
 
       function markdownValue(value) {
         return String(value ?? '').replace(/\\/g, '\\\\').replace(/[|`*_{}\[\]<>#]/g, '\\$&')
@@ -754,7 +764,14 @@ window.__ModuleLoader__.load({
       function addNode(kind, agentId) {
         const base = kind === 'agent' ? { agent: agentId ?? catalog?.agents[1]?.id ?? 'center', model: null } : kind === 'external' ? { platform: '免费网页模型' } : {}
         const id = `${kind}-${shortId().slice(-4)}`
-        const position = { x: Math.round(-view.x / view.scale + 80 + doc.nodes.length * 18), y: Math.round(-view.y / view.scale + 80 + doc.nodes.length * 14) }
+        const rect = surface.current?.getBoundingClientRect()
+        const left = Math.round((-view.x + 16) / view.scale), top = Math.round((-view.y + 16) / view.scale)
+        const columns = Math.max(1, Math.floor(((rect?.width ?? 640) / view.scale - 32) / (nodeWidth + 24)))
+        let position
+        for (let index = 0; ; index++) {
+          const candidate = { x: left + (index % columns) * (nodeWidth + 24), y: top + Math.floor(index / columns) * (nodeHeight + 24) }
+          if (!doc.nodes.some(node => Math.abs(node.position.x - candidate.x) < nodeWidth + 16 && Math.abs(node.position.y - candidate.y) < nodeHeight + 16)) { position = candidate; break }
+        }
         edit({ ...doc, nodes: [...doc.nodes, { id, kind, title: KIND_DEFAULT_TITLE[kind], instruction: '', ...base, position }] })
         setSelected(id)
       }
@@ -1129,7 +1146,7 @@ window.__ModuleLoader__.load({
         const height = Math.max(1, Math.min(needed, upward ? above : below))
         const width = Math.min(menu.getBoundingClientRect().width, Math.max(0, frame.width - padding * 2))
         const left = Math.max(frame.left + padding, Math.min(anchor.left, frame.right - width - padding))
-        const top = upward ? anchor.top - height : anchor.bottom + 4
+        const top = upward ? anchor.top - height : anchor.bottom + (disclosure.classList.contains('tl-wf-category') ? 0 : 4)
         Object.assign(menu.style, { left: `${left - host.left}px`, right: 'auto', top: `${top - host.top}px`, bottom: 'auto', maxWidth: `${width}px`, maxHeight: `${height}px` })
       }
       const closeMenuAfter = action => event => {
@@ -1172,7 +1189,7 @@ window.__ModuleLoader__.load({
             if (kinds.length === 0 && group.id === 'place') return h('details', {
               key: group.id, className: 'tl-wf-category', style, onToggle: placeToolbarMenu,
               onMouseEnter: event => { event.currentTarget.open = true },
-              onMouseLeave: event => { const category = event.currentTarget; if (!category.contains(category.ownerDocument.activeElement)) category.open = false },
+              onMouseLeave: closeCategoryOnLeave,
               onBlur: event => { if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false },
               onKeyDown: event => { if (event.key !== 'Escape' || !event.currentTarget.open) return; event.preventDefault(); event.stopPropagation(); event.currentTarget.open = false; event.currentTarget.querySelector('summary')?.focus() },
             }, h('summary', { title: '项目文件夹', 'aria-label': '添加位置节点' }, `＋ ${group.label} ▾`),
@@ -1200,10 +1217,7 @@ window.__ModuleLoader__.load({
             return h('details', {
               key: group.id, className: 'tl-wf-category', style, onToggle: placeToolbarMenu,
               onMouseEnter: event => { event.currentTarget.open = true },
-              onMouseLeave: event => {
-                const category = event.currentTarget
-                if (!category.contains(category.ownerDocument.activeElement)) category.open = false
-              },
+              onMouseLeave: closeCategoryOnLeave,
               onBlur: event => { if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false },
               onKeyDown: event => {
                 if (event.key !== 'Escape' || !event.currentTarget.open) return
@@ -1329,13 +1343,23 @@ window.__ModuleLoader__.load({
           h('button', { type: 'button', className: 'tl-wf-quick-btn is-reject', title: '驳回', 'aria-label': `驳回「${node.title}」`, onClick: () => decide(node.id, false) }, '✕')))
 
       // 审核时要看的内容：上游节点的输出
-      const reviewInputs = selectedNode?.kind === 'review'
-        ? doc.edges.filter(edge => edge.to === selectedNode.id).map(edge => ({ node: byId.get(edge.from), output: nodeState(edge.from)?.output })).filter(item => item.node && item.output)
+      const reviewInputs = draft?.kind === 'review'
+        ? doc.edges.filter(edge => edge.to === draft.id).map(edge => ({ node: byId.get(edge.from), output: nodeState(edge.from)?.output })).filter(item => item.node && item.output)
         : []
 
       const inspector = draft && h('div', { className: 'tl-wf-dialog-backdrop', onPointerDown: event => event.stopPropagation() },
-        h('aside', { ref: dialog, className: 'tl-wf-inspector', style: editorLayout ? { left: editorLayout.left, top: editorLayout.top, width: editorLayout.width, height: editorLayout.height } : undefined, 'data-placement': editorLayout?.mode, role: 'dialog', 'aria-modal': true, 'aria-label': '节点设置', 'aria-describedby': 'tl-wf-draft-hint', onKeyDown: dialogKeys },
-        h('header', { className: 'tl-wf-dialog-header' }, h('strong', null, `编辑节点 · ${draft.title}`), h('button', { type: 'button', 'aria-label': '关闭节点设置', onClick: closeEditor }, '×')),
+        h('aside', { ref: dialog, className: 'tl-wf-inspector', style: editorTarget ? { inset: 0, width: '100%', height: '100%', borderRadius: 0 } : editorLayout ? { left: editorLayout.left, top: editorLayout.top, width: editorLayout.width, height: editorLayout.height } : undefined, 'data-placement': editorLayout?.mode, role: 'dialog', 'aria-modal': false, 'aria-label': '节点设置', 'aria-describedby': 'tl-wf-draft-hint', onKeyDown: dialogKeys },
+        h('header', { className: 'tl-wf-dialog-header', onPointerDown: event => {
+          if (editorTarget || event.target.closest('button')) return
+          const card = dialog.current, start = card.getBoundingClientRect(), frame = root.current.getBoundingClientRect()
+          event.currentTarget.setPointerCapture(event.pointerId)
+          drag.current = { type: 'editor', sx: event.clientX, sy: event.clientY, left: start.left - frame.left, top: start.top - frame.top }
+        }, onPointerMove: event => {
+          const move = drag.current
+          if (move?.type !== 'editor') return
+          const frame = root.current.getBoundingClientRect()
+          setEditorLayout(current => ({ ...current, left: Math.max(32 - current.width, Math.min(frame.width - 32, move.left + event.clientX - move.sx)), top: Math.max(0, Math.min(frame.height - 32, move.top + event.clientY - move.sy)) }))
+        }, onPointerUp: () => { if (drag.current?.type === 'editor') drag.current = null } }, h('strong', null, `编辑节点 · ${draft.title}`), h('button', { type: 'button', 'aria-label': '关闭节点设置', onClick: closeEditor }, '×')),
         h('p', { id: 'tl-wf-draft-hint', className: 'tl-wf-draft-hint' }, '本地草稿，点工具栏“保存”持久化。'),
         h('div', { className: 'tl-wf-dialog-fields' },
         reviewInputs.length > 0 && h('div', { className: 'tl-wf-review' },
@@ -1384,7 +1408,7 @@ window.__ModuleLoader__.load({
           message.text, message.issues.length > 0 && h('ul', null, message.issues.map(issue => h('li', { key: issue }, issue)))),
         h('div', { className: 'tl-wf-body' },
           h('div', {
-            ref: surface, className: 'tl-wf-surface', inert: draft ? '' : undefined,
+            ref: surface, className: 'tl-wf-surface',
             id: `${tabPrefix}-canvas`, role: 'tabpanel', 'aria-labelledby': `${tabPrefix}-tab-${activeTab}`,
             onPointerDown: event => {
               if (event.button !== 0) return
@@ -1396,7 +1420,7 @@ window.__ModuleLoader__.load({
             h('div', { className: 'tl-wf-layer', style: { transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` } }, edges, nodes, quickDecisions),
             h('span', { className: 'tl-wf-canvas-hint' }, '拖动空白处平移 · 滚轮缩放 · 拖动节点端口连线'),
             h('span', { className: 'tl-wf-counts', role: 'status', 'aria-label': '画布实际计数与缩放' }, `节点 ${doc.nodes.length} · 连线 ${doc.edges.length} · ${Math.round(view.scale * 100)}%`))),
-        inspector)
+        editorTarget ? require('react-dom').createPortal(h(React.Fragment, null, h('style', null, WORKFLOW_CSS), inspector), editorTarget) : inspector)
     }
 
     const WORKFLOW_CSS = `
@@ -1427,14 +1451,15 @@ window.__ModuleLoader__.load({
       .tl-wf-head .tl-wf-start { color:var(--tl-theme-success,var(--tl-success,#0f635a)); }
       .tl-wf-doc-menu { position:relative; min-width:0; max-width:min(34em,55%); }
       .tl-wf-doc-menu > summary { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-      .tl-wf-tabs-row { flex:none; display:flex; align-items:center; gap:.25em; min-width:0; padding:2px 6px 0; border-bottom:1px solid var(--tl-border,#cbd5e2); background:var(--tl-surface-soft,#eef3f9); }
-      .tl-wf-tabs { display:flex; flex:0 1 auto; gap:.15em; min-width:0; overflow-x:auto; padding:2px 2px 0; scrollbar-width:thin; }
-      .tl-wf-tabs-row button { border:1px solid transparent; background:transparent; color:inherit; border-radius:4px 4px 0 0; padding:3px 9px 4px; cursor:pointer; font:inherit; }
+      .tl-wf-tabs-row { flex:none; display:flex; align-items:center; gap:.2em; min-width:0; padding:1px 4px 0; border-bottom:1px solid var(--tl-border,#cbd5e2); background:var(--tl-surface-soft,#eef3f9); }
+      .tl-wf-tabs { display:flex; flex:0 1 auto; gap:.1em; min-width:0; overflow-x:auto; padding:1px 1px 0; scrollbar-width:thin; }
+      .tl-wf-tabs-row button { border:1px solid transparent; background:transparent; color:inherit; border-radius:4px 4px 0 0; padding:2px 7px 3px; cursor:pointer; font:inherit; line-height:1.25; }
       .tl-wf-tabs-row button:disabled { opacity:.45; cursor:default; }
-      .tl-wf-tabs > button { flex:none; max-inline-size:min(20em,100%); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .tl-wf-tabs > button { flex:none; max-inline-size:min(16em,100%); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
       .tl-wf-tabs > [aria-selected="true"] { border-color:transparent; border-bottom:2px solid var(--tl-accent,#356fc4); background:var(--tl-surface,#fff); }
-      .tl-wf-tabs-row > .tl-wf-new-workflow { flex:none; min-width:2em; border-color:var(--tl-border,#cbd5e2); background:var(--tl-surface,#fff); padding-inline:6px; }
-      .tl-wf-tab-count { flex:none; margin-left:auto; padding-inline:6px; color:var(--tl-muted,#8b93a7); font-size:.8em; white-space:nowrap; }
+      .tl-wf-tabs-row > .tl-wf-new-workflow { flex:none; width:1.8em; min-width:1.8em; padding-inline:0; border-color:var(--tl-border,#cbd5e2); background:var(--tl-surface,#fff); }
+      .tl-wf-tab-count { flex:none; margin-left:auto; padding-inline:4px; color:var(--tl-muted,#8b93a7); font-size:.75em; white-space:nowrap; }
+      @container (max-width:30em) { .tl-wf-tab-count { display:none; } .tl-wf-tabs > button { max-inline-size:12em; } }
       .tl-wf-toolbar { flex:none; display:flex; flex-wrap:wrap; align-items:center; gap:4px; min-width:0; padding:4px 6px; border-bottom:1px solid var(--tl-border,#cbd5e2); }
       .tl-wf-primary { display:flex; flex:0 1 auto; flex-wrap:wrap; align-items:center; min-width:0; margin-left:auto; gap:4px; }
       .tl-wf-primary .tl-wf-runstate { margin-left:0; }
@@ -1548,9 +1573,9 @@ window.__ModuleLoader__.load({
       .tl-wf-port { position:absolute; top:50%; box-sizing:border-box; width:.8em; height:.8em; transform:translateY(-50%); border-radius:50%; background:var(--tl-surface,#131722); border:2px solid var(--tl-wf-category-color,var(--tl-wf-color)); }
       .tl-wf-port.is-in { left:calc(-.4em - 3px); }
       .tl-wf-port.is-out { right:calc(-.4em - 1px); cursor:crosshair; }
-      .tl-wf-dialog-backdrop { position:absolute; inset:0; z-index:20; display:grid; place-items:center; background:color-mix(in srgb,var(--tl-surface-soft,#f4f7fb) 20%,transparent); }
-      .tl-wf-inspector { position:absolute; box-sizing:border-box; width:min(40em,100%); max-height:100%; min-height:0; display:flex; flex-direction:column; border:1px solid var(--tl-accent,#356fc4); border-radius:12px; box-shadow:0 0 0 1px color-mix(in srgb,var(--tl-accent,#356fc4) 35%,transparent),0 14px 44px #0004; background:var(--tl-surface,#fff); }
-      .tl-wf-dialog-header { display:flex; gap:8px; align-items:center; justify-content:space-between; padding:.7em .85em .35em; }
+      .tl-wf-dialog-backdrop { position:absolute; inset:0; z-index:20; pointer-events:none; }
+      .tl-wf-inspector { pointer-events:auto; position:absolute; box-sizing:border-box; width:min(40em,100%); max-height:100%; min-height:0; display:flex; flex-direction:column; border:1px solid var(--tl-accent,#356fc4); border-radius:12px; box-shadow:0 0 0 1px color-mix(in srgb,var(--tl-accent,#356fc4) 35%,transparent),0 14px 44px #0004; background:var(--tl-surface,#fff); }
+      .tl-wf-dialog-header { cursor:move; touch-action:none; display:flex; gap:8px; align-items:center; justify-content:space-between; padding:.7em .85em .35em; }
       .tl-wf-dialog-header, .tl-wf-inspector > .tl-wf-draft-hint, .tl-wf-dialog-actions { flex-shrink:0; }
       .tl-wf-dialog-header strong { overflow-wrap:anywhere; min-width:0; }
       .tl-wf-dialog-header button { flex:none; font:inherit; }

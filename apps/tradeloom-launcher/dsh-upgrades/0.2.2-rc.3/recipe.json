@@ -19,7 +19,7 @@
     {
       "source": "apps/tradeloom-launcher/production-origin/browser-transport-adapter.mjs",
       "destination": "dsh/node_modules/@deepseek-ai/dsh-web-frontend/dist/assets/native-operation-origin-adapter.mjs",
-      "sha256": "e8846e4a897a807d786b7705671b80d25c08d3e5eca6de5f7ff54642ba9f0623"
+      "sha256": "aa7c6c56ea195070d35fcc8dc9bce297e43fa51015a23f5beeb7a041bc89f8bd"
     }
   ],
   "version": "0.2.2-rc.3",
@@ -92,6 +92,10 @@
     "dsh/node_modules/@deepseek-ai/dsh-app-boot/lib/index.js": {
       "bytes": 227100,
       "sha256": "a8d2138bb274bd982079df14a615f6c0d5d7589c9faeae81973128a72293b6de"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-client-ui-settings-account/lib/client.js": {
+      "bytes": 187359,
+      "sha256": "3140c558cae7482843b434b2be48cc62cfec91da6dceea9eb4a6674b0001b659"
     }
   },
   "postimages": {
@@ -112,8 +116,8 @@
       "sha256": "f04acccc1608e1395be044b8fc00a256735eabae8d33af9fb3c4214b6da46a85"
     },
     "dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/index.js": {
-      "bytes": 23812,
-      "sha256": "c3f7eb6e550ad1e842b8cfc0adc101cb0e31548b7ad8f7aca449825b5cda88ba"
+      "bytes": 24553,
+      "sha256": "08e6a0bd30bbf63081b06d0d980141966efaf212d03fefc51f8ef589bb2f524b"
     },
     "dsh/node_modules/@deepseek-ai/dsh-tools/lib/index.js": {
       "bytes": 27559,
@@ -136,8 +140,8 @@
       "sha256": "ae6fc15e9f50170fbea764b27ac500a76c066f7500940509c4e0f4de22137466"
     },
     "dsh/node_modules/@deepseek-ai/dsh-web-frontend/dist/assets/native-operation-origin-adapter.mjs": {
-      "bytes": 6270,
-      "sha256": "e8846e4a897a807d786b7705671b80d25c08d3e5eca6de5f7ff54642ba9f0623"
+      "bytes": 6266,
+      "sha256": "aa7c6c56ea195070d35fcc8dc9bce297e43fa51015a23f5beeb7a041bc89f8bd"
     },
     "dsh/node_modules/@deepseek-ai/dsh-client-ui-layout/lib/client.js": {
       "bytes": 31013,
@@ -158,6 +162,10 @@
     "dsh/node_modules/@deepseek-ai/dsh-app-boot/lib/index.js": {
       "bytes": 228870,
       "sha256": "7761143d3da0741cb19ccfeb6b033685407b8171478ed7d084910a1a9fa273bb"
+    },
+    "dsh/node_modules/@deepseek-ai/dsh-client-ui-settings-account/lib/client.js": {
+      "bytes": 187345,
+      "sha256": "fc5ff290f197b1afb8061b2499747f964768bd0e2486e55a051efbcc8783da62"
     }
   },
   "desktopRecipe": "desktop-recipe.json",
@@ -391,8 +399,8 @@
         "sha256": "0eeae4c4bb7b7cbbd8b29e145e60289d3381d0d10715dafd5b7b70f83920ebb1"
       },
       "workflow-files.js": {
-        "bytes": 13712,
-        "sha256": "7ffca8098ec26dfc84d1ae12e440980dee15e3d45d6ed62be98aec9ee90eb92b"
+        "bytes": 15329,
+        "sha256": "4448d73ad1a2f90aa23cd07a5a2b5fa5a86eea6af901f415ab8ea2f0bddb3d3d"
       },
       "workflow-native-executor.js": {
         "bytes": 25627,
@@ -709,8 +717,8 @@
         "sha256": "0eeae4c4bb7b7cbbd8b29e145e60289d3381d0d10715dafd5b7b70f83920ebb1"
       },
       "workflow-files.js": {
-        "bytes": 13712,
-        "sha256": "7ffca8098ec26dfc84d1ae12e440980dee15e3d45d6ed62be98aec9ee90eb92b"
+        "bytes": 15329,
+        "sha256": "4448d73ad1a2f90aa23cd07a5a2b5fa5a86eea6af901f415ab8ea2f0bddb3d3d"
       },
       "workflow-native-executor.js": {
         "bytes": 25627,
@@ -807,8 +815,8 @@
     },
     "inventory": {
       "fileCount": 79,
-      "bytes": 3099244,
-      "sha256": "117a6748ab08ea0d2714187dac9b9d39c3f8ad2967903fdd316294f3d901c60b"
+      "bytes": 3100861,
+      "sha256": "7ded104b7238af3763e59002094edef9d56e19387efa23e96358c8bc8f6f43d4"
     },
     "validatorInput": {
       "source": "apps/tradeloom-launcher/installed-bootstrap.mjs",
@@ -817,9 +825,21 @@
     }
   },
   "expectedAsar": {
-    "logicalEntries": 22000,
-    "unpackedFiles": 1666,
-    "bytes": 235082741,
-    "sha256": "be177b4abd809da77a0f0b50ae3d37da19cf966525ab026aef1fcf2e8c6cfd15"
-  }
+    "bytes": 235118783,
+    "sha256": "bfb435861ea6ba23c1749c528e46e0908ab3813df6cd9a447c566279593fd51e",
+    "logicalEntries": 22001,
+    "unpackedFiles": 1666
+  },
+  "sourceTransforms": [
+    {
+      "path": "dsh/node_modules/@deepseek-ai/dsh-client-ui-settings-account/lib/client.js",
+      "replacements": [
+        {
+          "from": "desktop&&transport?.streamBaseUrl!==void 0?new URL(transport.streamBaseUrl).origin:window.location.origin",
+          "to": "desktop?await globalThis.dshDesktopBoot.accountLoginCallbackOrigin():window.location.origin",
+          "count": 1
+        }
+      ]
+    }
+  ]
 }

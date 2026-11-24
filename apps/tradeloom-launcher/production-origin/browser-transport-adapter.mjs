@@ -5,7 +5,6 @@ const GRANT_REPLAY_WINDOW_MS = 30_000
 const GRANT_REPLAY_TOMBSTONE_MS = 5 * 60_000
 const MAX_GRANT_REPLAY_ENTRIES = 256
 const MAX_GRANT_REPLAY_BYTES = 8 * 1024 * 1024
-
 function endpointFor(url, appOrigin) {
   if (url.origin !== appOrigin || !url.pathname.startsWith('/api/')) return undefined
   const endpoint = url.pathname.slice('/api/'.length)
@@ -46,7 +45,7 @@ export function installBrowserTransportAdapter(transport, globals = globalThis) 
     const endpoint = endpointFor(url, appOrigin)
     if (!endpoint || (init?.method ?? input?.method)?.toUpperCase?.() !== 'POST') return await originalFetch(input, init)
     const relativeInput = typeof input === 'string' && !/^[A-Za-z][A-Za-z0-9+.-]*:/.test(input) && !input.startsWith('//')
-    const request = input instanceof globals.Request
+    let request = input instanceof globals.Request
       ? new globals.Request(input.clone(), init)
       : new globals.Request(relativeInput ? url : input, init)
     if (request.body === null) return await originalFetch(input, init)

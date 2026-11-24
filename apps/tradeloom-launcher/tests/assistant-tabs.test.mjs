@@ -27,6 +27,7 @@ class FakeWebContents extends EventEmitter {
   static nextId = 1
   constructor(url) { super(); this.id = FakeWebContents.nextId++; this.mainFrame = { url }; this.dead = false; this.sent = [] }
   isDestroyed() { return this.dead }
+  setWindowOpenHandler(handler) { this.windowOpenHandler = handler }
   setZoomFactor() {}
   getZoomFactor() { return 1 }
   send(channel, ...args) { this.sent.push({ channel, args }) }
@@ -35,16 +36,20 @@ class FakeWebContents extends EventEmitter {
 }
 
 class FakeWindow extends EventEmitter {
+  static instances = []
   constructor() {
     super(); this.id = FakeWebContents.nextId++; this.dead = false
+    this.focusCount = 0; this.showCount = 0; FakeWindow.instances.push(this)
     this.webContents = new FakeWebContents('dsh-app://app/source-shell/renderer/source-entry.html')
     this.contentView = { addChildView() {}, removeChildView() {} }
   }
   isDestroyed() { return this.dead }
   getContentBounds() { return { x: 0, y: 0, width: 1280, height: 800 } }
   setTitleBarOverlay() {}
-  show() {}
-  focus() {}
+  show() { this.showCount++ }
+  showInactive() { this.showCount++ }
+  hide() { this.hidden = true }
+  focus() { this.focusCount++ }
   destroy() { if (this.dead) return; this.dead = true; this.webContents.destroy(); this.emit('closed') }
   close() { this.destroy() }
 }
@@ -60,8 +65,9 @@ class FakeWebContentsView {
   getBounds() { return this.bounds }
 }
 
-async function createHarness({ workflow = false } = {}) {
+async function createHarness({ workflow = false, erpNext = false, assistantPresets = [], createAssistantSession, openErpNextWorkbench } = {}) {
   FakeWebContentsView.instances.length = 0
+  FakeWindow.instances.length = 0
   const handlers = new Map(), main = new FakeWindow()
   const scenes = [
     { id: 'products', roleId: 'product', panels: [{ id: 'product-chat', type: 'native-chat', roleId: 'product' }] },
@@ -69,12 +75,16 @@ async function createHarness({ workflow = false } = {}) {
     { id: 'center', roleId: 'center', panels: [{ id: 'center-chat', type: 'native-chat', roleId: 'center' }] },
   ]
   if (workflow) scenes.push({ id: 'agent-center', panels: [{ id: 'business-main', type: 'canvas' }] })
+  if (erpNext) scenes.push({ id: 'erpnext', panels: [{ id: 'business-main', type: 'erpnext-status' }] })
   const config = { scenes, roles: scenes.filter(scene => scene.roleId).map(scene => ({ id: scene.roleId, label: `${scene.roleId} 助手` })), ...(workflow ? { businessRoutes: { '/agent-center': { sceneId: 'agent-center', panelId: 'business-main' } } } : {}) }
   const controller = createSourceShellController({
     BrowserWindow: FakeWindow, WebContentsView: FakeWebContentsView,
     ipcMain: { handle(channel, handler) { handlers.set(channel, handler) }, removeHandler(channel) { handlers.delete(channel) } },
     appPreload: 'fixture-app-preload.cjs', sourcePreload: 'fixture-source-preload.cjs', ownedPartition: 'persist:assistant-tabs-test',
     getConfig: async () => config,
+    openErpNextWorkbench: openErpNextWorkbench ?? (async () => ({ opened: true })),
+    listAssistantPresets: async () => assistantPresets,
+    createAssistantSession: createAssistantSession ?? (async () => ({ sessionId: 'preset-session', bindingRevision: '0' })),
     resolveBinding: async ({ sceneId, panelId }) => ({
       sceneId, panelId, roleId: scenes.find(scene => scene.id === sceneId)?.panels.find(panel => panel.id === panelId)?.roleId,
       bindingStatus: 'bound', sessionId: `${sceneId}:${panelId}:session`, bindingRevision: '1',
@@ -95,6 +105,102 @@ async function createHarness({ workflow = false } = {}) {
   await started
   return { controller, handlers, main, mainEvent, destroy: () => controller.destroy() }
 }
+
+test('scene-less assistant preset creates a lazy native surface marked for exact-session retention', async t => {
+  const harness = await createHarness({ assistantPresets: [{ id: 'qa-only-custom', name: 'QA 自定义助手' }] })
+  t.after(harness.destroy)
+  const choices = await harness.handlers.get('source-shell:assistantTabCatalog')(harness.mainEvent, 'delivery', 'delivery-chat')
+  const target = choices.find(choice => choice.label === 'QA 自定义助手')
+  assert.ok(target, 'preset without a scene-bound role is available in the assistant picker')
+  const created = await harness.handlers.get('source-shell:create')(harness.mainEvent, 'delivery', target.panelId)
+  assert.notEqual(created.status, 'owned-elsewhere')
+  const view = FakeWebContentsView.instances.at(-1)
+  const descriptor = harness.controller.nativeDescriptor(view.webContents, view.webContents.mainFrame)
+  assert.equal(descriptor.assistantPreset, true)
+  assert.equal(descriptor.sessionId, 'preset-session')
+  assert.equal(descriptor.sceneId, 'delivery', 'the view keeps its current UI seat')
+  assert.equal(descriptor.panelId, target.panelId)
+})
+
+test('ERPNext workbench opens only through trusted status lookup and repeated scene opens focus its window', async t => {
+  const requests = []
+  const harness = await createHarness({ erpNext: true, openErpNextWorkbench: async (...args) => { requests.push(args); return { opened: true } } })
+  t.after(harness.destroy)
+  const setActiveScene = harness.handlers.get('source-shell:setActiveScene')
+  const openWorkbench = harness.handlers.get('source-shell:openErpNextWorkbench')
+  const detach = harness.handlers.get('source-shell:detach')
+  await setActiveScene(harness.mainEvent, 'erpnext')
+  await openWorkbench(harness.mainEvent)
+  assert.deepEqual(requests, [[]], 'the trusted Main operation receives no renderer URL')
+  await setActiveScene(harness.mainEvent, 'products')
+  await assert.rejects(openWorkbench(harness.mainEvent), /owner rejected/u, 'a non ERP active scene cannot open ERPNext')
+
+  await setActiveScene(harness.mainEvent, 'erpnext')
+  await detach(harness.mainEvent, 'erpnext')
+  const child = FakeWindow.instances.at(-1)
+  const childEvent = { sender: child.webContents, senderFrame: child.webContents.mainFrame }
+  await openWorkbench(childEvent)
+  assert.deepEqual(requests, [[], []])
+  const focusBefore = child.focusCount
+  assert.equal((await detach(harness.mainEvent, 'erpnext')).status, 'focused')
+  assert.ok(child.focusCount > focusBefore, 'repeated launch focuses the existing ERPNext window')
+})
+
+test('scene-memory origin uses the verified configured binding seat while retaining the physical guest identity', async () => {
+  const mainSource = await readFile(new URL('../stage5-source06/asar/lib/main.js', import.meta.url), 'utf8')
+  const start = mainSource.indexOf('ipcMain.handle(DESKTOP_IPC.sceneMemoryOriginGrant, async (event, request) => {')
+  const end = mainSource.indexOf('\n\tipcMain.handle(DESKTOP_IPC.', start)
+  assert.ok(start >= 0 && end > start, 'production Main origin-grant handler exists')
+  let handler, issued
+  const frame = { url: 'dsh-app://app/' }
+  const sender = { id: 90, mainFrame: frame, isDestroyed: () => false }
+  const guest = { scope: 'role', generation: 4, sceneId: 'delivery', panelId: 'assistant-tab:delivery-chat:center',
+    bindingSceneId: 'center', bindingPanelId: 'center-chat', sessionId: 'center-session', bindingRevision: '7' }
+  const context = {
+    ipcMain: { handle(_channel, fn) { handler = fn } },
+    DESKTOP_IPC: { sceneMemoryOriginGrant: 'dsh-desktop:scene-memory-origin-grant' },
+    assertDesktopSender() {}, sourceMode: true, sourceController: { resolveGuest: () => guest }, mainWindow: undefined,
+    backend: { host: { issueSceneMemoryOriginGrant: async request => { issued = request; return { token: 'fixture' } } } },
+    Buffer, Uint8Array, Number, Array, Object, Promise, Error,
+    observeStartup() {},
+  }
+  runInNewContext(`(() => { ${mainSource.slice(start, end)} })()`, context)
+  const request = { endpoint: 'session/list', httpMethod: 'POST', bodyBytes: new Uint8Array([1]) }
+  assert.deepEqual(await handler({ sender, senderFrame: frame }, request), { token: 'fixture' })
+  assert.equal(issued.source.sceneId, 'center')
+  assert.equal(issued.source.panelId, 'center-chat')
+  assert.equal(issued.source.sessionId, 'center-session')
+})
+
+test('custom assistant origin grants use only the selected live session and ordinary DSH authentication', async () => {
+  const mainSource = await readFile(new URL('../stage5-source06/asar/lib/main.js', import.meta.url), 'utf8')
+  const start = mainSource.indexOf('\tconst assistantPresetRequestTargets =')
+  const end = mainSource.indexOf('\n\tipcMain.handle(DESKTOP_IPC.boot', start)
+  assert.ok(start >= 0 && end > start, 'preset origin handler source exists')
+  let handler, checked, guest
+  const frame = { url: 'dsh-app://app/' }
+  const sender = { id: 90, mainFrame: frame, isDestroyed: () => false }
+  guest = { scope: 'role', generation: 8, sceneId: 'delivery', panelId: 'assistant-tab:delivery-chat:qa', sessionId: 'qa-session', assistantPreset: true, assistantPresetId: 'qa-custom' }
+  const context = {
+    ipcMain: { handle(_channel, fn) { handler = fn } },
+    DESKTOP_IPC: { sceneMemoryOriginGrant: 'dsh-desktop:scene-memory-origin-grant' },
+    assertDesktopSender() {}, sourceMode: true, sourceController: { resolveGuest: () => guest }, mainWindow: undefined,
+    sourceRequest: async (path, body) => { checked = { path, body }; return { authorized: true } },
+    backend: { host: {} }, Buffer, Uint8Array, Number, Array, Object, Promise, Error,
+    observeStartup() {},
+  }
+  runInNewContext(`(() => { ${mainSource.slice(start, end)} })()`, context)
+  const call = async (endpoint, payload) => handler({ sender, senderFrame: frame }, {
+    endpoint, httpMethod: 'POST', bodyBytes: Buffer.from(JSON.stringify({ type: 'client-request', rpcId: 'qa', method: endpoint, payload })),
+  })
+  assert.equal(await call('session/follow', { address: { kind: 'session', sessionId: 'qa-session' }, assistantStream: true }), null)
+  assert.equal(checked.path, '/tradeloom/assistant-presets/session-access')
+  assert.equal(checked.body.presetId, 'qa-custom')
+  assert.equal(checked.body.sessionId, 'qa-session')
+  await assert.rejects(call('session/list', {}), /not bound to its selected session/)
+  await assert.rejects(call('session/prompt', { sessionId: 'other-session', content: [{ type: 'text', text: 'x' }] }), /not bound to its selected session/)
+  assert.equal(checked.body.sessionId, 'qa-session', 'rejected targets never reach the Host proof route')
+})
 
 test('assistant tabs resolve available roles and return the same session to each scene fixed panel', async t => {
   const harness = await createHarness()
@@ -129,6 +235,9 @@ test('assistant tabs resolve available roles and return the same session to each
     const tabDescriptor = controller.nativeDescriptor(tabView.webContents, tabView.webContents.mainFrame)
     assert.equal(tabDescriptor.sceneId, 'center', 'the guest receives its real configured scene identity')
     assert.equal(tabDescriptor.panelId, 'center-chat', 'the guest receives its real configured panel identity')
+    const ownerIdentity = controller.resolveGuest(tabView.webContents, tabView.webContents.mainFrame)
+    assert.equal(ownerIdentity.bindingSceneId, 'center', 'origin authority resolves the configured role binding seat')
+    assert.equal(ownerIdentity.bindingPanelId, 'center-chat')
     const firstSession = tabDescriptor.sessionId
     controller.nativeMounted(tabView.webContents, tabView.webContents.mainFrame, tabDescriptor)
     assert.ok(harness.main.webContents.sent.some(event => event.channel === 'source-shell:status-event'
@@ -273,13 +382,50 @@ test('AI assistant right-click menu routes to the assistant chooser', async () =
   assert.equal(event.stopped, true)
   assert.equal(opened[1], panel, 'right-clicking the assistant header opens its panel menu')
 
-  const added = []
-  const ownerPanel = { dispatchEvent: eventValue => added.push(eventValue) }
-  class FakeCustomEvent { constructor(type, options) { this.type = type; this.bubbles = options.bubbles } }
+  const ownerPanel = {}
+  let chooserPanel
   const activateMenuEntry = extractFunction(source,
     '  function activateMenuEntry(entry, item) {', '  function openMenu(anchor, panel, options = {}) {',
-    'activateMenuEntry', { menu: { panel: ownerPanel }, closeMenu() {}, CustomEvent: FakeCustomEvent })
+    'activateMenuEntry', { window: { businessBridge: { openAssistantTabChooser: panel => { chooserPanel = panel } } }, menu: { panel: ownerPanel }, closeMenu() {}, announce() {} })
   activateMenuEntry({ label: '添加助手' }, { getBoundingClientRect: () => ({}) })
-  assert.equal(added[0].type, 'source-assistant-add')
-  assert.equal(added[0].bubbles, true, 'the event reaches the assistant-tab chooser')
+  assert.equal(chooserPanel, ownerPanel, 'the menu routes to the existing panel-owned assistant chooser')
+})
+
+
+test('workflow node auxiliary window preserves hidden drafts and retires with its canvas owner', async t => {
+  const harness = await createHarness({ workflow: true })
+  t.after(harness.destroy)
+  const { controller, handlers, mainEvent, main } = harness
+  await handlers.get('source-shell:workflowCanvasMount')(mainEvent)
+  const view = FakeWebContentsView.instances.at(-1), contents = view.webContents
+  controller.nativeMounted(contents, contents.mainFrame, controller.nativeDescriptor(contents, contents.mainFrame))
+  const open = contents.windowOpenHandler
+  const request = { url: 'about:blank', frameName: 'tradeloom-workflow-node-editor' }
+  assert.equal(open(request).action, 'deny', 'hidden canvas cannot open a window')
+  await handlers.get('source-shell:workflowCanvasVisible')(mainEvent, true)
+  assert.equal(open({ ...request, url: 'https://example.com' }).action, 'deny')
+  assert.equal(open({ ...request, frameName: 'other' }).action, 'deny')
+  const allowed = open(request)
+  assert.equal(allowed.action, 'allow')
+  assert.equal(allowed.overrideBrowserWindowOptions.parent, main)
+  assert.equal(allowed.overrideBrowserWindowOptions.modal, false)
+  const child = new FakeWindow()
+  contents.emit('did-create-window', child, request)
+  assert.equal(child.webContents.windowOpenHandler(request).action, 'deny')
+  await handlers.get('source-shell:workflowCanvasVisible')(mainEvent, false)
+  assert.equal(child.isDestroyed(), false, 'temporary native occlusion preserves the editor draft')
+  assert.equal(child.hidden, true)
+  await handlers.get('source-shell:workflowCanvasVisible')(mainEvent, true)
+  assert.ok(child.showCount > 0)
+  open(request)
+  const second = new FakeWindow()
+  contents.emit('did-create-window', second, request)
+  await handlers.get('source-shell:workflowCanvasPopOut')(mainEvent)
+  assert.equal(second.isDestroyed(), true, 'canvas owner migration retires the prior auxiliary window')
+  assert.equal(open(request).action, 'allow', 'detached canvas keeps the same bounded capability')
+  const third = new FakeWindow()
+  contents.emit('did-create-window', third, request)
+  harness.destroy()
+  assert.equal(third.isDestroyed(), true)
+  assert.equal(open(request).action, 'deny', 'disposed canvas no longer authorizes windows')
 })

@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>织贸企业服务登录</title></head>
+<body>
+  <main>
+    <h1>织贸企业服务</h1>
+    {% if form.errors %}<p role="alert">用户名或密码不正确，或账号已停用。</p>{% endif %}
+    <form method="post">
+      {% csrf_token %}
+      {{ form.as_p }}
+      <input type="hidden" name="next" value="{{ next }}">
+      <button type="submit">登录</button>
+    </form>
+  </main>
+</body>
+</html>

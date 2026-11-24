@@ -17,7 +17,8 @@ const deferred = () => {
 export async function mountSourceNative({ refresh = async () => {}, onRefresh, remoteList = async () => ({ ok: true, value: { items: [] } }), catalogPhase = 'pending', catalogIds = [], gatewayApi, initialDescriptor = descriptor } = {}) {
   let definition, Component
   const effects = [], cleanups = [], messages = [], stateUpdates = [], refs = []
-  let retainCount = 0, remoteListCount = 0
+  let retainCount = 0, remoteListCount = 0, catalogSnapshotCount = 0
+  const sessionSummaries = []
   const React = {
     Fragment: 'fragment',
     createElement: (...args) => ({ args }),
@@ -30,6 +31,13 @@ export async function mountSourceNative({ refresh = async () => {}, onRefresh, r
   const sandbox = {
     window: { __ModuleLoader__: { load: value => { definition = value } } },
     console: { info: (...parts) => messages.push(parts.map(String).join(' ')) },
+    fetch: async (url, request) => {
+      assert.equal(url, '/tradeloom/assistant-presets/session-access')
+      assert.equal(request?.method, 'POST')
+      return { ok: true, async json() { return { authorized: true, summary: {
+        sessionId: initialDescriptor.sessionId, updatedAt: 1, agentAvailable: true, running: false, blank: false
+      } } } }
+    },
     AbortController
   }
   runInNewContext(await readFile(sourcePath, 'utf8'), sandbox, { filename: sourcePath })
@@ -52,13 +60,20 @@ export async function mountSourceNative({ refresh = async () => {}, onRefresh, r
     },
     layout: { selectPanel: () => {} },
     sessions: {
-      list: { getSnapshot: () => snapshot, subscribe: () => () => {} },
+      list: { getSnapshot: () => { catalogSnapshotCount++; return snapshot }, subscribe: () => () => {} },
       refresh: async (...args) => { await refresh(...args); await onRefresh?.(snapshot); return snapshot },
-      retain: () => {
+      retain: (sessionId, options) => {
         retainCount++
+        if (initialDescriptor.assistantPreset === true) {
+          assert.equal(sessionId, initialDescriptor.sessionId, 'custom assistant opens only its trusted exact session')
+          assert.equal(options?.source, 'sourceNativeAssistantPreset')
+          assert.equal(sessionSummaries.length, 1, 'the exact Host-verified summary is inserted before retain')
+          return { ready: Promise.resolve(), release() {} }
+        }
         if (snapshot.phase === 'ready') return { ready: Promise.resolve(), release() {} }
         throw new Error('retain must not run while catalog is pending')
-      }
+      },
+      handleSessionAdded: summary => sessionSummaries.push(summary)
     },
     get: name => name === 'connection'
       ? { generation: { getSnapshot: () => 1, subscribe: () => () => {} }, interactions: 'answer' }
@@ -82,10 +97,31 @@ export async function mountSourceNative({ refresh = async () => {}, onRefresh, r
     refs,
     stateUpdates,
     get remoteListCount() { return remoteListCount },
+    get catalogSnapshotCount() { return catalogSnapshotCount },
+    sessionSummaries,
     get retainCount() { return retainCount },
     cleanup: () => { for (const fn of cleanups.reverse()) fn() }
   }
 }
+
+test('custom preset mounts its exact stock session without global session-list access', async () => {
+  const mounted = await mountSourceNative({ initialDescriptor: { ...descriptor, assistantPreset: true } })
+  await turn()
+  assert.equal(mounted.retainCount, 1)
+  assert.equal(mounted.remoteListCount, 0)
+  assert.equal(mounted.catalogSnapshotCount, 0, 'custom preset startup does not wait for the global session catalog')
+  assert.equal(mounted.messages.some(message => message.includes('catalog-refresh-start')), false)
+  assert.ok(mounted.messages.some(message => message.includes('exact-session-retain-ready')))
+  assert.ok(mounted.stateUpdates.some(value => value?.phase === 'ready' && value.sessionId === descriptor.sessionId))
+  mounted.cleanup()
+})
+
+test('custom preset descriptor cannot broaden into another native session kind', async () => {
+  const native = await readFile(sourcePath, 'utf8')
+  assert.match(native, /d\.assistantPreset === undefined \|\| d\.assistantPreset === true/)
+  assert.match(native, /sessions\.retain\(descriptor\.sessionId,\{source:'sourceNativeAssistantPreset'\}\)/)
+  assert.match(native, /if\(exactPresetSession\)[\s\S]*?sessions\.retain\(descriptor\.sessionId/)
+})
 
 test('real SourceNative effect runs one non-blocking independent list probe after a pending refresh', async () => {
   const gate = deferred()

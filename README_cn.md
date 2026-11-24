@@ -37,6 +37,8 @@
 
 ## 开发入口
 
+企业服务首装、启停入口在仓库根目录：`Install-EnterpriseServer.ps1`、`Start-EnterpriseServer.ps1`、`Stop-EnterpriseServer.ps1`；客户端地址为 `http://127.0.0.1:27417/enterprise/`。详见[Windows 企业服务器安装](docs/enterprise-service.md)。
+
 GitHub 仓库提供源码；克隆源码不会自动安装或启动 Electron 桌面版。源码开发请从[快速开始](docs/quick-start.md)和[运行时准备与升级](docs/upgrade-harness.md)开始。部署包请从[Stage 6.17 Release](https://github.com/Puipipi/tradeloom/releases/tag/stage6.17-windows-x64)获取，不要将 Django 开发网页当作桌面安装入口。
 
 ## 文档导航
@@ -44,6 +46,7 @@ GitHub 仓库提供源码；克隆源码不会自动安装或启动 Electron 桌
 | 入口 | 内容 |
 |---|---|
 | [Windows 桌面部署说明](docs/windows-desktop-deployment.md) | 完整包下载、校验、启动、数据和升级步骤 |
+| [Django 企业服务](docs/enterprise-service.md) | 登录、账号/用户组、loopback 本机和 HTTPS 远端部署 |
 | [赛题与目标](docs/00-赛题与目标.md) | 当前赛题1方向、官方来源与待补证据 |
 | [验收矩阵](docs/acceptance-matrix.md) | 分项验证及边界；历史条目保留当时日期 |
 | [Agent 开发与接入](docs/agent-development.md) | 接入背景与开发契约 |

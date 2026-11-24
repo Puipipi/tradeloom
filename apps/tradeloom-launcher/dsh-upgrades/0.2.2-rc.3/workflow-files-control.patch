@@ -1,10 +1,27 @@
 diff --git a/dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/index.js b/dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/index.js
 --- a/dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/index.js
 +++ b/dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/index.js
-@@ -459,6 +459,23 @@
+@@ -459,6 +459,40 @@
  			});
  			return;
  		}
++		if (message.type === "scene-files") {
++			const { requestId, scope, request, chosen } = message;
++			if (!Number.isSafeInteger(requestId) || requestId < 1) return;
++			(async () => {
++				try {
++					if (stopping !== void 0) throw new Error("Host stopping");
++					const { ctx } = await application;
++					const authority = ctx.get("workflowFileAuthority");
++					if (typeof authority?.sceneUi !== "function") throw new Error("scene UI file authority unavailable");
++					const result = await authority.sceneUi({ scope, request, chosen });
++					await send({ type: "scene-files", requestId, result });
++				} catch {
++					await send({ type: "scene-files", requestId, error: "scene files unavailable" });
++				}
++			})().catch(() => {});
++			return;
++		}
 +		if (message.type === "workflow-files") {
 +			const { requestId, request } = message;
 +			if (!Number.isSafeInteger(requestId) || requestId < 1) return;

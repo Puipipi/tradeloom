@@ -11,6 +11,7 @@ shortcutsEdit: "dsh-desktop:shortcuts-edit",
 shortcutsChanged: "dsh-desktop:shortcuts-changed",
 shortcutsRecording: "dsh-desktop:shortcuts-recording",
 boot: "dsh-desktop:boot",
+accountLoginCallbackOrigin: "dsh-desktop:account-login-callback-origin",
 enterWorkspace: "dsh-desktop:enter-workspace",
 onboardingActive: "dsh-desktop:onboarding-active",
 onboardingApiKey: "dsh-desktop:onboarding-api-key",
@@ -2173,6 +2174,7 @@ onNativeAccountOverlayState(listener) {
   electron.ipcRenderer.on('source-shell:account-overlay-state', receive);
   return () => electron.ipcRenderer.off('source-shell:account-overlay-state', receive);
 },
+workflowNodeEditorAvailable: () => true,
 workflowCanvasToolbarState: (value) => electron.ipcRenderer.invoke('source-shell:workflowCanvasToolbarState', value),
 workflowProjectFolder: (request) => {
 	if (!request || typeof request !== "object" || Array.isArray(request)
@@ -2301,6 +2303,7 @@ if (location.protocol === `dsh-app:` && location.hostname === "app") {
 	electron.contextBridge.exposeInMainWorld("__DSH_HOST_PATHS__", { pathFor: (file) => electron.webUtils.getPathForFile(file) });
 	electron.contextBridge.exposeInMainWorld("dshDesktopBoot", {
 		ready: () => electron.ipcRenderer.invoke(DESKTOP_IPC.boot),
+		accountLoginCallbackOrigin: () => electron.ipcRenderer.invoke(DESKTOP_IPC.accountLoginCallbackOrigin),
 		issueSceneMemoryOriginGrant: (request) => electron.ipcRenderer.invoke(DESKTOP_IPC.sceneMemoryOriginGrant, request),
 		failed: (message) => electron.ipcRenderer.invoke(DESKTOP_IPC.bootFailed, message)
 	});

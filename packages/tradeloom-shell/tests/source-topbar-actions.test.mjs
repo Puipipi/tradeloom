@@ -25,7 +25,7 @@ function element(tag, className, ...children) {
 test('source shell workbench tools keep distinct desktop actions and avoid duplicate or unavailable entries', () => {
   const actions = []
   const handlers = ['showAppearanceSettings','showERPNextService','showAssistantCapabilities',
-    'showAppsEditor','showSceneConfiguration','showEngineGenerations','showRegisteredTools']
+    'showSceneConfiguration','showEngineGenerations']
   let native = true, body
   const showTools = vm.runInNewContext(sourceFunction('showTools','showERPNextService') + '\nshowTools', {
     window: { businessBridge: { isDesktop: () => native } },
@@ -40,13 +40,25 @@ test('source shell workbench tools keep distinct desktop actions and avoid dupli
   const entries = () => body.children[0].children.map(row => row.children.at(-1))
   showTools()
   assert.deepEqual(entries().map(button => button.attributes.get('aria-label')), [
-    '打开界面大小与动效','打开ERPNext 服务','打开助手能力','打开应用 / 编辑','打开场景配置','打开引擎程序快照','打开已注册工具',
+    '打开界面大小与动效','打开ERPNext 服务','打开助手能力','打开场景配置','打开引擎程序快照',
   ])
   for (const button of entries()) button.events.get('click')()
   assert.deepEqual(actions, handlers)
   native = false
   showTools()
   assert.deepEqual(entries().map(button => button.attributes.get('aria-label')), ['打开界面大小与动效'])
+})
+
+test('solo scene window keeps only web AI, global refresh, identity, and native window controls', async () => {
+  const html = await readFile(new URL('source-entry.html', shell), 'utf8')
+  const styles = await readFile(new URL('replica-ui/style.css', shell), 'utf8')
+  assert.match(html, /class="brand"[\s\S]*?titlebar-ai/)
+  assert.match(html, /id="btn-refresh"/)
+  assert.match(html, /id="titlebar-window-controls"[\s\S]*?id="btn-min"[\s\S]*?id="btn-max"[\s\S]*?id="btn-close"/)
+  assert.match(renderer, /场景独立窗口 · \$\{sceneName\}/)
+  assert.match(sourceFunction('initTitlebarOverflow', 'initTitlebar'), /document\.body\.classList\.contains\('solo'\)\) return/)
+  assert.match(styles, /body\.solo #titlebar-action-controls>\*:not\(#btn-refresh\)/)
+  assert.match(styles, /body\.solo #ui-sidebar-toggle/)
 })
 
 test('desktop and preview titlebars omit the duplicate directories in normal and overflow markup', async () => {

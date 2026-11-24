@@ -103,7 +103,8 @@ test('common desktop and Web panel actions share a compact line glyph and keep t
     button.listeners.click({ stopPropagation() {}, preventDefault() {} })
   }
   assert.deepEqual(calls, ['maximize', 'more', 'close'])
-  assert.ok(desktop.includes(`createReplicaIcon('${glyph(webAction('refresh'))}'), '刷新面板'`))
+  assert.doesNotMatch(desktop, /'刷新面板'/, 'the duplicate per-panel refresh control stays removed')
+  assert.match(desktop, /function refreshCurrentScenePanels\(/, 'the shared titlebar refresh dispatches data-panel refreshes')
   const popoutButton = inline.children.find(item => item?.attrs['data-pane-action'] === 'popout')
   const [popoutArrow] = popoutButton.children
   assert.equal(popoutArrow.tag, 'span')

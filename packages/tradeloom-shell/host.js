@@ -38,12 +38,15 @@ const MOBILE_LINK_ROUTE = '/tradeloom/mobile-link'
 const SCENES_ROUTE = '/tradeloom/scenes'
 const SCENE_LAYOUTS_ROUTE = '/tradeloom/scene-layouts'
 const DOCK_LAYOUTS_ROUTE = '/tradeloom/dock-layouts'
+const ASSISTANT_PRESETS_ROUTE = '/tradeloom/assistant-presets'
+const ASSISTANT_PRESET_SESSION_ACCESS_ROUTE = '/tradeloom/assistant-presets/session-access'
 export const name = '@tradeloom/dsh-business-shell'
 export const inject = ['connection', 'webServer', 'workspaceRegistry', 'sessionController', 'sessionQuery', 'tools', 'agents', 'subagents', 'nativeTaskAuthority']
 const MAX_BODY = 4096
 // The complete, validated five-scene configuration exceeds the small command body.
 const MAX_SCENE_CONFIGURATION_BODY = 128 * 1024
 const MAX_DOCK_LAYOUT_BODY = 256 * 1024
+const assistantSessionCreateFlights = new Map()
 
 function json(res, status, value) {
   res.statusCode = status
@@ -65,6 +68,138 @@ async function readBody(req, maxBytes = MAX_BODY) {
 
 function deterministicSessionId(role) {
   return `tl-${createHash('sha256').update(`tradeloom:${role}`).digest('hex').slice(0, 28)}`
+}
+
+function deterministicAssistantSessionId(preset) {
+  return `tl-assistant-${createHash('sha256').update(`tradeloom:assistant:${preset}`).digest('hex').slice(0, 28)}`
+}
+
+async function createOrAdoptAssistantSession(ctx, preset, workspace, workspacePath) {
+  const sessionId = deterministicAssistantSessionId(preset)
+  const active = assistantSessionCreateFlights.get(sessionId)
+  if (active) return active
+  const task = (async () => {
+    const created = await ctx.sessionController.create({ workspaceId: workspace.id, agentPreset: preset, sessionId })
+    if (created?.sessionId !== sessionId) throw new Error('assistant session identity mismatch')
+    await ensureDurableRoleSession(ctx, sessionId, workspace, workspacePath, preset)
+    return sessionId
+  })()
+  assistantSessionCreateFlights.set(sessionId, task)
+  try { return await task }
+  finally { if (assistantSessionCreateFlights.get(sessionId) === task) assistantSessionCreateFlights.delete(sessionId) }
+}
+
+function assistantPresetRoster(ctx, dependencies = {}) {
+  const getRegistry = dependencies.getAgentPresets ?? (() => ctx.get?.('agentPresets'))
+  const operationModePresetIds = new Set(['cordis', 'minimal', 'ptc', 'standard'])
+  return async () => {
+    const registry = getRegistry()
+    if (!registry || typeof registry.list !== 'function') throw new Error('assistant preset registry unavailable')
+    const rows = await registry.list()
+    if (!Array.isArray(rows)) throw new Error('assistant preset roster unavailable')
+    // Operation-mode presets are also present in the roster; selecting one as
+    // an assistant tab would open a mode switch instead of another assistant.
+    // Match the registry's exported isBuiltInPreset contract: a shipped ID
+    // without a declared name. Named declarations own their metadata, even
+    // when their ID or display title resembles an official operation mode.
+    // Then omit TradeLoom's roles, already represented by configured role tabs.
+    const rolePresets = new Set(Object.values(ROLE_PRESETS))
+    return rows.filter(row => row && typeof row.id === 'string' && row.id.trim()
+      && !(row.name === undefined && operationModePresetIds.has(row.id)) && !rolePresets.has(row.id) && row.broken === undefined)
+      .map(({ id, name, description }) => ({ id,
+        ...(typeof name === 'string' && name.trim() ? { name: name.trim().slice(0, 120) } : {}),
+        ...(typeof description === 'string' && description.trim() ? { description: description.trim().slice(0, 240) } : {}),
+      }))
+  }
+}
+
+export function createAssistantPresetsHandler(ctx, dependencies = {}) {
+  const getRoster = assistantPresetRoster(ctx, dependencies)
+  const getHome = dependencies.resolveOwnedHome ?? resolveOwnedHome
+  const getWorkspacePath = dependencies.roleWorkspacePath ?? roleWorkspacePath
+  return async (req, res) => {
+    const rejection = ctx.connection.requestRejection(req)
+    if (rejection !== undefined) { res.statusCode = rejection; res.end(); return }
+    if (req.method === 'GET') {
+      try { return json(res, 200, { presets: await getRoster() }) }
+      catch { return json(res, 503, { error: 'assistant-preset-roster-unavailable' }) }
+    }
+    if (req.method !== 'POST') { res.statusCode = 405; res.setHeader('allow', 'GET, POST'); res.end(); return }
+    const text = await readBody(req)
+    if (text === null) return json(res, 413, { error: 'request-too-large' })
+    let input
+    try { input = JSON.parse(text) } catch { return json(res, 400, { error: 'invalid-json' }) }
+    if (!input || typeof input !== 'object' || Array.isArray(input)
+      || Object.keys(input).length !== 1 || typeof input.presetId !== 'string' || !input.presetId.trim()) {
+      return json(res, 400, { error: 'invalid-assistant-preset' })
+    }
+    try {
+      const preset = input.presetId
+      if (!(await getRoster()).some(row => row.id === preset)) return json(res, 404, { error: 'assistant-preset-unavailable' })
+      await getHome()
+      const workspacePath = await getWorkspacePath('center')
+      let workspace = ctx.workspaceRegistry.list().find(item => item.path === workspacePath)
+      if (!workspace) workspace = await ctx.workspaceRegistry.create(workspacePath, 'TradeLoom 助手会话')
+      const sessionId = await createOrAdoptAssistantSession(ctx, preset, workspace, workspacePath)
+      return json(res, 200, { sessionId, bindingRevision: '0' })
+    } catch {
+      ctx.logger?.error?.('tradeloom-shell: assistant session route failed')
+      return json(res, 503, { error: 'assistant-session-unavailable' })
+    }
+  }
+}
+
+export function createAssistantPresetSessionAccessHandler(ctx, dependencies = {}) {
+  const getRoster = assistantPresetRoster(ctx, dependencies)
+  const getHome = dependencies.resolveOwnedHome ?? resolveOwnedHome
+  const getWorkspacePath = dependencies.roleWorkspacePath ?? roleWorkspacePath
+  return async (req, res) => {
+    const rejection = ctx.connection.requestRejection(req)
+    if (rejection !== undefined) { res.statusCode = rejection; res.end(); return }
+    if (req.method !== 'POST') { res.statusCode = 405; res.setHeader('allow', 'POST'); res.end(); return }
+    const text = await readBody(req)
+    if (text === null) return json(res, 413, { error: 'request-too-large' })
+    let input
+    try { input = JSON.parse(text) } catch { return json(res, 400, { error: 'invalid-json' }) }
+    const keys = input && typeof input === 'object' && !Array.isArray(input) ? Object.keys(input).sort().join(',') : ''
+    if (!input || typeof input !== 'object' || Array.isArray(input)
+      || !['sessionId', 'presetId,sessionId'].includes(keys)
+      || typeof input.sessionId !== 'string' || !input.sessionId.trim()
+      || keys === 'presetId,sessionId' && (typeof input.presetId !== 'string' || !input.presetId.trim())) {
+      return json(res, 400, { error: 'invalid-assistant-session-request' })
+    }
+    try {
+      const roster = await getRoster()
+      const preset = keys === 'presetId,sessionId'
+        ? roster.find(row => row.id === input.presetId)
+        : roster.find(row => deterministicAssistantSessionId(row.id) === input.sessionId)
+      if (!preset || input.sessionId !== deterministicAssistantSessionId(preset.id)) return json(res, 403, { authorized: false })
+      await getHome()
+      const workspacePath = await getWorkspacePath('center')
+      const workspace = ctx.workspaceRegistry.list().find(item => item.path === workspacePath)
+      if (!workspace || ctx.workspaceRegistry.archivedSessionIds?.includes(input.sessionId)) return json(res, 403, { authorized: false })
+      const stillCurrent = await ensureDurableRoleSession(ctx, input.sessionId, workspace, workspacePath, preset.id, false)
+      if (!stillCurrent() || ctx.workspaceRegistry.archivedSessionIds?.includes(input.sessionId)
+        || !(await getRoster()).some(row => row.id === preset.id)) return json(res, 403, { authorized: false })
+      const persistence = ctx.get?.('sessionPersistence')
+      const snapshot = await persistence?.stat?.(input.sessionId)
+      const header = snapshot?.header
+      if (header?.id !== input.sessionId || header.cwd !== workspacePath || header.agentPreset !== preset.id || !stillCurrent()) {
+        return json(res, 403, { authorized: false })
+      }
+      const agent = ctx.agents?.get?.(input.sessionId)
+      const summary = {
+        sessionId: input.sessionId,
+        updatedAt: Number.isSafeInteger(header.createdAt) ? header.createdAt : 0,
+        agentAvailable: agent !== undefined,
+        running: agent?.status === 'running',
+        blank: false,
+      }
+      return json(res, 200, { authorized: true, summary })
+    } catch {
+      return json(res, 503, { error: 'assistant-session-unavailable' })
+    }
+  }
 }
 
 function roleBindingMetadata(role, binding, registry, bindingRevision) {
@@ -1008,6 +1143,8 @@ export function apply(ctx, config = {}) {
     const disposeProfile = ctx.webServer.register({ kind: 'exact', path: PROFILE_ROUTE, handler: createProfileHandler(ctx) })
     const disposeMobileLink = ctx.webServer.register({ kind: 'exact', path: MOBILE_LINK_ROUTE, handler: createMobileLinkHandler(ctx) })
     const disposeSourceShellBinding = ctx.webServer.register({ kind: 'exact', path: '/tradeloom/source-shell/resolve-binding', handler: createSourceShellBindingHandler(ctx) })
+    const disposeAssistantPresets = ctx.webServer.register({ kind: 'exact', path: ASSISTANT_PRESETS_ROUTE, handler: createAssistantPresetsHandler(ctx) })
+    const disposeAssistantPresetSessionAccess = ctx.webServer.register({ kind: 'exact', path: ASSISTANT_PRESET_SESSION_ACCESS_ROUTE, handler: createAssistantPresetSessionAccessHandler(ctx) })
     const disposeScenes = ctx.webServer.register({ kind: 'exact', path: SCENES_ROUTE, handler: createScenesHandler(ctx) })
     const disposeSceneLayouts = ctx.webServer.register({ kind: 'exact', path: SCENE_LAYOUTS_ROUTE, handler: createSceneLayoutsHandler(ctx) })
     const disposeDockLayouts = ctx.webServer.register({ kind: 'exact', path: DOCK_LAYOUTS_ROUTE, handler: createDockLayoutsHandler(ctx) })
@@ -1062,6 +1199,8 @@ export function apply(ctx, config = {}) {
         disposeProfile()
         disposeMobileLink()
         disposeSourceShellBinding()
+        disposeAssistantPresetSessionAccess()
+        disposeAssistantPresets()
         disposeScenes()
         disposeSceneLayouts()
         disposeDockLayouts()

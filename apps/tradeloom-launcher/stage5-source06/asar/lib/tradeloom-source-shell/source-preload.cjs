@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('app', Object.freeze({
   initialPaintReady: value => call('initialPaintReady', value),
   minimize: () => call('minimize'), toggleMaximize: () => call('toggleMaximize'), isMaximized: () => call('isMaximized'), close: () => call('close'),
   openWindowsMenu: (name,x,y,sourceEditor) => ipcRenderer.invoke('dsh-desktop:windows-menu',name,x,y,sourceEditor),
+  openErpNextWorkbench: () => call('openErpNextWorkbench'),
   onNativeFocus: callback => { const listener=()=>callback();ipcRenderer.on('source-shell:native-focus',listener);return ()=>ipcRenderer.removeListener('source-shell:native-focus',listener) },
   win: Object.freeze({ info: () => call('windowInfo'), scenes: () => call('windowScenes'), openScene: id => call('detach',id), closeSelf: () => call('close'), onChanged: callback => { const listener=(_event,value)=>callback(value); ipcRenderer.on('source-shell:window-changed',listener); return () => ipcRenderer.removeListener('source-shell:window-changed',listener) } }),
   topbar: Object.freeze({}),
@@ -56,6 +57,8 @@ contextBridge.exposeInMainWorld('app', Object.freeze({
   mobileLink: () => call('mobileLink'),
   sourceTheme: Object.freeze({getSnapshot:()=>call('themeSnapshot'),setPreference:preference=>call('themePreference',preference),onChanged:callback=>{const listener=(_event,value)=>callback(value);ipcRenderer.on('source-shell:theme-event',listener);return()=>ipcRenderer.removeListener('source-shell:theme-event',listener)}}),
   workflowFiles: request => call('workflowFiles', request),
+  sceneFiles: request => call('sceneFiles', request),
+  setActiveScene: sceneId => call('setActiveScene', sceneId),
   onWorkflowFilesChanged: callback => {
     const listener = (_event, value) => {
       if (value === undefined) callback(false)

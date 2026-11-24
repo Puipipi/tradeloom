@@ -62,6 +62,8 @@
   }
   const fileBridgeMounts = new Map()
   const localWorkflowMounts = new Map()
+  const fileViewModes = new Map()
+  const fileViewListeners = new Map()
 
   const isDesktop = () => location.protocol === 'dsh-app:' && location.hostname === 'app'
     && !location.port && !location.username && !location.password
@@ -285,6 +287,8 @@
     }
     fileBridgeMounts.clear()
     localWorkflowMounts.clear()
+    fileViewModes.clear()
+    fileViewListeners.clear()
   }
 
   function start() {
@@ -570,7 +574,15 @@
     if (document.body.classList.contains('titlebar-overflow-open')) return false
     const mask = byId('modal-mask')
     if (mask && getComputedStyle(mask).display !== 'none' && !mask.hidden) return false
-    if (document.querySelector('body > .theme-menu, body > .mobile-link-popover') || document.querySelector('.pi-menu')) return false
+    if (document.querySelector('body > .theme-menu, body > .mobile-link-popover')) return false
+    // Native guests paint above the shell. Hide only guests covered by a panel
+    // menu; a chooser in the assistant must leave the other live panes in place.
+    const paneRect = panel.getBoundingClientRect()
+    if ([...document.querySelectorAll('.pi-menu')].some(menu => {
+      const rect = menu.getBoundingClientRect()
+      return rect.width > 0 && rect.height > 0 && rect.left < paneRect.right && rect.right > paneRect.left
+        && rect.top < paneRect.bottom && rect.bottom > paneRect.top
+    })) return false
     const expandedPanels = [...document.querySelectorAll('#grid .panel-expanded, #grid .pi-maximized')]
       .filter(candidate => !candidate.hidden && getComputedStyle(candidate).display !== 'none')
       .sort((a, b) => {
@@ -807,13 +819,8 @@
     const header = record.panel?.querySelector('.panel-header')
     const content = record.panel?.querySelector('.panel-content') || record.content
     if (!panel || !header || !content) return
-    if (!group.tabs.size) {
-      if (group.row) {
-        group.row.hidden = true
-        group.bar?.replaceChildren()
-      }
-      return
-    }
+    // The scene's original assistant is a permanent tab, including before any
+    // extra assistants have been added.
     let row = group.row
     let bar = group.bar
     if (!row?.isConnected || !bar?.isConnected) {
@@ -825,11 +832,37 @@
       bar.setAttribute('role', 'tablist')
       bar.setAttribute('aria-label', '助手标签')
       row.append(bar)
-      panel.insertBefore(row, content)
+      const title = header.querySelector('.panel-title')
+      const titleParent = title?.parentNode
+      const controls = header.querySelector('.panel-controls')
+      if (titleParent && titleParent !== header) titleParent.insertBefore(row, title.nextSibling)
+      else if (title?.parentNode === header) header.insertBefore(row, title.nextSibling)
+      else if (controls?.parentNode === header) header.insertBefore(row, controls)
+      else header.append(row)
       group.row = row
       group.bar = bar
     }
     row.hidden = false
+    const panelTitle = header.querySelector('.panel-title')
+    const componentTabs = header.querySelector('.pi-component-tabs')
+    const componentButtons = componentTabs ? [...componentTabs.children] : []
+    const duplicatedComponentTab = componentButtons.length === 1
+      && componentButtons[0].textContent.trim() === group.fixedLabel.trim()
+    const duplicatedTitle = Boolean(panelTitle && panelTitle.textContent.trim() === group.fixedLabel.trim())
+    if (duplicatedTitle) {
+      row.dataset.assistantTitleDuplicate = 'true'
+      panelTitle.setAttribute('aria-hidden', 'true')
+    } else {
+      delete row.dataset.assistantTitleDuplicate
+      panelTitle?.removeAttribute('aria-hidden')
+    }
+    if (duplicatedComponentTab) {
+      row.dataset.assistantComponentDuplicate = 'true'
+      componentTabs.setAttribute('aria-hidden', 'true')
+    } else {
+      delete row.dataset.assistantComponentDuplicate
+      componentTabs?.removeAttribute('aria-hidden')
+    }
     const makeTabButton = (tab, fixed = false) => {
       const button = document.createElement('button')
       button.type = 'button'
@@ -861,18 +894,16 @@
       children.push(current)
     }
     const remaining = [...group.tabs.values()].filter(tab => tab.roleId !== group.activeRoleId)
-    if (remaining.length) {
-      const scroll = document.createElement('div')
-      scroll.className = 'business-assistant-tabs-scroll'
-      scroll.setAttribute('aria-label', '其他已添加助手')
-      for (const tab of remaining) {
-        const item = document.createElement('div')
-        item.className = 'business-assistant-tab'
-        item.append(makeTabButton(tab), makeCloseButton(tab))
-        scroll.append(item)
-      }
-      children.push(scroll)
+    const scroll = document.createElement('div')
+    scroll.className = 'business-assistant-tabs-scroll'
+    scroll.setAttribute('aria-label', '其他已添加助手')
+    for (const tab of remaining) {
+      const item = document.createElement('div')
+      item.className = 'business-assistant-tab'
+      item.append(makeTabButton(tab), makeCloseButton(tab))
+      scroll.append(item)
     }
+    children.push(scroll)
     bar.replaceChildren(...children)
   }
 
@@ -935,9 +966,11 @@
     const wasActive = group.activeRoleId === roleId
     group.tabs.delete(roleId)
     if (!isCurrentRole(record)) return
-    if (wasActive) group.activeRoleId = group.fixedRoleId
+    const remaining = [...group.tabs.values()]
+    const nextRoleId = wasActive ? (remaining[0]?.roleId ?? group.fixedRoleId) : group.activeRoleId
+    if (wasActive) group.activeRoleId = nextRoleId
     renderAssistantTabBar(record)
-    if (wasActive) await selectAssistantTab(record, group.fixedRoleId)
+    if (wasActive) await selectAssistantTab(record, nextRoleId)
   }
 
   async function openAssistantTabChooser(panel) {
@@ -958,8 +991,16 @@
       return
     }
     if (!isCurrentRole(record) || generation !== group.chooserGeneration || !Array.isArray(options)) return
-    const candidates = options.filter(option => option && typeof option.roleId === 'string'
-      && typeof option.panelId === 'string' && !group.tabs.has(option.roleId) && option.roleId !== group.fixedRoleId)
+    const seenRoleIds = new Set([group.fixedRoleId, ...group.tabs.keys()])
+    const seenPanelIds = new Set()
+    const candidates = options.filter(option => {
+      if (!option || typeof option.roleId !== 'string' || !option.roleId.trim()
+        || typeof option.panelId !== 'string' || !option.panelId.trim()
+        || seenRoleIds.has(option.roleId) || seenPanelIds.has(option.panelId)) return false
+      seenRoleIds.add(option.roleId)
+      seenPanelIds.add(option.panelId)
+      return true
+    })
     const menu = document.createElement('div')
     menu.className = 'pi-menu business-assistant-menu'
     menu.setAttribute('role', 'menu')
@@ -1003,7 +1044,8 @@
     const role = state.config?.raw.roles.find(item => item.id === roleId)
     record.assistantTabs = {
       sceneId: target.sceneId, hostPanelId: target.panelId, fixedRoleId: roleId,
-      fixedLabel: typeof role?.label === 'string' && role.label ? role.label : roleId,
+      fixedLabel: record.panel?.querySelector('.panel-title')?.textContent?.trim()
+        || (typeof role?.label === 'string' && role.label ? role.label : roleId),
       fixedTarget: target, activeRoleId: roleId, tabs: new Map(), switchGeneration: 0, chooserGeneration: 0,
     }
     renderAssistantTabBar(record)
@@ -1525,7 +1567,14 @@
       if (inherited) return { path: companionPath, panelId: view, sceneId: meta.sceneId, workflowDirectory: true }
     }
     const target = routeForPath(routePath)
-    if (!target) return undefined
+    if (!target?.scene) {
+      if (routePath !== '/artifacts#sources') return undefined
+      const configuredScene = state.config.scenes.get(meta?.sceneId)
+      const configuredPanel = configuredScene?.panelMap.get(view)
+      return configuredPanel?.type === 'business-iframe' && configuredPanel.path === companionPath
+        ? { path: companionPath, panelId: configuredPanel.id, sceneId: configuredScene.id,
+          workflowDirectory: Boolean(workflowTemplateRoute(meta?.sceneId)) } : undefined
+    }
     const panel = target.scene.panels.find(item => item.id === view && item.type === 'business-iframe'
       && item.path === companionPath)
     return panel ? { path: panel.path, panelId: panel.id, sceneId: target.scene.id } : undefined
@@ -1544,6 +1593,26 @@
     return state.fileBridgePromise
   }
 
+  function fileViewMode(sceneId) {
+    return fileViewModes.get(sceneId) || (sceneId === 'agent-center' || workflowTemplateRoute(sceneId) ? 'local' : 'business')
+  }
+
+  function supportsSceneLocalFiles(sceneId) {
+    const scene = state.config?.scenes.get(sceneId)
+    return Boolean(isDesktop() && typeof app?.sceneFiles === 'function' && scene
+      && ['files', 'preview'].every((id, index) => {
+        const panel = scene.panelMap.get(id)
+        return panel?.type === 'business-iframe' && panel.path === (index === 0 ? '/artifacts#files' : '/artifacts#preview')
+      }))
+  }
+
+  function sceneLocalTarget(meta, target) {
+    const uiSceneId = meta?.sceneId || state.sceneId
+    if (fileViewMode(uiSceneId) !== 'local' || !supportsSceneLocalFiles(uiSceneId)
+      || uiSceneId === 'agent-center' || workflowTemplateRoute(uiSceneId)) return target
+    return { ...target, sceneId: uiSceneId, sceneFilesUi: true }
+  }
+
   function releaseFileCompanion(uiSceneId, mounted, content) {
     mounted.refs = Math.max(0, mounted.refs - 1)
     if (mounted.refs === 0) {
@@ -1558,7 +1627,7 @@
     content.replaceChildren()
   }
 
-  function mountWorkflowFiles(workflow, content, view, isCurrent = () => true) {
+  function mountWorkflowFiles(workflow, content, view, isCurrent = () => true, requestFiles = app.workflowFiles, uiOnly = false) {
     // File and directory presentation is adapted from luanyujia-workbench
     // (MIT, Copyright (c) 2026 淋雨家); see WORKFLOW_FILES_UI_LICENSE.txt.
     const files = view === 'files'
@@ -1677,13 +1746,14 @@
       if (!isCurrent()) return
       if (workflow.busy) {
         if (operation === 'current') workflow.dirty = true
+        else if (operation === 'pick') workflow.queuedPick = true
         return
       }
       workflow.error = ''
       workflow.busy = true
       refresh()
       try {
-        const value = await app.workflowFiles(id ? { operation, id } : { operation })
+        const value = await requestFiles(id ? { operation, id } : { operation })
         if (!isCurrent() || !workflow.panes.size || (operation === 'pick' && value === null)) return
         if (operation === 'download') download(value)
         else if (operation === 'preview') { workflow.selected = { ...value, id }; workflow.previewOpen = true }
@@ -1705,7 +1775,7 @@
         announce('无法访问所选目录或文件。请重新打开目录。')
         if (operation !== 'pick' && operation !== 'current') {
           try {
-            const directory = await app.workflowFiles({ operation: 'current' })
+            const directory = await requestFiles({ operation: 'current' })
             if (isCurrent()) {
               workflow.directory = directory
               workflow.selected = null
@@ -1716,7 +1786,10 @@
         workflow.busy = false
         if (isCurrent()) {
           refresh()
-          if (workflow.dirty && workflow.panes.size) {
+          if (workflow.queuedPick && workflow.panes.size) {
+            workflow.queuedPick = false
+            void request('pick')
+          } else if (workflow.dirty && workflow.panes.size) {
             workflow.dirty = false
             void request('current')
           }
@@ -1755,7 +1828,10 @@
       const actions = document.createElement('div')
       actions.className = 'tl-workflow-directory-actions'
       if (files) {
-        actions.append(button('打开', () => void request('pick'), workflow.busy))
+        // The panel header is the canonical picker when this component is
+        // mounted inside a workbench panel. Keep the body fallback for
+        // standalone previews that have no shared panel header.
+        if (!fileHeaderGroup) actions.append(button('打开', () => void request('pick'), workflow.busy))
         actions.append(button('上一级', () => void request('up'), workflow.busy || !showLocal || !directory.canGoUp))
         if (directory) actions.append(button('重读', () => void request('current'), workflow.busy))
         if (directory) actions.append(button('关闭目录', () => void request('revoke'), workflow.busy))
@@ -1892,13 +1968,14 @@
     if (firstPane) {
       workflow.onFocus = openPreview => { if (openPreview === true) workflow.previewOpen = true; void request('current') }
       window.addEventListener('focus', workflow.onFocus)
-      workflow.offChanged = app.onWorkflowFilesChanged?.(workflow.onFocus)
+      workflow.offChanged = uiOnly ? undefined : app.onWorkflowFilesChanged?.(workflow.onFocus)
       void request('current')
     }
-    return () => {
+    const cleanup = () => {
       workflow.panes.delete(render)
       disposePdfMount()
       if (!workflow.panes.size) {
+        workflow.queuedPick = false
         window.removeEventListener('focus', workflow.onFocus)
         workflow.offChanged?.()
       }
@@ -1909,12 +1986,17 @@
       panelHeader?.classList.remove('tl-workflow-file-header')
       if (panelTitle && previousPanelTitle !== undefined) panelTitle.textContent = previousPanelTitle
     }
+    cleanup.openDirectory = () => { void request('pick') }
+    return cleanup
   }
 
   function isLocalWorkflowCompanion(meta, target) {
     const uiSceneId = meta.sceneId || state.sceneId
-    const directory = target.workflowDirectory === true || (uiSceneId === 'agent-center' && target.sceneId === 'agent-center')
-    return directory && state.sceneId === uiSceneId && typeof app?.workflowFiles === 'function'
+    const workflowFolder = target.workflowDirectory === true || (uiSceneId === 'agent-center' && target.sceneId === 'agent-center')
+    const localUiFolder = target.sceneFilesUi === true
+    const api = localUiFolder ? app?.sceneFiles : app?.workflowFiles
+    return (localUiFolder || workflowFolder && fileViewMode(uiSceneId) !== 'business')
+      && state.sceneId === uiSceneId && typeof api === 'function'
   }
 
   function mountLocalWorkflowCompanion(meta, content, target, view) {
@@ -1933,17 +2015,139 @@
     delete content.__businessFileExport
     delete content.__businessFileFocus
     const sceneRevision = state.sceneRevision
-    const cleanup = mountWorkflowFiles(mounted.workflow, content, view,
+    const requestFiles = target.sceneFilesUi ? app.sceneFiles.bind(app) : app.workflowFiles.bind(app)
+    const cleanupFiles = mountWorkflowFiles(mounted.workflow, content, view,
       () => state.sceneId === uiSceneId && state.sceneRevision === sceneRevision
         && !state.sceneTransitionPending && !state.tearingDown
-        && (!target.workflowDirectory || Boolean(workflowTemplateRoute(uiSceneId))))
-    return () => {
-      cleanup?.()
+        && (!target.workflowDirectory || Boolean(workflowTemplateRoute(uiSceneId)) || uiSceneId === 'agent-center'), requestFiles, target.sceneFilesUi === true)
+    const cleanup = () => {
+      cleanupFiles?.()
       mounted.refs = Math.max(0, mounted.refs - 1)
       if (!mounted.refs) localWorkflowMounts.delete(uiSceneId)
       delete content.dataset.fileBridgeView
       delete content.dataset.fileBridgeReady
       content.replaceChildren()
+    }
+    cleanup.openDirectory = cleanupFiles?.openDirectory
+    return cleanup
+  }
+
+  function mountBusinessFileHeader(panel, frame) {
+    const panelHeader = panel?.querySelector('.panel-header')
+    const panelTitle = panelHeader?.querySelector('.panel-title')
+    if (!panelHeader || !panelTitle || !frame) return () => {}
+
+    const group = document.createElement('div')
+    group.className = 'tl-workflow-file-head-actions tl-business-file-head-actions'
+    const scope = document.createElement('label')
+    scope.className = 'tl-workflow-file-path-badge tl-business-file-scope'
+    const scopeName = document.createElement('span')
+    scopeName.textContent = '资料范围'
+    const scopeSelect = document.createElement('select')
+    scopeSelect.setAttribute('aria-label', '资料范围')
+    scope.append(scopeName, scopeSelect)
+    const tools = document.createElement('div')
+    tools.className = 'tl-workflow-file-head-tools tl-business-file-head-tools'
+    const makeTool = (label, title, action) => {
+      const node = document.createElement('button')
+      node.type = 'button'
+      node.textContent = label
+      node.title = title
+      node.setAttribute('aria-label', title)
+      node.addEventListener('pointerdown', event => event.stopPropagation())
+      node.addEventListener('click', event => { event.stopPropagation(); action() })
+      tools.append(node)
+      return node
+    }
+    const rows = makeTool('☰', '列表视图', () => activateView('rows'))
+    const grid = makeTool('▦', '缩略图视图', () => activateView('grid'))
+    rows.disabled = grid.disabled = true
+    scopeSelect.disabled = true
+    group.append(scope, tools)
+    panelHeader.classList.add('tl-file-companion-header', 'tl-workflow-file-header')
+    panelHeader.insertBefore(group, panelHeader.querySelector('.panel-controls'))
+
+    let connectedDocument
+    let childSelect
+    let childViewButtons = []
+    let onChildScope
+    const documentForFrame = () => {
+      try {
+        const child = frame.contentDocument
+        const actual = new URL(frame.contentWindow.location.href)
+        if (!frame.isConnected || !panel.contains(frame) || !child
+          || actual.origin !== location.origin || actual.pathname !== '/business/artifacts' || actual.hash !== '#files'
+          || child.documentElement?.dataset.businessBrowserMode !== 'files'
+          || child.documentElement?.dataset.businessEmbed !== 'true'
+          || child.querySelector('[data-file-list-pane]')?.hidden !== false
+          || child.querySelector('[data-file-preview-pane]')?.hidden !== true) return undefined
+        return child
+      } catch { return undefined }
+    }
+    const setActive = () => {
+      const [rowsButton, gridButton] = childViewButtons
+      const isRows = rowsButton?.getAttribute('aria-pressed') === 'true'
+      const isGrid = gridButton?.getAttribute('aria-pressed') === 'true'
+      rows.setAttribute('aria-pressed', String(isRows))
+      grid.setAttribute('aria-pressed', String(isGrid))
+    }
+    const disconnectChild = () => {
+      if (childSelect && onChildScope) childSelect.removeEventListener('change', onChildScope)
+      childSelect = undefined
+      childViewButtons = []
+      onChildScope = undefined
+      if (connectedDocument?.documentElement?.dataset.shellFileToolbar === 'true') {
+        delete connectedDocument.documentElement.dataset.shellFileToolbar
+      }
+      connectedDocument = undefined
+      scopeSelect.disabled = true
+      rows.disabled = grid.disabled = true
+    }
+    const connectChild = () => {
+      const child = documentForFrame()
+      if (!child || child === connectedDocument) return
+      disconnectChild()
+      const actualSelect = child.querySelector('[data-file-filter]')
+      const actualViews = [...child.querySelectorAll('[data-file-view]')]
+      if (!actualSelect || actualViews.length !== 2 || !child.querySelector('[data-file-refresh]')) return
+      connectedDocument = child
+      childSelect = actualSelect
+      child.documentElement.dataset.shellFileToolbar = 'true'
+      scopeSelect.replaceChildren(...[...actualSelect.options].map(option => {
+        const copy = document.createElement('option')
+        copy.value = option.value
+        copy.textContent = option.textContent
+        copy.hidden = option.hidden
+        return copy
+      }))
+      scopeSelect.value = actualSelect.value
+      scopeSelect.disabled = false
+      rows.disabled = grid.disabled = false
+      onChildScope = () => { scopeSelect.value = actualSelect.value; setActive() }
+      actualSelect.addEventListener('change', onChildScope)
+      scopeSelect.onchange = () => {
+        if (!childSelect || childSelect !== actualSelect) return
+        childSelect.value = scopeSelect.value
+        childSelect.dispatchEvent(new child.defaultView.Event('change', { bubbles: true }))
+        setActive()
+      }
+      childViewButtons = actualViews
+      setActive()
+    }
+    function activateView(view) {
+      const target = childViewButtons.find(button => button.dataset.fileView === view)
+      target?.click()
+      setActive()
+    }
+    const onFrameLoad = () => { disconnectChild(); connectChild() }
+    frame.addEventListener('load', onFrameLoad)
+    connectChild()
+    return () => {
+      frame.removeEventListener('load', onFrameLoad)
+      disconnectChild()
+      scopeSelect.onchange = null
+      group.remove()
+      panelHeader.classList.remove('tl-workflow-file-header')
     }
   }
 
@@ -1984,11 +2188,13 @@
       frame.dataset.tradeloomBusinessPath = target.path
       frame.classList.add('business-route-frame')
     }
+    const cleanupFileHeader = view === 'files' ? mountBusinessFileHeader(content.closest('.panel'), frame) : undefined
     content.dataset.fileBridgeView = view
     content.dataset.fileBridgeReady = 'true'
     content.__businessFileExport = mounted.handler.requestFileExport
     content.__businessFileFocus = mounted.handler.requestFileFocus
     return () => {
+      cleanupFileHeader?.()
       cleanupFrame?.()
       panelHeader?.classList.remove('tl-file-companion-header')
       if (panelTitle && previousPanelTitle !== undefined) panelTitle.textContent = previousPanelTitle
@@ -1996,10 +2202,10 @@
     }
   }
 
-  function renderCompanion(meta, content, view) {
+  function renderCompanionContent(meta, content, view) {
     if (state.phase === 'idle') void start()
     if (state.phase === 'loading') {
-      const onReady = () => { window.removeEventListener('business-config-ready', onReady); if (content.isConnected) renderCompanion(meta, content, view) }
+      const onReady = () => { window.removeEventListener('business-config-ready', onReady); if (content.isConnected) renderCompanionContent(meta, content, view) }
       window.addEventListener('business-config-ready', onReady)
       stateNode(content, '正在读取文件路由…')
       return () => { window.removeEventListener('business-config-ready', onReady); content.replaceChildren() }
@@ -2012,20 +2218,21 @@
       stateNode(content, state.error || '业务配置不可用。', 'error', () => {
         state.phase = 'loading'; state.error = ''; state.configPromise = undefined
         stateNode(content, '正在重试读取业务配置…')
-        void start().then(() => { if (content.isConnected) renderCompanion(meta, content, view) })
+        void start().then(() => { if (content.isConnected) renderCompanionContent(meta, content, view) })
       })
       return () => content.replaceChildren()
     }
-    const target = findCompanionPath(meta, view)
+    let target = findCompanionPath(meta, view)
     if (!target) {
       stateNode(content, view === 'files' ? '文件服务尚未映射到当前桌面配置。' : '预览服务尚未映射到当前桌面配置。', 'error')
       return () => content.replaceChildren()
     }
+    target = sceneLocalTarget(meta, target)
     if (isLocalWorkflowCompanion(meta, target)) return mountLocalWorkflowCompanion(meta, content, target, view)
     if (window.TradeLoomBusinessFileBridge?.create) {
       return mountFileCompanion(meta, content, target, view)
     }
-    const onReady = () => { window.removeEventListener('business-file-bridge-ready', onReady); if (content.isConnected) renderCompanion(meta, content, view) }
+    const onReady = () => { window.removeEventListener('business-file-bridge-ready', onReady); if (content.isConnected) renderCompanionContent(meta, content, view) }
     window.addEventListener('business-file-bridge-ready', onReady)
     stateNode(content, view === 'files' ? '文件消息接线正在初始化…' : '预览消息接线正在初始化…')
     void ensureFileBridge().then(helper => {
@@ -2039,9 +2246,82 @@
     return () => { window.removeEventListener('business-file-bridge-ready', onReady); content.replaceChildren() }
   }
 
+  function renderCompanion(meta, content, view) {
+    const uiSceneId = meta?.sceneId || state.sceneId
+    let listeners = fileViewListeners.get(uiSceneId)
+    if (!listeners) { listeners = new Set(); fileViewListeners.set(uiSceneId, listeners) }
+    let innerCleanup
+    const rerender = openDirectory => {
+      innerCleanup?.()
+      innerCleanup = renderCompanionContent(meta, content, view)
+      ensureToolbar()
+      if (openDirectory) queueMicrotask(() => innerCleanup?.openDirectory?.())
+      for (const button of buttonGroup?.querySelectorAll('button') ?? []) {
+        const active = button.dataset.fileMode === fileViewMode(uiSceneId)
+        button.setAttribute('aria-pressed', String(active))
+        if (button.dataset.fileMode === 'local') button.hidden = active
+      }
+    }
+    const refreshScene = openDirectory => {
+      fileViewModes.set(uiSceneId, 'local')
+      for (const callback of [...listeners]) callback(callback.view === 'files' && openDirectory)
+    }
+    const showBusiness = () => {
+      fileViewModes.set(uiSceneId, 'business')
+      for (const callback of [...listeners]) callback(false)
+    }
+    rerender.view = view
+    listeners.add(rerender)
+    let buttonGroup
+    let panelHeader
+    let readyListener
+    const ensureToolbar = () => {
+      if (buttonGroup || view !== 'files' || !supportsSceneLocalFiles(uiSceneId)) return
+      panelHeader = content.closest('.panel')?.querySelector('.panel-header')
+      if (panelHeader) {
+        buttonGroup = document.createElement('div')
+        buttonGroup.className = 'tl-file-view-mode'
+        const makeMode = (mode, label, title, action) => {
+          const button = document.createElement('button')
+          button.type = 'button'
+          button.className = 'tl-workflow-directory-tool'
+          button.dataset.fileMode = mode
+          button.textContent = label
+          button.title = title
+          button.setAttribute('aria-pressed', String(fileViewMode(uiSceneId) === mode))
+          button.addEventListener('pointerdown', event => event.stopPropagation())
+          button.addEventListener('click', event => { event.stopPropagation(); action() })
+          buttonGroup.append(button)
+        }
+        makeMode('local', '📂 打开文件夹', '选择并浏览此场景的本地文件夹', () => refreshScene(true))
+        makeMode('business', '业务资料', '返回当前场景的业务资料与交付物', showBusiness)
+        const panel = content.closest('.panel')
+        if (panel) panel.insertBefore(buttonGroup, content)
+        else panelHeader.after(buttonGroup)
+      }
+    }
+    if (!supportsSceneLocalFiles(uiSceneId)) {
+      readyListener = () => {
+        window.removeEventListener('business-config-ready', readyListener)
+        readyListener = undefined
+        if (content.isConnected) rerender(false)
+      }
+      window.addEventListener('business-config-ready', readyListener)
+    }
+    rerender(false)
+    return () => {
+      if (readyListener) window.removeEventListener('business-config-ready', readyListener)
+      innerCleanup?.()
+      listeners.delete(rerender)
+      if (!listeners.size) fileViewListeners.delete(uiSceneId)
+      buttonGroup?.remove()
+    }
+  }
+
   function onSceneChanged(scene) {
     const next = typeof scene === 'string' ? scene : scene?.id
     if (!next) return
+    if (typeof app?.setActiveScene === 'function') void Promise.resolve(app.setActiveScene(next)).catch(() => {})
     // A scene can be reselected while a hide barrier is pending. That still
     // completes the barrier even though the scene generation stays unchanged.
     state.sceneTransitionPending = false
@@ -2227,21 +2507,224 @@
     } catch { return { ok: false, reason: 'unavailable' } }
   }
 
-  async function openErpNextStatus() {
-    const component = app?.erpNextStatus
-    if (!isDesktop() || typeof component?.mount !== 'function' || typeof component?.status !== 'function'
-      || typeof component?.popOut !== 'function') return { ok: false, reason: 'unavailable' }
+  const erpNextDoctypes = Object.freeze(['Item', 'Customer', 'Supplier', 'Warehouse', 'Bin', 'Sales Order', 'Purchase Order'])
+  const erpNextDoctypeLabels = Object.freeze({
+    Item: '商品', Customer: '客户', Supplier: '供应商', Warehouse: '仓库', Bin: '库存',
+    'Sales Order': '销售订单', 'Purchase Order': '采购订单',
+  })
+  const erpNextListFields = Object.freeze({
+    Item: ['item_code', 'item_name', 'item_group', 'stock_uom', 'disabled'],
+    Customer: ['customer_name', 'customer_type', 'customer_group', 'territory', 'disabled'],
+    Supplier: ['supplier_name', 'supplier_type', 'supplier_group', 'country', 'disabled'],
+    Warehouse: ['warehouse_name', 'company', 'parent_warehouse', 'disabled'],
+    Bin: ['item_code', 'warehouse', 'actual_qty', 'reserved_qty', 'projected_qty', 'stock_uom'],
+    'Sales Order': ['customer', 'customer_name', 'company', 'transaction_date', 'status', 'grand_total', 'currency'],
+    'Purchase Order': ['supplier', 'supplier_name', 'company', 'transaction_date', 'status', 'grand_total', 'currency'],
+  })
+  const erpNextFieldLabels = Object.freeze({
+    name: '编号', modified: '最后修改', item_code: '商品编码', item_name: '商品名称', item_group: '商品组',
+    stock_uom: '库存单位', disabled: '已停用', customer_name: '客户名称', customer_type: '客户类型',
+    customer_group: '客户组', territory: '区域', supplier_name: '供应商名称', supplier_type: '供应商类型',
+    supplier_group: '供应商组', country: '国家/地区', warehouse_name: '仓库名称', company: '公司',
+    parent_warehouse: '上级仓库', actual_qty: '实际库存', reserved_qty: '已预留', projected_qty: '预计库存',
+    transaction_date: '交易日期', status: '状态', grand_total: '总金额', currency: '币种',
+  })
+
+  function safeErpNextSiteUrl(value) {
+    if (typeof value !== 'string' || !value || value.length > 2048) return ''
     try {
-      const mounted = await component.mount()
-      if (mounted?.componentKey !== 'erpnext-status-native' || typeof mounted.sceneId !== 'string' || typeof mounted.panelId !== 'string') {
-        return { ok: false, reason: 'unavailable' }
+      const parsed = new URL(value)
+      const hostname = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '')
+      const loopback = hostname === 'localhost' || hostname === '::1' || /^127(?:\.\d{1,3}){3}$/.test(hostname)
+      if (!['https:', 'http:'].includes(parsed.protocol) || (parsed.protocol === 'http:' && !loopback)
+        || parsed.username || parsed.password || parsed.search || parsed.hash) return ''
+      return parsed.href.replace(/\/$/, '')
+    } catch { return '' }
+  }
+
+  function erpNextDisplayValue(value) {
+    if (value === null || value === undefined || value === '') return '—'
+    if (value === true) return '是'
+    if (value === false) return '否'
+    if (typeof value === 'string' || typeof value === 'number') return String(value)
+    return '—'
+  }
+
+  function renderErpNextStatusPanel(panel, content) {
+    if (panel?.type !== 'erpnext-status' || panel.id !== 'business-main' || panel.sceneId !== 'erpnext') {
+      content.textContent = 'ERPNext 状态页面未在当前场景授权。'
+      return () => content.replaceChildren()
+    }
+
+    const root = document.createElement('section')
+    root.className = 'tl-erpnext-panel'
+    const header = document.createElement('header')
+    header.className = 'tl-erpnext-panel-header'
+    const title = document.createElement('h2')
+    title.textContent = 'ERPNext 连接状态'
+    const checkButton = document.createElement('button')
+    checkButton.type = 'button'; checkButton.textContent = '检查连接'
+    header.append(title, checkButton)
+    const status = document.createElement('div')
+    status.className = 'tl-erpnext-panel-state'
+    status.setAttribute('role', 'status')
+    status.setAttribute('aria-live', 'polite')
+    const actions = document.createElement('div')
+    actions.className = 'tl-erpnext-panel-actions'
+    const records = document.createElement('section')
+    records.className = 'tl-erpnext-panel-records'
+    root.append(header, status, actions, records)
+    content.replaceChildren(root)
+
+    let disposed = false
+    let statusRequest = 0
+    let recordsRequest = 0
+    let detailRequest = 0
+    let offset = 0
+    let selectedDoctype = 'Item'
+    const button = (text, onClick) => {
+      const value = document.createElement('button')
+      value.type = 'button'; value.textContent = text; value.addEventListener('click', onClick)
+      return value
+    }
+    const cell = (tagName, text) => {
+      const value = document.createElement(tagName); value.textContent = text; return value
+    }
+    const requestJSON = async path => {
+      const response = await window.fetch(path, {
+        method: 'GET', credentials: 'same-origin', cache: 'no-store', headers: { accept: 'application/json' },
+      })
+      const value = await response.json()
+      if (!response.ok || !value || typeof value !== 'object' || Array.isArray(value)) throw new Error('ERPNext request failed')
+      return value
+    }
+
+    const loadDetails = async name => {
+      const current = ++detailRequest
+      records.querySelector('[data-erpnext-detail]')?.remove()
+      const detail = document.createElement('pre')
+      detail.dataset.erpnextDetail = 'true'; detail.setAttribute('role', 'status'); detail.textContent = '正在读取记录详情…'
+      records.append(detail)
+      try {
+        const query = new URLSearchParams({ doctype: selectedDoctype, name })
+        const value = await requestJSON(`/business-api/erpnext/record?${query}`)
+        if (disposed || current !== detailRequest) return
+        if (value.doctype !== selectedDoctype || !value.data || value.data.name !== name
+          || value.external_ref?.system !== 'erpnext' || value.external_ref.doctype !== selectedDoctype
+          || value.external_ref.name !== name) throw new Error('invalid ERPNext record')
+        detail.setAttribute('role', 'region'); detail.textContent = JSON.stringify(value.data, null, 2)
+      } catch {
+        if (!disposed && current === detailRequest) { detail.setAttribute('role', 'alert'); detail.textContent = '暂时无法读取记录详情。' }
       }
-      const before = await component.status()
-      if (before?.componentKey !== 'erpnext-status-native') return { ok: false, reason: 'unavailable' }
-      const popped = await component.popOut()
-      if (popped?.componentKey !== 'erpnext-status-native') return { ok: false, reason: 'unavailable' }
-      const status = await component.status().catch(() => before)
-      return { ok: true, value: { status: status?.status, placement: status?.placement || popped.placement } }
+    }
+
+    const loadRecords = async (nextOffset = 0) => {
+      const current = ++recordsRequest
+      ++detailRequest; offset = nextOffset
+      records.replaceChildren(cell('p', `正在读取${erpNextDoctypeLabels[selectedDoctype]}…`))
+      try {
+        const query = new URLSearchParams({ doctype: selectedDoctype, limit: '20', offset: String(offset) })
+        const value = await requestJSON(`/business-api/erpnext/records?${query}`)
+        if (disposed || current !== recordsRequest) return
+        if (value.doctype !== selectedDoctype || !Array.isArray(value.records) || value.records.length > 20
+          || !(value.next_offset === null || (Number.isInteger(value.next_offset) && value.next_offset >= 0))
+          || value.records.some(record => !record || record.doctype !== selectedDoctype || !record.data
+            || typeof record.data.name !== 'string' || record.external_ref?.system !== 'erpnext'
+            || record.external_ref.doctype !== selectedDoctype || record.external_ref.name !== record.data.name)) {
+          throw new Error('invalid ERPNext records')
+        }
+        records.replaceChildren()
+        if (!value.records.length) records.append(cell('p', '当前没有可显示的记录。'))
+        else {
+          const tableWrap = document.createElement('div'); tableWrap.className = 'tl-erpnext-panel-table-wrap'
+          const table = document.createElement('table'); const head = document.createElement('thead'); const row = document.createElement('tr')
+          const fields = erpNextListFields[selectedDoctype]
+          for (const field of fields) row.append(cell('th', erpNextFieldLabels[field] ?? field))
+          row.append(cell('th', '操作')); head.append(row); table.append(head)
+          const body = document.createElement('tbody')
+          for (const record of value.records) {
+            const recordRow = document.createElement('tr')
+            for (const field of fields) recordRow.append(cell('td', erpNextDisplayValue(record.data[field])))
+            const action = document.createElement('td'); action.append(button('详情', () => { void loadDetails(record.data.name) }))
+            recordRow.append(action); body.append(recordRow)
+          }
+          table.append(body); tableWrap.append(table); records.append(tableWrap)
+        }
+        const page = document.createElement('nav'); page.className = 'tl-erpnext-panel-pagination'; page.setAttribute('aria-label', 'ERPNext 记录分页')
+        page.append(cell('span', `从第 ${offset + 1} 项开始`))
+        if (offset > 0) page.prepend(button('上一页', () => { void loadRecords(Math.max(0, offset - 20)) }))
+        if (value.next_offset !== null) page.append(button('下一页', () => { void loadRecords(value.next_offset) }))
+        records.append(page)
+      } catch {
+        if (!disposed && current === recordsRequest) records.replaceChildren(cell('p', '暂时无法读取 ERPNext 只读记录。'))
+      }
+    }
+
+    const loadStatus = async () => {
+      const current = ++statusRequest
+      ++recordsRequest; ++detailRequest
+      checkButton.disabled = true
+      status.textContent = '正在检查 ERPNext 连接…'
+      actions.replaceChildren(); records.replaceChildren()
+      try {
+        const value = await requestJSON('/business-api/erpnext/status')
+        if (disposed || current !== statusRequest) return
+        if (typeof value.configured !== 'boolean' || typeof value.connected !== 'boolean'
+          || !['not_configured', 'invalid_configuration', 'connected', 'unavailable'].includes(value.status)) {
+          throw new Error('invalid ERPNext status')
+        }
+        checkButton.disabled = false
+        const siteUrl = safeErpNextSiteUrl(value.site_url)
+        const label = value.status === 'not_configured' ? 'ERPNext 尚未配置'
+          : value.status === 'invalid_configuration' ? 'ERPNext 配置无效'
+            : value.connected ? 'ERPNext 已连接' : 'ERPNext 暂时无法连接'
+        status.textContent = `${label}。${value.connected ? '下方为只读业务记录。' : value.status === 'not_configured' ? '配置授权实例后即可读取业务数据。' : '请检查服务与连接配置。'}`
+        if (siteUrl) {
+          const open = button('打开 ERPNext 工作台', async () => {
+            open.disabled = true
+            try {
+              const result = await app?.openErpNextWorkbench?.()
+              if (!result?.opened) throw new Error('ERPNext workbench unavailable')
+            } catch {
+              status.textContent = 'ERPNext 工作台未能打开，请检查配置后重试。'
+            } finally { if (!disposed) open.disabled = false }
+          })
+          open.dataset.siteUrl = siteUrl
+          actions.append(open)
+        }
+        if (value.connected) {
+          const labelNode = document.createElement('label'); labelNode.textContent = '数据类型 '
+          const selector = document.createElement('select'); selector.setAttribute('aria-label', '选择 ERPNext 数据类型')
+          for (const doctype of erpNextDoctypes) {
+            const option = document.createElement('option'); option.value = doctype; option.textContent = erpNextDoctypeLabels[doctype]
+            selector.append(option)
+          }
+          selector.addEventListener('change', () => { selectedDoctype = selector.value; void loadRecords(0) })
+          labelNode.append(selector)
+          actions.append(labelNode, button('刷新列表', () => { void loadRecords(offset) }))
+          void loadRecords(0)
+        }
+      } catch {
+        if (!disposed && current === statusRequest) {
+          checkButton.disabled = false
+          status.textContent = '暂时无法读取 ERPNext 连接状态。'
+        }
+      }
+    }
+    checkButton.addEventListener('click', () => { void loadStatus() })
+    void loadStatus()
+    return () => { disposed = true; ++statusRequest; ++recordsRequest; ++detailRequest; content.replaceChildren() }
+  }
+
+  async function openErpNextStatus() {
+    const scene = state.config?.scenes.get('erpnext')
+    const panel = scene?.panelMap.get('business-main')
+    if (!isDesktop() || panel?.type !== 'erpnext-status' || typeof app?.win?.openScene !== 'function') {
+      return { ok: false, reason: scene ? 'unsupported' : 'unconfigured' }
+    }
+    try {
+      await app.win.openScene('erpnext')
+      return { ok: true, value: { sceneId: 'erpnext', panelId: 'business-main' } }
     } catch { return { ok: false, reason: 'unavailable' } }
   }
 
@@ -2358,6 +2841,7 @@
     prepareSceneTransition,
     sceneSelected: onSceneChanged,
     renderBusinessPanel,
+    renderErpNextStatusPanel,
     renderRolePanel,
     openAssistantTabChooser,
     renderWorkflowPanel,
