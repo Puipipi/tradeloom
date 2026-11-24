@@ -7,10 +7,10 @@
 在服务器电脑完整解压服务器包，以运行服务的 Windows 账号打开 PowerShell，进入解压目录并运行：
 
 ```powershell
-.\Install-EnterpriseServer.ps1
+.\Start-Server.ps1
 ```
 
-按提示自行创建管理员用户名和密码；没有预置账号。安装器使用独立 PostgreSQL 数据库，首次安装会启动服务。以后在相同目录、使用相同 Windows 账号运行 `Start-EnterpriseServer.ps1` 或 `Stop-EnterpriseServer.ps1`。具体运行环境与数据位置见[企业服务部署说明](enterprise-service.md)。
+首次运行会调用安装器；按提示自行创建管理员用户名和密码，没有预置账号。服务使用独立 PostgreSQL 数据库。以后在相同目录、使用相同 Windows 账号运行 `Start-Server.ps1` 启动，运行 `Stop-EnterpriseServer.ps1` 停止。原有 `Install-EnterpriseServer.ps1` 和 `Start-EnterpriseServer.ps1` 入口继续保留。具体运行环境与数据位置见[企业服务部署说明](enterprise-service.md)。
 
 ## 2. 同机连接和配置两种业务角色
 
@@ -29,10 +29,10 @@
 
 ## 3. 打开个人完整工作台
 
-双端候选版的设计入口是企业客户端的本地菜单“个人工作台”，用于打开同机完整工作台。个人端保留完整场景、助手、文件和工作流；企业客户端负责企业台账登录。个人工作台数据、设置和登录与企业台账独立，本轮没有自动同步两边业务数据。
+企业客户端的本地菜单“个人端 → 打开完整工作台”用于打开同机完整工作台，固定目标为客户端旁的 `Workbench/启动工作台.exe`；未附带 Workbench 的独立客户端会禁用该项。个人工作台保留完整场景、助手、文件和工作流；企业客户端负责企业台账登录。个人工作台数据、设置和登录与企业台账独立，本轮没有自动同步两边业务数据。
 
 现有完整工作台仍可从其原有 `program/启动工作台.exe` 入口启动。保留原程序和数据目录，勿用服务器数据目录替换个人 profile。企业服务器不要求个人工作台保持打开。
 
 ## 当前验证范围
 
-本轮隔离环境的企业 PostgreSQL/HTTP 与 Electron 登录验证已通过。双端本地菜单集成和干净新开完整工作台仍待最终 Windows 验收；当前存在完整工作台干净新开阻塞，不能将本页视作候选包已交付或完整实机验收通过的记录。
+本轮隔离环境的企业 PostgreSQL/HTTP 与两种角色 Electron 登录、同工厂共享及不同工厂隔离、Windows PowerShell 5.1 首次安装和停启验证已通过。详细范围见[双端技术边界与验证记录](server-personal-windows.md)。菜单点击与干净新开完整工作台仍待最终 Windows 验收；当前存在完整工作台安装清单阻塞，不能将本页视作候选包已交付或完整实机验收通过的记录。
