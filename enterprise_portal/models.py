@@ -5,6 +5,14 @@ from django.db import models
 from workbench.models import Task
 
 
+class WebsiteNotice(models.Model):
+    """Singleton notice for the authenticated enterprise home."""
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+    text = models.CharField(max_length=500, blank=True, default="")
+    revision = models.PositiveIntegerField(default=0)
+    updated_at = models.DateTimeField(null=True, blank=True)
+
+
 class EnterpriseEntry(models.Model):
     """A staff entry tied to an actual workbench task and optionally shared by factory group."""
 
@@ -19,6 +27,7 @@ class EnterpriseEntry(models.Model):
         permissions = [
             ("view_all_enterpriseentry", "Can view all enterprise entries"),
             ("view_business_data", "Can view shared business task and product data"),
+            ("use_server_operations", "Can use safe server diagnostics and operations assistant"),
         ]
 
     def __str__(self) -> str:

@@ -79,14 +79,13 @@ if ($httpsEnabled -and -not $httpsConfiguration.Enabled) {
 $python = Join-Path $config.runtime_root 'python\python.exe'
 $pgBin = Join-Path $config.runtime_root 'postgresql\bin'
 $pgCtl = Join-Path $pgBin 'pg_ctl.exe'
-$pgReady = Join-Path $pgBin 'pg_isready.exe'
 $pgData = [string]$config.postgres_data
 $appRoot = [string]$config.app_root
 $httpPort = [int]$config.http_port
 $pgPort = [int]$config.postgres_port
 $logRoot = Join-Path $root 'logs'
 New-Item -ItemType Directory -Force -Path $logRoot | Out-Null
-foreach ($file in @($python, $pgCtl, $pgReady, (Join-Path $appRoot 'manage.py'), $pgData)) {
+foreach ($file in @($python, $pgCtl, (Join-Path $appRoot 'manage.py'), $pgData)) {
   if (-not (Test-Path -LiteralPath $file)) { throw "Enterprise installation file is missing: $file" }
 }
 
@@ -95,6 +94,8 @@ if ($httpsEnabled) { $allowedHosts += $httpsConfiguration.Host }
 $env:PYTHONDONTWRITEBYTECODE = '1'
 $env:PYTHONPATH = Join-Path $config.runtime_root 'python-packages'
 $env:DJANGO_SETTINGS_MODULE = 'config.enterprise_settings'
+$env:TRADELOOM_ENTERPRISE_DATA_ROOT = $root
+$env:TRADELOOM_OPERATIONS_VAULT_DIR = Join-Path $root 'operations-vault'
 $env:TRADELOOM_ENTERPRISE_SECRET_KEY = [string]$secrets.django_secret_key
 $env:TRADELOOM_ENTERPRISE_ALLOWED_HOSTS = ($allowedHosts | Select-Object -Unique) -join ','
 $env:TRADELOOM_ENTERPRISE_BIND_HOST = '127.0.0.1'
@@ -134,19 +135,21 @@ if ($LASTEXITCODE -ne 0) {
   if (Get-NetTCPConnection -State Listen -LocalPort $pgPort -ErrorAction SilentlyContinue) {
     throw "PostgreSQL port $pgPort is already used by another process; no existing service was changed."
   }
-  $pgCtlArgs = "-D `"$pgData`" -l `"$(Join-Path $logRoot 'postgresql.log')`" -o `"-h 127.0.0.1 -p $pgPort`" start"
+  $pgCtlArgs = "-D `"$pgData`" -l `"$(Join-Path $logRoot 'postgresql.log')`" -o `"-h 127.0.0.1 -p $pgPort`" -w -t 10 start"
   $pgStart = Start-Process -FilePath $pgCtl -ArgumentList $pgCtlArgs -PassThru -WindowStyle Hidden `
     -RedirectStandardOutput (Join-Path $logRoot 'pgctl-start.log') `
     -RedirectStandardError (Join-Path $logRoot 'pgctl-start-error.log')
+  $null = $pgStart.Handle # Retain the process handle so PS5.1 preserves ExitCode.
+  if (-not $pgStart.WaitForExit(15000)) { throw 'The enterprise PostgreSQL startup timed out.' }
+  if ($pgStart.ExitCode -ne 0) { throw 'The enterprise PostgreSQL instance did not become ready.' }
 }
-$ready = $false
-for ($attempt = 0; $attempt -lt 40; $attempt++) {
-  & $pgReady -h 127.0.0.1 -p $pgPort | Out-Null
-  if ($LASTEXITCODE -eq 0) { $ready = $true; break }
-  if ($pgStart -and $pgStart.HasExited -and $pgStart.ExitCode -ne 0) { break }
-  Start-Sleep -Milliseconds 250
-}
-if (-not $ready) { throw 'The enterprise PostgreSQL instance did not become ready.' }
+& $pgCtl -D $pgData status 2>$null | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'The private PostgreSQL process is not running; no migration was attempted.' }
+$ownedPgPid = 0
+$postmasterFile = Join-Path $pgData 'postmaster.pid'
+if (-not (Test-Path -LiteralPath $postmasterFile) -or -not [int]::TryParse((Get-Content -LiteralPath $postmasterFile -TotalCount 1), [ref]$ownedPgPid)) { throw 'Cannot verify the private PostgreSQL PID; no migration was attempted.' }
+$pgListeners = @(Get-NetTCPConnection -LocalAddress '127.0.0.1' -LocalPort $pgPort -State Listen -ErrorAction SilentlyContinue)
+if ($ownedPgPid -le 0 -or $pgListeners.Count -ne 1 -or $pgListeners[0].OwningProcess -ne $ownedPgPid) { throw 'PostgreSQL listener ownership does not match this installation; no migration was attempted.' }
 
 Push-Location $appRoot
 try {

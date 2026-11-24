@@ -31,6 +31,8 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "enterprise_portal.local_console_middleware.LocalConsoleSessionMiddleware",
+    "enterprise_portal.middleware.EnterpriseRoleBoundaryMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]

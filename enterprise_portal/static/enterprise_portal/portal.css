@@ -1,0 +1,193 @@
+/* Portal pages share the console palette, controls and focus treatment. */
+.portal main {
+  margin:0;
+  max-width:none
+}
+.portal h1 {
+  font-size:24px
+}
+.portal h2 {
+  font-size:18px;
+  margin-bottom:16px
+}
+.portal button,.portal input,.portal select {
+  min-height:40px
+}
+.portal .primary {
+  background:var(--accent);
+  border-color:var(--accent);
+  color:#fff;
+  font-weight:600
+}
+.portal .primary:hover {
+  filter:brightness(.92)
+}
+.portal-header {
+  background:var(--panel);
+  border-bottom:1px solid var(--border);
+  padding:24px max(24px,calc((100vw - 1120px)/2));
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:24px
+}
+.portal-heading {
+  flex-shrink:0
+}
+.account-actions {
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:12px 20px;
+  flex-wrap:wrap
+}
+.account-actions p {
+  margin:0;
+  color:var(--dim)
+}
+.account-actions form {
+  margin:0
+}
+.portal .portal-content {
+  max-width:1168px;
+  padding:28px 24px;
+  margin:auto
+}
+.portal section {
+  padding:24px;
+  margin-bottom:20px
+}
+.portal ul {
+  list-style:none;
+  padding:0;
+  margin:0
+}
+.portal li {
+  padding:12px 0;
+  border-bottom:1px solid var(--border);
+  overflow-wrap:anywhere
+}
+.portal li:last-child {
+  border-bottom:0
+}
+.portal section>p {
+  color:var(--dim)
+}
+.portal section .plain-text {
+  color:var(--text)
+}
+.entry-form {
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:16px;
+  align-items:end
+}
+.portal .entry-form label {
+  display:flex;
+  gap:7px;
+  margin:0
+}
+.entry-body {
+  grid-column:1/-1
+}
+.entry-form button {
+  justify-self:start;
+  min-width:112px
+}
+.portal-login {
+  min-height:100vh;
+  display:grid;
+  place-items:center;
+  padding:24px
+}
+.portal .login-panel {
+  width:100%;
+  max-width:400px;
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:8px;
+  padding:32px
+}
+.login-panel h1 {
+  margin-bottom:28px
+}
+.login-panel form p {
+  margin:0 0 20px
+}
+.login-panel form label {
+  display:block;
+  margin:0 0 7px
+}
+.login-panel input:not([type=hidden]) {
+  width:100%
+}
+.login-panel button {
+  width:100%;
+  margin-top:4px
+}
+.login-panel .login-error {
+  border-left:3px solid var(--accent);
+  padding:10px 12px;
+  background:var(--soft);
+  margin:0 0 22px
+}
+.login-panel ul.errorlist {
+  margin-bottom:12px
+}
+.login-panel .helptext {
+  display:block;
+  color:var(--dim);
+  font-size:12px
+}
+@media(max-width:760px) {
+  .portal-header {
+    padding:20px 16px;
+    align-items:flex-start;
+    flex-direction:column;
+    gap:16px
+  }
+  .account-actions {
+    justify-content:flex-start;
+    gap:12px 16px
+  }
+  .portal .portal-content {
+    padding:20px 12px
+  }
+  .portal section {
+    padding:18px 16px
+  }
+  .portal h1 {
+    font-size:22px
+  }
+  .entry-form {
+    grid-template-columns:1fr
+  }
+  .entry-body {
+    grid-column:auto
+  }
+  .portal-login {
+    padding:16px
+  }
+  .portal .login-panel {
+    padding:28px 24px
+  }
+  .portal .entry-form select {
+    width:100%
+  }
+}
+.account-actions, .account-actions p {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+@media (prefers-color-scheme: dark) {
+  .portal .primary {
+    color: #0b0d12;
+  }
+}
+
+.registrar-setup .factory-choices label { display:flex; flex-direction:row; align-items:center; justify-content:flex-start; gap:10px; padding:8px 0; overflow-wrap:anywhere; }
+.registrar-setup .factory-choices input[type="checkbox"] { width:20px; height:20px; min-height:20px; margin:0; flex-shrink:0; }
+
+
+.business-nav { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px; }
+.business-nav a[aria-current="page"] { background:var(--soft); font-weight:600; }

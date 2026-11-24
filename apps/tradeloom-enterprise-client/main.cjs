@@ -10,21 +10,77 @@ const SETTINGS_PARTITION = 'persist:tradeloom-enterprise-settings'
 const PRODUCT_PARTITION = 'persist:tradeloom-enterprise-web'
 const SMOKE_STANDALONE = process.argv.includes('--smoke-standalone')
 const SMOKE_ENTERPRISE = process.argv.includes('--smoke-enterprise')
-if (SMOKE_STANDALONE || SMOKE_ENTERPRISE) app.setPath('userData', path.join(app.getPath('temp'), 'TradeLoomEnterpriseSmoke', String(process.pid)))
+// The edition is a build-time local constant, never a server role assertion.
+let edition = 'generic'
+try {
+  const marker = JSON.parse(fs.readFileSync(path.join(__dirname, 'edition.json'), 'utf8'))
+  if (!['owner', 'factory'].includes(marker.edition)) throw new Error('Invalid client edition')
+  edition = marker.edition
+} catch (error) { if (error.code !== 'ENOENT') throw error }
+const qaRootArgument = process.argv.find(value => value.startsWith('--enterprise-qa-root='))
+const qaRoot = (SMOKE_STANDALONE || SMOKE_ENTERPRISE) && qaRootArgument ? qaRootArgument.slice('--enterprise-qa-root='.length) : null
+if (qaRoot !== null && !path.isAbsolute(qaRoot)) throw new Error('QA root must be absolute')
+if (edition !== 'generic') {
+  const base = qaRoot || ((SMOKE_STANDALONE || SMOKE_ENTERPRISE) ? path.join(app.getPath('temp'), 'TradeLoomEnterpriseSmoke', String(process.pid)) : app.getPath('appData'))
+  const profile = path.join(base, 'TradeLoom', `Enterprise-${edition}`)
+  fs.mkdirSync(profile, { recursive: true })
+  app.setPath('userData', profile)
+  app.setPath('sessionData', profile)
+} else if (SMOKE_STANDALONE || SMOKE_ENTERPRISE) {
+  const profile = qaRoot ? path.join(qaRoot, 'TradeLoom Enterprise Client') : path.join(app.getPath('temp'), 'TradeLoomEnterpriseSmoke', String(process.pid))
+  fs.mkdirSync(profile, { recursive: true })
+  app.setPath('userData', profile)
+  app.setPath('sessionData', profile)
+}
 let productWindow = null
+let connectedOrigin = ''
+let authorizationEpoch = 0
+
+async function authorized(capability = "local_workbench") {
+  const win = productWindow
+  const origin = connectedOrigin
+  const epoch = authorizationEpoch
+  if (!win || win.isDestroyed() || !origin) return false
+  try {
+    if (new URL(win.webContents.getURL()).origin !== origin) return false
+    const response = await win.webContents.session.fetch(`${origin}/enterprise/capabilities/`, { redirect: 'error', cache: 'no-store' })
+    // Electron net.fetch can return an empty Response.url. The request is fixed
+    // to the connected origin and redirects are rejected above.
+    if (!response.ok || response.redirected === true || (response.url && response.url !== `${origin}/enterprise/capabilities/`)) return false
+    const policy = await response.json()
+    return epoch === authorizationEpoch && win === productWindow && !win.isDestroyed()
+      && policy.configuration_conflict !== true
+      && policy.capabilities?.[capability] === true
+      && (capability !== 'local_workbench' || (policy.role === 'owner' && policy.capabilities?.owner_tools === true))
+  } catch { return false }
+}
+
+async function refreshLocalMenu() {
+  const epoch = authorizationEpoch
+  const [owner, ops] = await Promise.all([authorized(), authorized("server_ops")])
+  if (epoch === authorizationEpoch) installLocalMenu(owner, ops)
+}
+
+async function openOwnerPage(relative) {
+  if (!await authorized("server_ops")) { installLocalMenu(false); return }
+  await productWindow.loadURL(`${connectedOrigin}${relative}`)
+}
 
 // Local application menu only. Remote pages cannot supply an executable path.
-function installLocalMenu() {
+function installLocalMenu(owner = false, ops = false) {
   const workbench = path.join(path.dirname(app.getPath('exe')), 'Workbench', '启动工作台.exe')
   Menu.setApplicationMenu(Menu.buildFromTemplate([{
     label: '个人端',
     submenu: [
       { label: '连接台账服务', click: () => localSettingsWindow() },
-      { label: '打开完整工作台', enabled: fs.existsSync(workbench), click: () => {
+      { label: '打开本地完整工作台', enabled: owner && fs.existsSync(workbench), click: async () => {
+        if (!await authorized()) { installLocalMenu(false); return }
         shell.openPath(workbench).then((error) => {
-          if (error) dialog.showErrorBox('无法打开完整工作台', '请确认个人端目录中的 Workbench 程序完整。')
+          if (error) dialog.showErrorBox('无法打开本地完整工作台', '请确认个人端目录中的 Workbench 程序完整。')
         })
       } },
+      { label: '服务端管理', enabled: ops, click: () => openOwnerPage('/enterprise/console/') },
+      { label: '服务端助手', enabled: ops, click: () => openOwnerPage('/enterprise/console/#assistant') },
       { type: 'separator' },
       { role: 'quit', label: '退出个人端' },
     ],
@@ -85,6 +141,9 @@ function installSameOriginFence(ses, serverOrigin) {
 
 function connect(rawOrigin, settingsWindow) {
   const serverOrigin = saveConfig(rawOrigin)
+  authorizationEpoch += 1
+  connectedOrigin = serverOrigin
+  installLocalMenu(false)
   if (productWindow && !productWindow.isDestroyed()) productWindow.close()
   const serverKey = createHash('sha256').update(serverOrigin).digest('hex').slice(0, 16)
   const ses = session.fromPartition(`${PRODUCT_PARTITION}-${serverKey}`)
@@ -102,6 +161,11 @@ function connect(rawOrigin, settingsWindow) {
       session: ses,
     },
   })
+  productWindow.webContents.on('did-start-navigation', (_event, _url, _inPlace, isMainFrame) => {
+    if (isMainFrame) { authorizationEpoch += 1; installLocalMenu(false) }
+  })
+  productWindow.webContents.on('did-finish-load', () => refreshLocalMenu())
+  productWindow.on('closed', () => { authorizationEpoch += 1; installLocalMenu(false) })
   const targetUrl = enterpriseUrl(serverOrigin)
   const permitTarget = (target) => {
     try { return new URL(target).origin === serverOrigin } catch { return false }
@@ -125,8 +189,14 @@ function connect(rawOrigin, settingsWindow) {
   })
 }
 
-ipcMain.handle('enterprise:get-config', () => readConfig())
+function requireSettingsSender(event) {
+  const expected = pathToFileURL(path.join(__dirname, 'index.html')).href
+  if (event.senderFrame?.url !== expected || event.sender.getURL() !== expected) throw new Error('仅本地连接设置可调用此操作。')
+}
+
+ipcMain.handle('enterprise:get-config', (event) => { requireSettingsSender(event); return { ...readConfig(), edition } })
 ipcMain.handle('enterprise:connect', (event, rawOrigin) => {
+  requireSettingsSender(event)
   const settingsWindow = BrowserWindow.fromWebContents(event.sender)
   return connect(rawOrigin, settingsWindow)
 })

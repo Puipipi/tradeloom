@@ -1,0 +1,9 @@
+{% load static %}
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>工厂与登记员设置</title><link rel="stylesheet" href="{% static 'enterprise_portal/console.css' %}"><link rel="stylesheet" href="{% static 'enterprise_portal/portal.css' %}"></head>
+<body class="portal registrar-setup"><header class="portal-header"><h1>工厂与登记员设置</h1><a href="{% url 'enterprise-console' %}">返回企业控制台</a></header><main class="portal-content">
+{% for message in messages %}<p role="status">{{ message }}</p>{% endfor %}
+<p>仅用于低权限工厂登记员。老板、技术员、混合角色、直接授权或带权限的工厂组请使用原管理后台；此入口不接管它们。停用会在下一请求拒绝当前会话；变更工厂只影响此后访问范围，不移动历史记录。</p>
+<section><h2>1. 创建工厂组</h2><p>自动规范为“工厂:简称”，新组不授予任何 Django 权限。</p><form method="post">{% csrf_token %}<input type="hidden" name="action" value="factory">{{ factory_form.as_p }}<button type="submit">创建工厂组</button></form></section>
+<section><h2>2. 创建工厂登记员</h2><p>先选择已有、没有额外权限的工厂组。密码仅提交设置，不回显。</p><form method="post">{% csrf_token %}<input type="hidden" name="action" value="create">{{ create_form.as_p }}<button type="submit">创建登记员</button></form></section>
+<section><h2>3. 调整工厂分配或停启登记员</h2>{% if unlisted_update_form %}{{ unlisted_update_form.non_field_errors }}{% endif %}{% for row in registrars %}<details{% if row.form.is_bound and row.form.errors %} open{% endif %}><summary>{{ row.user.username }} · {{ row.user.is_active|yesno:"允许登录,已停用" }}</summary><form method="post">{% csrf_token %}<input type="hidden" name="action" value="update"><input type="hidden" name="user_id" value="{{ row.user.pk }}">{{ row.form.as_p }}<button type="submit">确认保存分配与登录状态</button></form></details>{% empty %}<p>暂无符合条件的登记员；含其他授权的账号在原管理后台处理。</p>{% endfor %}</section>
+</main></body></html>

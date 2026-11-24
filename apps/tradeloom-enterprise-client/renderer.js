@@ -1,7 +1,10 @@
 const input = document.querySelector('#server-origin')
 const status = document.querySelector('#status')
 
-window.tradeloomEnterprise.getConfig().then(({ serverOrigin }) => { input.value = serverOrigin || '' })
+window.tradeloomEnterprise.getConfig().then(({ serverOrigin, edition }) => {
+  input.value = serverOrigin || ''
+  document.querySelector('h1').textContent = `连接企业服务器 · ${{ owner: '老板版', factory: '工厂版' }[edition] || '通用版'}`
+})
 
 document.querySelector('#connect-form').addEventListener('submit', async (event) => {
   event.preventDefault()

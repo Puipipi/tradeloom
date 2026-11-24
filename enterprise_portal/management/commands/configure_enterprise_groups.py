@@ -17,4 +17,7 @@ class Command(BaseCommand):
         registrars, registrars_created = Group.objects.get_or_create(name="工厂登记员")
         if registrars_created:
             registrars.permissions.set(model_permissions.filter(codename__in=["add_enterpriseentry", "view_enterpriseentry"]))
+        operators, operators_created = Group.objects.get_or_create(name="服务运维员")
+        if operators_created:
+            operators.permissions.set(model_permissions.filter(codename="use_server_operations"))
         self.stdout.write(self.style.SUCCESS("已检查默认业务用户组；既有用户组授权保持不变。"))

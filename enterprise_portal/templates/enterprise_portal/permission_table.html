@@ -1,0 +1,4 @@
+    <div class="table-wrap" tabindex="0" role="region" aria-label="权限矩阵"><table>
+      <thead><tr><th scope="col">访问权限</th><th scope="col">读取/使用</th><th scope="col">写入/变更</th><th scope="col">数据范围</th><th scope="col">接入状态</th></tr></thead>
+      <tbody>{% for row in rows %}<tr><th scope="row">{{ row.label }}</th><td>{% if row.read %}允许{% else %}不允许{% endif %}</td><td>{% if row.write %}允许{% else %}不允许{% endif %}</td><td>{{ row.scope }}</td><td>{% if row.status == "application_policy" %}已接入应用授权{% elif row.status == "external_not_connected" %}外部管理，未接入{% elif row.status == "not_connected" %}未接入{% elif row.status == "read_only_policy" %}只读声明检查{% elif row.status == "django_admin" %}账号管理员授权{% else %}{{ row.status }}{% endif %}</td></tr>{% empty %}<tr><td colspan="5">暂无可展示的权限。请联系账号管理员核对授权。</td></tr>{% endfor %}</tbody>
+    </table></div>

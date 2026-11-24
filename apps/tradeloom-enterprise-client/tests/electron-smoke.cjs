@@ -42,7 +42,7 @@ app.whenReady().then(async () => {
     const settings = await waitForSettingsWindow()
     const initialConfig = await settings.webContents.executeJavaScript('window.tradeloomEnterprise.getConfig()')
     if (initialConfig.serverOrigin !== '') throw new Error('fresh client contains a preconfigured server')
-    const workbenchMenu = Menu.getApplicationMenu()?.items.flatMap((item) => item.submenu?.items || []).find((item) => item.label === '打开完整工作台')
+    const workbenchMenu = Menu.getApplicationMenu()?.items.flatMap((item) => item.submenu?.items || []).find((item) => item.label === '打开本地完整工作台')
     if (!workbenchMenu) throw new Error('local workbench menu is missing')
     await settings.webContents.executeJavaScript(`window.tradeloomEnterprise.connect(${JSON.stringify(origin)})`)
     remote = BrowserWindow.getAllWindows().find((win) => win !== settings && !win.isDestroyed())

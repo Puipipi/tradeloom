@@ -1,0 +1,104 @@
+{% load static %}
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>企业控制台 · 织贸工作台</title>
+  <link rel="stylesheet" href="{% static 'enterprise_portal/console.css' %}">
+</head>
+<body>
+<a class="skip" href="#main">跳到主要内容</a>
+<aside class="sidebar" aria-label="企业导航">
+  <a class="brand" href="/enterprise/">织贸工作台<span>企业服务</span></a>
+  <nav aria-label="控制台导航">
+    {% if can_view_accounts %}<a href="#accounts">用户与用户组</a><a href="#permissions">数据权限</a>{% if can_view_groups %}<a href="#group-permissions">用户组权限</a>{% endif %}{% endif %}
+    <a href="#operations">服务与凭据</a><a href="#cloudflare">Cloudflare 网站</a><a href="#website">企业网站公告</a><a href="#assistant">运营助手</a>
+  </nav>
+  <div class="sidebar-footer"><span>{{ request.user.get_username }}</span>
+    <a href="/enterprise/">返回业务登记</a>
+    <form method="post" action="/accounts/logout/">{% csrf_token %}<button type="submit">退出登录</button></form>
+  </div>
+</aside>
+<main id="main">
+  <header class="page-header"><div><h1>企业控制台</h1><p>查看账号、数据访问范围和服务状态。</p></div><span class="badge">只读权限总览</span></header>
+  {% if can_view_accounts %}<section id="accounts" aria-labelledby="accounts-title">
+    <div class="section-header"><h2 id="accounts-title">用户与用户组</h2>{% if can_manage_registrars %}<a class="button" href="{% url 'enterprise-registrar-setup' %}">工厂与登记员设置</a>{% endif %}{% if request.user.is_staff %}<a class="button" href="/admin/auth/user/">管理账号</a><a class="button" href="/admin/auth/group/">管理用户组</a>{% endif %}</div>
+    <div class="table-wrap" tabindex="0" role="region" aria-label="账号列表"><table>
+      <thead><tr><th scope="col">账号</th><th scope="col">状态</th><th scope="col">用户组</th><th scope="col">数据权限</th></tr></thead>
+      <tbody>{% for account in accounts %}<tr{% if account.pk == selected_account.pk %} class="selected"{% endif %}>
+        <th scope="row">{{ account.get_username }}</th><td>{% if account.is_active %}正常{% else %}已停用{% endif %}</td>
+        <td>{% for group in account.groups.all %}<span class="tag">{{ group.name }}</span>{% empty %}未加入用户组{% endfor %}</td>
+        <td><a href="?user={{ account.pk }}#permissions"{% if account.pk == selected_account.pk %} aria-current="true"{% endif %}>查看权限</a></td>
+      </tr>{% empty %}<tr><td colspan="4">暂无账号。</td></tr>{% endfor %}</tbody>
+    </table></div>
+    {% if can_view_groups %}<details><summary>查看用户组与成员</summary><div class="group-list">{% for group in account_groups %}<div><strong>{{ group.name }}</strong><p>{% for member in group.user_set.all %}{{ member.get_username }}{% if not forloop.last %}、{% endif %}{% empty %}暂无成员{% endfor %}</p></div>{% empty %}<p>暂无用户组。管理员可在账号管理中配置。</p>{% endfor %}</div></details>{% endif %}
+    {% if not request.user.is_staff %}<p class="muted">账号和用户组调整由账号管理员处理。</p>{% endif %}
+  </section>
+  <section id="permissions" aria-labelledby="permissions-title">
+    <div class="section-header"><h2 id="permissions-title">数据权限</h2><span>当前账号：<strong>{{ selected_account.get_username }}</strong></span></div>
+    {% if not selected_account.is_active %}<p class="notice">账号已停用，无法登录使用下列权限。</p>{% endif %}
+    {% include "enterprise_portal/permission_table.html" with rows=permission_rows %}
+    <p class="muted">以服务端实际授权为准；未接入的数据能力不能通过用户组开启。</p>
+    {% if can_view_groups %}<details><summary>所选账号的授权来源与组合限制</summary>
+      <p>最终权限按账号启用状态、所有组、直接权限、职员/超级管理员状态共同计算。工厂登记员与老板误双角色仍拒绝老板/运维；工厂范围组不单独授予读写。</p>
+      <p>职员：{{ selected_account.is_staff|yesno:"是,否" }}；超级管理员：{{ selected_account.is_superuser|yesno:"是,否" }}。</p>
+      <p>直接权限：{% for permission in direct_permissions %}<code>{{ permission }}</code> {% empty %}无{% endfor %}</p>
+      {% for source in permission_sources %}<p><strong>{{ source.name }}</strong>：{% for permission in source.permissions %}<code>{{ permission }}</code> {% empty %}没有显式权限声明{% endfor %}</p>{% empty %}<p>没有用户组贡献。</p>{% endfor %}
+    </details>{% endif %}
+  </section>
+  {% endif %}
+  {% if can_view_groups %}<section id="group-permissions" aria-labelledby="group-permissions-title">
+    <h2 id="group-permissions-title">用户组权限矩阵</h2>
+    <form method="get" action="#group-permissions"><input type="hidden" name="user" value="{{ selected_account.pk }}"><label>查看用户组 <select name="group">{% for group in account_groups %}<option value="{{ group.pk }}"{% if group.pk == group_projection.group.pk %} selected{% endif %}>{{ group.name }}</option>{% endfor %}</select></label><button type="submit">查看此组权限</button></form>
+    {% if group_projection %}<h3>{{ group_projection.group.name }}</h3><p>{{ group_projection.meaning }}</p>
+    <p class="notice">仅此组、启用的普通账号投影，不含其他组、直接授权、职员或超级管理员资格；不是该组所有成员的最终权限。实际成员请从上方选择账号查看组合结果。</p>
+    {% include "enterprise_portal/permission_table.html" with rows=group_projection.rows %}
+    <details><summary>该组当前显式权限声明</summary>{% for permission in group_projection.permissions %}<p><code>{{ permission }}</code></p>{% empty %}<p>没有显式权限声明。</p>{% endfor %}</details>
+    {% else %}<p>暂无用户组。</p>{% endif %}
+  </section>{% endif %}
+  <section id="operations" aria-labelledby="operations-title">
+    <div class="section-header"><h2 id="operations-title">服务与凭据</h2><button id="refresh-status" type="button">刷新状态</button></div>
+    <p>查看网站健康、数据库类型与凭据配置状态。凭据仅显示是否配置，不显示密钥原文。</p>
+    <p id="service-status" role="status">正在获取服务状态…</p>
+    <div id="credential-status"></div>
+    <form id="credential-form" data-can-manage="{{ can_manage_credentials|yesno:'true,false' }}" hidden>{% csrf_token %}<label>凭据类型 <select name="slot"><option value="cloudflare_api_token">Cloudflare API Token</option><option value="cloudflare_zone_id">Cloudflare Zone ID（32 位十六进制）</option><option value="cloudflare_oauth_client_secret">Cloudflare OAuth 客户端密钥</option><option value="deepseek_api_key">DeepSeek API Key（仅服务器保存）</option></select></label><label>新凭据 <input type="password" name="secret" autocomplete="new-password" spellcheck="false" maxlength="16384"></label><button type="submit">保存凭据</button><button type="button" id="delete-credential">删除所选凭据</button><p id="credential-feedback" role="status"></p></form>
+    <dl class="boundaries"><div><dt>企业服务权限</dt><dd>控制业务数据的读取、写入及可见范围，在本控制台查看。</dd></div><div><dt>Windows 与 SSH 权限</dt><dd>由服务器的 Windows 账号与 OpenSSH 管理，不随业务用户组授予。工厂登记员不获得服务器登录、命令或文件管理权限。</dd></div></dl>
+  </section>
+  <section id="ssh-policy" aria-labelledby="ssh-policy-title">
+    <div class="section-header"><h2 id="ssh-policy-title">OpenSSH 权限与状态</h2><button id="check-ssh-policy" type="button">检查 OpenSSH 状态</button></div>
+    <p>手动读取服务器服务状态与配置声明。业务账号权限与 Windows 登录权限分别管理。</p>
+    {% if can_manage_credentials %}<label class="consent"><input id="ssh-include-names" type="checkbox">本次检查显示配置中声明的 Windows 用户与组名称</label>{% endif %}
+    <p id="ssh-policy-status" role="status">尚未检查。</p>
+    <div id="ssh-policy-result"></div>
+    <details><summary>在服务器本机管理 SSH 专用组成员</summary><p>需要有效 Windows 管理员提升权限，应用老板或技术员角色不授予系统权限。仅在 Server 包目录使用 <code>Manage-SshAccess.ps1</code>，网页、个人端和助手不能触发。</p><p>先运行 <code>.\Manage-SshAccess.ps1 -Action Check</code>；固定组 <code>tradeloom-ssh-users</code> 须由 IT 预先创建，并在默认策略全局 AllowGroups 中作为字面项出现一次。List 只读成员；Grant / Revoke 使用已有普通本机用户 SID，支持 WhatIf 和明确确认。</p><p>Match（包括常见 Administrators 模板）、Include、自定义服务参数或不完整策略拒绝变更，交由 IT 直接使用 Windows 组管理，不要为适配工具删除原策略。工具不改配置、服务、密钥、密码或防火墙，不尝试 SSH 登录。组成员仅是一个准入条件，不保证实际登录。</p></details>
+    <p class="muted">只读检查，不执行系统操作；配置声明不能判定某个用户最终能否登录。Match、Include、自定义配置及读取权限限制以检查结果为准。</p>
+  </section>
+  <section id="cloudflare" aria-labelledby="cloudflare-title">
+    <div class="section-header"><h2 id="cloudflare-title">Cloudflare 托管网站</h2><button id="refresh-cloudflare" type="button">查询网站状态</button></div>
+    <p>点击查询后，向 Cloudflare 核对服务器已配置的网站。</p>
+    <p id="cloudflare-status" role="status">尚未查询网站状态。</p>
+    <div id="cloudflare-site" hidden><dl class="status-list"><dt>核定域名</dt><dd id="cloudflare-domain"></dd><dt>Zone 状态</dt><dd id="cloudflare-zone-status"></dd></dl></div>
+    <form id="cloudflare-form" hidden><label class="wide-label" for="cloudflare-path">单个公开 HTTPS 资源路径<input id="cloudflare-path" name="path" value="/" maxlength="2048" required spellcheck="false" autocomplete="off" placeholder="/images/example.png"></label><p>仅请求清除此域名下一个精确资源的缓存。使用字母、数字、下划线、点、短横线或波浪号组成的 / 开头路径，不支持查询参数、编码或相对目录。</p><p id="cloudflare-target" class="plain-text"></p><button type="submit">确认资源并清除缓存</button></form>
+    <p id="cloudflare-feedback" role="status"></p>
+  </section>
+  <section id="website" aria-labelledby="website-title">
+    <div class="section-header"><h2 id="website-title">企业网站公告</h2><button id="refresh-notice" type="button">刷新公告</button><a href="/enterprise/">查看企业登记站</a></div>
+    <p>公告发布在本企业登记站，登录后的各角色均可查看。</p>
+    <div id="website-notice" class="notice plain-text" aria-label="当前公告">正在读取公告…</div>
+    <p id="notice-meta" class="muted"></p>
+    <div id="withdraw-proposal" hidden aria-live="polite"><h3>待确认的公告撤下提案</h3><p id="withdraw-revision"></p><pre id="withdraw-text" class="plain-text"></pre><button id="cancel-withdraw-proposal" type="button">取消撤下提案</button><p>请核对以上全文，再点击下方“确认撤下此公告”。取消或刷新不会提交。</p></div>
+    <form id="website-form" hidden>{% csrf_token %}<label class="wide-label" for="notice-text">公告正文（最多 500 字）<textarea id="notice-text" name="text" maxlength="500" rows="4"></textarea></label><button type="submit">确认发布 / 替换公告</button><button id="clear-notice" type="button">撤下公告</button><p class="muted">保存会更新所有登录用户看到的公告；撤下仅移除公告。</p></form>
+    <p id="notice-feedback" role="status"></p>
+  </section>
+  <section id="assistant" aria-labelledby="assistants-title">
+    <div class="section-header"><h2 id="assistants-title">运营助手</h2><span class="badge">受限命令</span></div>
+    <p>选择服务检查或准备公告变更提案。网站变更仍须在上方表单明确确认。</p>
+    <p id="model-status" class="muted" role="status">正在核对模型配置…</p>
+    {% if can_manage_credentials %}<p>输入“发布公告 正文”“替换公告 正文”（正文1–500字），或精确输入“撤下公告”，可本地准备提案，无需模型。准备不会修改网站；核对全文和版本后明确确认，也可取消。</p>{% endif %}
+    <div id="assistant-chat" class="chat-log" role="log" aria-label="助手对话" aria-live="polite"></div>
+    <form id="message-form" data-can-draft="{{ can_manage_credentials|yesno:'true,false' }}"><label class="wide-label" for="assistant-message">你的问题或公告命令<textarea id="assistant-message" name="message" rows="3" maxlength="520" placeholder="老板可输入：发布公告 明天上午盘点，或：撤下公告。其它问题最多500字" required></textarea></label><label class="consent"><input type="checkbox" name="consent">同意将非固定公告命令的问题发送至 DeepSeek；固定“发布公告 / 替换公告 / 撤下公告”仅在本应用处理。请勿向模型填写客户信息、凭据或业务隐私。</label><button type="submit" disabled>发送问题</button></form>
+    <details open><summary>手动检查（无需模型）</summary><form id="assistant-form">{% csrf_token %}<label>检查内容 <select name="command"><option value="health">服务健康</option><option value="capabilities">已接入能力</option><option value="credentials">凭据状态</option><option value="permissions">运维权限</option><option value="websites">网站状态</option><option value="cloudflare_status">Cloudflare 网站状态</option></select></label><button type="submit" disabled>运行检查</button></form><div id="assistant-result" role="status">服务权限核对后可运行检查。</div></details>
+  </section>
+</main>
+<script src="{% static 'enterprise_portal/console.js' %}" defer></script>
+</body></html>
