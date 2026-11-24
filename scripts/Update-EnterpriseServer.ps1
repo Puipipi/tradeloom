@@ -74,4 +74,3 @@ try {
   if ($locked) { $mutex.ReleaseMutex() }
   $mutex.Dispose()
 }
-

@@ -13,11 +13,6 @@
 
 发行包需包含根 Update-EnterpriseServer.ps1、scripts/Update-EnterpriseServer.ps1 和本文，并纳入该包 role-manifest 文件哈希。
 
-## 隔离验证（2026-11-24）
+## 当前版本迁移
 
-使用只读 rc.15 Server 发行包的 Python、Django 包和 PostgreSQL 运行库，在独立合成 DataRoot 初始化空白服务（HTTP 28431 / PG 57431），未接触真实安装。
-
-- 正常路径：原包安装、停止；新包增加合成向后兼容 CreateModel migration；更新后日志显示 `0004_upgrade_synthetic_probe... OK`，既有 Start 健康检查通过。server-config.json 哈希未变，旧 app 与冷数据库副本保留。
-- 拒绝路径：服务运行时再次更新，拒绝且不停止现有进程；配置 app_root 指向非归属路径时拒绝。
-- 失败路径：下一条合成 migration 主动抛错；脚本报错并保留新 app，没有自动恢复旧代码。server-config.json 和 service-secrets.json 哈希均未变；测试结束已停止隔离服务。
-- 证据在本机 `D:/tl618-workflow-editor-delivery/enterprise-upgrade-qa/result.log`、`failure-result.log` 与同目录验证脚本。该目录含合成数据库，不作为发行内容。未验证生产数据迁移或正式 OTP migration；最终发行版需针对其实际 migration 再验收。
+当前版本在 rc.15 的 0001–0003 基础上新增向后兼容的 0004_emailloginchallenge，用于邮箱验证码挑战，不删除或重建既有用户和业务表。隔离旧安装升级已验证原账号、密码哈希、业务行及数据库身份保留，配置和运行库保持不变；旧的未完成邮箱验证会话须重新登录。这不代表生产数据已验收；部署前仍应备份，并按本说明保留成对恢复资料。
