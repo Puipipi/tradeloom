@@ -58,15 +58,20 @@ def permission_rows(user):
         ("credentials", "固定凭据槽管理", "server_ops", "owner_tools", "老板可录入及删除；技术员仅看配置状态；均无秘密回读"),
         ("website_notice", "企业网站公告后台", "server_ops", "owner_tools", "老板可确认发布、替换或撤下；授权技术员仅查看；登记员只在登录网站阅读公告，无后台入口"),
         ("cloudflare", "Cloudflare 网站操作", "server_ops", "owner_tools", "仅已配置 Zone 状态；老板显式确认单资源清理，提交重新核权核站点；不含 DNS 或任意网站写入"),
-        ("assistants", "服务端助手与 agent", "privileged_ai", None, "老板或显式授权技术员的运维助手；无任意命令、凭据或用户组修改"),
+        ("assistants", "服务端助手与 agent", "privileged_ai", None, "老板或显式授权技术员可用固定诊断；登记员账号状态管理仅限现有安装管理员，须提案后明确确认；无任意命令或凭据回读"),
         ("workbench", "完整本地工作台", "local_workbench", None, "离线本地文件系统；不下发服务数据库凭据或受限数据"),
     ]
     rows = [{"key": key, "label": label, "read": bool(caps.get(read)), "write": bool(caps.get(write)),
              "scope": scope, "status": "application_policy", "group_label": "有效应用权限"}
             for key, label, read, write, scope in definitions]
+    from .registrar_setup import can_manage_registrars
+    registrar_manager = can_manage_registrars(user)
+    rows.append({"key": "registrar_assistant", "label": "助手内登记员账号状态管理", "read": registrar_manager,
+                 "write": registrar_manager, "scope": "仅现有工厂与登记员设置权限的安装管理员；查询普通登记员并提案启停，确认时重验账号、工厂、权限和当前状态；不改密码、邮箱或工厂分配。普通老板、技术员和登记员无此权限。",
+                 "status": "application_policy", "group_label": "管理权限"})
     rows.extend([
         {"key": "erp_customer_prices", "label": "完整 ERP 与商品价目", "read": False, "write": False, "scope": "未接外部ERP或商品价格表；本地来源报价不代表ERP/正式售价", "status": "not_connected", "group_label": "业务边界"},
-        {"key": "business_agents", "label": "业务 AI agent", "read": False, "write": False, "scope": "未接入企业业务 agent；运维助手仅允许固定诊断及打开表单建议", "status": "not_connected", "group_label": "业务边界"},
+        {"key": "business_agents", "label": "业务 AI agent", "read": False, "write": False, "scope": "未接入企业业务 agent；安装管理员的登记员账号启停属于本地确定的有限管理动作，不代表 ERP 或业务 agent 已接入", "status": "not_connected", "group_label": "业务边界"},
         {"key": "windows_login", "label": "Windows / SSH 登录授权", "read": False, "write": False, "scope": "由 Windows、ACL 和 OpenSSH 执行；网页不授系统登录。本机管理员可用 Manage-SshAccess.ps1 管理预配置专用组成员，成员身份不等于可登录", "status": "external_not_connected", "group_label": "外部权限边界"},
         {"key": "ssh", "label": "SSH 磁盘策略检查", "read": caps["server_ops"], "write": False, "scope": "仅查询 sshd 状态与默认配置声明；老板可显式查看声明名称，技术员仅摘要；不代表登录授权或运行时生效策略", "status": "read_only_policy", "group_label": "外部权限边界"},
         {"key": "accounts", "label": "用户账户", "read": bool(owner or (not user.groups.filter(name="工厂登记员").exists() and user.is_active and user.is_staff and user.has_perm("auth.view_user"))), "write": bool(not user.groups.filter(name="工厂登记员").exists() and user.is_active and user.is_staff and user.has_perm("auth.change_user")), "scope": "Django admin 原有逐项权限；老板角色不增加管理权限", "status": "django_admin", "group_label": "管理权限"},

@@ -64,8 +64,8 @@ class WebsiteTests(TestCase):
         store.metadata.return_value = {"deepseek_api_key": {"configured": True}}
         store._read_for_provider.return_value = "synthetic-key"
         with patch.object(operations, "vault", return_value=store), patch.object(operations_ai, "classify", return_value="open_website_notice_form"):
-            self.assertEqual(operations_ai.route("请打开公告表单", self.owner)["effect"], "proposal")
-            self.assertIsNone(operations_ai.route("请打开公告表单", self.tech)["proposal"])
+            self.assertEqual(operations_ai.route("请打开公告表单", self.owner, consent=True)["effect"], "proposal")
+            self.assertIsNone(operations_ai.route("请打开公告表单", self.tech, consent=True)["proposal"])
         self.client.force_login(self.owner)
         self.assertEqual(self.client.get(self.url).json()["notice"]["revision"], 0)
 

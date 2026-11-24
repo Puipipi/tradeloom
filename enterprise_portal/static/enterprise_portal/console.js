@@ -9,7 +9,7 @@
   let draftBaseRevision = null;
   let withdrawal = null;
   let noticeLoaded = false;
-  const labels = {id:"目标",path:"入口",operation:"支持操作",deepseek_api_key:"DeepSeek API Key",model_provider:"模型提供方",model_name:"模型名称",service:"网站服务", database:"数据库", database_type:"数据库类型", assistant:"运营助手", commands:"可用检查", credential_storage:"凭据存储", credentials:"凭据状态", cloudflare:"Cloudflare", websites:"网站", ssh:"SSH", local_authentication:"登录认证", model:"模型", configured:"已配置", operations:"服务运维", credential_lifecycle:"配置凭据", credential_readback:"读取凭据原文", arbitrary_network:"任意网络请求", shell:"命令行", status:"状态", targets:"网站目标", cloudflare_zone_id:"Cloudflare Zone ID",cloudflare_api_token:"Cloudflare API Token", cloudflare_oauth_client_secret:"Cloudflare OAuth 客户端密钥"};
+  const labels = {registrar:"登记员",username:"内部账号",factories:"所属工厂",active:"允许登录",id:"目标",path:"入口",operation:"支持操作",deepseek_api_key:"DeepSeek API Key",model_provider:"模型提供方",model_name:"模型名称",service:"网站服务", database:"数据库", database_type:"数据库类型", assistant:"运营助手", commands:"可用检查", credential_storage:"凭据存储", credentials:"凭据状态", cloudflare:"Cloudflare", websites:"网站", ssh:"SSH", local_authentication:"登录认证", model:"模型", configured:"已配置", operations:"服务运维", credential_lifecycle:"配置凭据", credential_readback:"读取凭据原文", arbitrary_network:"任意网络请求", shell:"命令行", status:"状态", targets:"网站目标", cloudflare_zone_id:"Cloudflare Zone ID",cloudflare_api_token:"Cloudflare API Token", cloudflare_oauth_client_secret:"Cloudflare OAuth 客户端密钥"};
   const values = {enterprise_portal:"企业登记站",website_notice:"企业公告",deepseek:"DeepSeek",postgresql:"PostgreSQL", running:"运行中", ok:"正常", unavailable:"不可用", ready:"可用", not_integrated:"未接入", not_configured:"未配置", allowlisted_commands:"仅允许固定检查", django_session_required:"需要企业账号登录", health:"服务健康", capabilities:"已接入能力", credentials:"凭据状态", permissions:"运维权限", websites:"网站状态"};
   function show(target, data) {
     target.replaceChildren();
@@ -206,19 +206,55 @@
     const content = document.createElement("div"); show(content, data);
     line.append(title, content); byId("assistant-chat").append(line);
   }
+  const registrarForm = byId("registrar-command");
+  let registrarProposal = null;
+  const registrarText = value => `账号：${value.username}（ID ${value.id}）；工厂：${value.factories.join("、") || "未分厂"}；当前：${value.active ? "允许登录" : "已停用"}`;
+  function renderRegistrar(data) {
+    if (!registrarForm) return;
+    // Any new reply replaces the visible proposal; a hidden proposal is never submitted.
+    registrarProposal = data.proposal?.action === "registrar_status" ? data.proposal : null;
+    byId("registrar-proposal").hidden = !registrarProposal;
+    const current = data.result?.registrar;
+    byId("registrar-feedback").textContent = [data.result?.detail, current ? registrarText(current) : ""].filter(Boolean).join(" ");
+    if (registrarProposal) {
+      byId("registrar-summary").textContent = `${registrarText(registrarProposal.registrar)}；请求改为：${registrarProposal.requested_active ? "允许登录" : "停用"}。提案120秒有效，未确认前不更改账号。`;
+      byId("registrar-proposal").scrollIntoView({behavior:"smooth"});
+    }
+  }
+  registrarForm?.addEventListener("submit", async event => {
+    event.preventDefault();
+    const button = registrarForm.querySelector("button"); button.disabled = true;
+    try { renderRegistrar(await request("assistant", {registrar:{operation:registrarForm.elements.operation.value, username:registrarForm.elements.username.value.trim()}})); }
+    catch (error) { renderRegistrar({}); byId("registrar-feedback").textContent = error.message; }
+    finally { button.disabled = false; }
+  });
+  async function resolveRegistrar(decision) {
+    const proposal = registrarProposal;
+    if (!proposal) return;
+    if (decision === "confirm" && !window.confirm(`${registrarText(proposal.registrar)}；确认改为${proposal.requested_active ? "允许登录" : "停用"}？`)) return;
+    registrarProposal = null; byId("registrar-proposal").hidden = true;
+    byId("registrar-confirm").disabled = byId("registrar-cancel").disabled = true;
+    try { renderRegistrar(await request("assistant", {proposal:proposal.token, decision})); }
+    catch (error) { byId("registrar-feedback").textContent = `${error.message} ${error.data?.current ? registrarText(error.data.current) : ""} 请重新查询当前账号状态。`; }
+    finally { byId("registrar-confirm").disabled = byId("registrar-cancel").disabled = false; }
+  }
+  byId("registrar-confirm")?.addEventListener("click", () => resolveRegistrar("confirm"));
+  byId("registrar-cancel")?.addEventListener("click", () => resolveRegistrar("cancel"));
   messageForm.addEventListener("submit", async event => {
     event.preventDefault();
     const message = messageForm.elements.message.value.trim();
     if (!message) return;
     const localNotice = /^(发布公告|替换公告)/.test(message) || message === "撤下公告";
-    if (!localNotice && !messageForm.elements.consent.checked) {
-      chatLine("运营助手", "非公告固定命令需要同意发送本次问题文本到模型。"); return;
+    const localRegistrar = message.includes("登记员");
+    if (!localNotice && !localRegistrar && !messageForm.elements.consent.checked) {
+      chatLine("运营助手", "非本地命令需要同意发送本次问题文本到模型。"); return;
     }
     const button = messageForm.querySelector("button"); button.disabled = true;
     chatLine("你", message);
     try {
-      const data = await request("assistant", {message});
+      const data = await request("assistant", {message, consent:messageForm.elements.consent.checked === true});
       chatLine("运营助手", data.result);
+      renderRegistrar(data);
       if (message === "撤下公告" && data.effect === "read" && data.proposal === null && data.notice) {
         setWithdrawal(null);
         renderNotice({notice:data.notice, can_write:true}, false);

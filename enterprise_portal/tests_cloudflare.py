@@ -148,7 +148,7 @@ class RequestTests(unittest.TestCase):
         vault = store()
         vault._read_for_provider.side_effect = lambda slot: "synthetic-model-key" if slot == "deepseek_api_key" else {"cloudflare_zone_id": ZONE, "cloudflare_api_token": TOKEN}[slot]
         with patch.object(operations, "vault", return_value=vault), patch.object(operations_ai, "classify", return_value="cloudflare_status") as classify, patch.object(cf, "_call", return_value=zone_payload()["result"]) as call:
-            self.assertEqual(operations_ai.route("检查 Cloudflare", self.user)["effect"], "read")
+            self.assertEqual(operations_ai.route("检查 Cloudflare", self.user, consent=True)["effect"], "read")
             classify.assert_called_once_with("检查 Cloudflare", "synthetic-model-key")
             self.assertEqual(call.call_count, 1)
             self.assertEqual(len(call.call_args.args), 2)

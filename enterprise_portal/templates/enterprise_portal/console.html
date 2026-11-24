@@ -97,7 +97,15 @@
     <p id="model-status" class="muted" role="status">正在核对模型配置…</p>
     {% if can_manage_credentials %}<p>输入“发布公告 正文”“替换公告 正文”（正文1–500字），或精确输入“撤下公告”，可本地准备提案，无需模型。准备不会修改网站；核对全文和版本后明确确认，也可取消。</p>{% endif %}
     <div id="assistant-chat" class="chat-log" role="log" aria-label="助手对话" aria-live="polite"></div>
-    <form id="message-form" data-can-draft="{{ can_manage_credentials|yesno:'true,false' }}"><label class="wide-label" for="assistant-message">你的问题或公告命令<textarea id="assistant-message" name="message" rows="3" maxlength="520" placeholder="老板可输入：发布公告 明天上午盘点，或：撤下公告。其它问题最多500字" required></textarea></label><label class="consent"><input type="checkbox" name="consent">同意将非固定公告命令的问题发送至 DeepSeek；固定“发布公告 / 替换公告 / 撤下公告”仅在本应用处理。请勿向模型填写客户信息、凭据或业务隐私。</label><button type="submit" disabled>发送问题</button></form>
+    <form id="message-form" data-can-draft="{{ can_manage_credentials|yesno:'true,false' }}"><label class="wide-label" for="assistant-message">你的问题或本地管理命令<textarea id="assistant-message" name="message" rows="3" maxlength="520" placeholder="老板可输入：发布公告 明天上午盘点，或：撤下公告。其它问题最多500字" required></textarea></label><label class="consent"><input type="checkbox" name="consent">同意将非本地命令的问题发送至 DeepSeek；登记员状态和固定公告命令仅在本应用处理。请勿向模型填写客户信息、凭据或业务隐私。</label><button type="submit" disabled>发送问题</button></form>
+    {% if can_manage_registrars %}
+    <section aria-label="登记员账号管理">
+      <h3>登记员账号状态</h3><p>仅安装管理员。输入完整内部用户名；不会读取密码、邮箱或向模型发送内容。也可直接问“查询登记员 用户名”“停用登记员 用户名”“启用登记员 用户名”。</p>
+      <form id="registrar-command"><label>完整用户名 <input name="username" maxlength="150" required autocomplete="off"></label><label>操作 <select name="operation"><option value="check">查询状态</option><option value="disable">准备停用</option><option value="enable">准备启用</option></select></label><button type="submit">查询 / 准备</button></form>
+      <div id="registrar-proposal" hidden><p id="registrar-summary"></p><button id="registrar-confirm" type="button">确认更改登记员状态</button><button id="registrar-cancel" type="button">取消提案</button></div>
+      <p id="registrar-feedback" role="status"></p>
+    </section>
+    {% endif %}
     <details open><summary>手动检查（无需模型）</summary><form id="assistant-form">{% csrf_token %}<label>检查内容 <select name="command"><option value="health">服务健康</option><option value="capabilities">已接入能力</option><option value="credentials">凭据状态</option><option value="permissions">运维权限</option><option value="websites">网站状态</option><option value="cloudflare_status">Cloudflare 网站状态</option></select></label><button type="submit" disabled>运行检查</button></form><div id="assistant-result" role="status">服务权限核对后可运行检查。</div></details>
   </section>
 </main>
