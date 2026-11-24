@@ -1,6 +1,6 @@
 ﻿# Windows 企业服务器图形入口
 
-双击包根目录 `Start-ServerGui.vbs`，立即显示系统 WinForms 窗口。WScript 仅隐藏 PowerShell 的控制台；窗体、按钮和密码框由 Windows 自带 WinForms 构造，没有自定义 EXE、动态编译 DLL 或系统策略修改。进程仅使用 `RemoteSigned`。若主机策略拒绝脚本，按实际拒绝报告，不切换到被拦截的入口。
+双击包根目录 `Start-ServerGui.vbs`，立即显示系统 WinForms 窗口。WScript 保留正常首窗显示状态，PowerShell 仅隐藏自己的控制台；窗体、按钮和密码框由 Windows 自带 WinForms 构造，没有自定义 EXE、动态编译 DLL 或系统策略修改。进程仅使用 `RemoteSigned`。若主机策略拒绝脚本，按实际拒绝报告，不切换到被拦截的入口。
 
 窗口提供“启动服务”“刷新状态”“打开管理控制台”。先显式启动服务；没有管理员时自行输入账号、密码和确认密码，再点“创建首个管理员”。密码框遮罩且不预填。成功后输入框清空，首建区域禁用；打开原 `/enterprise/console/` 管理页面，使用刚创建的账号登录。窗口关闭不停止服务。显式停止仍使用原 `Stop-EnterpriseServer.ps1 -DataRoot ...`。
 
@@ -51,3 +51,11 @@ python .\scripts\tests\verify-server-gui.py --qa-root C:\isolated-new-qa --runti
 复测入口：`powershell -NoProfile -File scripts/ServerWindow.ps1 -Probe` 构造完整窗体，验证固定中文意图、拒绝任意命令、取消零派发与确认后的固定动作派发；不显示桌面。`python scripts/tests/verify-native-management.py --package <源码或Server包目录> --runtime <受信运行库目录> --data-root <不存在的隔离目录>` 使用真实隔离 PostgreSQL/HTTP 验证启动、状态、确认拒绝、重启、停止和错误 PID 归属拒绝，并停止测试服务。测试固定使用专用测试端口，端口占用时应停止测试并另行安排，不操作占用者。
 
 Probe 与功能测试不替代实际窗口呈现、鼠标点击及远程桌面验收。
+
+## 启动窗体可见性回归
+
+启动器以正常首窗显示状态创建 Windows PowerShell，再由 `-WindowStyle Hidden` 隐藏控制台，避免把 `SW_HIDE` 启动状态传给第一个 WinForms 窗口。启动器等待窗体进程；启动失败或异常退出时显示固定错误提示，不回显内部输出。参数转义与 RemoteSigned 保持原契约。
+
+`python scripts/tests/verify-launch-visibility.py --launcher Start-ServerGui.vbs` 在独立、从不切换激活的 Windows desktop 对象中运行真实 VBS → WinPS → 完整产品窗体。明确的 `-VisibilityProbe` 仅关闭后台状态调用，检查自身窗体及控制台原生可见性后自行关闭；不会读安装配置或调用服务。原 style 0 回路退出 2（窗体隐藏）；正常 style 1 配合 PowerShell Hidden 后退出 0（窗体可见、控制台隐藏）。含中文、空格和单引号的包路径也通过；原 `-Probe` 仍通过。
+
+此程序验证首窗显示意图，不构成用户实际桌面呈现、控制台瞬时闪现或远端双击验收。未启动或重启业务服务。
