@@ -210,13 +210,13 @@ try {
     throw 'The SCM sshd path is not the exact inbox executable without arguments.'
   }
   Write-QaStatus 'SSHD_SCM_PATH_VERIFIED'
-  $script:failureCode = 'service_already_running'
-  if ($service.State -ne 'Stopped') { throw 'The hosted runner sshd service was already running.' }
-  Write-QaStatus 'SSHD_SERVICE_STOPPED'
   $script:failureCode = 'unsupported_service_account'
   if ($service.StartName -notin @('NT SERVICE\SSHD', 'LocalSystem', 'NT AUTHORITY\SYSTEM')) {
     throw 'The inbox sshd service account is outside the supported local service identities.'
   }
+  $script:failureCode = 'unsupported_service_state'
+  if ($service.State -notin @('Running', 'Stopped')) { throw 'The inbox sshd service has an unsupported state.' }
+  Write-QaStatus "SSHD_SERVICE_STATE_ACCEPTED state=$($service.State.ToLowerInvariant())"
 
   $script:failureCode = 'programdata_ssh_unavailable'
   Assert-NoReparsePoint -Path $env:ProgramData
@@ -339,6 +339,23 @@ try {
     "AllowGroups $sshGroupName",
     "AuthorizedKeysFile $authConfigPath"
   )
+  $script:failureCode = 'service_stop_failed'
+  $service = Get-CimInstance -ClassName Win32_Service -Filter "Name='sshd'" -ErrorAction Stop
+  if (-not $service -or $service.PathName.Trim().Trim('"') -ine $expectedServicePath -or
+      $service.StartName -notin @('NT SERVICE\SSHD', 'LocalSystem', 'NT AUTHORITY\SYSTEM')) {
+    $script:failureCode = 'inbox_service_changed'
+    throw 'The inbox sshd service identity changed after preflight.'
+  }
+  if ($service.State -eq 'Running') {
+    Stop-Service -Name sshd -ErrorAction Stop
+    $serviceController = Get-Service -Name sshd -ErrorAction Stop
+    $serviceController.WaitForStatus([ServiceProcess.ServiceControllerStatus]::Stopped, [TimeSpan]::FromSeconds(20))
+  } elseif ($service.State -ne 'Stopped') {
+    $script:failureCode = 'unsupported_service_state'
+    throw 'The inbox sshd service entered an unsupported state.'
+  }
+  Write-QaStatus 'INBOX_SSHD_STOPPED_FOR_SYNTHETIC_CONFIG'
+  $script:failureCode = 'controlled_config'
   [IO.File]::WriteAllLines($script:sshdConfig, $configLines, [Text.Encoding]::ASCII)
 
   $script:stage = 'application-policy-preflight'
