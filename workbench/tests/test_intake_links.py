@@ -22,7 +22,7 @@ from workbench.intake.mapping import fingerprint
 from workbench.intake.storage import INTAKE_MARKER, INTAKE_MARKER_CONTENT
 from workbench.models import (
     IntakeCandidate, IntakeCandidateLink, IntakeMappingRevision, IntakeOperationReceipt,
-    IntakeSourceVersion, Product, ProductRevision, ProductionRequirementDraft,
+    IntakeSourceVersion, ProductionRequirementDraft,
     ProductionRequirementRevision, Task, WorkbookSnapshot,
 )
 
@@ -318,7 +318,7 @@ class IntakeCandidateLinksLiveHttpTests(LiveServerTestCase):
     def test_real_http_creates_and_reads_link_decision_history_without_business_mutation(self):
         source_a, candidate_a = self.create_candidate("http-a")
         _source_b, candidate_b = self.create_candidate("http-b")
-        stable_models = (Task, Product, ProductRevision, IntakeSourceVersion, WorkbookSnapshot,
+        stable_models = (Task, IntakeSourceVersion, WorkbookSnapshot,
                          IntakeMappingRevision, IntakeCandidate, ProductionRequirementDraft, ProductionRequirementRevision)
         initial_counts = {model: model.objects.count() for model in stable_models}
         initial_statuses = [IntakeCandidate.objects.get(pk=item["id"]).status for item in (candidate_a, candidate_b)]

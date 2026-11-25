@@ -98,7 +98,14 @@ class Task(models.Model):
         ordering = ["-created_at"]
 
 
-class Product(models.Model):
+class BatchItem(models.Model):
+    """批次产品行：这一批货包含哪些 SKU。
+
+    取代原来的 Product 模型。只保留清单字段，**不再有版本历史、评审状态与
+    字段来源**（原 ProductRevision 已下线）；产品资料库的查询/还原/版本接口
+    一并移除。缺字段仍记在 missing_fields 里，供批次确认前提示。
+    """
+
     id = models.CharField(
         primary_key=True,
         max_length=32,
@@ -108,7 +115,7 @@ class Product(models.Model):
     task = models.ForeignKey(
         Task,
         on_delete=models.CASCADE,
-        related_name="products",
+        related_name="batch_items",
     )
     position = models.PositiveIntegerField()
     sku = models.CharField(max_length=120)
@@ -727,11 +734,6 @@ class AgentRun(models.Model):
         ordering = ["-started_at"]
 
 
-class ProductBatch(Task):
-    class Meta:
-        proxy = True
-
-
 class WorkflowTask(models.Model):
     id = models.CharField(
         primary_key=True,
@@ -767,77 +769,6 @@ class WorkflowTask(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
-
-
-class ProductRevisionQuerySet(models.QuerySet):
-    def update(self, **kwargs):
-        blocked = self.model.immutable_fields.intersection(kwargs)
-        if blocked:
-            raise ValidationError(
-                "ProductRevision 的 snapshot/product/version 不可改写。"
-            )
-        return super().update(**kwargs)
-
-    def bulk_update(self, objs, fields, batch_size=None):
-        blocked = self.model.immutable_fields.intersection(fields)
-        if blocked:
-            raise ValidationError(
-                "ProductRevision 的 snapshot/product/version 不可改写。"
-            )
-        return super().bulk_update(objs, fields, batch_size=batch_size)
-
-
-class ProductRevision(models.Model):
-    immutable_fields = frozenset({"snapshot", "product", "product_id", "version"})
-
-    id = models.CharField(
-        primary_key=True,
-        max_length=32,
-        default=hex_uuid,
-        editable=False,
-    )
-    product = models.ForeignKey(
-        Product,
-        on_delete=models.PROTECT,
-        related_name="revisions",
-    )
-    version = models.PositiveIntegerField()
-    snapshot = models.JSONField(default=dict)
-    field_sources = models.JSONField(default=dict)
-    status = models.CharField(max_length=32, default="draft")
-    source_refs = models.JSONField(default=dict)
-    reviewer = models.CharField(max_length=120, blank=True, default="")
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    objects = ProductRevisionQuerySet.as_manager()
-
-    class Meta:
-        ordering = ["product", "version"]
-        constraints = [
-            models.UniqueConstraint(
-                fields=["product", "version"],
-                name="uniq_productrev_prod_ver",
-            )
-        ]
-
-    def save(self, *args, **kwargs):
-        if not self._state.adding:
-            stored = (
-                type(self)
-                .objects.filter(pk=self.pk)
-                .values("snapshot", "product_id", "version")
-                .first()
-            )
-            if stored is not None and (
-                stored["snapshot"] != self.snapshot
-                or stored["product_id"] != self.product_id
-                or stored["version"] != self.version
-            ):
-                raise ValidationError(
-                    "ProductRevision 的 snapshot/product/version 不可改写。"
-                )
-        return super().save(*args, **kwargs)
 
 
 class SubTask(models.Model):

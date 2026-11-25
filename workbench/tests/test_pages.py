@@ -11,8 +11,7 @@ from workbench.models import (
     ArtifactVersion,
     EventLog,
     HumanReview,
-    Product,
-    ProductRevision,
+    BatchItem,
     SubTask,
     Task,
     WorkflowTask,
@@ -42,9 +41,9 @@ class PageTests(TestCase):
         sku: str,
         position: int = 0,
         missing_fields: list[str] | None = None,
-    ) -> Product:
+    ) -> BatchItem:
         now = timezone.now()
-        return Product.objects.create(
+        return BatchItem.objects.create(
             task=batch,
             position=position,
             sku=sku,
@@ -72,30 +71,6 @@ class PageTests(TestCase):
             task_type="prepare_product_data",
             status=status,
             current_step="plan",
-        )
-
-    def make_revision(
-        self,
-        product: Product,
-        *,
-        version: int,
-        status: str,
-        source: str,
-    ) -> ProductRevision:
-        return ProductRevision.objects.create(
-            product=product,
-            version=version,
-            snapshot={
-                "sku": product.sku,
-                "name": product.name,
-                "category": product.category,
-                "material": product.material,
-                "size": product.size,
-                "color": product.color,
-                "image_filename": product.image_filename,
-            },
-            status=status,
-            source_refs={"source": source},
         )
 
     def test_five_new_pages_and_global_navigation(self):
@@ -340,15 +315,6 @@ class PageTests(TestCase):
         batch.updated_at = utc_start
         batch.save(update_fields=["created_at", "updated_at"])
         product = self.make_product(batch, sku="TZ-1")
-        revision = self.make_revision(
-            product,
-            version=1,
-            status="needs_review",
-            source="legacy_backfill",
-        )
-        ProductRevision.objects.filter(pk=revision.pk).update(
-            updated_at=utc_start
-        )
         AgentRun.objects.create(
             task=batch,
             capability_id="product_profile",
@@ -413,24 +379,13 @@ class PageTests(TestCase):
         self.assertContains(runs, "仅显示最近 50 条，共 51 条")
         self.assertContains(runs, "仅显示最近 20 条，共 21 条")
 
-    def test_unknown_status_and_source_labels_do_not_error(self):
+    def test_product_library_endpoint_is_gone(self):
+        # 产品资料库（含查询/版本/还原接口）已随 0027 迁移下线。
         batch = self.make_batch(status="custom_status")
-        product = self.make_product(batch, sku="UNKNOWN-1")
-        self.make_revision(
-            product,
-            version=1,
-            status="custom_status",
-            source="custom_source",
-        )
+        self.make_product(batch, sku="UNKNOWN-1")
 
-        # 页面已被成本台账取代，未知状态/来源的容错由追溯接口兜住：
-        # 枚举里没有的值原样透出，不允许在序列化阶段炸掉。
-        response = self.client.get("/api/product-library")
-
-        self.assertEqual(response.status_code, 200)
-        payload = response.content.decode()
-        self.assertIn("custom_status", payload)
-        self.assertIn("custom_source", payload)
+        self.assertEqual(self.client.get("/api/product-library").status_code, 404)
+        self.assertEqual(self.client.get(f"/api/batch-items/{batch.id}").status_code, 405)
 
     def test_old_routes_and_js_testids_remain(self):
         batch = self.make_batch(title="旧任务")

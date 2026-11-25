@@ -213,3 +213,32 @@ TRADELOOM_DB_TEST_NAME=tradeloom_test_xxx python manage.py test \
 写操作走同一条路：`POST /api/sku/rows` → `store.save_cost_patch()` 落库 → **重算整份 state 返回**，前端局部替换，不整页刷新。所以「自动保存」不会打断光标，也不会出现只更新一格、合计没跟着变的情况。
 
 想在桌面版里看效果：双击桌面「织贸助手（桌面版）」→ 左侧「商品」→「产品资料」，首屏就是这份台账。
+
+## 13. 产品资料库下线（迁移 `0027`）
+
+台账上线时产品资料库还留着（只是没有页面）。本次把它整块删掉，`/products` 从此只有台账。
+
+| 删了什么 | 说明 |
+|---|---|
+| `Product` / `ProductRevision` / `ProductBatch` 三个模型 | 换成一个 `BatchItem`（批次产品行），只保留 sku / 名称 / 品类 / 材质 / 尺寸 / 颜色 / 图片 / 缺字段 |
+| 表 `workbench_product`、`workbench_productrevision` | 迁移会先把旧行复制进 `workbench_batchitem` 再删表 |
+| `workbench/products/`（查询 / 还原 / 版本） | 连同 `/api/product-library`、`/api/products/<id>/revisions`、`fact-restoration` 一起移除 |
+| 候选 → 产品应用 | `workbench/intake/product_application.py` 与 `/api/intake/candidates/<id>/apply` |
+| 版本评审链 | `workflows/fact_application.py`、`reviews.py`、`review_images.py`、`validation.py`，以及对应的人审提交 / 补图 / 应用接口 |
+| 旧命令 | `backfill_product_revisions`、`migrate_legacy_sqlite` |
+
+**保留的**：任务、批次、上传文件、Agent 编排、交付物生成、订单 / 客户 / 物料 / 采购 / 生产要求 / ERPNext / intake 解析。
+
+**功能口径的变化**（改算法或写测试前必读）：
+
+1. 不再有「产品版本」概念：一次修改直接写 `BatchItem`，没有草稿 / 已确认状态，也没有字段来源。
+2. 交付物不再要求「全批次当前版本已确认 + 英文名齐全」：只要批次已确认、两个子任务完成、没有未决人审，且每行字段齐全、有批次图片，就能生成。目录标题按「英文名 → 中文名 → SKU」取第一个非空值。
+3. 人审事项不再产生：`HumanReview` 表仍在（交付前仍会拦未决项），但页面与接口不再新建评审。
+4. Agent 拿到的「当前版本」是 `BatchItem` 的只读投影（`version=1`、`status=confirmed`），只为兼容既有工具契约，不代表真实版本。
+
+迁移前后核对：
+
+```sql
+select to_regclass('workbench_product'), to_regclass('workbench_productrevision');  -- 均应为 NULL
+select count(*) from workbench_batchitem;                                           -- 与旧 Product 行数一致
+```

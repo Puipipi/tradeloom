@@ -6,19 +6,18 @@ from html import escape
 from typing import Any
 
 
-class EnglishNameRequired(ValueError):
-    def __init__(self, product_id: str, revision_id: str):
-        self.product_id = product_id
-        self.revision_id = revision_id
-        super().__init__(f"Product {product_id} revision {revision_id} needs an English name")
+def display_name(row: dict[str, Any]) -> str:
+    """目录标题：优先英文名（历史上人工填过就沿用），否则用中文名，再退到 SKU。
 
-
-def _required_english_name(row: dict[str, Any]) -> str:
+    版本体系下线后不再强制要求英文名——缺英文名不再阻断交付物生成。
+    """
     snapshot = row.get("snapshot")
-    value = snapshot.get("english_name") if isinstance(snapshot, dict) else None
-    if not isinstance(value, str) or not value.strip():
-        raise EnglishNameRequired(str(row.get("product_id", "")), str(row.get("revision_id", "")))
-    return value.strip()
+    if isinstance(snapshot, dict):
+        for key in ("english_name", "name", "sku"):
+            value = snapshot.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    return str(row.get("product_id", ""))
 
 
 def _image_data_uri(image: dict[str, Any] | None) -> str:
@@ -33,7 +32,7 @@ def build_catalog_html(products: list[dict[str, Any]]) -> str:
     rows = []
     for row in products:
         snapshot = row["snapshot"]
-        english_name = _required_english_name(row)
+        english_name = display_name(row)
         image = row.get("image")
         image_html = ""
         if image:
@@ -71,7 +70,7 @@ def build_catalog_html(products: list[dict[str, Any]]) -> str:
         "th,td{border:1px solid #ccd3dc;padding:.55rem;text-align:left}img{max-width:8rem;max-height:8rem;display:block}"
         "</style></head><body><h1>Product Catalog</h1><table><thead><tr>"
         "<th>Image source</th><th>Product ID</th><th>Revision ID</th><th>Revision version</th>"
-        "<th>SKU</th><th>English name</th><th>Original name</th><th>Category (source)</th>"
+        "<th>SKU</th><th>Catalog name</th><th>Original name</th><th>Category (source)</th>"
         "<th>Material (source)</th><th>Size (source)</th><th>Color (source)</th>"
         f"</tr></thead><tbody>{body}</tbody></table></body></html>\n"
     )
@@ -100,7 +99,7 @@ def build_catalog_markdown(products: list[dict[str, Any]]) -> str:
     sections = ["# Product Catalog", ""]
     for row in products:
         snapshot = row["snapshot"]
-        english_name = _required_english_name(row)
+        english_name = display_name(row)
         image = row.get("image")
         sections.extend(
             [

@@ -46,7 +46,7 @@ class BusinessEmbedTests(SimpleTestCase):
             "id": 3, "title": "样品任务", "mode": "demo", "status": "draft",
             "created_at": datetime(2026, 10, 19, tzinfo=timezone.utc),
             "updated_at": datetime(2026, 10, 19, tzinfo=timezone.utc),
-            "products": Relation([product]), "files": Relation([image_file]),
+            "batch_items": Relation([product]), "files": Relation([image_file]),
         })()
         service = WorkbenchService()
 

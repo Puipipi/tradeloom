@@ -18,7 +18,7 @@ from .models import (
     ArtifactVersion,
     EventLog,
     HumanReview,
-    Product,
+    BatchItem,
     SubTask,
     Task,
     WorkflowTask,
@@ -206,7 +206,7 @@ def home(request):
         _page_context(
             "home",
             batch_count=len(tasks),
-            product_count=Product.objects.count(),
+            product_count=BatchItem.objects.count(),
             pending_count=len(pending_batches),
             workflow_count=WorkflowTask.objects.count(),
             actionable_count=len(actionable_batches),
@@ -271,7 +271,7 @@ def agent_center(request):
             ),
         }
         for batch in (
-            Task.objects.filter(products__isnull=False)
+            Task.objects.filter(batch_items__isnull=False)
             .distinct()
             .order_by("-created_at")
         )

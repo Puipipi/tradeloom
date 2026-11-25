@@ -915,7 +915,7 @@
         const card = form.closest(".product-card");
         const payload = Object.fromEntries(new FormData(form).entries());
         try {
-          await jsonFetch(`/api/products/${card.dataset.productId}`, {
+          await jsonFetch(`/api/batch-items/${card.dataset.productId}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from django.urls import path
 
-from . import api, views, workflow_views, product_fact_restore_api
+from . import api, views, workflow_views
 from .customers import api as customer_api
 from .customers import views as customer_views
 from .erpnext import api as erpnext_api
@@ -78,7 +78,6 @@ urlpatterns = [
     path("api/intake/mappings/<str:mapping_id>/candidates", intake_api.create_candidate),
     path("api/intake/candidates", intake_api.candidates),
     path("api/intake/candidates/<str:candidate_id>", intake_api.candidate),
-    path("api/intake/candidates/<str:candidate_id>/apply", intake_api.apply_product_candidate),
     path("api/intake/candidates/<str:candidate_id>/apply-material", material_api.apply_material),
     path("api/intake/candidates/<str:candidate_id>/requirement-lines", requirement_api.apply_requirement_lines_view),
     path("api/intake/candidates/<str:candidate_id>/links", intake_api.create_candidate_link),
@@ -109,10 +108,6 @@ urlpatterns = [
     path("api/workflow-tasks", api.create_workflow_task),
     path("api/workflow-intent/preview", api.preview_workflow_intent),
     path("api/workflow-tasks/<str:workflow_id>", api.get_workflow_task),
-    path(
-        "api/workflow-tasks/<str:workflow_id>/task-files/<str:task_file_id>/preview",
-        api.preview_workflow_task_image,
-    ),
     path("api/workflow-tasks/<str:workflow_id>/deliverables", api.workflow_deliverables),
     path(
         "api/workflow-tasks/<str:workflow_id>/deliverables/<str:step_id>/takeover",
@@ -146,28 +141,9 @@ urlpatterns = [
         "api/workflow-tasks/<str:workflow_id>/subtasks/<str:subtask_id>/interrupt",
         api.interrupt_workflow_subtask,
     ),
-    path(
-        "api/workflow-tasks/<str:workflow_id>/reviews/<str:review_id>/submit",
-        api.submit_workflow_review,
-    ),
-    path(
-        "api/workflow-tasks/<str:workflow_id>/reviews/<str:review_id>/image",
-        api.upload_workflow_review_image,
-    ),
-    path(
-        "api/workflow-tasks/<str:workflow_id>/reviews/apply",
-        api.apply_workflow_review_cycle,
-    ),
     path("api/tasks/demo", api.create_demo_task),
     path("api/tasks/<str:task_id>", api.get_task),
-    path("api/product-library", api.product_library),
-    path("api/products/<str:product_id>/fact-restoration/preview", product_fact_restore_api.preview),
-    path("api/products/<str:product_id>/fact-restoration/apply", product_fact_restore_api.apply),
-    path(
-        "api/products/<str:product_id>/revisions",
-        api.product_revisions,
-    ),
-    path("api/products/<str:product_id>", api.update_product),
+    path("api/batch-items/<str:item_id>", api.update_batch_item),
     path("api/tasks/<str:task_id>/confirm", api.confirm_task),
     path("api/tasks/<str:task_id>/export.csv", api.export_csv),
     path("api/tasks/<str:task_id>/runs", api.list_runs),

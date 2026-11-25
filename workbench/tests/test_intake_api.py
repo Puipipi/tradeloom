@@ -17,8 +17,7 @@ from django.db import close_old_connections
 from django.test import TransactionTestCase
 
 from workbench.intake.storage import INTAKE_MARKER, INTAKE_MARKER_CONTENT
-from workbench.models import (ErpNextDraftOperation, IntakeOperationReceipt, IntakeSourceVersion, Product,
-                              ProductRevision)
+from workbench.models import (BatchItem, ErpNextDraftOperation, IntakeOperationReceipt, IntakeSourceVersion)
 
 
 def synthetic_xlsx() -> bytes:
@@ -213,7 +212,7 @@ class IntakeApiTests(TestCase):
         self.assertEqual(missing_sheet.json(), {"ok": False, "error_code": "preview_not_found"})
 
     def test_upload_preview_mapping_and_candidate_are_source_bound_and_idempotent(self):
-        before = (Product.objects.count(), ProductRevision.objects.count(), ErpNextDraftOperation.objects.count())
+        before = (BatchItem.objects.count(), ErpNextDraftOperation.objects.count())
         uploaded = self.upload()
         self.assertEqual(uploaded.status_code, 201)
         source = uploaded.json()["source"]
@@ -278,7 +277,7 @@ class IntakeApiTests(TestCase):
         self.assertEqual(candidate.json()["candidate"]["fields"]["roll_length"][0], {"state": "formula_cache_empty", "type": "decimal", "value": None})
         self.assertEqual(candidate.json()["candidate"]["provenance"]["width"][0]["coordinate"], "B1")
         self.assertEqual(len(self.client.get("/api/intake/candidates").json()["candidates"]), 1)
-        self.assertEqual((Product.objects.count(), ProductRevision.objects.count(), ErpNextDraftOperation.objects.count()), before)
+        self.assertEqual((BatchItem.objects.count(), ErpNextDraftOperation.objects.count()), before)
 
     def test_upload_completion_failure_after_receipt_save_rolls_back_source_and_owned_file(self):
         from workbench.intake.api import _complete as real_complete
