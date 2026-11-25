@@ -110,6 +110,59 @@ class DocumentFlowTests(TestCase):
         self.assertEqual(confirm_ok.status_code, 200)
         self.assertTrue(confirm_ok.json()["document"]["status"] == "confirmed")
 
+    def test_purchase_plan_rows_without_material_column(self):
+        # 真实采购合同不携带物料编码列（产品身份在图片里）；数量列可单独落表，
+        # 缺物料引用的行阻断确认，等人工补码后重新打表。
+        source = self._upload({"B": ["数量（码）", 6040, 10960]}, "pc-qty-only.xlsx", "pc-qty-only-source")
+        candidate = self._candidate(source, "purchase_plan_line", {
+            "quantity": {"cells": self._cells("B", ["a", "b"])},
+        }, "pc-qty-mapping", "pc-qty-candidate")
+        from workbench.models import IntakeCandidate, ProductionRequirementDraft
+        draft = ProductionRequirementDraft.objects.create(
+            record_kind="new_demand", source_candidate=IntakeCandidate.objects.get(pk=candidate))
+        response = self.client.post(
+            f"/api/intake/candidates/{candidate}/documents",
+            data=json.dumps({"doc_type": "purchase_plan", "requirement_id": draft.pk}),
+            content_type="application/json", HTTP_IDEMPOTENCY_KEY="pc-qty-apply-1",
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+        payload = response.json()
+        self.assertEqual(payload["total"], 2)
+        self.assertEqual(payload["blocked"], 2)
+        for doc in payload["documents"]:
+            self.assertEqual(doc["material"], "")
+            self.assertEqual(doc["item_status"], "unresolved")
+            blocking = {issue["issue_key"] for issue in doc["issues"] if issue["severity"] == "blocking"}
+            self.assertEqual(blocking, {"missing_material_reference"})
+            confirm = self.client.post(f"/api/documents/purchase_plan/{doc['id']}/confirm",
+                                       data="{}", content_type="application/json")
+            self.assertEqual(confirm.status_code, 409)
+            self.assertEqual(confirm.json()["error_code"], "document_blocked")
+
+    def test_purchase_plan_without_unit_column(self):
+        source = self._upload({"A": ["物料", "彩灯带"], "B": ["数量", 5]}, "pp-no-unit.xlsx", "pp-no-unit-source")
+        candidate = self._candidate(source, "purchase_plan_line", {
+            "material": {"cells": self._cells("A", ["a"])},
+            "quantity": {"cells": self._cells("B", ["a"])},
+        }, "pp-no-unit-mapping", "pp-no-unit-candidate")
+        from workbench.models import IntakeCandidate, ProductionRequirementDraft
+        draft = ProductionRequirementDraft.objects.create(
+            record_kind="new_demand", source_candidate=IntakeCandidate.objects.get(pk=candidate))
+        response = self.client.post(
+            f"/api/intake/candidates/{candidate}/documents",
+            data=json.dumps({"doc_type": "purchase_plan", "requirement_id": draft.pk}),
+            content_type="application/json", HTTP_IDEMPOTENCY_KEY="pp-no-unit-apply-1",
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+        doc = response.json()["documents"][0]
+        self.assertEqual(doc["unit"], "")
+        self.assertFalse(doc["blocked"])
+        self.assertEqual(doc["item_ref"], {"doctype": "Item", "name": "MAT-LED-001"})
+        confirm = self.client.post(f"/api/documents/purchase_plan/{doc['id']}/confirm",
+                                   data="{}", content_type="application/json")
+        self.assertEqual(confirm.status_code, 200)
+        self.assertTrue(confirm.json()["document"]["status"] == "confirmed")
+
     def test_stock_receipt_links_to_purchase_plan(self):
         from workbench.models import PurchasePlan
         plan = PurchasePlan.objects.create(material="彩灯带", quantity="5", unit="米")

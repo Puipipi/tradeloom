@@ -19,6 +19,13 @@ from .store import (
     load_items,
     update_item,
 )
+from .variants import (
+    VariantStoreError,
+    create_variant,
+    load_variants,
+    resolve_variant,
+    update_variant,
+)
 
 MAX_QUERY_CHARS = 80
 MAX_LINES = 50
@@ -28,7 +35,10 @@ MAX_UNIT_CHARS = 64
 MAX_REFERENCE_CHARS = 140
 _MAX_LIMIT = 50
 
-_MAINTENANCE_ERROR_STATUS = {"item_exists": 409, "item_not_found": 404}
+_MAINTENANCE_ERROR_STATUS = {
+    "item_exists": 409, "item_not_found": 404,
+    "variant_exists": 409, "variant_not_found": 404,
+}
 _APPLY_ERROR_STATUS = {
     "candidate_not_found": 404, "unsupported_candidate_type": 422,
     "missing_field_values": 422, "invalid_material": 422,
@@ -170,6 +180,85 @@ def apply_material(request: HttpRequest, candidate_id: str) -> JsonResponse:
         return _error("invalid_json")
     except Exception:
         return _error("unavailable", 503)
+
+
+@require_http_methods(["GET", "POST"])
+def variants_collection(request: HttpRequest) -> JsonResponse:
+    if request.method == "POST":
+        if request.content_type != "application/json":
+            return _error("invalid_arguments")
+        try:
+            body = _json_object(request)
+        except ValueError:
+            return _error("invalid_arguments")
+        if set(body) - {"variant_code", "name", "components"} or \
+                not {"variant_code", "name", "components"}.issubset(body):
+            return _error("invalid_arguments")
+        try:
+            row = create_variant(
+                variant_code=body["variant_code"], name=body["name"], components=body["components"],
+            )
+        except VariantStoreError as exc:
+            return JsonResponse({"ok": False, "error_code": exc.code},
+                                status=_MAINTENANCE_ERROR_STATUS.get(exc.code, 422))
+        return JsonResponse({"ok": True, "variant": _row_summary(row)}, status=201)
+    if set(request.GET) - {"q", "limit"} or any(len(request.GET.getlist(key)) != 1 for key in request.GET):
+        return _error("invalid_arguments")
+    query = request.GET.get("q", "")
+    if len(query) > MAX_QUERY_CHARS:
+        return _error("invalid_arguments")
+    raw_limit = request.GET.get("limit", "20")
+    if not re.fullmatch(r"(?:0|[1-9][0-9]*)", raw_limit) or not 1 <= int(raw_limit) <= _MAX_LIMIT:
+        return _error("invalid_arguments")
+    key = normalize_reference(query)
+    matched = []
+    for variant in load_variants():
+        if not key or key in normalize_reference(variant.variant_code) or key in normalize_reference(variant.name):
+            matched.append(variant)
+    matched.sort(key=lambda variant: variant.variant_code)
+    page = matched[: int(raw_limit)]
+    return JsonResponse({
+        "ok": True,
+        "variants": [{
+            "variant_code": variant.variant_code, "name": variant.name, "disabled": variant.disabled,
+            "components": [{"position": component.position, "item_ref": component.item_ref,
+                            "quantity": component.quantity, "role": component.role}
+                           for component in variant.components],
+        } for variant in page],
+        "total": len(matched),
+    })
+
+
+@require_POST
+def variant_update(request: HttpRequest, variant_code: str) -> JsonResponse:
+    if request.content_type != "application/json" or not variant_code or len(variant_code) > MAX_REFERENCE_CHARS:
+        return _error("invalid_arguments")
+    try:
+        body = _json_object(request)
+    except ValueError:
+        return _error("invalid_arguments")
+    if not body:
+        return _error("invalid_arguments")
+    try:
+        row = update_variant(variant_code, patch=body)
+    except VariantStoreError as exc:
+        return JsonResponse({"ok": False, "error_code": exc.code},
+                            status=_MAINTENANCE_ERROR_STATUS.get(exc.code, 422))
+    return JsonResponse({"ok": True, "variant": _row_summary(row)})
+
+
+def _row_summary(row) -> dict[str, Any]:
+    return {
+        "variant_code": row.variant_code,
+        "name": row.name,
+        "disabled": row.disabled,
+        "source": row.source,
+        "components": [
+            {"position": component.position, "item_ref": component.item_ref,
+             "quantity": component.quantity, "role": component.role}
+            for component in row.components.all()
+        ],
+    }
 
 
 def _key_from_request(request: HttpRequest) -> str:

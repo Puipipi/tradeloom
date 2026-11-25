@@ -13,6 +13,14 @@ REQUIREMENT_FIELDS = {
     "customer_ref": "customer_ref",
     "item_ref": "item_ref",
 }
+
+# 多产品订单的这些字段只存在于行级（每行一个产品），表头层无法诚实取值；
+# 确认门禁对它们豁免（delegated_to_lines），其余字段仍须全部落定才能确认。
+# 见 docs/05-业务闭环补齐方案.md「真实数据回归发现④」。
+LINE_DELEGATED_FIELDS = frozenset({
+    "description", "specification", "color", "unit",
+    "packing", "pack_quantity", "pack_unit", "barcode_requirement",
+})
 _DECIMAL = re.compile(r"(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,8})?\Z")
 _MAX_TEXT = {
     "source_order_reference": 140,

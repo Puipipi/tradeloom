@@ -120,6 +120,8 @@ test('registers bounded business tools with native ToolRuntime definitions and n
     'tradeloom_erpnext_status', 'tradeloom_erpnext_list', 'tradeloom_erpnext_detail',
     'tradeloom_erpnext_create_quotation_draft', 'tradeloom_erpnext_update_quotation_draft',
     'tradeloom_erpnext_read_quotation_draft_operation',
+    'tradeloom_erpnext_create_po_draft', 'tradeloom_erpnext_update_po_draft',
+    'tradeloom_erpnext_read_po_draft_operation',
     'tradeloom_dispatch_create', 'tradeloom_dispatch_list', 'tradeloom_dispatch_claim', 'tradeloom_dispatch_receipt',
   ])
   for (const definition of tools.values()) {
@@ -144,7 +146,7 @@ test('registers bounded business tools with native ToolRuntime definitions and n
       }
       assert.equal(typeof ToolRuntime.prototype.register.call(runtime, definition), 'function')
     }
-    assert.equal(registrations.length, 26)
+    assert.equal(registrations.length, 29)
   }
 })
 
@@ -160,6 +162,8 @@ test('preset configuration limits registered tools to the center, product, and d
       'tradeloom_erpnext_status', 'tradeloom_erpnext_list', 'tradeloom_erpnext_detail',
       'tradeloom_erpnext_create_quotation_draft', 'tradeloom_erpnext_update_quotation_draft',
       'tradeloom_erpnext_read_quotation_draft_operation',
+      'tradeloom_erpnext_create_po_draft', 'tradeloom_erpnext_update_po_draft',
+      'tradeloom_erpnext_read_po_draft_operation',
       'tradeloom_dispatch_create', 'tradeloom_dispatch_list', 'tradeloom_dispatch_claim', 'tradeloom_dispatch_receipt',
     ],
     'tradeloom-product': ['tradeloom_scene_memory_read', 'tradeloom_scene_memory_write', 'tradeloom_read_products', 'tradeloom_read_workflow_task', 'tradeloom_submit_native_workflow_advice', 'tradeloom_intake_sources', 'tradeloom_intake_candidates', 'tradeloom_intake_candidate', 'tradeloom_erpnext_status', 'tradeloom_erpnext_list', 'tradeloom_erpnext_detail', 'tradeloom_dispatch_create', 'tradeloom_dispatch_list', 'tradeloom_dispatch_claim', 'tradeloom_dispatch_receipt'],
@@ -431,7 +435,7 @@ test('ERPNext tools use closed arguments, fixed Django paths, and project bounde
   const listTool = tools.get('tradeloom_erpnext_list')
   assert.deepEqual(listTool.parameters.required, ['doctype'])
   assert.deepEqual(listTool.parameters.properties.doctype.enum, [
-    'Item', 'Customer', 'Supplier', 'Warehouse', 'Bin', 'Sales Order', 'Purchase Order',
+    'Item', 'Customer', 'Supplier', 'Warehouse', 'Bin', 'Sales Order', 'Purchase Order', 'Stock Entry',
   ])
   assert.equal(listTool.parameters.additionalProperties, false)
 

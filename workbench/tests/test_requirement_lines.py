@@ -121,11 +121,14 @@ class RequirementLineFlowTests(TestCase):
 
     def _clear_unresolved_fields(self, requirement_id: str) -> None:
         # 生产要求修订是追加记录；测试直接改库清空字段级未解决状态，聚焦行级闸门。
+        self._set_unresolved_fields(requirement_id, {})
+
+    def _set_unresolved_fields(self, requirement_id: str, unresolved: dict) -> None:
         with connection.cursor() as cursor:
             cursor.execute(
-                "UPDATE workbench_productionrequirementrevision SET unresolved_fields = '{}'::jsonb "
+                "UPDATE workbench_productionrequirementrevision SET unresolved_fields = %s::jsonb "
                 "WHERE draft_id = %s AND revision = (SELECT current_revision FROM workbench_productionrequirementdraft WHERE id = %s)",
-                [requirement_id, requirement_id],
+                [json.dumps(unresolved), requirement_id, requirement_id],
             )
 
     def _confirm(self, requirement_id: str, key: str, expect: int):
@@ -184,6 +187,127 @@ class RequirementLineFlowTests(TestCase):
         self.assertTrue(first["applied"])
         self.assertFalse(replay["applied"])
         self.assertEqual(replay["total"], first["total"])
+
+    def test_line_unit_column_is_optional(self):
+        source = self._upload(_xlsx({
+            "A": ["物料", "彩灯带", "主控制器"],
+            "B": ["数量", 12, 2],
+        }), "lines-nounit.xlsx", "lines-nounit-source")
+        preview = self._post(f"/api/intake/sources/{source['id']}/previews", {}, "lines-nounit-preview")["preview"]
+        mapping = self._post(f"/api/intake/previews/{preview['id']}/mappings", {
+            "schema_version": 1,
+            "candidate_type": "production_instruction_line",
+            "source_sha256": source["sha256"],
+            "expected_revision": 0,
+            "fields": {
+                "material": {"cells": [{"sheet_index": 1, "coordinate": "A2"},
+                                       {"sheet_index": 1, "coordinate": "A3"}]},
+                "quantity": {"cells": [{"sheet_index": 1, "coordinate": "B2"},
+                                       {"sheet_index": 1, "coordinate": "B3"}]},
+            },
+        }, "lines-nounit-mapping")["mapping"]
+        candidate = self._post(f"/api/intake/mappings/{mapping['id']}/candidates", {}, "lines-nounit-candidate")["candidate"]
+        result = self._apply_lines(candidate["id"], self.requirement_id, "lines-nounit-apply")
+        self.assertTrue(result["applied"])
+        self.assertEqual(result["total"], 2)
+        self.assertEqual(result["blocked"], 0)
+        self.assertEqual([line["unit"] for line in result["lines"]], ["", ""])
+
+    def test_variant_lines_resolve_and_gate_on_components(self):
+        created = self.client.post("/api/variants", data=json.dumps({
+            "variant_code": "VAR-TEST-001", "name": "测试机型",
+            "components": [
+                {"item_ref": "MAT-LED-001", "quantity": "1", "role": "main"},
+                {"item_ref": "MAT-GHOST-001", "quantity": "1", "role": "optional"},
+            ],
+        }), content_type="application/json")
+        self.assertEqual(created.status_code, 201, created.content)
+        empty_variant = self.client.post("/api/variants", data=json.dumps({
+            "variant_code": "VAR-EMPTY-001", "name": "未录组件机型", "components": [],
+        }), content_type="application/json")
+        self.assertEqual(empty_variant.status_code, 201, empty_variant.content)
+
+        source = self._upload(_xlsx({
+            "A": ["机型", "VAR-TEST-001", "VAR-EMPTY-001"],
+            "B": ["数量", 5, 2],
+        }), "variant-lines.xlsx", "variant-lines-source")
+        preview = self._post(f"/api/intake/sources/{source['id']}/previews", {}, "variant-lines-preview")["preview"]
+        mapping = self._post(f"/api/intake/previews/{preview['id']}/mappings", {
+            "schema_version": 1,
+            "candidate_type": "production_instruction_line",
+            "source_sha256": source["sha256"],
+            "expected_revision": 0,
+            "fields": {
+                "material": {"cells": [{"sheet_index": 1, "coordinate": "A2"},
+                                       {"sheet_index": 1, "coordinate": "A3"}]},
+                "quantity": {"cells": [{"sheet_index": 1, "coordinate": "B2"},
+                                       {"sheet_index": 1, "coordinate": "B3"}]},
+            },
+        }, "variant-lines-mapping")["mapping"]
+        candidate = self._post(f"/api/intake/mappings/{mapping['id']}/candidates", {}, "variant-lines-candidate")["candidate"]
+
+        result = self._apply_lines(candidate["id"], self.requirement_id, "variant-lines-apply")
+        self.assertEqual(result["total"], 2)
+        self.assertEqual(result["blocked"], 1)
+        first, second = result["lines"]
+        self.assertEqual(first["variant_ref"], {"doctype": "Product Variant", "name": "VAR-TEST-001"})
+        self.assertEqual(first["variant_status"], "resolved")
+        self.assertIsNone(first["item_ref"])
+        blocking = [issue["issue_key"] for issue in first["issues"] if issue["severity"] == "blocking"]
+        self.assertEqual(blocking, ["unknown_item"])  # 组件 MAT-GHOST-001 缺主数据
+        self.assertEqual(second["variant_status"], "resolved")
+        self.assertFalse(second["blocked"])
+        self.assertEqual([issue["issue_key"] for issue in second["issues"]], ["variant_components_missing"])
+
+        fixed = self.client.post("/api/variants/VAR-TEST-001/update", data=json.dumps({
+            "components": [{"item_ref": "MAT-LED-001", "quantity": "1", "role": "main"}],
+        }), content_type="application/json")
+        self.assertEqual(fixed.status_code, 200, fixed.content)
+        reapply = self._apply_lines(candidate["id"], self.requirement_id, "variant-lines-apply-2")
+        self.assertEqual(reapply["blocked"], 0)
+        self.assertEqual([issue["issue_key"] for issue in reapply["lines"][0]["issues"]], [])
+
+    def test_line_level_header_fields_are_delegated_on_confirm(self):
+        # 行全部解锁（彩灯带 + 主控制器），仅剩行级委托字段未落定时应能确认；
+        # 表头级字段（如交期）未落定仍阻断。
+        source = self._upload(_xlsx({
+            "A": ["物料", "彩灯带", "主控制器"],
+            "B": ["数量", 3, 1],
+        }), "lines-delegate.xlsx", "lines-delegate-source")
+        preview = self._post(f"/api/intake/sources/{source['id']}/previews", {}, "lines-delegate-preview")["preview"]
+        mapping = self._post(f"/api/intake/previews/{preview['id']}/mappings", {
+            "schema_version": 1,
+            "candidate_type": "production_instruction_line",
+            "source_sha256": source["sha256"],
+            "expected_revision": 0,
+            "fields": {
+                "material": {"cells": [{"sheet_index": 1, "coordinate": "A2"},
+                                       {"sheet_index": 1, "coordinate": "A3"}]},
+                "quantity": {"cells": [{"sheet_index": 1, "coordinate": "B2"},
+                                       {"sheet_index": 1, "coordinate": "B3"}]},
+            },
+        }, "lines-delegate-mapping")["mapping"]
+        candidate = self._post(f"/api/intake/mappings/{mapping['id']}/candidates", {}, "lines-delegate-candidate")["candidate"]
+        result = self._apply_lines(candidate["id"], self.requirement_id, "lines-apply-delegate-1")
+        self.assertEqual(result["blocked"], 0)
+
+        delegated = {
+            "color": {"states": ["missing"], "source_refs": []},
+            "packing": {"states": ["missing"], "source_refs": []},
+            "barcode_requirement": {"states": ["missing"], "source_refs": []},
+        }
+        self._set_unresolved_fields(self.requirement_id, {
+            **delegated, "due_date": {"states": ["missing"], "source_refs": []},
+        })
+        self._confirm(self.requirement_id, "delegate-confirm-blocked", 409)
+        self._set_unresolved_fields(self.requirement_id, delegated)
+        self._confirm(self.requirement_id, "delegate-confirm-ok", 201)
+
+        from workbench.models import ProductionRequirementRevision
+        confirmed = ProductionRequirementRevision.objects.get(
+            draft_id=self.requirement_id, revision=2, status="confirmed")
+        self.assertEqual(set(confirmed.unresolved_fields), {"color", "packing", "barcode_requirement"})
+        self.assertEqual(confirmed.unresolved_fields["color"]["states"], ["delegated_to_lines"])
 
     def test_row_shape_mismatch_is_rejected(self):
         source = self._upload(_xlsx({

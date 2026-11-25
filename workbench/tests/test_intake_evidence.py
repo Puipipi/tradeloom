@@ -291,8 +291,11 @@ class IntakeEvidenceApiTests(TransactionTestCase):
         self.assertNotIn(content.decode("utf-8"), json.dumps(accepted.json(), ensure_ascii=False))
         detail = self.client.get(f"/api/intake/candidates/{candidate['id']}")
         self.assertEqual(detail.status_code, 200)
-        self.assertEqual(set(detail.json()), {"ok", "candidate", "links", "links_next_offset"})
+        self.assertEqual(set(detail.json()), {"ok", "candidate", "links", "links_next_offset",
+                                             "applications", "applications_next_offset"})
         self.assertIsNone(detail.json()["links_next_offset"])
+        self.assertEqual(detail.json()["applications"], [])
+        self.assertIsNone(detail.json()["applications_next_offset"])
         listing = self.client.get(f"/api/intake/candidates/{candidate['id']}/evidence")
         self.assertEqual(listing.status_code, 200, listing.content)
         self.assertEqual([item["id"] for item in listing.json()["evidence"]], [record["id"]])

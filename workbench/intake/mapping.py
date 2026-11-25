@@ -41,6 +41,20 @@ def _cell_value(cell, expected_type: str, *, is_cell_image: bool = False) -> dic
     if expected_type == "text":
         if isinstance(value, str):
             return {"state": "present", "type": "text", "value": value}
+        # 真实打表常把编号录成数字单元格：按存储词素原样转十进制文本，不做语义猜测。
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and raw.get("xml_type", "") in {"", "n"}:
+            lexeme = raw.get("v_lexeme")
+            if raw.get("formula_present") and isinstance(cell.cached_value, dict):
+                lexeme = cell.cached_value.get("lexeme")
+            if not isinstance(lexeme, str) and isinstance(value, int):
+                lexeme = str(value)
+            if isinstance(lexeme, str):
+                try:
+                    number = Decimal(lexeme)
+                except InvalidOperation:
+                    number = None
+                if number is not None and number.is_finite():
+                    return {"state": "present", "type": "text", "value": format(number, "f")}
         return {"state": "type_mismatch", "type": "text", "value": value}
     if expected_type == "date":
         if isinstance(value, dict) and value.get("type") in {"date", "datetime"} and isinstance(value.get("iso"), str):

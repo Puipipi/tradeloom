@@ -20,6 +20,7 @@ from openpyxl import Workbook
 
 from workbench.intake.mapping import fingerprint
 from workbench.intake.storage import INTAKE_MARKER, INTAKE_MARKER_CONTENT
+from workbench.testing import fresh_migration_database
 from workbench.models import (
     IntakeCandidate, IntakeCandidateLink, IntakeMappingRevision, IntakeOperationReceipt,
     IntakeSourceVersion, Product, ProductRevision, ProductionRequirementDraft,
@@ -185,20 +186,23 @@ class IntakeCandidateLinksTests(TransactionTestCase):
         self.assertEqual(IntakeCandidateLink.objects.count(), 0)
 
     def test_0010_preserves_existing_0009_link_then_allows_next_decision(self):
-        _source_a, candidate_a = self.create_candidate("migration-a")
-        _source_b, candidate_b = self.create_candidate("migration-b")
-        path = f"/api/intake/candidates/{candidate_a['id']}/links"
-        existing = self.client.post(
-            path, data=json.dumps({"other_candidate_id": candidate_b["id"], "decision": "suggested"}),
-            content_type="application/json", HTTP_IDEMPOTENCY_KEY="migration-existing-link-001",
-        )
-        self.assertEqual(existing.status_code, 201, existing.content)
-        link_id = existing.json()["link"]["id"]
-        executor = MigrationExecutor(connection)
-        restore_targets = executor.loader.graph.leaf_nodes("workbench")
-        try:
+        # 0017 起的迁移不可逆，不能在共享测试库上回滚穿越；
+        # 改在一次性库上正向迁到 0016 后下探 0009，再回 0010，全程不触碰 0017。
+        with fresh_migration_database() as conn:
+            executor = MigrationExecutor(conn)
+            executor.migrate([("workbench", "0016_merge_canvas_workflow_definition")])
+            _source_a, candidate_a = self.create_candidate("migration-a")
+            _source_b, candidate_b = self.create_candidate("migration-b")
+            path = f"/api/intake/candidates/{candidate_a['id']}/links"
+            existing = self.client.post(
+                path, data=json.dumps({"other_candidate_id": candidate_b["id"], "decision": "suggested"}),
+                content_type="application/json", HTTP_IDEMPOTENCY_KEY="migration-existing-link-001",
+            )
+            self.assertEqual(existing.status_code, 201, existing.content)
+            link_id = existing.json()["link"]["id"]
+            executor = MigrationExecutor(conn)
             executor.migrate([("workbench", "0009_execution_plan_revision")])
-            executor = MigrationExecutor(connection)
+            executor = MigrationExecutor(conn)
             executor.migrate([("workbench", "0010_intake_candidate_link_history")])
             self.assertEqual(IntakeCandidateLink.objects.filter(pk=link_id).count(), 1)
             follow_up = self.client.post(
@@ -210,8 +214,6 @@ class IntakeCandidateLinksTests(TransactionTestCase):
                 left_candidate_id=min(candidate_a["id"], candidate_b["id"]),
                 right_candidate_id=max(candidate_a["id"], candidate_b["id"]),
             ).order_by("-created_at", "-id").values_list("decision", flat=True)), ["confirmed", "suggested"])
-        finally:
-            MigrationExecutor(connection).migrate(restore_targets)
 
     def test_recent_history_stays_first_when_history_exceeds_projection_window(self):
         _source_a, candidate_a = self.create_candidate("large-history-a")

@@ -13,13 +13,14 @@ from django.db import IntegrityError, transaction
 from workbench.models import ErpNextDraftOperation, EventLog, WorkflowTask
 
 from .client import ErpNextClient, ErpNextError
-from .service import normalize_quotation_payload
+from .service import normalize_purchase_order_payload, normalize_quotation_payload
 
 
 _IDEMPOTENCY_KEY = re.compile(r"[^\x00-\x1f\x7f]{1,200}\Z")
 _SAFE_ERROR_CODES = frozenset({
     "not_configured", "invalid_configuration", "unavailable", "rate_limited",
     "unauthorized", "forbidden", "http_error", "invalid_response", "not_found", "conflict",
+    "invalid_arguments",
 })
 _MODIFIED_VALUE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,6})?\Z")
 
@@ -90,11 +91,19 @@ def _fingerprint(*, action: str, instance_id: str, target_id: str, expected_modi
     return digest, payload_sha, payload_json
 
 
-def _reserve_create(client: ErpNextClient, key: str, normalized: dict[str, Any], workflow: WorkflowTask | None):
+def _reserve_create(
+    client: ErpNextClient,
+    key: str,
+    normalized: dict[str, Any],
+    workflow: WorkflowTask | None,
+    *,
+    doctype: str,
+    payload_prefix: dict[str, Any],
+):
     instance_id = client.instance_id
     if not isinstance(instance_id, str) or not instance_id:
         raise DraftOperationError("not_configured", "ERPNext 尚未配置", 503)
-    operation_payload = {"quotation_to": "Customer", **normalized}
+    operation_payload = {**payload_prefix, **normalized}
     fingerprint, payload_sha, payload_json = _fingerprint(
         action=ErpNextDraftOperation.Action.CREATE,
         instance_id=instance_id,
@@ -113,7 +122,7 @@ def _reserve_create(client: ErpNextClient, key: str, normalized: dict[str, Any],
                 payload_sha256=payload_sha,
                 request_payload=json.loads(payload_json),
                 workflow=workflow,
-                doctype="Quotation",
+                doctype=doctype,
                 source=ErpNextDraftOperation.Source.LOCAL_WORKBENCH,
                 status=ErpNextDraftOperation.Status.OUTCOME_UNKNOWN,
             )
@@ -148,6 +157,8 @@ def _reserve_update(
     target_id: str,
     expected_modified: str,
     workflow_id: Any,
+    doctype: str,
+    payload_prefix: dict[str, Any],
 ):
     instance_id = client.instance_id
     if not isinstance(instance_id, str) or not instance_id:
@@ -159,7 +170,7 @@ def _reserve_update(
     explicit_workflow = _workflow(workflow_id)
     try:
         with transaction.atomic():
-            target = ErpNextDraftOperation.objects.select_for_update().get(pk=target_id, doctype="Quotation")
+            target = ErpNextDraftOperation.objects.select_for_update().get(pk=target_id, doctype=doctype)
             if target.status != ErpNextDraftOperation.Status.SUCCEEDED or not target.remote_name:
                 raise DraftOperationError("not_found", "目标操作没有可修改的已确认草稿", 409)
             if target.instance_id != instance_id:
@@ -167,7 +178,7 @@ def _reserve_update(
             if explicit_workflow is not None and explicit_workflow.id != target.workflow_id:
                 raise DraftOperationError("conflict", "目标草稿与工作流关联不匹配", 409)
             workflow = explicit_workflow or target.workflow
-            operation_payload = {"quotation_to": "Customer", **normalized}
+            operation_payload = {**payload_prefix, **normalized}
             fingerprint, payload_sha, payload_json = _fingerprint(
                 action=ErpNextDraftOperation.Action.UPDATE,
                 instance_id=instance_id,
@@ -193,7 +204,7 @@ def _reserve_update(
                 expected_modified=expected_modified,
                 workflow=workflow,
                 target_operation=target,
-                doctype="Quotation",
+                doctype=doctype,
                 source=ErpNextDraftOperation.Source.LOCAL_WORKBENCH,
                 remote_name=target.remote_name,
                 status=ErpNextDraftOperation.Status.OUTCOME_UNKNOWN,
@@ -311,13 +322,19 @@ def _mark_conflict(operation: ErpNextDraftOperation) -> None:
         operation.refresh_from_db()
 
 
-def _current_remote(client: ErpNextClient, operation: ErpNextDraftOperation):
+_DRAFT_READERS = {
+    "Quotation": "get_quotation_draft",
+    "Purchase Order": "get_purchase_order_draft",
+}
+
+
+def _current_remote(client: ErpNextClient, operation: ErpNextDraftOperation, *, doctype: str):
     if not operation.remote_name:
         return None, ""
     if client.instance_id != operation.instance_id:
         return None, "instance_mismatch"
     try:
-        return client.get_quotation_draft(operation.remote_name), ""
+        return getattr(client, _DRAFT_READERS[doctype])(operation.remote_name), ""
     except ErpNextError as exc:
         return None, exc.code if exc.code in _SAFE_ERROR_CODES else "unavailable"
     except Exception:
@@ -333,7 +350,7 @@ def _decimal_equal(left: Any, right: Any) -> bool:
     return left_number.is_finite() and right_number.is_finite() and left_number == right_number
 
 
-def _matches_reserved_payload(operation: ErpNextDraftOperation, record: dict[str, Any]) -> bool:
+def _matches_reserved_payload(operation: ErpNextDraftOperation, record: dict[str, Any], *, doctype: str) -> bool:
     if record.get("truncated_children"):
         return False
     expected = operation.request_payload
@@ -345,11 +362,18 @@ def _matches_reserved_payload(operation: ErpNextDraftOperation, record: dict[str
         # The requested values may already have existed before a timed-out PUT;
         # unchanged modified cannot prove that this operation reached Frappe.
         return False
-    for field in ("quotation_to", "company", "party_name", "transaction_date", "currency"):
-        if actual.get(field) != expected.get(field):
+    if doctype == "Quotation":
+        for field in ("quotation_to", "company", "party_name", "transaction_date", "currency"):
+            if actual.get(field) != expected.get(field):
+                return False
+        if actual.get("valid_till") != expected.get("valid_till"):
             return False
-    if actual.get("valid_till") != expected.get("valid_till"):
-        return False
+    else:
+        # Optional Purchase Order fields may be default-filled by ERPNext
+        # (currency, uom, rate, schedule_date); only requested values are asserted.
+        for field in ("company", "supplier", "transaction_date", "schedule_date", "currency"):
+            if field in expected and actual.get(field) != expected.get(field):
+                return False
     expected_items = expected.get("items")
     actual_items = actual.get("items")
     if not isinstance(expected_items, list) or not isinstance(actual_items, list) or len(expected_items) != len(actual_items):
@@ -357,31 +381,39 @@ def _matches_reserved_payload(operation: ErpNextDraftOperation, record: dict[str
     for expected_item, actual_item in zip(expected_items, actual_items):
         if not isinstance(actual_item, dict):
             return False
-        if any(actual_item.get(field) != expected_item.get(field) for field in ("item_code", "uom")):
+        if actual_item.get("item_code") != expected_item.get("item_code"):
             return False
         if not _decimal_equal(actual_item.get("qty"), expected_item.get("qty")):
             return False
-        if not _decimal_equal(actual_item.get("rate"), expected_item.get("rate")):
-            return False
+        if doctype == "Quotation":
+            if actual_item.get("uom") != expected_item.get("uom"):
+                return False
+            if not _decimal_equal(actual_item.get("rate"), expected_item.get("rate")):
+                return False
+        else:
+            if "uom" in expected_item and actual_item.get("uom") != expected_item.get("uom"):
+                return False
+            if "rate" in expected_item and not _decimal_equal(actual_item.get("rate"), expected_item.get("rate")):
+                return False
     return True
 
 
-def _succeed(operation: ErpNextDraftOperation, record: dict[str, Any]) -> None:
+def _succeed(operation: ErpNextDraftOperation, record: dict[str, Any], *, doctype: str, subject: str) -> None:
     with transaction.atomic():
         current = ErpNextDraftOperation.objects.select_for_update().get(pk=operation.pk)
         if current.status in {ErpNextDraftOperation.Status.SUCCEEDED, ErpNextDraftOperation.Status.CONFLICT}:
             operation.refresh_from_db()
             return
-        if record.get("doctype") != "Quotation" or record.get("data", {}).get("docstatus") != 0:
-            raise ErpNextError("invalid_response", "ERPNext 报价回读未确认草稿状态")
-        if not _matches_reserved_payload(current, record):
-            raise ErpNextError("invalid_response", "ERPNext 报价回读与预留内容不匹配")
+        if record.get("doctype") != doctype or record.get("data", {}).get("docstatus") != 0:
+            raise ErpNextError("invalid_response", f"ERPNext {subject}回读未确认草稿状态")
+        if not _matches_reserved_payload(current, record, doctype=doctype):
+            raise ErpNextError("invalid_response", f"ERPNext {subject}回读与预留内容不匹配")
         data = record["data"]
         if data.get("name") != current.remote_name or record.get("external_ref", {}).get("instance_id") != current.instance_id:
-            raise ErpNextError("invalid_response", "ERPNext 报价回读标识不匹配")
+            raise ErpNextError("invalid_response", f"ERPNext {subject}回读标识不匹配")
         modified = data.get("modified")
         if not _valid_modified(modified) or record.get("external_ref", {}).get("modified") != modified:
-            raise ErpNextError("invalid_response", "ERPNext 报价版本格式无效")
+            raise ErpNextError("invalid_response", f"ERPNext {subject}版本格式无效")
         current.remote_modified = modified
         current.receipt = record
         current.result_ref = record["external_ref"]
@@ -417,14 +449,17 @@ def create_quotation_draft(
     except ValueError:
         raise DraftOperationError("invalid_arguments", "报价草稿内容无效", 422) from None
     workflow = _workflow(workflow_id)
-    operation, created = _reserve_create(client, key, normalized, workflow)
+    operation, created = _reserve_create(
+        client, key, normalized, workflow,
+        doctype="Quotation", payload_prefix={"quotation_to": "Customer"},
+    )
     if not created:
         operation.refresh_from_db()
         _upgrade_legacy_reserved(operation)
-        remote_current, remote_error = _current_remote(client, operation)
+        remote_current, remote_error = _current_remote(client, operation, doctype="Quotation")
         if remote_current is not None and operation.status == ErpNextDraftOperation.Status.OUTCOME_UNKNOWN:
-            if _matches_reserved_payload(operation, remote_current):
-                _succeed(operation, remote_current)
+            if _matches_reserved_payload(operation, remote_current, doctype="Quotation"):
+                _succeed(operation, remote_current, doctype="Quotation", subject="报价")
                 operation.refresh_from_db()
         return DraftOperationResult(operation, False, remote_current, remote_error)
 
@@ -442,7 +477,7 @@ def create_quotation_draft(
 
     try:
         current = client.get_quotation_draft(operation.remote_name)
-        _succeed(operation, current)
+        _succeed(operation, current, doctype="Quotation", subject="报价")
         return DraftOperationResult(operation, True, current)
     except ErpNextError as exc:
         _mark_unknown(operation, exc.code, remote_name=operation.remote_name)
@@ -475,14 +510,16 @@ def update_quotation_draft(
         target_id=target_operation_id,
         expected_modified=expected_modified,
         workflow_id=workflow_id,
+        doctype="Quotation",
+        payload_prefix={"quotation_to": "Customer"},
     )
     if not created:
         operation.refresh_from_db()
         _upgrade_legacy_reserved(operation)
-        remote_current, remote_error = _current_remote(client, operation)
+        remote_current, remote_error = _current_remote(client, operation, doctype="Quotation")
         if remote_current is not None and operation.status == ErpNextDraftOperation.Status.OUTCOME_UNKNOWN:
-            if _matches_reserved_payload(operation, remote_current):
-                _succeed(operation, remote_current)
+            if _matches_reserved_payload(operation, remote_current, doctype="Quotation"):
+                _succeed(operation, remote_current, doctype="Quotation", subject="报价")
                 operation.refresh_from_db()
         return DraftOperationResult(operation, False, remote_current, remote_error)
 
@@ -497,7 +534,7 @@ def update_quotation_draft(
             _mark_conflict(operation)
             if operation.status != ErpNextDraftOperation.Status.CONFLICT:
                 return DraftOperationResult(operation, True, None, operation.error_code)
-            remote_current, _remote_error = _current_remote(client, operation)
+            remote_current, _remote_error = _current_remote(client, operation, doctype="Quotation")
             return DraftOperationResult(operation, True, remote_current, "conflict")
         _mark_unknown(operation, exc.code, remote_name=operation.remote_name)
         return DraftOperationResult(operation, True, None, operation.error_code)
@@ -507,7 +544,7 @@ def update_quotation_draft(
 
     try:
         current = client.get_quotation_draft(operation.remote_name)
-        _succeed(operation, current)
+        _succeed(operation, current, doctype="Quotation", subject="报价")
         return DraftOperationResult(operation, True, current)
     except ErpNextError as exc:
         _mark_unknown(operation, exc.code, remote_name=operation.remote_name)
@@ -525,9 +562,143 @@ def get_quotation_draft_operation(client: ErpNextClient | None, operation_id: st
     _upgrade_legacy_reserved(operation)
     if client is None:
         return DraftOperationResult(operation, False, None, "not_configured")
-    remote_current, remote_error = _current_remote(client, operation)
+    remote_current, remote_error = _current_remote(client, operation, doctype="Quotation")
     if remote_current is not None and operation.status == ErpNextDraftOperation.Status.OUTCOME_UNKNOWN:
-        if _matches_reserved_payload(operation, remote_current):
-            _succeed(operation, remote_current)
+        if _matches_reserved_payload(operation, remote_current, doctype="Quotation"):
+            _succeed(operation, remote_current, doctype="Quotation", subject="报价")
+            operation.refresh_from_db()
+    return DraftOperationResult(operation, False, remote_current, remote_error)
+
+
+def create_purchase_order_draft(
+    client: ErpNextClient,
+    *,
+    idempotency_key: Any,
+    payload: Any,
+    workflow_id: Any = None,
+) -> DraftOperationResult:
+    key = _validate_key(idempotency_key)
+    try:
+        normalized = normalize_purchase_order_payload(payload)
+    except ValueError:
+        raise DraftOperationError("invalid_arguments", "采购订单草稿内容无效", 422) from None
+    workflow = _workflow(workflow_id)
+    operation, created = _reserve_create(
+        client, key, normalized, workflow,
+        doctype="Purchase Order", payload_prefix={},
+    )
+    if not created:
+        operation.refresh_from_db()
+        _upgrade_legacy_reserved(operation)
+        remote_current, remote_error = _current_remote(client, operation, doctype="Purchase Order")
+        if remote_current is not None and operation.status == ErpNextDraftOperation.Status.OUTCOME_UNKNOWN:
+            if _matches_reserved_payload(operation, remote_current, doctype="Purchase Order"):
+                _succeed(operation, remote_current, doctype="Purchase Order", subject="采购订单")
+                operation.refresh_from_db()
+        return DraftOperationResult(operation, False, remote_current, remote_error)
+
+    try:
+        created_record = client.create_purchase_order_draft(normalized)
+        name = created_record["data"]["name"]
+        operation.remote_name = name
+        operation.save(update_fields=["remote_name", "updated_at"])
+    except ErpNextError as exc:
+        _mark_unknown(operation, exc.code, remote_name=getattr(exc, "remote_name", ""))
+        return DraftOperationResult(operation, True, None, operation.error_code)
+    except Exception:
+        _mark_unknown(operation, "unavailable")
+        return DraftOperationResult(operation, True, None, operation.error_code)
+
+    try:
+        current = client.get_purchase_order_draft(operation.remote_name)
+        _succeed(operation, current, doctype="Purchase Order", subject="采购订单")
+        return DraftOperationResult(operation, True, current)
+    except ErpNextError as exc:
+        _mark_unknown(operation, exc.code, remote_name=operation.remote_name)
+        return DraftOperationResult(operation, True, None, operation.error_code)
+    except Exception:
+        _mark_unknown(operation, "unavailable", remote_name=operation.remote_name)
+        return DraftOperationResult(operation, True, None, operation.error_code)
+
+
+def update_purchase_order_draft(
+    client: ErpNextClient,
+    *,
+    target_operation_id: Any,
+    idempotency_key: Any,
+    expected_modified: Any,
+    payload: Any,
+    workflow_id: Any = None,
+) -> DraftOperationResult:
+    key = _validate_key(idempotency_key)
+    try:
+        normalized = normalize_purchase_order_payload(payload)
+    except ValueError:
+        raise DraftOperationError("invalid_arguments", "采购订单草稿内容无效", 422) from None
+    if not _valid_modified(expected_modified):
+        raise DraftOperationError("invalid_arguments", "预期版本格式无效", 422)
+    operation, created = _reserve_update(
+        client,
+        key=key,
+        normalized=normalized,
+        target_id=target_operation_id,
+        expected_modified=expected_modified,
+        workflow_id=workflow_id,
+        doctype="Purchase Order",
+        payload_prefix={},
+    )
+    if not created:
+        operation.refresh_from_db()
+        _upgrade_legacy_reserved(operation)
+        remote_current, remote_error = _current_remote(client, operation, doctype="Purchase Order")
+        if remote_current is not None and operation.status == ErpNextDraftOperation.Status.OUTCOME_UNKNOWN:
+            if _matches_reserved_payload(operation, remote_current, doctype="Purchase Order"):
+                _succeed(operation, remote_current, doctype="Purchase Order", subject="采购订单")
+                operation.refresh_from_db()
+        return DraftOperationResult(operation, False, remote_current, remote_error)
+
+    try:
+        client.update_purchase_order_draft(
+            operation.remote_name,
+            normalized,
+            expected_modified=operation.expected_modified,
+        )
+    except ErpNextError as exc:
+        if exc.code == "conflict":
+            _mark_conflict(operation)
+            if operation.status != ErpNextDraftOperation.Status.CONFLICT:
+                return DraftOperationResult(operation, True, None, operation.error_code)
+            remote_current, _remote_error = _current_remote(client, operation, doctype="Purchase Order")
+            return DraftOperationResult(operation, True, remote_current, "conflict")
+        _mark_unknown(operation, exc.code, remote_name=operation.remote_name)
+        return DraftOperationResult(operation, True, None, operation.error_code)
+    except Exception:
+        _mark_unknown(operation, "unavailable", remote_name=operation.remote_name)
+        return DraftOperationResult(operation, True, None, operation.error_code)
+
+    try:
+        current = client.get_purchase_order_draft(operation.remote_name)
+        _succeed(operation, current, doctype="Purchase Order", subject="采购订单")
+        return DraftOperationResult(operation, True, current)
+    except ErpNextError as exc:
+        _mark_unknown(operation, exc.code, remote_name=operation.remote_name)
+        return DraftOperationResult(operation, True, None, operation.error_code)
+    except Exception:
+        _mark_unknown(operation, "unavailable", remote_name=operation.remote_name)
+        return DraftOperationResult(operation, True, None, operation.error_code)
+
+
+def get_purchase_order_draft_operation(client: ErpNextClient | None, operation_id: str) -> DraftOperationResult:
+    try:
+        operation = ErpNextDraftOperation.objects.get(pk=operation_id, doctype="Purchase Order")
+    except ErpNextDraftOperation.DoesNotExist:
+        raise DraftOperationError("not_found", "草稿操作不存在", 404) from None
+    _upgrade_legacy_reserved(operation)
+    if client is None:
+        return DraftOperationResult(operation, False, None, "not_configured")
+    remote_current, remote_error = _current_remote(client, operation, doctype="Purchase Order")
+    if remote_current is not None and operation.status == ErpNextDraftOperation.Status.OUTCOME_UNKNOWN:
+        if _matches_reserved_payload(operation, remote_current, doctype="Purchase Order"):
+            _succeed(operation, remote_current, doctype="Purchase Order", subject="采购订单")
             operation.refresh_from_db()
     return DraftOperationResult(operation, False, remote_current, remote_error)

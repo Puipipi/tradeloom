@@ -58,6 +58,70 @@ def quote_record(*, modified="2026-10-21 12:00:00.000000", grand_total=20.5):
     }
 
 
+def purchase_order_input(**overrides):
+    value = {
+        "supplier": "SUP-001",
+        "company": "Example Company",
+        "transaction_date": "2026-10-21",
+        "schedule_date": "2026-10-25",
+        "currency": "USD",
+        "items": [
+            {"item_code": "ITEM-001", "qty": "2", "rate": "10.25", "uom": "Nos"},
+        ],
+    }
+    value.update(overrides)
+    return value
+
+
+def po_record(*, modified="2026-10-21 12:00:00.000000", grand_total=20.5):
+    data = {
+        "name": "PUR-ORD-2026-00001",
+        "modified": modified,
+        "docstatus": 0,
+        "supplier": "SUP-001",
+        "supplier_name": "Supplier One",
+        "company": "Example Company",
+        "transaction_date": "2026-10-21",
+        "schedule_date": "2026-10-25",
+        "currency": "USD",
+        "grand_total": grand_total,
+        "items": [
+            {"item_code": "ITEM-001", "qty": 2, "rate": 10.25, "uom": "Nos", "amount": grand_total},
+        ],
+    }
+    return {
+        "doctype": "Purchase Order",
+        "data": data,
+        "external_ref": {
+            "system": "erpnext", "instance_id": "test-instance", "doctype": "Purchase Order",
+            "name": data["name"], "modified": modified,
+        },
+    }
+
+
+def raw_po_response(*, name="PUR-ORD-2026-00001", modified="2026-10-21 12:00:00.000000", docstatus=0):
+    return {"data": {
+        "doctype": "Purchase Order",
+        "name": name,
+        "modified": modified,
+        "docstatus": docstatus,
+        "supplier": "SUP-001",
+        "supplier_name": "Supplier One",
+        "company": "Example Company",
+        "transaction_date": "2026-10-21",
+        "schedule_date": "2026-10-25",
+        "currency": "USD",
+        "grand_total": 20.5,
+        "items": [
+            {
+                "item_code": "ITEM-001", "item_name": "Item One", "qty": 2, "uom": "Nos",
+                "rate": 10.25, "amount": 20.5, "secret_field": "must not escape",
+            },
+        ],
+        "owner": "private@example.test",
+    }}
+
+
 def force_legacy_reserved_row(operation):
     # Simulate a row written by the earlier release; production QuerySet.update
     # intentionally rejects application-level status rewrites.
@@ -569,7 +633,9 @@ class ErpNextDraftApiTests(TestCase):
             validation_client.update_quotation_draft(
                 "QTN-1", quotation_input(), expected_modified="2026-10-21 12:00:00.000000",
             )
-        self.assertEqual(validation_error.exception.code, "http_error")
+        # Frappe 的 417 承载业务校验失败；现映射为可诊断的 invalid_arguments（不泄露私有 traceback）。
+        self.assertEqual(validation_error.exception.code, "invalid_arguments")
+        self.assertNotIn("private", str(validation_error.exception))
 
     def test_forbidden_create_logs_only_allowlisted_frappe_error_summary(self):
         secret = "SYNTHETIC_SECRET_403_PERMISSION"
@@ -671,6 +737,353 @@ class ErpNextDraftApiTests(TestCase):
         self.assertNotIn("docstatus", json.loads(calls[0][3]))
         self.assertNotIn("key-secret", repr(client))
         self.assertNotIn("api-secret", repr(client))
+
+
+class PODraftClient:
+    instance_id = "test-instance"
+
+    def __init__(self):
+        self.create_calls = []
+        self.update_calls = []
+        self.read_calls = []
+        self.create_result = po_record()
+        self.read_result = po_record()
+        self.create_error = None
+        self.read_error = None
+        self.update_error = None
+        self.on_create = None
+
+    def create_purchase_order_draft(self, payload):
+        self.create_calls.append(deepcopy(payload))
+        if self.on_create:
+            self.on_create()
+        if self.create_error:
+            raise self.create_error
+        self.read_result = deepcopy(self.create_result)
+        return deepcopy(self.create_result)
+
+    def get_purchase_order_draft(self, name):
+        self.read_calls.append(name)
+        if self.read_error:
+            raise self.read_error
+        return deepcopy(self.read_result)
+
+    def update_purchase_order_draft(self, name, payload, *, expected_modified):
+        self.update_calls.append((name, deepcopy(payload), expected_modified))
+        if self.update_error:
+            raise self.update_error
+        updated = po_record(modified="2026-10-21 12:30:00.000000")
+        updated["data"].update({
+            key: deepcopy(payload[key])
+            for key in ("supplier", "company", "transaction_date", "schedule_date", "currency", "items")
+            if key in payload
+        })
+        self.read_result = deepcopy(updated)
+        return deepcopy(updated)
+
+
+@override_settings(
+    TRADELOOM_ERPNEXT_BASE_URL="https://erp.example.test",
+    TRADELOOM_ERPNEXT_INSTANCE_ID="test-instance",
+    TRADELOOM_ERPNEXT_API_KEY="test-key",
+    TRADELOOM_ERPNEXT_API_SECRET="test-secret",
+)
+class PurchaseOrderDraftApiTests(TestCase):
+    def setUp(self):
+        now = timezone.now()
+        self.batch = Task.objects.create(
+            title="采购草稿测试批次", mode="demo", status="active",
+            created_at=now, updated_at=now,
+        )
+        self.workflow = WorkflowTask.objects.create(
+            batch=self.batch, user_goal="准备采购", task_type="prepare_product_data",
+        )
+        self.url = "/api/erpnext/po-drafts"
+        self.client_stub = PODraftClient()
+
+    def post(self, *, key="po-create-1", payload=None, workflow_id=None, extra=None):
+        body = {"idempotency_key": key, "payload": payload or purchase_order_input()}
+        if workflow_id is not None:
+            body["workflow_id"] = workflow_id
+        if extra:
+            body.update(extra)
+        with patch("workbench.erpnext.api._client_from_settings", return_value=self.client_stub):
+            return self.client.post(self.url, data=json.dumps(body), content_type="application/json")
+
+    def put(self, target_operation_id, *, key="po-update-1", expected_modified="2026-10-21 12:00:00.000000", payload=None, workflow_id=None, extra=None):
+        body = {
+            "idempotency_key": key,
+            "expected_modified": expected_modified,
+            "payload": payload or purchase_order_input(supplier="SUP-002"),
+        }
+        if workflow_id is not None:
+            body["workflow_id"] = workflow_id
+        if extra:
+            body.update(extra)
+        with patch("workbench.erpnext.api._client_from_settings", return_value=self.client_stub):
+            return self.client.put(
+                f"{self.url}/{target_operation_id}",
+                data=json.dumps(body), content_type="application/json",
+            )
+
+    def test_create_reserves_operation_before_network_and_returns_fixed_draft_receipt(self):
+        def assert_reserved_before_remote_call():
+            operation = ErpNextDraftOperation.objects.get(idempotency_key="po-create-1")
+            self.assertEqual(operation.status, ErpNextDraftOperation.Status.OUTCOME_UNKNOWN)
+            self.assertEqual(operation.action, ErpNextDraftOperation.Action.CREATE)
+            self.assertEqual(operation.doctype, "Purchase Order")
+
+        self.client_stub.on_create = assert_reserved_before_remote_call
+        response = self.post(workflow_id=self.workflow.id)
+
+        self.assertEqual(response.status_code, 201)
+        payload = response.json()
+        self.assertEqual(payload["doctype"], "Purchase Order")
+        operation = ErpNextDraftOperation.objects.get(pk=payload["operation_id"])
+        self.assertEqual(operation.doctype, "Purchase Order")
+        self.assertEqual(operation.workflow_id, self.workflow.id)
+        self.assertEqual(operation.status, ErpNextDraftOperation.Status.SUCCEEDED)
+        self.assertEqual(operation.remote_name, "PUR-ORD-2026-00001")
+        self.assertEqual(operation.receipt["data"]["docstatus"], 0)
+        self.assertEqual(operation.receipt["data"]["supplier"], "SUP-001")
+        self.assertEqual(payload["remote_current"]["data"]["grand_total"], 20.5)
+        self.assertNotIn("docstatus", self.client_stub.create_calls[0])
+        self.assertEqual(self.client_stub.read_calls, ["PUR-ORD-2026-00001"])
+        self.assertEqual(
+            EventLog.objects.filter(task=self.workflow, event_type="erpnext_draft_succeeded").count(), 1,
+        )
+
+    def test_same_key_and_fingerprint_replays_immutable_receipt_without_second_create(self):
+        first = self.post()
+        self.assertEqual(first.status_code, 201)
+        operation_id = first.json()["operation_id"]
+        original_receipt = deepcopy(ErpNextDraftOperation.objects.get(pk=operation_id).receipt)
+
+        second = self.post()
+
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(second.json()["operation_id"], operation_id)
+        self.assertEqual(len(self.client_stub.create_calls), 1)
+        operation = ErpNextDraftOperation.objects.get(pk=operation_id)
+        self.assertEqual(operation.receipt, original_receipt)
+
+    def test_same_key_with_different_normalized_payload_conflicts_without_network_io(self):
+        self.assertEqual(self.post().status_code, 201)
+        changed = purchase_order_input(supplier="SUP-002")
+
+        response = self.post(payload=changed)
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["error_code"], "idempotency_conflict")
+        self.assertEqual(len(self.client_stub.create_calls), 1)
+        self.assertEqual(ErpNextDraftOperation.objects.count(), 1)
+
+    def test_update_uses_new_operation_and_preserves_create_receipt(self):
+        created = self.post(workflow_id=self.workflow.id)
+        target_id = created.json()["operation_id"]
+        target = ErpNextDraftOperation.objects.get(pk=target_id)
+        original_receipt = deepcopy(target.receipt)
+
+        response = self.put(target_id, workflow_id=self.workflow.id)
+
+        self.assertEqual(response.status_code, 200)
+        result = response.json()
+        self.assertEqual(result["doctype"], "Purchase Order")
+        update = ErpNextDraftOperation.objects.get(pk=result["operation_id"])
+        target.refresh_from_db()
+        self.assertNotEqual(update.id, target.id)
+        self.assertEqual(update.action, ErpNextDraftOperation.Action.UPDATE)
+        self.assertEqual(update.doctype, "Purchase Order")
+        self.assertEqual(update.target_operation_id, target.id)
+        self.assertEqual(update.expected_modified, "2026-10-21 12:00:00.000000")
+        self.assertEqual(update.status, ErpNextDraftOperation.Status.SUCCEEDED)
+        self.assertEqual(self.client_stub.update_calls[0][0], target.remote_name)
+        self.assertEqual(self.client_stub.update_calls[0][2], update.expected_modified)
+        self.assertEqual(target.receipt, original_receipt)
+        self.assertEqual(result["receipt"]["data"]["supplier"], "SUP-002")
+        self.assertEqual(len(self.client_stub.create_calls), 1)
+
+    def test_update_version_conflict_is_terminal_and_replay_does_not_resend(self):
+        target = self.post().json()["operation_id"]
+        self.client_stub.update_error = ErpNextError("conflict", "remote timestamp mismatch")
+
+        first = self.put(target)
+        replay = self.put(target)
+
+        self.assertEqual(first.status_code, 409)
+        self.assertEqual(first.json()["status"], ErpNextDraftOperation.Status.CONFLICT)
+        self.assertEqual(first.json()["error_code"], "conflict")
+        self.assertNotIn("remote timestamp mismatch", first.content.decode())
+        self.assertEqual(replay.json()["operation_id"], first.json()["operation_id"])
+        self.assertEqual(len(self.client_stub.update_calls), 1)
+
+    def test_unknown_outcome_is_reconciled_by_later_replay_readback(self):
+        self.client_stub.read_error = ErpNextError("unavailable", "secret raw remote response")
+
+        first = self.post()
+        self.assertEqual(first.status_code, 202)
+        self.assertEqual(first.json()["status"], ErpNextDraftOperation.Status.OUTCOME_UNKNOWN)
+        self.assertEqual(
+            ErpNextDraftOperation.objects.get(pk=first.json()["operation_id"]).remote_name,
+            "PUR-ORD-2026-00001",
+        )
+
+        self.client_stub.read_error = None
+        second = self.post()
+
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(second.json()["operation_id"], first.json()["operation_id"])
+        self.assertEqual(second.json()["status"], ErpNextDraftOperation.Status.SUCCEEDED)
+        self.assertEqual(len(self.client_stub.create_calls), 1)
+        operation = ErpNextDraftOperation.objects.get(pk=first.json()["operation_id"])
+        self.assertEqual(operation.status, ErpNextDraftOperation.Status.SUCCEEDED)
+        self.assertEqual(operation.remote_name, "PUR-ORD-2026-00001")
+        self.assertIsNotNone(operation.receipt)
+
+    def test_transport_failure_without_remote_name_replay_stays_unknown_and_never_reissues(self):
+        self.client_stub.create_error = ErpNextError("unavailable", "secret raw remote response")
+
+        first = self.post()
+        second = self.post()
+
+        self.assertEqual(first.status_code, 202)
+        self.assertEqual(second.status_code, 202)
+        self.assertEqual(second.json()["operation_id"], first.json()["operation_id"])
+        self.assertEqual(len(self.client_stub.create_calls), 1)
+        self.assertEqual(self.client_stub.read_calls, [])
+        operation = ErpNextDraftOperation.objects.get(pk=first.json()["operation_id"])
+        self.assertEqual(operation.status, ErpNextDraftOperation.Status.OUTCOME_UNKNOWN)
+        self.assertEqual(operation.remote_name, "")
+        self.assertNotIn("secret raw remote response", first.content.decode())
+
+    def test_readback_failure_keeps_unknown_and_get_reconciles_to_succeeded(self):
+        self.client_stub.read_error = ErpNextError("unavailable", "raw private response")
+
+        response = self.post()
+
+        self.assertEqual(response.status_code, 202)
+        operation = ErpNextDraftOperation.objects.get(pk=response.json()["operation_id"])
+        self.assertEqual(operation.status, ErpNextDraftOperation.Status.OUTCOME_UNKNOWN)
+        self.assertEqual(operation.remote_name, "PUR-ORD-2026-00001")
+        self.assertIsNone(operation.receipt)
+        self.assertNotIn("raw private response", response.content.decode())
+
+        self.client_stub.read_error = None
+        self.client_stub.read_result = po_record()
+        with patch("workbench.erpnext.api._client_from_settings", return_value=self.client_stub):
+            reconciled = self.client.get(f"{self.url}/{operation.id}")
+
+        self.assertEqual(reconciled.status_code, 200)
+        self.assertEqual(reconciled.json()["doctype"], "Purchase Order")
+        self.assertEqual(reconciled.json()["status"], ErpNextDraftOperation.Status.SUCCEEDED)
+        self.assertEqual(len(self.client_stub.create_calls), 1)
+        operation.refresh_from_db()
+        self.assertEqual(operation.status, ErpNextDraftOperation.Status.SUCCEEDED)
+        self.assertIsNotNone(operation.receipt)
+
+    def test_remote_docstatus_not_draft_is_rejected_and_stays_unknown(self):
+        self.client_stub.create_result = po_record()
+        self.client_stub.create_result["data"]["docstatus"] = 1
+        self.client_stub.read_result = deepcopy(self.client_stub.create_result)
+
+        response = self.post()
+
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(response.json()["status"], ErpNextDraftOperation.Status.OUTCOME_UNKNOWN)
+        operation = ErpNextDraftOperation.objects.get(pk=response.json()["operation_id"])
+        self.assertEqual(operation.remote_name, "PUR-ORD-2026-00001")
+        self.assertIsNone(operation.receipt)
+
+    def test_invalid_payload_is_rejected_before_reservation(self):
+        invalid_payloads = [
+            purchase_order_input(company=None),
+            purchase_order_input(tax_category="Taxable"),
+            purchase_order_input(currency="usd"),
+            purchase_order_input(transaction_date="2026-13-40"),
+            purchase_order_input(schedule_date="not-a-date"),
+            purchase_order_input(items=[]),
+            purchase_order_input(items=[{"item_code": "ITEM-001", "qty": "0", "rate": "10", "uom": "Nos"}]),
+            purchase_order_input(items=[{"item_code": "ITEM-001", "qty": "-1", "rate": "10", "uom": "Nos"}]),
+            purchase_order_input(items=[{"item_code": "ITEM-001", "qty": "2", "rate": "-10", "uom": "Nos"}]),
+            purchase_order_input(items=[{"item_code": "ITEM-001", "qty": "2", "rate": "10", "uom": "Nos", "amount": "20"}]),
+            purchase_order_input(items=[{"qty": "2", "rate": "10", "uom": "Nos"}]),
+        ]
+        for index, payload in enumerate(invalid_payloads):
+            with self.subTest(index=index):
+                response = self.post(key=f"bad-po-{index}", payload=payload)
+                self.assertEqual(response.status_code, 422)
+        self.assertEqual(ErpNextDraftOperation.objects.count(), 0)
+        self.assertEqual(self.client_stub.create_calls, [])
+
+    def test_fixed_client_posts_only_purchase_order_resource_and_hides_credentials(self):
+        calls = []
+
+        def transport(method, url, headers, body, _timeout):
+            calls.append((method, url, headers, body))
+            return 200, {"Content-Type": "application/json"}, json.dumps(raw_po_response()).encode()
+
+        client = ErpNextClient(
+            ErpNextConfig("https://erp.example.test", "test-instance", "key-secret", "api-secret"),
+            transport=transport,
+        )
+        created = client.create_purchase_order_draft(purchase_order_input())
+
+        self.assertEqual(created["doctype"], "Purchase Order")
+        self.assertEqual(calls[0][0], "POST")
+        self.assertEqual(calls[0][1], "https://erp.example.test/api/resource/Purchase%20Order")
+        self.assertNotIn("secret", calls[0][1])
+        sent = json.loads(calls[0][3])
+        self.assertNotIn("docstatus", sent)
+        self.assertNotIn("secret_field", json.dumps(created))
+        self.assertNotIn("key-secret", repr(client))
+
+    def test_fixed_client_get_and_put_encode_purchase_order_path(self):
+        calls = []
+
+        def transport(method, url, headers, body, _timeout):
+            calls.append((method, url, json.loads(body) if body else None))
+            return 200, {"Content-Type": "application/json"}, json.dumps(
+                raw_po_response(name="PO / 2026 1", modified="2026-10-21 12:30:00.000000"),
+            ).encode()
+
+        client = ErpNextClient(
+            ErpNextConfig("https://erp.example.test", "test-instance", "key-secret", "api-secret"),
+            transport=transport,
+        )
+        client.get_purchase_order_draft("PO / 2026 1")
+        client.update_purchase_order_draft(
+            "PO / 2026 1", purchase_order_input(supplier="SUP-002"),
+            expected_modified="2026-10-21 12:00:00.000000",
+        )
+
+        self.assertEqual(calls[0][0], "GET")
+        self.assertEqual(calls[0][1], "https://erp.example.test/api/resource/Purchase%20Order/PO%20%2F%202026%201")
+        self.assertEqual(calls[1][0], "PUT")
+        self.assertEqual(calls[1][1], "https://erp.example.test/api/resource/Purchase%20Order/PO%20%2F%202026%201")
+        self.assertEqual(calls[1][2]["modified"], "2026-10-21 12:00:00.000000")
+        self.assertEqual(calls[1][2]["docstatus"], 0)
+
+    def test_fixed_client_rejects_remote_docstatus_not_draft_and_name_mismatch(self):
+        def transport(_method, _url, _headers, _body, _timeout):
+            return 200, {"Content-Type": "application/json"}, json.dumps(raw_po_response(docstatus=1)).encode()
+
+        client = ErpNextClient(
+            ErpNextConfig("https://erp.example.test", "test-instance", "key-secret", "api-secret"),
+            transport=transport,
+        )
+        with self.assertRaises(ErpNextError) as raised:
+            client.create_purchase_order_draft(purchase_order_input())
+        self.assertEqual(raised.exception.code, "invalid_response")
+
+        mismatch_client = ErpNextClient(
+            ErpNextConfig("https://erp.example.test", "test-instance", "key-secret", "api-secret"),
+            transport=lambda *_args: (
+                200, {"Content-Type": "application/json"}, json.dumps(raw_po_response()).encode(),
+            ),
+        )
+        with self.assertRaises(ErpNextError) as mismatch:
+            mismatch_client.get_purchase_order_draft("PUR-ORD-OTHER")
+        self.assertEqual(mismatch.exception.code, "invalid_response")
 
 
 class _BlockingDraftClient(DraftClient):

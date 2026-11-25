@@ -49,11 +49,11 @@ class WorkflowCreateIdempotencyConcurrencyTests(TransactionTestCase):
         release_plan = Event()
         original_plan = WorkflowOrchestrator.plan_task
 
-        def blocked_plan(orchestrator, workflow_id):
+        def blocked_plan(orchestrator, workflow_id, **kwargs):
             entered_plan.set()
             if not release_plan.wait(5):
                 raise TimeoutError("bounded create plan wait expired")
-            return original_plan(orchestrator, workflow_id)
+            return original_plan(orchestrator, workflow_id, **kwargs)
 
         base = {
             "batch_id": self.batch.id,

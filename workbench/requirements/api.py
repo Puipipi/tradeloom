@@ -426,7 +426,14 @@ def confirm_requirement(request: HttpRequest, requirement_id: str) -> JsonRespon
             if previous.status == ProductionRequirementRevision.Status.CONFIRMED:
                 _fail_receipt(receipt, "already_confirmed")
                 return _safe_error("already_confirmed")
-            if previous.unresolved_fields:
+            # 表头字段中，行级概念（每个产品一份的描述/颜色/单位等）委托给明细行；
+            # 只有表头级字段（单号、交期、总量、箱数、唛头要求等）未落定才阻断确认。
+            from .schemas import LINE_DELEGATED_FIELDS
+            blocking_unresolved = {
+                key: value for key, value in previous.unresolved_fields.items()
+                if key not in LINE_DELEGATED_FIELDS
+            }
+            if blocking_unresolved:
                 _fail_receipt(receipt, "unresolved_requirement")
                 return _safe_error("unresolved_requirement")
             # PMC 核料闸门：明细行存在阻断问题时不得确认。
@@ -442,7 +449,11 @@ def confirm_requirement(request: HttpRequest, requirement_id: str) -> JsonRespon
                     return _safe_error("invalid_requirement")
             confirmed = ProductionRequirementRevision.objects.create(
                 draft=draft, revision=draft.current_revision + 1, fields=dict(previous.fields),
-                unresolved_fields={}, confirmed_unit_pair=pair,
+                unresolved_fields={
+                    key: {**value, "states": ["delegated_to_lines"]}
+                    for key, value in previous.unresolved_fields.items()
+                },
+                confirmed_unit_pair=pair,
                 status=ProductionRequirementRevision.Status.CONFIRMED,
             )
             _copy_revision_evidence(previous, confirmed)

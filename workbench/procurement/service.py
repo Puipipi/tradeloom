@@ -58,22 +58,73 @@ def _present_text(cells: Any) -> list[str]:
     return values
 
 
+def _optional_text(cells: Any) -> list[str] | None:
+    """可选列：未映射或单元格非文本时按空串处理，不猜测（真实单据常缺物料/单位列）。"""
+    if cells is None:
+        return None
+    if not isinstance(cells, list):
+        raise DocumentError("row_shape_mismatch")
+    values = []
+    for cell in cells:
+        if not isinstance(cell, dict):
+            raise DocumentError("row_shape_mismatch")
+        if cell.get("state") == "present":
+            value = cell.get("value")
+            values.append(value if isinstance(value, str) else ("" if value is None else str(value)))
+        else:
+            values.append("")
+    return values
+
+
 def _rows(candidate: IntakeCandidate, doc_type: str) -> list[dict[str, Any]]:
-    columns = {name: _present_text(candidate.typed_payload.get("fields", {}).get(name))
-               for name in _COLUMNS[doc_type]}
-    lengths = {len(values) for values in columns.values()}
+    if doc_type == "shipment_payment":
+        columns = {name: _present_text(candidate.typed_payload.get("fields", {}).get(name))
+                   for name in _COLUMNS[doc_type]}
+        lengths = {len(values) for values in columns.values()}
+        if len(lengths) != 1:
+            raise DocumentError("row_shape_mismatch")
+        count = lengths.pop()
+        if count == 0:
+            raise DocumentError("empty_rows")
+        provenance = candidate.provenance.get("reference", [])
+        rows = []
+        for index in range(count):
+            source = provenance[index] if isinstance(provenance, list) and index < len(provenance) else {}
+            rows.append({
+                "position": index + 1,
+                "values": {name: columns[name][index].strip() for name in columns},
+                "source": source if isinstance(source, dict) else {},
+            })
+        return rows
+    # 物料类单据：数量列必填；物料/单位列可选（真实采购合同把产品身份放在图片列，
+    # 编码由人工补齐后重新打表），缺物料引用的行落库并阻断确认。
+    fields = candidate.typed_payload.get("fields", {})
+    columns = {
+        "quantity": _present_text(fields.get("quantity")),
+        "material": _optional_text(fields.get("material")),
+        "unit": _optional_text(fields.get("unit")),
+    }
+    lengths = {len(columns["quantity"])}
+    for name in ("material", "unit"):
+        if columns[name] is not None:
+            lengths.add(len(columns[name]))
     if len(lengths) != 1:
         raise DocumentError("row_shape_mismatch")
     count = lengths.pop()
     if count == 0:
         raise DocumentError("empty_rows")
-    provenance = candidate.provenance.get(_COLUMNS[doc_type][0], [])
+    source_column = "material" if columns["material"] is not None else "quantity"
+    provenance = candidate.provenance.get(source_column, [])
     rows = []
     for index in range(count):
         source = provenance[index] if isinstance(provenance, list) and index < len(provenance) else {}
         rows.append({
             "position": index + 1,
-            "values": {name: columns[name][index].strip() for name in columns},
+            "values": {
+                "material": (columns["material"][index] if columns["material"] is not None else "").strip(),
+                "quantity": columns["quantity"][index].strip(),
+                "unit": (columns["unit"][index] if columns["unit"] is not None else "").strip(),
+            },
             "source": source if isinstance(source, dict) else {},
         })
     return rows
@@ -86,13 +137,20 @@ def _material_line(row: dict[str, Any], items: tuple) -> dict[str, Any]:
         quantity=values["quantity"] or None, unit=values["unit"] or None, items=items,
     )
     resolved = check.resolution.item
+    issues = [issue.to_dict() for issue in check.issues]
+    if not values["material"].strip():
+        issues.append({
+            "issue_key": "missing_material_reference", "item_ref": "",
+            "question": "该行缺少物料引用，请在来源表格补齐物料编码后重新打表。",
+            "severity": BLOCKING, "detail": {"position": row["position"]}, "options": [],
+        })
     return {
         "material": values["material"],
         "item_ref": ({"doctype": "Item", "name": resolved.item_code} if resolved else None),
         "item_status": check.resolution.status,
         "quantity": values["quantity"],
         "unit": values["unit"],
-        "issues": [issue.to_dict() for issue in check.issues],
+        "issues": issues,
     }
 
 

@@ -95,6 +95,23 @@ class IntakeMappingSchemaTests(SimpleTestCase):
         self.assertEqual(_cell_value(missing_cache, "decimal")["state"], "formula_cache_missing")
         self.assertEqual(_cell_value(formula_error, "text")["state"], "formula_error")
 
+    def test_numeric_cells_map_to_text_by_stored_lexeme(self):
+        numeric = SimpleNamespace(
+            raw_value={"xml_type": "n", "v_lexeme": "6665631002", "formula_present": False},
+            error_code="", normalized_value=6665631002, cached_value=None,
+        )
+        float_numeric = SimpleNamespace(
+            raw_value={"xml_type": "n", "v_lexeme": "0.63", "formula_present": False},
+            error_code="", normalized_value=0.63, cached_value=None,
+        )
+        boolean = SimpleNamespace(
+            raw_value={"xml_type": "b", "v_lexeme": "1", "formula_present": False},
+            error_code="", normalized_value=True, cached_value=None,
+        )
+        self.assertEqual(_cell_value(numeric, "text"), {"state": "present", "type": "text", "value": "6665631002"})
+        self.assertEqual(_cell_value(float_numeric, "text"), {"state": "present", "type": "text", "value": "0.63"})
+        self.assertEqual(_cell_value(boolean, "text")["state"], "type_mismatch")
+
     def test_candidate_schemas_are_closed_and_separate_unconfirmed_domains(self):
         self.assertEqual(SCHEMA_VERSION, 1)
         self.assertEqual(set(FIELD_SCHEMAS), {"product_identity", "commercial_source", "production_instruction", "labor_analysis", "material_master", "production_instruction_line", "purchase_plan_line", "stock_receipt_line", "shipment_payment_line"})
