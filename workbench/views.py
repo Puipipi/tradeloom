@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 
-from django.db.models import Count
 from django.conf import settings
 from django.http import Http404
 from django.shortcuts import render
@@ -24,12 +24,10 @@ from .models import (
     WorkflowTask,
 )
 from .intake.schemas import FIELD_SCHEMAS
-from .products.query import (
-    PRODUCT_LIBRARY_STATUSES,
-    InvalidProductFilter,
-    query_product_library,
-)
 from .services import WorkbenchNotFoundError, WorkbenchService
+from .sku import store as sku_store
+
+logger = logging.getLogger(__name__)
 
 
 PLATFORM_CONTEXT = {
@@ -226,94 +224,24 @@ def orders(request):
 
 @ensure_csrf_cookie
 def products(request):
-    q = request.GET.get("q", "").strip()
-    state = request.GET.get("state", "").strip()
-    batch = request.GET.get("batch", "").strip()
-    filter_error = ""
+    """SKU 成本台账：单件成本、各市场毛利、期间费用与选品建议。
+
+    商品身份（货号、名称、系列、规格、在售状态）以官网主数据为准，页面只维护
+    主数据里没有的价格与成本；清单从 CSV 导入或官网后台推送进来，界面不提供
+    单条增删——两个入口各改一份，最后没人说得清哪份是真的。
+
+    台账读不出来也要出页面：表还没迁移或本地库有问题时，显示「暂无数据」比
+    整页 500 更容易让人知道下一步该做什么。
+    """
     try:
-        rows = query_product_library(
-            q=q,
-            status=state,
-            batch_id=batch,
-            include_revisions=True,
-        )
-    except InvalidProductFilter as exc:
-        rows = []
-        filter_error = str(exc)
-
-    for product in rows:
-        latest = product["latest_revision"]
-        raw_status = product["revision_status"]
-        product["batch_id"] = product["batch"]["id"]
-        product["batch_title"] = product["batch"]["title"]
-        product["batch_status_raw"] = product["batch"]["status"]
-        product["batch_status"] = _label(
-            STATUS_LABELS,
-            product["batch"]["status"],
-        )
-        product["version"] = product["current_version"]
-        product["revision_status_raw"] = raw_status or "draft"
-        product["revision_status"] = (
-            _label(STATUS_LABELS, raw_status) if raw_status else "无版本"
-        )
-        raw_source = latest["source"] if latest else ""
-        product["source"] = (
-            _label(SOURCE_LABELS, raw_source) if raw_source else "—"
-        )
-        product["revision_updated_at"] = (
-            latest["updated_at"] if latest else None
-        )
-        for revision in product["revisions"]:
-            revision["status_raw"] = revision["status"]
-            revision["status_label"] = _label(
-                STATUS_LABELS,
-                revision["status"],
-            )
-            revision["source_label"] = _label(
-                SOURCE_LABELS,
-                revision["source"],
-            )
-
-    batch_options = []
-    for batch_obj in (
-        Task.objects.filter(products__isnull=False)
-        .annotate(product_total=Count("products"))
-        .order_by("-created_at")
-    ):
-        batch_options.append(
-            {
-                "id": batch_obj.id,
-                "label": (
-                    f"{batch_obj.title} · {batch_obj.id[:8]} · "
-                    f"{timezone.localtime(batch_obj.updated_at).strftime('%m-%d %H:%M')}"
-                ),
-                "product_total": batch_obj.product_total,
-            }
-        )
-
-    status_options = [
-        {"value": value, "label": STATUS_LABELS[value]}
-        for value in PRODUCT_LIBRARY_STATUSES
-    ]
-    product_total = Product.objects.count()
-    empty_library = not (q or state or batch) and product_total == 0
+        sku_ledger = sku_store.snapshot()
+    except Exception:  # noqa: BLE001 — 见上：宁可空页面，不要白屏
+        logger.exception("SKU 台账读取失败")
+        sku_ledger = None
     return render(
         request,
         "workbench/products.html",
-        _page_context(
-            "products",
-            products=rows,
-            result_count=len(rows),
-            product_total=product_total,
-            empty_library=empty_library,
-            revision_count=sum(row["version"] is not None for row in rows),
-            missing_count=sum(bool(row["missing_fields"]) for row in rows),
-            batch_count=len({row["batch_id"] for row in rows}),
-            filters={"q": q, "state": state, "batch": batch},
-            status_options=status_options,
-            batch_options=batch_options,
-            filter_error=filter_error,
-        ),
+        _page_context("products", sku_ledger=sku_ledger),
     )
 
 

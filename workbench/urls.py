@@ -11,6 +11,7 @@ from .requirements import api as requirement_api
 from .execution_plans import api as execution_plan_api
 from .procurement import api as procurement_api
 from .materials import api as material_api
+from .sku import api as sku_api
 from . import canvas_workflow_api, native_artifact_api, dispatch_api, canvas_workflow_definition_api
 from . import orders_api
 
@@ -48,6 +49,23 @@ urlpatterns = [
     path("api/materials/items", material_api.items),
     path("api/materials/items/<str:item_code>/update", material_api.item_update),
     path("api/materials/check", material_api.check),
+    # ── SKU 成本台账 ────────────────────────────────────────────────────────
+    # 读整份状态（含 144 行核算结果、期间费用、关税缺口），写接口各自回同一份 state，
+    # 前端据此局部刷新而不整页 reload。
+    path("api/sku", sku_api.library),
+    path("api/sku/rows", sku_api.rows_update),
+    path("api/sku/import", sku_api.import_csv),
+    path("api/sku/export.csv", sku_api.export_csv),
+    path("api/sku/catalog/import", sku_api.catalog_import),
+    path("api/sku/catalog/push", sku_api.catalog_push),
+    path("api/sku/catalog/template.csv", sku_api.catalog_template),
+    path("api/sku/settings", sku_api.settings_update),
+    path("api/sku/fx", sku_api.fx_rates),
+    path("api/sku/duty", sku_api.duty_rates),
+    path("api/sku/duty/lookup", sku_api.duty_lookup),
+    path("api/sku/hs-bulk", sku_api.hs_bulk),
+    path("api/sku/period", sku_api.period_cost),
+    path("api/sku/advice", sku_api.advice),
     path("api/intake/sources", intake_api.source_collection),
     path("api/intake/narratives", intake_api.narrative_collection),
     path("api/intake/narratives/<str:narrative_id>/lines", intake_api.narrative_lines),

@@ -1445,3 +1445,178 @@ class MaterialItem(models.Model):
 
     class Meta:
         ordering = ["item_code"]
+
+
+class SkuCatalogItem(models.Model):
+    """SKU 商品清单（官网主数据的本地镜像）。
+
+    由商品清单 CSV 或官网后台推送写入，可随时重建，**不含任何人工成本数据**。
+    停用只打标记不删行：留着才能解释历史成本。position 用于保持导入顺序。
+    """
+
+    id = models.CharField(primary_key=True, max_length=32, default=hex_uuid, editable=False)
+    sku = models.CharField(max_length=120, unique=True)
+    name = models.CharField(max_length=300, blank=True, default="")
+    series = models.CharField(max_length=200, blank=True, default="")
+    sub_category = models.CharField(max_length=200, blank=True, default="")
+    material = models.CharField(max_length=300, blank=True, default="")
+    size = models.CharField(max_length=120, blank=True, default="")
+    url = models.CharField(max_length=500, blank=True, default="")
+    image = models.CharField(max_length=500, blank=True, default="")
+    active = models.BooleanField(default=True)
+    position = models.PositiveIntegerField(default=0)
+    source = models.CharField(max_length=64, default="manual")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["position", "sku"]
+
+
+class SkuCatalogImport(models.Model):
+    """清单导入流水。页面只显示最近几条，用来回答「这批 SKU 什么时候进来的」。"""
+
+    id = models.CharField(primary_key=True, max_length=32, default=hex_uuid, editable=False)
+    source = models.CharField(max_length=64)
+    added = models.PositiveIntegerField(default=0)
+    updated = models.PositiveIntegerField(default=0)
+    skipped = models.PositiveIntegerField(default=0)
+    total = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "id"]
+
+
+class SkuCostEntry(models.Model):
+    """SKU 商品成本台账的人工字段——**这份是真正要备份的业务数据**。
+
+    两条硬规矩：
+      1. 0 与空白含义不同。0 是"真的是 0"，空白（NULL）是"还没填"。
+      2. 缺必要字段不出利润率（由 service 层判定，这里只存事实）。
+
+    price 的币种记在 price_currency：切了结算币种后旧数字不再参与计算，
+    否则会把 10 美元当成 10 欧元算出一份漂亮但假的毛利。
+
+    只存**商品成本**：采购价、头程。关税按「HS × 目的国」查表，广告/退货/店铺月费
+    属于期间费用（见 SkuPeriodCost），都不在这里——逐 SKU 留格子只会让人以为必须填，
+    填了又会被当成固定费率摊进单件成本，算出一个解释不了的数。
+    """
+
+    id = models.CharField(primary_key=True, max_length=32, default=hex_uuid, editable=False)
+    sku = models.CharField(max_length=120, unique=True)
+    hs_code = models.CharField(max_length=40, blank=True, default="")
+    price = models.DecimalField(max_digits=18, decimal_places=6, null=True, blank=True)
+    price_currency = models.CharField(max_length=3, blank=True, default="")
+    cost_cny = models.DecimalField(max_digits=18, decimal_places=6, null=True, blank=True)
+    freight_cny = models.DecimalField(max_digits=18, decimal_places=6, null=True, blank=True)
+    units = models.DecimalField(max_digits=18, decimal_places=6, null=True, blank=True)
+    commission = models.DecimalField(max_digits=18, decimal_places=6, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["sku"]
+
+
+class SkuPeriodCost(models.Model):
+    """期间费用：广告花费、退货损失、店铺月费、其他——按月实际发生，**不进单件成本**。
+
+    为什么不摊到 SKU：这三项逐单都不一样（同一件货今天 ACOS 8%、明天 40%），
+    把均值乘进售价得到的是假设模型，既解释不了也没法校准。真实答案只在
+    「这个月到底花了多少」里，所以按「市场 × 月份」登记实际发生额。
+
+    市场维度必须有：美国店和欧洲店的广告账户、退货政策、月租都是分开的。
+    0 与 NULL 仍然区分：填 0 表示这个月确实没花，NULL 表示还没登记。
+    """
+
+    id = models.CharField(primary_key=True, max_length=32, default=hex_uuid, editable=False)
+    market = models.CharField(max_length=8)
+    month = models.CharField(max_length=7)          # YYYY-MM
+    ad_spend_cny = models.DecimalField(max_digits=18, decimal_places=2, null=True, blank=True)
+    returns_cny = models.DecimalField(max_digits=18, decimal_places=2, null=True, blank=True)
+    shop_fee_cny = models.DecimalField(max_digits=18, decimal_places=2, null=True, blank=True)
+    other_cny = models.DecimalField(max_digits=18, decimal_places=2, null=True, blank=True)
+    note = models.CharField(max_length=200, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-month", "market"]
+        constraints = [
+            models.UniqueConstraint(fields=["market", "month"], name="sku_period_market_month_unique"),
+        ]
+
+
+class SkuSetting(models.Model):
+    """SKU 台账口径设置（单例，pk 固定为 1）。
+
+    手填汇率按币种分开存在 fx_manual 里，切币种不会互相覆盖。
+    market 决定报价币种与用哪套关税税率（见 SkuDutyRate）。
+    """
+
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+    market = models.CharField(max_length=8, default="US")
+    currency = models.CharField(max_length=3, default="USD")
+    channel = models.CharField(max_length=40, default="domestic_wholesale")
+    fx_mode = models.CharField(max_length=10, default="auto")
+    fx_manual = models.JSONField(default=dict, blank=True)
+    rebate = models.DecimalField(max_digits=18, decimal_places=6, default=0)
+    fixed_fee = models.DecimalField(max_digits=18, decimal_places=6, null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class SkuDutyRate(models.Model):
+    """进口关税税率：**同一 SKU 发往不同国家，税率完全不同**，所以它既不在 SKU 上，
+    也不在订单里，而是独立成「HS 编码 × 目的国」的规则表。
+
+    为什么不放订单：税率是规则、订单是结果。规则放结果上会导致每单手填、改一次
+    政策翻遍历史单、报价阶段（还没有订单）根本算不出来。订单将来只需存一份
+    「当时用了哪条税率」的快照。
+
+    hs_prefix 支持前缀匹配：只录 ``5806`` 就能命中 ``5806.32`` 和 ``5806.32.10``，
+    匹配时取最长前缀。
+
+    base_rate 与 extra_rate 分开，是因为美国那类市场是「基础税率 + 301 附加税」，
+    欧盟还会有反倾销税；展示时要能说清是哪几段加起来的。
+    """
+
+    id = models.CharField(primary_key=True, max_length=32, default=hex_uuid, editable=False)
+    market = models.CharField(max_length=8)
+    hs_prefix = models.CharField(max_length=20)
+    base_rate = models.DecimalField(max_digits=9, decimal_places=6, default=0)
+    extra_rate = models.DecimalField(max_digits=9, decimal_places=6, default=0)
+    # 优惠税率（自贸协定项下，如 RCEP / 中澳 ChAFTA）：只有凭原产地证才用得上。
+    # 允许为空是因为「没有优惠」和「优惠 0%」是两件事；也**不参与计算**——
+    # 按没办的证去算毛利，会得到一个漂亮但兑不出来的数。
+    preferred_rate = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True, default=None,
+    )
+    note = models.CharField(max_length=200, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["market", "hs_prefix"]
+        constraints = [
+            models.UniqueConstraint(fields=["market", "hs_prefix"], name="sku_duty_market_hs_unique"),
+        ]
+
+
+class SkuFxSnapshot(models.Model):
+    """汇率快照缓存（单例）。30 分钟 TTL，**可随时删除重建**。
+
+    统一存「1 单位外币兑 CNY」，日元牌价乘 100 只是显示习惯，计算永远按 1 单位。
+    """
+
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+    base = models.CharField(max_length=3, default="USD")
+    rates = models.JSONField(default=dict, blank=True)
+    prev_rates = models.JSONField(default=dict, blank=True)
+    quotes = models.JSONField(default=list, blank=True)
+    sources = models.JSONField(default=dict, blank=True)
+    source = models.CharField(max_length=64, blank=True, default="")
+    source_count = models.PositiveSmallIntegerField(default=0)
+    divergent = models.BooleanField(default=False)
+    spread = models.DecimalField(max_digits=18, decimal_places=6, default=0)
+    checked_at = models.DateTimeField(null=True, blank=True)

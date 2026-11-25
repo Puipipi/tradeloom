@@ -168,46 +168,22 @@ class PageTests(TestCase):
         self.assertContains(response, "可确认")
         self.assertContains(response, "待补 1 项")
 
-    def test_products_page_shows_latest_revision_and_missing_fields(self):
-        batch = self.make_batch(title="产品批次")
-        product = self.make_product(
-            batch,
-            sku="P-100",
-            missing_fields=["材质"],
-        )
-        self.make_revision(
-            product,
-            version=1,
-            status="needs_review",
-            source="legacy_backfill",
-        )
-        self.make_revision(
-            product,
-            version=2,
-            status="confirmed",
-            source="legacy_product",
-        )
+    def test_products_page_renders_sku_cost_ledger(self):
+        """商品/产品资料页面已被 SKU 成本台账取代。
 
+        老的产品资料库表格与筛选条不再渲染，「产品资料」只剩数据模型与 /api/products
+        追溯接口；页面本体是成本台账。这里盯住三件事：台账外壳在、市场条在、
+        老表格确实下线了。
+        """
         response = self.client.get("/products")
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'data-testid="products-table"')
-        self.assertContains(response, "P-100")
-        self.assertContains(
-            response,
-            f'data-testid="product-version-{product.id}">2<',
-        )
-        self.assertContains(
-            response,
-            f'data-testid="product-status-{product.id}">已确认<',
-        )
-        self.assertContains(
-            response,
-            f'data-testid="product-source-{product.id}">产品资料更新<',
-        )
-        self.assertContains(response, "材质")
-        self.assertNotContains(response, "Django + PostgreSQL")
-        self.assertNotContains(response, "legacy")
+        self.assertContains(response, 'data-testid="sku-panel"')
+        self.assertContains(response, "SKU 成本台账")
+        self.assertContains(response, 'data-testid="sku-market-US"')
+        self.assertContains(response, 'data-testid="sku-period"')
+        self.assertNotContains(response, 'data-testid="products-table"')
+        self.assertNotContains(response, "个产品匹配当前筛选")
         self.assertRegex(
             response.content.decode(),
             r'<a[^>]*data-testid="nav-products"[^>]*aria-current="page"',
@@ -397,16 +373,12 @@ class PageTests(TestCase):
         Artifact.objects.filter(pk=artifact.pk).update(updated_at=utc_start)
 
         home = self.client.get("/home")
-        products = self.client.get("/products")
         runs = self.client.get("/runs")
         artifacts = self.client.get("/artifacts")
 
         self.assertContains(home, "2026-10-18 22:09")
         self.assertContains(home, "上海时间")
         self.assertNotContains(home, "2026-10-18T14:09")
-        self.assertContains(products, "2026-10-18 22:09")
-        self.assertContains(products, "上海时间")
-        self.assertNotContains(products, "2026-10-18T14:09")
         self.assertContains(runs, "2026-10-18 22:09")
         self.assertContains(runs, "2026-10-18 22:10")
         self.assertContains(runs, "上海时间")
@@ -451,11 +423,14 @@ class PageTests(TestCase):
             source="custom_source",
         )
 
-        response = self.client.get("/products")
+        # 页面已被成本台账取代，未知状态/来源的容错由追溯接口兜住：
+        # 枚举里没有的值原样透出，不允许在序列化阶段炸掉。
+        response = self.client.get("/api/product-library")
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "custom_status")
-        self.assertContains(response, "custom_source")
+        payload = response.content.decode()
+        self.assertIn("custom_status", payload)
+        self.assertIn("custom_source", payload)
 
     def test_old_routes_and_js_testids_remain(self):
         batch = self.make_batch(title="旧任务")
