@@ -38,6 +38,10 @@ SCALAR_FIELDS: dict[str, frozenset[str]] = {
         "supplier", "supplier_name", "company", "transaction_date", "schedule_date",
         "status", "total_qty", "grand_total", "currency",
     }),
+    "Stock Entry": frozenset({
+        "purpose", "company", "posting_date", "stock_entry_type",
+        "from_warehouse", "to_warehouse", "total_amount", "remarks",
+    }),
 }
 
 DEFAULT_LIST_FIELDS: dict[str, tuple[str, ...]] = {
@@ -48,12 +52,15 @@ DEFAULT_LIST_FIELDS: dict[str, tuple[str, ...]] = {
     "Bin": ("item_code", "warehouse", "actual_qty", "reserved_qty", "projected_qty", "stock_uom"),
     "Sales Order": ("customer", "customer_name", "company", "transaction_date", "status", "grand_total", "currency"),
     "Purchase Order": ("supplier", "supplier_name", "company", "transaction_date", "status", "grand_total", "currency"),
+    "Stock Entry": ("purpose", "company", "posting_date", "stock_entry_type", "from_warehouse", "to_warehouse", "total_amount"),
 }
 
 CHILD_FIELDS: dict[str, dict[str, frozenset[str]]] = {
     "Item": {"barcodes": frozenset({"barcode", "barcode_type", "uom"})},
     "Sales Order": {"items": frozenset({"item_code", "item_name", "qty", "uom", "delivery_date", "rate", "amount"})},
     "Purchase Order": {"items": frozenset({"item_code", "item_name", "qty", "uom", "schedule_date", "rate", "amount"})},
+    "Stock Entry": {"items": frozenset({"item_code", "item_name", "qty", "transfer_qty", "uom",
+                                        "s_warehouse", "t_warehouse", "amount"})},
 }
 
 SYSTEM_FIELDS = frozenset({"name", "modified"})
@@ -66,10 +73,12 @@ FILTER_FIELDS: dict[str, frozenset[str]] = {
     "Bin": frozenset({"item_code", "warehouse", "company", "stock_uom"}),
     "Sales Order": frozenset({"customer", "company", "transaction_date", "status", "delivery_status", "billing_status"}),
     "Purchase Order": frozenset({"supplier", "company", "transaction_date", "status"}),
+    "Stock Entry": frozenset({"purpose", "company", "posting_date", "stock_entry_type"}),
 }
 SUPPORTED_DOCTYPES = tuple(SCALAR_FIELDS)
 MAX_PAGE_SIZE = 100
 MAX_QUOTATION_ITEMS = 100
+MAX_PURCHASE_ORDER_ITEMS = 100
 _QUOTATION_DECIMAL = re.compile(r"-?(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,8})?\Z")
 _QUOTATION_TEXT = re.compile(r"[^\x00-\x1f\x7f]{1,140}\Z")
 
@@ -297,5 +306,170 @@ def normalize_quotation_record(payload: Any, instance_id: str) -> dict[str, Any]
         "data": data,
         "external_ref": external_reference(instance_id, "Quotation", data),
         "truncated_children": ["items"] if len(children) > MAX_QUOTATION_ITEMS else [],
+    }
+    return result
+
+
+def normalize_purchase_order_payload(payload: Any) -> dict[str, Any]:
+    """Validate the narrow local draft-create contract; never accept ERPNext actions."""
+    if not isinstance(payload, dict):
+        raise ValueError("采购订单内容格式无效")
+    allowed = {"supplier", "company", "transaction_date", "schedule_date", "currency", "items"}
+    required = {"supplier", "company", "items"}
+    if set(payload) - allowed or not required <= set(payload):
+        raise ValueError("采购订单内容字段无效")
+
+    result: dict[str, Any] = {}
+    for field in ("supplier", "company"):
+        value = payload.get(field)
+        if not isinstance(value, str) or not _QUOTATION_TEXT.fullmatch(value) or value != value.strip():
+            raise ValueError("采购订单引用格式无效")
+        try:
+            value.encode("utf-8", "strict")
+        except UnicodeEncodeError:
+            raise ValueError("采购订单引用格式无效") from None
+        result[field] = value
+
+    for field in ("transaction_date", "schedule_date"):
+        value = payload.get(field)
+        if value is None:
+            continue
+        if not isinstance(value, str) or not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value):
+            raise ValueError("采购订单日期格式无效")
+        try:
+            date.fromisoformat(value)
+        except ValueError:
+            raise ValueError("采购订单日期格式无效") from None
+        result[field] = value
+
+    currency = payload.get("currency")
+    if currency is not None:
+        if not isinstance(currency, str) or not re.fullmatch(r"[A-Z]{3}", currency):
+            raise ValueError("币种代码格式无效")
+        result["currency"] = currency
+
+    items = payload.get("items")
+    if not isinstance(items, list) or not 1 <= len(items) <= MAX_PURCHASE_ORDER_ITEMS:
+        raise ValueError("采购订单明细数量无效")
+    normalized_items: list[dict[str, Any]] = []
+    item_fields = {"item_code", "qty", "rate", "uom", "schedule_date", "warehouse"}
+    for item in items:
+        if not isinstance(item, dict) or set(item) - item_fields or not {"item_code", "qty"} <= set(item):
+            raise ValueError("采购订单明细字段无效")
+        normalized: dict[str, Any] = {}
+        value = item.get("item_code")
+        if not isinstance(value, str) or not _QUOTATION_TEXT.fullmatch(value) or value != value.strip():
+            raise ValueError("采购订单明细引用格式无效")
+        try:
+            value.encode("utf-8", "strict")
+        except UnicodeEncodeError:
+            raise ValueError("采购订单明细引用格式无效") from None
+        normalized["item_code"] = value
+
+        value = item.get("uom")
+        if value is not None:
+            if not isinstance(value, str) or not _QUOTATION_TEXT.fullmatch(value) or value != value.strip():
+                raise ValueError("采购订单明细引用格式无效")
+            try:
+                value.encode("utf-8", "strict")
+            except UnicodeEncodeError:
+                raise ValueError("采购订单明细引用格式无效") from None
+            normalized["uom"] = value
+
+        for field in ("qty", "rate"):
+            value = item.get(field)
+            if field == "rate" and value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, (str, int, float, Decimal)):
+                raise ValueError("采购订单数量或价格格式无效")
+            raw = str(value)
+            if not _QUOTATION_DECIMAL.fullmatch(raw):
+                raise ValueError("采购订单数量或价格格式无效")
+            try:
+                number = Decimal(raw)
+            except InvalidOperation:
+                raise ValueError("采购订单数量或价格格式无效") from None
+            if not number.is_finite() or (field == "qty" and number <= 0) or (field == "rate" and number < 0):
+                raise ValueError("采购订单数量或价格范围无效")
+            normalized[field] = format(number.normalize(), "f")
+
+        value = item.get("schedule_date")
+        if value is not None:
+            if not isinstance(value, str) or not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value):
+                raise ValueError("采购订单日期格式无效")
+            try:
+                date.fromisoformat(value)
+            except ValueError:
+                raise ValueError("采购订单日期格式无效") from None
+            normalized["schedule_date"] = value
+        # ERPNext 对 stock item 的采购行强制要求仓库；这里不做默认填充（不猜测），
+        # 由调用方显式提供，缺省时交给 ERPNext 校验并经 417 映射返回可诊断错误。
+        value = item.get("warehouse")
+        if value is not None:
+            if not isinstance(value, str) or not _QUOTATION_TEXT.fullmatch(value) or value != value.strip():
+                raise ValueError("采购订单仓库引用格式无效")
+            normalized["warehouse"] = value
+        normalized_items.append(normalized)
+    result["items"] = normalized_items
+    return result
+
+
+_PURCHASE_ORDER_RECORD_FIELDS = frozenset({
+    "name", "modified", "docstatus", "supplier", "supplier_name", "company",
+    "transaction_date", "schedule_date", "currency", "total_qty", "total", "grand_total",
+})
+_PURCHASE_ORDER_ITEM_FIELDS = frozenset({
+    "item_code", "item_name", "qty", "uom", "schedule_date", "rate", "amount", "description",
+})
+
+
+def normalize_purchase_order_record(payload: Any, instance_id: str) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise ValueError("ERPNext 采购订单响应格式无效")
+    if payload.get("doctype") not in (None, "Purchase Order"):
+        raise ValueError("ERPNext 采购订单响应格式无效")
+    source = payload.get("data", payload)
+    if not isinstance(source, dict):
+        raise ValueError("ERPNext 采购订单响应格式无效")
+    data: dict[str, Any] = {}
+    for key in _PURCHASE_ORDER_RECORD_FIELDS:
+        value = source.get(key)
+        if key == "docstatus":
+            if type(value) is not int or value not in (0, 1, 2):
+                raise ValueError("ERPNext 采购订单状态格式无效")
+            data[key] = value
+        elif key in {"name", "modified"}:
+            if not isinstance(value, str) or not value or len(value) > 255 or any(ord(ch) < 32 for ch in value):
+                raise ValueError("ERPNext 采购订单标识格式无效")
+            data[key] = value
+        elif value is not None and isinstance(value, (str, int, float, bool)):
+            if isinstance(value, str) and len(value) > 4096:
+                raise ValueError("ERPNext 采购订单响应字段过长")
+            if isinstance(value, float) and not math.isfinite(value):
+                raise ValueError("ERPNext 采购订单响应格式无效")
+            data[key] = value
+    if not all(data.get(key) for key in ("name", "modified", "company", "supplier")):
+        raise ValueError("ERPNext 采购订单响应格式无效")
+    children = source.get("items", [])
+    if not isinstance(children, list):
+        raise ValueError("ERPNext 采购订单明细响应格式无效")
+    data_items = []
+    for row in children[:MAX_PURCHASE_ORDER_ITEMS]:
+        if not isinstance(row, dict):
+            raise ValueError("ERPNext 采购订单明细响应格式无效")
+        clean_row: dict[str, Any] = {}
+        for key, value in row.items():
+            if key in _PURCHASE_ORDER_ITEM_FIELDS and (value is None or isinstance(value, (str, int, float, bool))):
+                if isinstance(value, str) and len(value) > 4096:
+                    raise ValueError("ERPNext 采购订单明细字段过长")
+                if not isinstance(value, float) or math.isfinite(value):
+                    clean_row[key] = value
+        data_items.append(clean_row)
+    data["items"] = data_items
+    result = {
+        "doctype": "Purchase Order",
+        "data": data,
+        "external_ref": external_reference(instance_id, "Purchase Order", data),
+        "truncated_children": ["items"] if len(children) > MAX_PURCHASE_ORDER_ITEMS else [],
     }
     return result

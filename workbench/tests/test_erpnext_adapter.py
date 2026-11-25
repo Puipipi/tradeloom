@@ -7,6 +7,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
 from workbench.erpnext.client import ErpNextClient, ErpNextConfig, ErpNextError, _urlopen_transport
+from workbench.erpnext.service import normalize_purchase_order_payload, normalize_purchase_order_record
 
 
 class FakeTransport:
@@ -302,6 +303,144 @@ class ErpNextAdapterTests(unittest.TestCase):
             self.assertEqual(raised.exception.code, expected_code)
             self.assertNotIn(secret, str(raised.exception))
             self.assertNotIn(secret, repr(raised.exception))
+
+
+def purchase_order_payload(**overrides):
+    value = {
+        "supplier": "SUP-001",
+        "company": "Example Company",
+        "transaction_date": "2026-10-21",
+        "schedule_date": "2026-10-25",
+        "currency": "USD",
+        "items": [{"item_code": "ITEM-001", "qty": "2", "rate": "10.25", "uom": "Nos"}],
+    }
+    value.update(overrides)
+    return value
+
+
+class PurchaseOrderDraftAdapterTests(unittest.TestCase):
+    def test_payload_normalization_canonicalizes_numbers_and_drops_unset_optionals(self):
+        normalized = normalize_purchase_order_payload({
+            "supplier": "SUP-001",
+            "company": "Example Company",
+            "items": [{"item_code": "ITEM-001", "qty": "2.000", "rate": "10.2500"}],
+        })
+        self.assertEqual(normalized, {
+            "supplier": "SUP-001",
+            "company": "Example Company",
+            "items": [{"item_code": "ITEM-001", "qty": "2", "rate": "10.25"}],
+        })
+
+        with_optionals = normalize_purchase_order_payload(purchase_order_payload())
+        self.assertEqual(with_optionals, {
+            "supplier": "SUP-001",
+            "company": "Example Company",
+            "transaction_date": "2026-10-21",
+            "schedule_date": "2026-10-25",
+            "currency": "USD",
+            "items": [{"item_code": "ITEM-001", "qty": "2", "rate": "10.25", "uom": "Nos"}],
+        })
+
+    def test_payload_validation_rejects_invalid_contract_before_any_io(self):
+        invalid = [
+            "not-a-dict",
+            {},
+            purchase_order_payload(supplier=""),
+            purchase_order_payload(supplier=" padded"),
+            purchase_order_payload(supplier="S" * 141),
+            purchase_order_payload(company=123),
+            purchase_order_payload(transaction_date="2026-02-30"),
+            purchase_order_payload(schedule_date="20261025"),
+            purchase_order_payload(currency="usd"),
+            purchase_order_payload(currency="USDD"),
+            purchase_order_payload(extra="nope"),
+            purchase_order_payload(items=[]),
+            purchase_order_payload(items="ITEM-001"),
+            purchase_order_payload(items=[{"item_code": "ITEM-001"}]),
+            purchase_order_payload(items=[{"qty": "2"}]),
+            purchase_order_payload(items=[{"item_code": "ITEM-001", "qty": "0"}]),
+            purchase_order_payload(items=[{"item_code": "ITEM-001", "qty": "-2"}]),
+            purchase_order_payload(items=[{"item_code": "ITEM-001", "qty": 2, "rate": -1}]),
+            purchase_order_payload(items=[{"item_code": "ITEM-001", "qty": "NaN"}]),
+            purchase_order_payload(items=[{"item_code": "ITEM-001", "qty": True}]),
+            purchase_order_payload(items=[{"item_code": "ITEM-001", "qty": "2", "unknown": 1}]),
+            purchase_order_payload(items=[{"item_code": "", "qty": "2"}]),
+            purchase_order_payload(items=[{"item_code": "ITEM-001", "qty": "2", "uom": ""}]),
+            purchase_order_payload(items=[{"item_code": "ITEM-001", "qty": "2", "schedule_date": "2026-02-30"}]),
+        ]
+        for payload in invalid:
+            with self.subTest(payload=payload):
+                with self.assertRaises(ValueError):
+                    normalize_purchase_order_payload(payload)
+
+    def test_payload_accepts_up_to_one_hundred_items_and_rejects_more(self):
+        normalize_purchase_order_payload(purchase_order_payload(
+            items=[{"item_code": f"ITEM-{index:03}", "qty": "1"} for index in range(100)],
+        ))
+        with self.assertRaises(ValueError):
+            normalize_purchase_order_payload(purchase_order_payload(
+                items=[{"item_code": f"ITEM-{index:03}", "qty": "1"} for index in range(101)],
+            ))
+
+    def test_record_normalization_projects_whitelist_and_drops_private_fields(self):
+        raw = {"data": {
+            "doctype": "Purchase Order",
+            "name": "PUR-ORD-1",
+            "modified": "2026-10-21 12:00:00.000000",
+            "docstatus": 0,
+            "supplier": "SUP-001",
+            "supplier_name": "Supplier One",
+            "company": "Example Company",
+            "currency": "USD",
+            "grand_total": 20.5,
+            "owner": "private@example.test",
+            "secret_field": "drop",
+            "items": [{"item_code": "ITEM-001", "qty": 2, "uom": "Nos", "rate": 10.25, "secret": "drop"}],
+        }}
+
+        record = normalize_purchase_order_record(raw, "demo-instance")
+
+        self.assertEqual(record["doctype"], "Purchase Order")
+        self.assertEqual(record["external_ref"], {
+            "system": "erpnext", "instance_id": "demo-instance", "doctype": "Purchase Order",
+            "name": "PUR-ORD-1", "modified": "2026-10-21 12:00:00.000000",
+        })
+        self.assertEqual(record["data"]["items"], [{"item_code": "ITEM-001", "qty": 2, "uom": "Nos", "rate": 10.25}])
+        self.assertNotIn("owner", record["data"])
+        self.assertNotIn("secret", json.dumps(record))
+
+    def test_record_normalization_rejects_invalid_remote_documents(self):
+        base = {
+            "name": "PUR-ORD-1", "modified": "m", "company": "Example Company",
+            "supplier": "SUP-001", "docstatus": 0,
+        }
+        invalid = [
+            "not-a-dict",
+            {},
+            {"data": {**base, "docstatus": "0"}},
+            {"data": {**base, "docstatus": 3}},
+            {"doctype": "Quotation", "data": {**base, "name": "QTN-1"}},
+            {"data": {**base, "name": ""}},
+            {"data": {key: value for key, value in base.items() if key != "supplier"}},
+            {"data": {key: value for key, value in base.items() if key != "modified"}},
+            {"data": {**base, "items": "nope"}},
+        ]
+        for payload in invalid:
+            with self.subTest(payload=payload):
+                with self.assertRaises(ValueError):
+                    normalize_purchase_order_record(payload, "demo-instance")
+
+    def test_record_normalization_truncates_more_than_one_hundred_child_rows(self):
+        raw = {"data": {
+            "name": "PUR-ORD-1", "modified": "m", "company": "Example Company",
+            "supplier": "SUP-001", "docstatus": 0,
+            "items": [{"item_code": f"ITEM-{index:03}", "qty": 1} for index in range(101)],
+        }}
+
+        record = normalize_purchase_order_record(raw, "demo-instance")
+
+        self.assertEqual(record["truncated_children"], ["items"])
+        self.assertEqual(len(record["data"]["items"]), 100)
 
 
 if __name__ == "__main__":
