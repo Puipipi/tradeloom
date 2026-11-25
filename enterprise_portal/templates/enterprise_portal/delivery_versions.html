@@ -1,0 +1,45 @@
+{% load static %}<!doctype html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>交付版本 · 织贸企业服务</title>
+  <link rel="stylesheet" href="{% static 'enterprise_portal/console.css' %}">
+  <link rel="stylesheet" href="{% static 'enterprise_portal/portal.css' %}">
+</head>
+<body class="portal delivery-versions-page">
+  <header class="portal-header">
+    <h1>交付版本</h1>
+    <a href="{{ workflow_home }}">返回企业首页</a>
+  </header>
+  <main class="portal-content">
+    <p>只显示当前企业数据库中已登记且位于私有存储根目录内的桌面交付版本；打开预览或下载时会重新校验文件 SHA。安全预览仅支持 HTML、Markdown 和 CSV，JSON 文件可下载。</p>
+    <section aria-labelledby="delivery-version-list-title">
+      <h2 id="delivery-version-list-title">已登记版本</h2>
+      {% if rows %}
+        <ul class="delivery-version-list">
+          {% for row in rows %}
+            <li class="delivery-version-card">
+              <h3>{{ row.artifact_type_label }} · v{{ row.version_number }}</h3>
+              <dl>
+                <div><dt>业务批次</dt><dd>{{ row.batch_title }}</dd></div>
+                <div><dt>状态</dt><dd>{{ row.status_label }}</dd></div>
+                <div><dt>登记时间</dt><dd>{{ row.created_at|date:"Y-m-d H:i" }}</dd></div>
+                <div><dt>文件</dt><dd>{{ row.filename }} · {{ row.byte_size }} 字节</dd></div>
+              </dl>
+              <p class="delivery-version-actions">
+                {% if row.preview_url %}<a href="{{ row.preview_url }}" target="_blank" rel="noopener">安全预览</a>{% endif %}
+                <a href="{{ row.download_url }}">下载</a>
+              </p>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p>当前没有可读取的登记版本。</p>
+      {% endif %}
+      <p class="delivery-version-limit">最多显示最近 {{ limit }} 个已登记版本。</p>
+    </section>
+  </main>
+  {% include "enterprise_portal/live_permissions.html" %}
+</body>
+</html>

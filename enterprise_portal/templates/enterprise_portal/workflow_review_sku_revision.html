@@ -1,0 +1,34 @@
+{% if review.sku_group %}
+  <p>商品 {{ review.product_position }} · 冻结货号 <strong>{{ review.sku_group.sku }}</strong></p>
+  <ul aria-label="同组商品">
+    {% for member in review.sku_group.members %}
+      <li>商品 {{ member.position }} · {{ member.name }} · 版本 {{ member.version }}</li>
+    {% endfor %}
+  </ul>
+  {% if review.can_submit %}
+    <form method="post" action="{% url 'enterprise-submit-english-review' workflow.id review.id %}">
+      {% csrf_token %}
+      <label>人工明确填写修正后的货号
+        <input type="text" name="{{ review.field }}" required maxlength="{{ review.limit }}">
+      </label>
+      <p>保留原货号时，请重新输入。应用时会去除首尾空白。</p>
+      <button type="submit">提交货号裁决回执</button>
+    </form>
+  {% endif %}
+{% elif review.revision %}
+  <p>冻结商品版本 {{ review.revision.version }}</p>
+  <dl>
+    {% for fact in review.revision.facts %}
+      <dt>{{ fact.label }}</dt><dd>{{ fact.value|default:"—" }}</dd>
+    {% endfor %}
+  </dl>
+  {% if review.can_submit %}
+    <form method="post" action="{% url 'enterprise-submit-english-review' workflow.id review.id %}">
+      {% csrf_token %}
+      <label class="workflow-review-confirm"><input type="checkbox" name="{{ review.field }}" value="yes" required>
+        <span>我已核对并确认此冻结版本中的基础资料</span>
+      </label>
+      <button type="submit">提交版本确认回执</button>
+    </form>
+  {% endif %}
+{% endif %}

@@ -73,6 +73,7 @@ STATUS_LABELS = {
 TASK_TYPE_LABELS = {
     "prepare_product_data": "产品资料准备",
     "generate_catalog": "目录生成",
+    "generate_deliverables": "交付文件生成",
     "quality_check": "质量检查",
 }
 

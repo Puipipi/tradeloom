@@ -1,0 +1,127 @@
+{% load static l10n %}<!doctype html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>便携工作流画布 · 织贸企业服务</title>
+  <link rel="stylesheet" href="{% static 'enterprise_portal/console.css' %}">
+  <link rel="stylesheet" href="{% static 'enterprise_portal/portal.css' %}">
+  <link rel="stylesheet" href="{% static 'enterprise_portal/portable-canvas.css' %}">
+  <script defer src="{% static 'enterprise_portal/portable-canvas.js' %}"></script>
+</head>
+<body class="portal portable-canvas-page">
+  <header class="portal-header">
+    <h1>便携工作流画布</h1>
+    {% if canvas %}
+      <a href="{% url 'enterprise-portable-canvas' %}">返回便携画布</a>
+    {% else %}
+      <a href="{% url 'enterprise-workflows' %}">返回业务工作流</a>
+    {% endif %}
+  </header>
+  <main class="portal-content">
+    {% if error %}<p role="alert">{{ error }}</p>{% endif %}
+    {% if canvas %}
+      <section>
+        <h2>{{ canvas.title }}</h2>
+        <p>版本 {{ canvas.revision }} · {{ canvas.updated_at|date:"Y-m-d H:i" }}</p>
+        <p id="portable-graph-hint" hidden>拖动节点后保存。滑动画布空白处查看其他节点。</p>
+        <div class="portable-graph" tabindex="0" aria-label="工作流画布">
+          <div class="portable-graph-stage" aria-hidden="true">
+            <canvas hidden></canvas>
+          </div>
+        </div>
+        {{ canvas.graph|json_script:"portable-graph-data" }}
+        {% if can_export %}
+          <p><a href="{% url 'enterprise-portable-canvas-export' canvas.pk %}">下载桌面工作流草稿</a></p>
+        {% else %}
+          <p>含助手或外部步骤的副本仅可在企业门户编辑。导出桌面草稿前需移除这些节点。</p>
+        {% endif %}
+      </section>
+      <section>
+        <h2>编辑工作流</h2>
+        <form method="post" class="portable-workflow-form">
+          {% csrf_token %}
+          <input type="hidden" name="revision" value="{{ canvas.revision }}">
+          <label for="canvas-title">工作流标题</label>
+          <input id="canvas-title" name="title" value="{{ canvas.title }}" maxlength="100" required>
+          <button type="submit" name="operation" value="save">保存修改</button>
+          <ol>
+            {% for node in nodes %}
+              <li id="canvas-node-{{ node.number }}">
+                <label for="node-{{ node.number }}">{{ node.type_label }}节点 {{ node.number }}</label>
+                <input id="node-{{ node.number }}" name="node_{{ forloop.counter0 }}" value="{{ node.title }}" maxlength="80" required>
+                <div class="portable-coordinates">
+                  <label>水平坐标 <input aria-label="节点 {{ node.number }} 水平坐标" type="number" name="x_{{ forloop.counter0 }}" value="{{ node.x|unlocalize }}" min="-100000" max="100000" required></label>
+                  <label>垂直坐标 <input aria-label="节点 {{ node.number }} 垂直坐标" type="number" name="y_{{ forloop.counter0 }}" value="{{ node.y|unlocalize }}" min="-100000" max="100000" required></label>
+                </div>
+                {% if nodes|length > 1 %}<button type="submit" name="operation" value="remove-node:{{ forloop.counter0 }}">移除节点 {{ node.number }}</button>{% endif %}
+                {% if node.parents %}
+                  <div>上游节点 {% for parent in node.parents %}<a href="#canvas-node-{{ parent }}">{{ parent }}</a>{% if not forloop.last %}、{% endif %}{% endfor %}</div>
+                {% endif %}
+              </li>
+            {% endfor %}
+          </ol>
+          {% if can_add_node %}
+            <fieldset>
+              <legend>添加节点</legend>
+              <label for="new-kind">节点类型</label>
+              <select id="new-kind" name="new_kind">
+                {% for kind, label in draft_kinds.items %}<option value="{{ kind }}">{{ label }}</option>{% endfor %}
+              </select>
+              <label for="new-title">新节点名称</label>
+              <input id="new-title" name="new_title" maxlength="80">
+              <button type="submit" name="operation" value="add-node">添加并保存节点</button>
+            </fieldset>
+          {% endif %}
+          <fieldset>
+            <legend>连线</legend>
+            <ul>
+              {% for edge in edges %}
+                <li><button type="submit" name="operation" value="remove-edge:{{ edge.start }}:{{ edge.end }}">移除连线 {{ edge.start_number }} → {{ edge.end_number }}</button></li>
+              {% empty %}<li>暂无连线。</li>{% endfor %}
+            </ul>
+            {% if can_add_edge %}
+              <label for="edge-from">起点</label>
+              <select id="edge-from" name="edge_from">
+                {% for node in nodes %}<option value="{{ forloop.counter0 }}">{{ node.number }} · {{ node.title }}</option>{% endfor %}
+              </select>
+              <label for="edge-to">终点</label>
+              <select id="edge-to" name="edge_to">
+                {% for node in nodes %}<option value="{{ forloop.counter0 }}"{% if forloop.counter == 2 %} selected{% endif %}>{{ node.number }} · {{ node.title }}</option>{% endfor %}
+              </select>
+              <button type="submit" name="operation" value="add-edge">添加并保存连线</button>
+            {% endif %}
+          </fieldset>
+        </form>
+      </section>
+    {% else %}
+      <section>
+        <h2>从桌面导入</h2>
+        <p>上传桌面工作流的 JSON 定义文件。导入会创建仅自己可见的副本，并保留节点和连线。执行配置与运行记录不会保存到副本。</p>
+        <form method="post" enctype="multipart/form-data" class="portable-workflow-form">
+          {% csrf_token %}
+          <label for="desktop-definition">桌面工作流 JSON 文件</label>
+          <input id="desktop-definition" type="file" name="definition" accept=".json,application/json" required>
+          <button type="submit">导入画布</button>
+        </form>
+      </section>
+      <section>
+        <h2>我的便携画布</h2>
+        <ul>
+          {% for row in page %}
+            <li><a href="{% url 'enterprise-portable-canvas-detail' row.pk %}">{{ row.title }}</a></li>
+          {% empty %}<li>暂无便携画布。</li>{% endfor %}
+        </ul>
+        {% if page.paginator.num_pages > 1 %}
+          <nav aria-label="便携画布分页">
+            {% if page.has_previous %}<a href="?page={{ page.previous_page_number }}">上一页</a>{% endif %}
+            <span>{{ page.number }} / {{ page.paginator.num_pages }}</span>
+            {% if page.has_next %}<a href="?page={{ page.next_page_number }}">下一页</a>{% endif %}
+          </nav>
+        {% endif %}
+      </section>
+    {% endif %}
+  </main>
+  {% include "enterprise_portal/live_permissions.html" %}
+</body>
+</html>

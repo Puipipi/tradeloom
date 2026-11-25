@@ -1,10 +1,20 @@
-TradeLoom Enterprise Server for Windows x64
+﻿TradeLoom Enterprise Server for Windows x64
 
-First install, local-only HTTP:
-1. Extract this ZIP into a new folder.
-2. Open PowerShell in that folder and run .\Install-EnterpriseServer.ps1.
-3. Create the first owner administrator when prompted. The installer creates a private PostgreSQL database and random service secrets under %LOCALAPPDATA%\TradeLoomEnterpriseServer. It does not save the administrator password.
-4. On this Windows machine, connect the client to http://127.0.0.1:27417/enterprise/.
+Graphical local server launcher:
+1. Extract this ZIP into a new folder and double-click Start-ServerGui.vbs.
+2. The Electron server workbench opens, if included in the package. Click Start Service.
+3. Configure SMTP, create the first administrator with your own credentials, then send and verify the eight-digit email binding code.
+4. Open Accounts and Permissions in the workbench, then open the enterprise console. The console uses the existing administrator login, permissions, and email verification.
+If the package has no Electron workbench, the original WinForms window still opens. To intentionally open it with the new package, use Start-ServerGui.vbs -WinForms (place this before other options).
+The default data directory is %LOCALAPPDATA%\TradeLoomEnterpriseServer; ports are HTTP 27417 and private PostgreSQL 56427. Existing installations reuse their saved ports, app/runtime and data without replacing configuration or restarting a healthy service. Closing the window leaves the service running. A nonempty directory without server-config.json is refused and retained.
+For a custom existing installation, a shortcut may target Windows wscript.exe with arguments:
+"<package>\Start-ServerGui.vbs" -DataRoot "<existing-data-directory>" -Port 27814 -PostgresPort 56814
+Optional -RuntimeSource selects a trusted runtime bundle for a fresh install. See docs/enterprise-server-gui.md.
+
+Upgrade an existing server using a new package folder outside DataRoot. Keep the old package intact. If installing server application changes, stop the old installation and run Update-EnterpriseServer.ps1 from the new package with the original DataRoot while both ports are stopped. It retains a protected cold recovery pair for the old app and database. Do not roll back one without the other after migration. For launcher-only replacement, the new shortcut can reuse the unchanged original DataRoot. Verify both service status and the actual administrator workflow before removing the old installer.
+
+Command-line installation remains available:
+Open PowerShell in the package folder and run .\Install-EnterpriseServer.ps1; this original entry asks for administrator credentials interactively.
 
 First install behind an already configured HTTPS reverse proxy:
 Run .\Install-EnterpriseServer.ps1 -ExternalHttpsUrl "https://trade.example.com/enterprise/".

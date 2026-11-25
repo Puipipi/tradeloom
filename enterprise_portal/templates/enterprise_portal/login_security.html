@@ -1,0 +1,38 @@
+{% load static %}<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>登录安全 · 织贸企业服务</title><link rel="stylesheet" href="{% static 'enterprise_portal/console.css' %}"></head><body><main>
+<h1>登录安全</h1><a href="/enterprise/console/">返回服务器管理</a>
+<p>正常 Web、管理后台和个人端均要求密码及邮箱验证码。本机授权运维入口只用于服务器管理，不能登录业务。未绑定邮箱或邮件未配置时，由服务器本机操作人员在此完成维护，也可使用本机 CLI。</p>
+{% if error %}<p role="alert">{{ error }}</p>{% endif %}{% for message in messages %}<p role="status">{{ message }}</p>{% endfor %}
+<h2>内部账号绑定邮箱</h2>
+<p>验证码将发往新邮箱。完成验证前沿用现有登录邮箱；新账号完成验证后才能登录。绑定验证码与登录验证码分别使用。</p>
+<form method="post">{% csrf_token %}<input type="hidden" name="action" value="email-start">{{ binding.as_p }}<button>发送绑定验证码</button></form>
+<form method="post">{% csrf_token %}<input type="hidden" name="action" value="email-verify">{{ confirm.as_p }}<button>验证并绑定邮箱</button></form>
+<form method="post">{% csrf_token %}<input type="hidden" name="action" value="email-resend">{{ resend.as_p }}<button>重新发送绑定验证码</button></form>
+<div class="table-wrap"><table><thead><tr><th>内部账号</th><th>登录邮箱</th><th>状态</th></tr></thead><tbody>{% for account in accounts %}<tr><td>{{ account.username }}</td><td>{{ account.email|default:"未绑定" }}</td><td>{{ account.is_active|yesno:"正常,停用" }}{% if account.email_binding_pending %} · 新邮箱待验证{% endif %}</td></tr>{% endfor %}</tbody></table></div>
+<details>
+  <summary>如何获取 SMTP 配置</summary>
+  <p><strong>阿里企业邮箱</strong></p>
+  <ol>
+    <li>请邮箱管理员确认发件账号允许第三方客户端登录，并已开通 SMTP 服务。</li>
+    <li>登录阿里邮箱网页版，进入「设置 → 查看更多设置 → 账户与安全 → 账户安全」。开启「三方客户端安全密码」，点击「生成新密码」并完成身份验证。密码只显示一次。若入口不可用，请联系邮箱管理员。</li>
+    <li>SMTP 主机填 <code>smtp.qiye.aliyun.com</code>，端口填 465，加密方式选 SSL。SMTP 账号填完整的企业邮箱地址，授权密码填生成的专用密码，发件邮箱填同一邮箱。使用其他发件地址前，请确认服务商已授权代发。</li>
+    <li>保存后，用已绑定且由你掌控的内部账号在新的登录窗口请求一次验证码。检查收件箱和垃圾邮件，确认收到验证码邮件且发件地址正确。</li>
+  </ol>
+  <p>其他服务商请查找官方的发件服务器、端口、加密方式和授权码说明。仅在服务商支持时使用 587 + STARTTLS。</p>
+  <p><a href="https://help.aliyun.com/zh/document_detail/36576.html" target="_blank" rel="noopener noreferrer">阿里邮箱服务器和端口</a> · <a href="https://help.aliyun.com/zh/document_detail/444269.html" target="_blank" rel="noopener noreferrer">生成客户端安全密码</a> · <a href="https://help.aliyun.com/zh/document_detail/606337.html" target="_blank" rel="noopener noreferrer">管理员配置访问策略</a></p>
+</details>
+{% if smtp_configured and not smtp_replacing %}
+{% if not smtp_from_email %}<p role="alert">已保存配置无法读取，请重置。</p>{% endif %}
+<fieldset disabled><legend>已保存的 SMTP 配置</legend>
+<p><label>SMTP 主机 <input value="已填写"></label></p>
+<p><label>SMTP 端口 <input value="已填写"></label></p>
+<p><label>加密方式 <input value="已填写"></label></p>
+<p><label>SMTP 账号 <input value="已填写"></label></p>
+<p><label>SMTP 授权密码 <input value="已填写"></label></p>
+<p><label>发件邮箱 <input value="{{ smtp_from_email|default:'无法读取' }}"></label></p>
+</fieldset>
+<a href="?smtp=reset">重置</a>
+{% else %}
+{% if smtp_replacing %}<p>请输入新的完整配置。原配置将在新配置保存成功前继续生效。</p>{% endif %}
+<form method="post" autocomplete="off">{% csrf_token %}<input type="hidden" name="action" value="{% if smtp_replacing %}smtp-replace{% else %}smtp{% endif %}">{{ smtp.as_p }}<button>保存 SMTP 配置</button>{% if smtp_replacing %} <a href="{% url 'enterprise-login-security' %}">取消</a>{% endif %}</form>
+{% endif %}
+</main>{% include "enterprise_portal/live_permissions.html" %}</body></html>

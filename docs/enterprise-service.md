@@ -4,7 +4,7 @@
 
 企业服务是显式启用的 Django 部署模式，固定客户端入口为 `/enterprise/`。未登录时重定向到同源 `/accounts/login/`，使用 Django 用户、密码哈希、session cookie 和 CSRF。`/admin/` 仅供获准的 staff 管理员维护账号、启用/禁用用户并分配组；老板业务权限由“企业老板”组授权。没有预置生产账号或密码。
 
-企业模式使用 PostgreSQL 和独立 URLConf。它只挂载登录、管理、`/enterprise/`、`/api/enterprise/records` 与健康检查，不会将旧的无团队权限 `/products`、`/orders` 或 `/api/*` 业务入口开放给员工。老板组可读取真实 `workbench.Task` 与 `workbench.Product` 数据；登记员的服务端查询只返回本人创建或共享给其工厂组的登记记录。每条登记可关联现有业务批次；工厂组由管理员创建，名称以 `工厂:` 开头。没有业务批次或产品时页面显示自然空状态。
+企业模式使用 PostgreSQL 和独立 URLConf。它只挂载明确授权的企业入口、登录、管理与健康检查，不会将旧的无团队权限 `/products`、`/orders` 或 `/api/*` 业务入口开放给员工。老板及相应显式读授权可从同源只读业务页读取企业数据库的Task/Product固定字段、Customer名录和严格校验的CustomerEvent来源报价数值；工厂/运维身份拒绝优先，完整ERP与商品价目仍未接入；登记员的服务端查询只返回本人创建或共享给其工厂组的登记记录。每条登记可关联现有业务批次；工厂组由管理员创建，名称以 `工厂:` 开头。没有业务批次或产品时页面显示自然空状态。
 
 ## Windows 独立企业服务器包
 
@@ -98,17 +98,6 @@ gunicorn config.wsgi:application --bind 127.0.0.1:8000
 
 可由已获授权的 HTTPS 反向代理提供外部入口；该部署步骤需单独审核源站隔离、TLS 和访问策略。本安装器不修改 Cloudflare、隧道、DNS 或现有网站目录。
 
-## 本地验收
+## 控制台与分发
 
-在隔离 QA 数据库设置 `DJANGO_SETTINGS_MODULE=config.enterprise_settings` 后运行。测试库必须先由数据库管理员创建，并与应用数据库不同：
-
-```powershell
-python manage.py migrate --noinput
-python manage.py configure_enterprise_groups
-python manage.py test enterprise_portal.tests --settings=config.enterprise_settings --keepdb
-python scripts\bootstrap-enterprise-qa.py
-```
-
-测试前设置 `TRADELOOM_DB_TEST_NAME=tradeloom_test_enterprise_qa`，并使 Django `DATABASES['default']['TEST']['NAME']` 对应同一隔离库。应用的自定义 runner 会拒绝自动创建或清理测试库。
-
-QA 脚本创建随机密码账号和合成 `Task`/`Product` 记录，凭据仅写到 gitignored 的 `testing/enterprise-accounts.json`；不得在正式数据库运行。使用隔离测试数据库验证未登录重定向、CSRF、登记员本人/工厂组可见范围、其他登记员不可见、老板读取真实任务/产品和所有登记、停用账号拒绝登录、退出 session 失效以及 `/admin/` 用户/组管理。正式数据库验证需使用经授权的专用测试账号，并不得写入真实业务数据。
+账号、角色、个人端版本和操作入口见[企业控制台快速入门](enterprise-console-quickstart.md)。服务器包与个人端包分别分发；仅服务器包携带数据库运行环境。

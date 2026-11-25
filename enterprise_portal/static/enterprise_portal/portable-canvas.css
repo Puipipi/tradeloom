@@ -1,0 +1,59 @@
+.portable-canvas-page .portal-content {
+  overflow-wrap: anywhere;
+}
+.portable-workflow-form label {
+  display: block;
+  margin-block: 0.55rem 0.25rem;
+}
+.portable-workflow-form input {
+  box-sizing: border-box;
+  max-width: 100%;
+  min-height: 44px;
+}
+.portable-workflow-form input:not([type="file"]) {
+  width: min(100%, 32rem);
+}
+.portable-workflow-form button {
+  display: block;
+  margin-top: 0.7rem;
+  min-height: 44px;
+}
+.portable-graph {
+  max-width: 100%;
+  max-height: 480px;
+  overflow: auto;
+}
+.portable-graph-stage {
+  position: relative;
+  width: max-content;
+}
+.portable-graph-handle {
+  position: absolute;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.portable-graph-handle.is-dragging {
+  cursor: grabbing;
+}
+.portable-graph canvas {
+  display: block;
+}
+.portable-graph canvas[hidden] {
+  display: none;
+}
+
+.portable-coordinates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .5rem;
+}
+.portable-workflow-form fieldset {
+  min-width: 0;
+  margin-top: 1rem;
+}
+.portable-workflow-form select {
+  box-sizing: border-box;
+  max-width: 100%;
+  min-height: 44px;
+}

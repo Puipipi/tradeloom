@@ -1,14 +1,23 @@
+{% load static %}
 <!doctype html>
 <html lang="zh-Hans">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>织贸企业服务</title></head>
-<body>
-  <header>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>织贸企业服务</title><link rel="stylesheet" href="{% static 'enterprise_portal/console.css' %}"><link rel="stylesheet" href="{% static 'enterprise_portal/portal.css' %}"></head>
+<body class="portal portal-home">
+  <a class="skip" href="#portal-content">跳到主要内容</a>
+  <header class="portal-header"><div class="portal-heading">
     <h1>织贸企业服务</h1>
+    </div><div class="account-actions">{% if can_use_console %}<p><a href="/enterprise/console/">企业控制台</a> · <a href="/enterprise/console/#assistant">服务与运营助手</a></p>{% endif %}
     <p>已登录：{{ request.user.get_username }}</p>
     {% if request.user.is_staff %}<p><a href="/admin/">账号与用户组管理</a></p>{% endif %}
     <form method="post" action="/accounts/logout/">{% csrf_token %}<button type="submit">退出登录</button></form>
-  </header>
+  </div></header>
+  <main id="portal-content" class="portal-content">
+  {% if can_view_business or can_view_customers or can_view_quotations or can_view_orders or can_view_deliveries or can_view_workflows %}<section><h2>服务端只读业务资料</h2><nav>{% if can_view_business %}<a href="{% url 'enterprise-products' %}">批次与商品</a>{% endif %}{% if can_view_customers %}<a href="{% url 'enterprise-customers' %}">客户名录</a>{% endif %}{% if can_view_quotations %}<a href="{% url 'enterprise-quotations' %}">来源报价</a>{% endif %}{% if can_view_orders %}<a href="{% url 'enterprise-orders' %}">订单与生产</a>{% endif %}{% if can_view_deliveries %}<a href="{% url 'enterprise-delivery-versions' %}">交付版本</a>{% endif %}{% if can_view_workflows %}<a href="{% url 'enterprise-workflows' %}">业务工作流</a><a href="{% url 'enterprise-workflow-handoff-receive' %}">接收工作流</a><a href="{% url 'enterprise-workflow-runs' %}">运行记录</a>{% endif %}</nav><p>只读当前企业数据库；不是完整ERP，不与个人本地工作台自动共享。</p></section>{% endif %}
 
+  {% if can_view_workflows %}
+    <section><h2>来源工作簿</h2><a href="{% url 'enterprise-workbooks' %}">导入或查阅工作簿</a></section>
+  {% endif %}
+  {% if website_notice.text %}<section aria-labelledby="website-notice-title"><h2 id="website-notice-title">企业公告</h2><p class="plain-text">{{ website_notice.text }}</p></section>{% endif %}
   {% if can_view_business %}
     <section>
       <h2>业务批次</h2>
@@ -21,25 +30,26 @@
   {% endif %}
 
   {% if can_add %}
-    <section>
+    <section class="entry-form-section">
       <h2>登记业务记录</h2>
-      <form method="post" action="/enterprise/entries">
+      <form class="entry-form" method="post" action="/enterprise/entries">
         {% csrf_token %}
-        <label>关联业务批次
+        {% if can_view_business %}<label>关联业务批次
           <select name="task_id"><option value="">不关联</option>{% for task in tasks %}<option value="{{ task.id }}">{{ task.title }}（{{ task.id }}）</option>{% endfor %}</select>
-        </label>
+        </label>{% endif %}
         <label>工厂范围
           <select name="factory_group"><option value="">仅本人和老板可见</option>{% for group in factory_groups %}<option value="{{ group.id }}">{{ group.name }}</option>{% endfor %}</select>
         </label>
-        <label>登记内容 <input name="body" maxlength="500" required></label>
-        <button type="submit">保存登记</button>
+        <label class="entry-body">登记内容 <input name="body" maxlength="500" required></label>
+        <button class="primary" type="submit">保存登记</button>
       </form>
     </section>
   {% endif %}
 
   <section>
     <h2>可访问的登记记录</h2>
-    {% if entries %}<ul>{% for entry in entries %}<li>{{ entry.created_at }} · {{ entry.created_by.get_username }}{% if entry.task %} · {{ entry.task.title }}{% endif %}{% if entry.factory_group %} · {{ entry.factory_group.name }}{% endif %} · {{ entry.body }}</li>{% endfor %}</ul>{% else %}<p>暂无可访问的登记记录。</p>{% endif %}
+    {% if entries %}<ul>{% for entry in entries %}<li>{{ entry.created_at }} · {{ entry.created_by.get_username }}{% if can_view_business and entry.task %} · {{ entry.task.title }}{% endif %}{% if entry.factory_group %} · {{ entry.factory_group.name }}{% endif %} · {{ entry.body }}</li>{% endfor %}</ul>{% else %}<p>暂无可访问的登记记录。</p>{% endif %}
   </section>
-</body>
+  </main>
+{% include "enterprise_portal/live_permissions.html" %}</body>
 </html>

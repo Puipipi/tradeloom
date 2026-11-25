@@ -1,0 +1,36 @@
+{% if english_review %}
+  <section id="english-review">
+    <h2>补全商品资料</h2>
+    {% if english_review.rows %}<ul>
+      {% for review in english_review.rows %}
+        <li>
+          <strong>{{ review.name }}</strong> · {{ review.sku }}
+          <div>{{ review.label }} · {{ review.status }}</div>
+          {% if review.value %}<div>{{ review.value }}</div>{% endif %}
+          {% if review.image_choice %}
+            {% include "enterprise_portal/workflow_review_image_choice.html" %}
+          {% elif review.image_upload %}
+            {% include "enterprise_portal/workflow_review_image_upload.html" %}
+          {% elif review.sku_group or review.revision %}
+            {% include "enterprise_portal/workflow_review_sku_revision.html" %}
+          {% elif review.can_submit %}
+            <form method="post" action="{% url 'enterprise-submit-english-review' workflow.id review.id %}">
+              {% csrf_token %}
+              <label>{{ review.label }}（按原文填写） <input type="text" name="{{ review.field }}" required maxlength="{{ review.limit }}"></label>
+              <button type="submit">提交{{ review.label }}</button>
+            </form>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ul>{% endif %}
+    {% if english_review.desktop_required %}
+      <p>本批还有其他审核事项，请在桌面工作台处理。</p>
+    {% elif english_review.confirmation %}
+      <form method="post" action="{% url 'enterprise-apply-english-review' workflow.id %}">
+        {% csrf_token %}
+        <input type="hidden" name="confirmation" value="{{ english_review.confirmation }}">
+        <button type="submit">应用本批审核</button>
+      </form>
+    {% endif %}
+  </section>
+{% endif %}

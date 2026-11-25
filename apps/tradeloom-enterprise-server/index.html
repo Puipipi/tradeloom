@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>织贸企业服务器</title>
+  <link rel="stylesheet" href="workbench.css">
+</head>
+<body>
+  <header class="top"><div><strong>织贸</strong><span>企业服务器</span></div><button id="refresh" type="button">刷新状态</button></header>
+  <div class="layout">
+    <nav aria-label="服务器工作台">
+      <button id="status-tab" type="button" data-page="overview" aria-current="page">服务状态</button>
+      <button id="mail-tab" type="button" data-page="mail" hidden>登录安全</button>
+      <button id="accounts-tab" type="button" data-page="accounts" hidden>账户与权限</button>
+    </nav>
+    <main>
+      <p id="notice" role="status" aria-live="polite"></p>
+      <section id="overview">
+        <h1>服务状态</h1>
+        <dl class="state">
+          <div><dt>网页服务</dt><dd id="server-state">检查中</dd></div>
+          <div><dt>数据库</dt><dd id="database-state">检查中</dd></div>
+          <div><dt>健康检查</dt><dd id="health-state">检查中</dd></div>
+        </dl>
+        <div class="actions">
+          <button id="start" class="primary" type="button" hidden>启动服务</button>
+          <button id="restart" type="button" hidden>重启服务</button>
+          <button id="stop" type="button" hidden>停止服务</button>
+        </div>
+        <p id="install-note" hidden>首次启动会准备本机服务和数据库。</p>
+      </section>
+      <section id="mail" hidden>
+        <h1 id="smtp-title">配置验证码发信</h1>
+        <p id="smtp-saved" hidden>已配置发信邮箱 <strong id="sender-address"></strong></p>
+        <p id="smtp-unreadable" hidden>已保存的配置无法读取，请重新配置 SMTP。</p>
+        <button id="smtp-edit" type="button" hidden>重新配置 SMTP</button>
+        <form id="smtp-form" hidden>
+          <div class="fields">
+            <label>SMTP 主机<input name="host" maxlength="253" autocomplete="off" placeholder="smtp.qiye.aliyun.com" required></label>
+            <label>端口<input name="port" type="number" min="1" max="65535" value="465" required></label>
+            <label>加密方式<select name="security"><option value="ssl">SSL/TLS</option><option value="starttls">STARTTLS</option></select></label>
+            <label>发件邮箱<input name="from_email" type="email" maxlength="254" autocomplete="off" required></label>
+            <label>SMTP 账号<input name="username" maxlength="254" autocomplete="off" required></label>
+            <label>SMTP 授权密码<input name="password" type="password" maxlength="4096" autocomplete="off" required></label>
+          </div>
+          <div class="actions"><button class="primary" type="submit">保存 SMTP</button><button id="smtp-cancel" type="button" hidden>取消重配</button></div>
+        </form>
+        <details class="smtp-guide">
+          <summary>如何获取 SMTP 配置</summary>
+          <h2>阿里企业邮箱</h2>
+          <ol>
+            <li>请邮箱管理员确认发件账号允许第三方客户端登录，并已开通 SMTP 服务。</li>
+            <li>在阿里邮箱网页版打开「设置 → 查看更多设置 → 账户与安全 → 账户安全」。开启「三方客户端安全密码」，点击「生成新密码」并完成身份验证。密码只显示一次。</li>
+            <li>SMTP 主机填 <code>smtp.qiye.aliyun.com</code>，端口填 <strong>465</strong>，加密方式选 <strong>SSL/TLS</strong>。SMTP 账号填完整企业邮箱地址，授权密码填生成的专用密码，发件邮箱填同一邮箱。代发须经邮箱服务商授权。</li>
+            <li>保存后，用自己控制的内部账号请求一次验证码，在收件箱或垃圾邮件中核对发件地址。</li>
+          </ol>
+          <p>其他服务商请查官方发件服务器、端口、加密方式和授权码说明。服务商明确支持时，可用端口 587 和 STARTTLS。</p>
+        </details>
+      </section>
+      <section id="admin" hidden>
+        <h1>创建首个管理员</h1>
+        <form id="admin-form">
+          <div class="fields">
+            <label>管理员账号<input name="username" maxlength="150" autocomplete="off" required></label>
+            <label>管理员邮箱<input name="email" type="email" maxlength="254" autocomplete="off" required></label>
+            <label>管理员密码<input name="password" type="password" maxlength="4096" autocomplete="new-password" required></label>
+            <label>确认密码<input name="password_confirm" type="password" maxlength="4096" autocomplete="new-password" required></label>
+          </div>
+          <button class="primary" type="submit">创建管理员</button>
+        </form>
+      </section>
+      <section id="binding" hidden>
+        <h1>验证管理员邮箱</h1>
+        <form id="binding-form">
+          <div class="fields">
+            <label>管理员账号<input name="username" maxlength="150" autocomplete="off" required></label>
+            <label id="binding-email">管理员邮箱<input name="email" type="email" maxlength="254" autocomplete="off"></label>
+          </div>
+          <button class="primary" type="submit">发送绑定码</button>
+        </form>
+        <form id="code-form">
+          <label>邮箱绑定码<input name="code" inputmode="numeric" maxlength="8" pattern="[0-9]{8}" autocomplete="one-time-code" required></label>
+          <button class="primary" type="submit">验证绑定码</button>
+        </form>
+      </section>
+      <section id="accounts" hidden>
+        <h1>账户与权限</h1>
+        <p>在企业控制台管理账号与用户组、查看实际数据权限，或使用已授权的服务器操作。</p>
+        <button id="open-console" class="primary" type="button">打开企业控制台</button>
+      </section>
+    </main>
+  </div>
+  <script src="renderer.js"></script>
+</body>
+</html>

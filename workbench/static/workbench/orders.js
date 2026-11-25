@@ -89,14 +89,16 @@
     status.textContent = '正在读取订单跟进记录…'
     results.replaceChildren()
     try {
-      const apiUrl = globalThis.TradeLoomBusiness?.businessUrl(`/api/orders?order_key=${encodeURIComponent(key)}`)
-        || `/api/orders?order_key=${encodeURIComponent(key)}`
-      const response = await fetch(apiUrl, { headers: { Accept: 'application/json' } })
+      const query = `?order_key=${encodeURIComponent(key)}`
+      const apiUrl = form.dataset.apiUrl
+        ? `${form.dataset.apiUrl}${query}`
+        : globalThis.TradeLoomBusiness?.businessUrl(`/api/orders${query}`) || `/api/orders${query}`
+      const response = await fetch(apiUrl, { headers: { Accept: 'application/json' }, credentials: 'same-origin', cache: 'no-store' })
       const body = await response.json()
       if (!response.ok || body.ok !== true || body.order?.order_key !== key) throw new Error(body.error_code || 'invalid_order_followup')
       showOrder(body.order)
       status.textContent = '订单跟进读取完成。'
-      history.replaceState(null, '', `/business/orders?order_key=${encodeURIComponent(key)}`)
+      history.replaceState(null, '', `${form.dataset.historyPath || '/business/orders'}?order_key=${encodeURIComponent(key)}`)
     } catch (error) {
       status.textContent = `读取失败：${error.message || 'request_failed'}`
     }

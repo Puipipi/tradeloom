@@ -31,6 +31,10 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "enterprise_portal.local_console_middleware.LocalConsoleSessionMiddleware",
+    "enterprise_portal.email_login.EmailVerificationMiddleware",
+    "enterprise_portal.middleware.EnterpriseRoleBoundaryMiddleware",
+    "enterprise_portal.middleware.LivePolicySnapshotMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -39,6 +43,7 @@ TEMPLATES[0]["OPTIONS"]["context_processors"] = [
     "django.template.context_processors.request",
     "django.contrib.auth.context_processors.auth",
     "django.contrib.messages.context_processors.messages",
+    "enterprise_portal.policy.live_policy_context",
 ]
 
 ROOT_URLCONF = "config.enterprise_urls"

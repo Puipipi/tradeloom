@@ -21,6 +21,13 @@ _STORAGE_KEY = re.compile(r"^[a-f0-9]{64}\.xlsx$")
 _REQUIRED_PARTS = {"[Content_Types].xml", "xl/workbook.xml", "xl/_rels/workbook.xml.rels"}
 
 
+def _check_directory_path(path: Path) -> None:
+    for current in (path, *path.parents):
+        info = current.lstat()
+        if not stat.S_ISDIR(info.st_mode) or getattr(info, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400):
+            raise ValidationError("私有资料存储路径无效。")
+
+
 def verify_source_root() -> Path:
     root = getattr(settings, "TRADELOOM_INTAKE_ROOT", None)
     data_root = getattr(settings, "TRADELOOM_DATA_ROOT", None)
@@ -31,12 +38,7 @@ def verify_source_root() -> Path:
     try:
         if root.resolve(strict=True) != expected.resolve(strict=True):
             raise ValidationError("私有资料存储路径无效。")
-        current = root
-        while current != current.parent:
-            info = current.lstat()
-            if stat.S_ISLNK(info.st_mode) or getattr(info, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400):
-                raise ValidationError("私有资料存储路径无效。")
-            current = current.parent
+        _check_directory_path(root)
         marker = root / INTAKE_MARKER
         marker_info = marker.lstat()
         if not stat.S_ISREG(marker_info.st_mode) or marker.read_text(encoding="utf-8") != INTAKE_MARKER_CONTENT:
@@ -48,6 +50,24 @@ def verify_source_root() -> Path:
     if any(root == public or root in public.parents or public in root.parents for public in (media_root, static_root)):
         raise ValidationError("私有资料存储路径无效。")
     return root
+
+
+def initialize_source_root() -> Path:
+    """Provision an empty owned intake directory, or verify the existing store."""
+    if settings.TRADELOOM_DATA_ROOT is None or settings.TRADELOOM_INTAKE_ROOT is None:
+        raise ValidationError("私有资料存储尚未配置。")
+    data_root = Path(settings.TRADELOOM_DATA_ROOT)
+    if data_root / "private" / "intake" != settings.TRADELOOM_INTAKE_ROOT:
+        raise ValidationError("私有资料存储路径无效。")
+    _check_directory_path(data_root)
+    root = _private_directory(data_root, "private", "intake", create=True)
+    if not any(root.iterdir()):
+        try:
+            with (root / INTAKE_MARKER).open("x", encoding="utf-8", newline="\n") as marker:
+                marker.write(INTAKE_MARKER_CONTENT)
+        except FileExistsError:
+            pass
+    return verify_source_root()
 
 
 def _private_directory(root: Path, *parts: str, create: bool = False) -> Path:

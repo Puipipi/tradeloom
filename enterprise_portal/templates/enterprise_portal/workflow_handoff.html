@@ -1,0 +1,43 @@
+{% load static %}<!doctype html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="same-origin">
+  <title>跨设备接力 · 织贸企业服务</title>
+  <link rel="stylesheet" href="{% static 'enterprise_portal/console.css' %}">
+  <link rel="stylesheet" href="{% static 'enterprise_portal/portal.css' %}">
+</head>
+<body class="portal">
+  <header class="portal-header">
+    <h1>跨设备接力</h1>
+    {% if workflow_id %}
+      <a href="{% url 'enterprise-workflow-detail' workflow_id %}">返回工作流</a>
+    {% else %}
+      <a href="{% url 'enterprise-home' %}">返回企业首页</a>
+    {% endif %}
+  </header>
+  <main class="portal-content">
+    {% if code %}
+      <section>
+        <h2>在另一设备打开工作流</h2>
+        <p>在另一设备用同一企业账号登录，打开「接收工作流」，输入以下接力码。接力码五分钟内有效，使用一次后失效。</p>
+        <label for="handoff-code">接力码</label>
+        <input id="handoff-code" type="text" value="{{ code }}" readonly autocomplete="off" spellcheck="false">
+      </section>
+    {% else %}
+      <section>
+        <h2>接收工作流</h2>
+        <form method="post" action="{% url 'enterprise-workflow-handoff-receive' %}">
+          {% csrf_token %}
+          {% if invalid %}<p role="alert">接力码不可用。请在另一会话重新生成接力码。</p>{% endif %}
+          <p><label for="handoff-code">接力码</label>
+          <input id="handoff-code" name="code" type="text" maxlength="22" required autocomplete="off" autocapitalize="none" spellcheck="false"></p>
+          <button type="submit">打开工作流</button>
+        </form>
+      </section>
+    {% endif %}
+  </main>
+  {% include "enterprise_portal/live_permissions.html" %}
+</body>
+</html>

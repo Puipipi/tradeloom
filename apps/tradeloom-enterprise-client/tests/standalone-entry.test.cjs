@@ -16,7 +16,7 @@ test('enterprise launcher starts Electron only and does not start local Django, 
 
 test('remote window has no preload or Node and enables browser isolation', () => {
   const main = read('apps/tradeloom-enterprise-client/main.cjs')
-  const remote = main.slice(main.indexOf('productWindow = new BrowserWindow'), main.indexOf('const targetUrl = enterpriseUrl'))
+  const remote = main.slice(main.indexOf('candidate = new BrowserWindow'), main.indexOf('const targetUrl = enterpriseUrl'))
   assert.match(remote, /contextIsolation:\s*true/)
   assert.match(remote, /sandbox:\s*true/)
   assert.match(remote, /nodeIntegration:\s*false/)

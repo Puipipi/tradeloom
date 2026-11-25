@@ -1,0 +1,134 @@
+{% load static %}<!doctype html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{% if runs_page %}运行记录{% else %}业务工作流{% endif %} · 织贸企业服务</title>
+  <link rel="stylesheet" href="{% static 'enterprise_portal/console.css' %}">
+  <link rel="stylesheet" href="{% static 'enterprise_portal/portal.css' %}">
+</head>
+<body class="portal business-workflows-page">
+  <header class="portal-header">
+    <h1>{% if runs_page %}运行记录{% else %}业务工作流{% endif %}</h1>
+    {% if workflow or runs_page %}
+      <a href="{% url 'enterprise-workflows' %}">返回工作流列表</a>
+    {% else %}
+      <a href="{% url 'enterprise-home' %}">返回企业首页</a>
+    {% endif %}
+  </header>
+  <main class="portal-content">
+    {% if runs_page %}
+      <section aria-label="业务工作流运行记录">
+        <ul>
+          {% for run in runs %}
+            <li>
+              <a href="{% url 'enterprise-workflow-detail' run.task_id %}">{{ run.title }}</a>
+              <div>{{ run.label }} · {{ run.status }} · 第 {{ run.attempt }} 次</div>
+              {% if run.started_at %}<div>开始 {{ run.started_at|date:"Y-m-d H:i" }}</div>{% endif %}
+              {% if run.finished_at %}<div>结束 {{ run.finished_at|date:"Y-m-d H:i" }}</div>{% endif %}
+            </li>
+          {% empty %}<li>暂无业务工作流运行记录。</li>{% endfor %}
+        </ul>
+      </section>
+    {% elif workflow %}
+      <section>
+        <h2>{{ workflow.title }}</h2>
+        <p>{{ workflow.kind }} · {{ workflow.status }} · {{ workflow.updated_at|date:"Y-m-d H:i" }}</p>
+        <form method="post" action="{% url 'enterprise-workflow-handoff-start' workflow.id %}">
+          {% csrf_token %}
+          <button type="submit">在另一设备继续</button>
+        </form>
+      </section>
+      {% include "enterprise_portal/workflow_english_review.html" %}
+      {% if generation_form %}
+        <section>
+          <h2>交付草稿</h2>
+          <form method="post" action="{% url 'enterprise-generate-workflow-delivery' workflow.id %}" class="workflow-delivery-decisions">
+            {% csrf_token %}
+            <input type="hidden" name="confirmation" value="{{ generation_form.confirmation }}">
+            <button type="submit">{{ generation_form.label }}</button>
+          </form>
+        </section>
+      {% endif %}
+      {% if delivery_review %}
+        <section id="delivery-review">
+          <h2>交付文件审核</h2>
+          {% if delivery_review.result %}
+            <p>{{ delivery_review.result }}</p>
+            {% if delivery_completed %}<p>工作流已完成</p>{% endif %}
+            {% if can_complete_delivery %}
+              <form method="post" action="{% url 'enterprise-complete-workflow-delivery' workflow.id %}" class="workflow-delivery-decisions">
+                {% csrf_token %}
+                <button type="submit">完成工作流</button>
+              </form>
+            {% endif %}
+          {% else %}
+            <ul>
+              {% for version in delivery_review.versions %}
+                <li>
+                  {{ version.label }} · 第 {{ version.number }} 版
+                  {% if version.preview %}<a href="{% url 'enterprise-delivery-preview' workflow.id version.id %}">预览</a>{% endif %}
+                  <a href="{% url 'enterprise-delivery-download' workflow.id version.id %}">下载</a>
+                </li>
+              {% endfor %}
+            </ul>
+            <form method="post" action="{% url 'enterprise-review-workflow-delivery' workflow.id delivery_review.step_id %}" class="workflow-delivery-decisions">
+              {% csrf_token %}
+              <button type="submit" name="decision" value="approve">批准交付包</button>
+              <button type="submit" name="decision" value="reject">驳回交付包</button>
+            </form>
+          {% endif %}
+        </section>
+      {% endif %}
+      <section id="workflow-tasks">
+        <h2>任务与依赖</h2>
+        {% if dispatch_confirmation %}
+          <form method="post" action="{% url 'enterprise-dispatch-workflow-next' workflow.id %}" class="workflow-delivery-decisions">
+            {% csrf_token %}
+            <input type="hidden" name="confirmation" value="{{ dispatch_confirmation }}">
+            <button type="submit">执行下一步（本地模拟）</button>
+          </form>
+        {% endif %}
+        <ol>
+          {% for node in nodes %}
+            <li id="task-{{ node.number }}">
+              <strong>{{ node.label }}</strong> · {{ node.status }}
+              {% if node.dependencies %}
+                <div>依赖{% for dependency in node.dependencies %} <a href="#task-{{ dependency }}">任务 {{ dependency }}</a>{% if not forloop.last %}、{% endif %}{% endfor %}</div>
+              {% endif %}
+            </li>
+          {% empty %}<li>当前没有已记录的任务。</li>{% endfor %}
+        </ol>
+      </section>
+      <section>
+        <h2>已记录步骤</h2>
+        <ol>
+          {% for step in steps %}
+            <li>{{ step.label }} · {{ step.status }} · 第 {{ step.attempt }} 次</li>
+          {% empty %}<li>当前没有已记录的步骤。</li>{% endfor %}
+        </ol>
+      </section>
+    {% else %}
+      <section>
+        <h2>服务端业务工作流</h2>
+        <p><a href="{% url 'enterprise-portable-canvas' %}">便携工作流画布</a></p>
+        <ul>
+          {% for row in rows %}
+            <li><a href="{% url 'enterprise-workflow-detail' row.id %}">{{ row.title }}</a>
+              <div>{{ row.kind }} · {{ row.status }} · {{ row.updated_at|date:"Y-m-d H:i" }}</div>
+            </li>
+          {% empty %}<li>当前没有已保存的业务工作流。</li>{% endfor %}
+        </ul>
+      </section>
+    {% endif %}
+    {% if page.paginator.num_pages > 1 %}
+      <nav aria-label="{% if runs_page %}运行记录分页{% else %}工作流列表分页{% endif %}">
+        {% if page.has_previous %}<a href="?page={{ page.previous_page_number }}">上一页</a>{% endif %}
+        <span>{{ page.number }} / {{ page.paginator.num_pages }}</span>
+        {% if page.has_next %}<a href="?page={{ page.next_page_number }}">下一页</a>{% endif %}
+      </nav>
+    {% endif %}
+  </main>
+  {% include "enterprise_portal/live_permissions.html" %}
+</body>
+</html>

@@ -1,0 +1,40 @@
+{% load static %}<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>订单与生产 · 织贸企业服务</title>
+  <link rel="stylesheet" href="{% static 'enterprise_portal/console.css' %}">
+  <link rel="stylesheet" href="{% static 'enterprise_portal/portal.css' %}">
+</head>
+<body class="portal business-page business-orders">
+  <header class="portal-header"><h1>订单与生产</h1><a href="/enterprise/">返回企业首页</a></header>
+  <main class="portal-content">
+    <nav class="business-nav" aria-label="只读业务资料">
+      {% if caps.business_data %}<a href="/enterprise/business/products/">批次与商品</a>{% endif %}
+      {% if caps.customer_data %}<a href="/enterprise/business/customers/">客户名录</a>{% endif %}
+      {% if caps.quotation_data %}<a href="/enterprise/business/quotations/">来源报价</a>{% endif %}
+      <a href="/enterprise/business/orders/" aria-current="page">订单与生产</a>
+    </nav>
+    <section class="orders-page" aria-labelledby="orders-heading" data-testid="orders-page">
+      <div class="orders-heading"><p class="eyebrow">订单跟进 · 只读</p><h2 id="orders-heading">查找一笔订单</h2><p>输入完整订单编号，查看来源、生产进度与出货回款记录。</p></div>
+      <form id="order-followup-form" class="orders-search" role="search" data-api-url="/enterprise/business/api/orders" data-history-path="/enterprise/business/orders/">
+        <label for="order-key">订单编号</label>
+        <input id="order-key" name="order_key" maxlength="140" required autocomplete="off" placeholder="输入销售订单或来源订单编号" data-testid="order-key-input">
+        <button class="primary" type="submit" data-testid="order-search">查询</button>
+      </form>
+      <p id="order-followup-status" class="orders-status" role="status" aria-live="polite"></p>
+      <div id="order-followup-results" class="order-results" data-testid="order-followup-results">
+        <div class="order-empty" data-testid="order-empty-state">
+          <h3>从订单编号开始</h3><p>编号按完整内容精确匹配；候选关联仍会标明待确认状态。</p>
+          <div class="order-stage-guide" aria-label="可查看的订单阶段">
+            <div><span>01</span><strong>来源与询报价</strong></div><div><span>02</span><strong>核料与采购</strong></div><div><span>03</span><strong>到料与生产</strong></div><div><span>04</span><strong>出货与回款</strong></div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <p class="orders-boundary">仅查询当前企业数据库的已登记来源和跟进记录；不创建或修改订单，不替代 ERP。ERPNext 未配置时仍可查询本地已登记记录。</p>
+  </main>
+  {% include "enterprise_portal/live_permissions.html" %}
+  <script src="{% static 'workbench/orders.js' %}" defer></script>
+</body>
+</html>

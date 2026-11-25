@@ -2,7 +2,9 @@
   [string]$RuntimeSource,
   [string]$DataRoot = (Join-Path $env:LOCALAPPDATA 'TradeLoomEnterpriseServer'),
   [int]$Port = 27417,
-  [string]$ExternalHttpsUrl = ''
+  [string]$ExternalHttpsUrl = '',
+  [int]$PostgresPort = 56427,
+  [switch]$DeferAdministratorSetup
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'EnterpriseServerHttps.ps1')
@@ -57,6 +59,12 @@ function Invoke-Checked([string]$Executable, [string[]]$Arguments, [string]$Fail
 }
 
 if ($Port -lt 1024 -or $Port -gt 65535) { throw 'HTTP port must be between 1024 and 65535.' }
+if ($PostgresPort -lt 1024 -or $PostgresPort -gt 65535) { throw 'PostgreSQL port must be between 1024 and 65535.' }
+if ($PostgresPort -eq $Port) { throw 'PostgreSQL port must differ from the HTTP port.' }
+if (Get-NetTCPConnection -State Listen -LocalPort $PostgresPort -ErrorAction SilentlyContinue) {
+  throw "Private PostgreSQL port $PostgresPort is already in use; no data folder or existing service was changed."
+}
+$pgPort = $PostgresPort
 $httpsConfiguration = Get-EnterpriseHttpsConfiguration -ExternalHttpsUrl $ExternalHttpsUrl
 if (Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue) {
   throw "HTTP port $Port is already in use; no existing service was changed."
@@ -103,10 +111,6 @@ $pgData = Join-Path $dataPath 'postgres-data'
 $logRoot = Join-Path $dataPath 'logs'
 $secretRoot = Join-Path $dataPath 'secrets'
 New-Item -ItemType Directory -Force -Path $pgData, $logRoot, $secretRoot | Out-Null
-$pgPort = 56427
-if (Get-NetTCPConnection -State Listen -LocalPort $pgPort -ErrorAction SilentlyContinue) {
-  throw "Private PostgreSQL port $pgPort is already in use; no existing service was stopped or changed."
-}
 
 $pgAdminPassword = New-RandomHex 32
 $databasePassword = New-RandomHex 32
@@ -141,19 +145,22 @@ password_encryption = scram-sha-256
 "@
 Add-Content -LiteralPath (Join-Path $pgData 'postgresql.conf') -Value $configAppend -Encoding ASCII
 $pgCtl = Join-Path $pgBin 'pg_ctl.exe'
-$pgCtlArgs = "-D `"$pgData`" -l `"$(Join-Path $logRoot 'postgresql.log')`" -o `"-h 127.0.0.1 -p $pgPort`" start"
+$pgCtlArgs = "-D `"$pgData`" -l `"$(Join-Path $logRoot 'postgresql.log')`" -o `"-h 127.0.0.1 -p $pgPort`" -w -t 10 start"
 $pgStart = Start-Process -FilePath $pgCtl -ArgumentList $pgCtlArgs -PassThru -WindowStyle Hidden `
   -RedirectStandardOutput (Join-Path $logRoot 'pgctl-start.log') `
   -RedirectStandardError (Join-Path $logRoot 'pgctl-start-error.log')
-$pgReady = Join-Path $pgBin 'pg_isready.exe'
-$pgStarted = $false
-for ($attempt = 0; $attempt -lt 40; $attempt++) {
-  & $pgReady -h 127.0.0.1 -p $pgPort | Out-Null
-  if ($LASTEXITCODE -eq 0) { $pgStarted = $true; break }
-  if ($pgStart.HasExited -and $pgStart.ExitCode -ne 0) { break }
-  Start-Sleep -Milliseconds 250
-}
-if (-not $pgStarted) { throw 'PostgreSQL startup failed; inspect the private logs folder.' }
+$null = $pgStart.Handle # Retain the process handle so PS5.1 preserves ExitCode.
+# Wait for pg_ctl itself, not Start-Process -Wait (which can wait for its
+# long-lived postgres child on Windows). pg_ctl owns the readiness timeout.
+if (-not $pgStart.WaitForExit(15000)) { throw 'PostgreSQL startup timed out; inspect the private logs folder.' }
+if ($pgStart.ExitCode -ne 0) { throw 'PostgreSQL startup failed; inspect the private logs folder.' }
+& $pgCtl -D $pgData status 2>$null | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'The private PostgreSQL process is not running; no SQL was sent.' }
+$ownedPgPid = 0
+$postmasterFile = Join-Path $pgData 'postmaster.pid'
+if (-not (Test-Path -LiteralPath $postmasterFile) -or -not [int]::TryParse((Get-Content -LiteralPath $postmasterFile -TotalCount 1), [ref]$ownedPgPid)) { throw 'Cannot verify the private PostgreSQL PID; no SQL was sent.' }
+$pgListeners = @(Get-NetTCPConnection -LocalAddress '127.0.0.1' -LocalPort $pgPort -State Listen -ErrorAction SilentlyContinue)
+if ($ownedPgPid -le 0 -or $pgListeners.Count -ne 1 -or $pgListeners[0].OwningProcess -ne $ownedPgPid) { throw 'PostgreSQL listener ownership does not match this installation; no SQL was sent.' }
 
 $env:PGPASSWORD = $pgAdminPassword
 try {
@@ -189,7 +196,34 @@ try {
   Invoke-Checked $python @('-B', 'manage.py', 'check') 'Django configuration check failed.'
   Invoke-Checked $python @('-B', 'manage.py', 'migrate', '--noinput') 'Database migrations failed.'
   Invoke-Checked $python @('-B', 'manage.py', 'configure_enterprise_groups') 'Default business groups setup failed.'
-  Invoke-Checked $python @('-B', 'manage.py', 'createsuperuser') 'Boss administrator creation failed.'
+  if (-not $DeferAdministratorSetup) {
+    $adminUsername = Read-Host 'First administrator username'
+    $adminEmail = Read-Host 'Mailbox to verify after SMTP setup'
+    $adminPassword = Read-Host 'First administrator password' -AsSecureString
+    $passwordPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($adminPassword)
+    $oldOutputEncoding = $OutputEncoding
+    $oldPythonEncoding = $env:PYTHONIOENCODING
+    try {
+      $OutputEncoding = New-Object Text.UTF8Encoding($false)
+      $env:PYTHONIOENCODING = 'utf-8'
+      $payload = @{
+        username=$adminUsername; email=$adminEmail
+        password=[Runtime.InteropServices.Marshal]::PtrToStringBSTR($passwordPointer)
+      } | ConvertTo-Json -Compress
+      $result = $payload | & $python '-B' (Join-Path $PSScriptRoot 'server-gui-admin.py') $dataPath 'create' | ConvertFrom-Json
+      if ($LASTEXITCODE -ne 0 -or -not $result.ok) {
+        Write-Warning 'First administrator setup failed. Use the server window to refresh and resume administrator setup.'
+      } else {
+        Write-Host 'First administrator created. Configure SMTP and verify the mailbox in Login Security Settings.'
+      }
+    } finally {
+      $payload = $null
+      [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($passwordPointer)
+      $adminPassword.Dispose()
+      $OutputEncoding = $oldOutputEncoding
+      $env:PYTHONIOENCODING = $oldPythonEncoding
+    }
+  }
 } finally {
   Pop-Location
   Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue

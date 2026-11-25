@@ -1,0 +1,27 @@
+{% if review.unavailable %}
+  <p>图片候选已失效，请返回工作流核对。</p>
+{% elif review.candidates %}
+  {% if review.can_submit %}
+    <form method="post" action="{% url 'enterprise-submit-english-review' workflow.id review.id %}">
+      {% csrf_token %}
+      <fieldset>
+        <legend>请选择一张图片</legend>
+        {% for candidate in review.candidates %}
+          <label class="workflow-image-choice">
+            <span><input type="radio" name="task_file_id" value="{{ candidate.id }}" required>
+              候选 {{ candidate.number }} · {{ candidate.name }}</span>
+            <img src="{% url 'enterprise-review-image-preview' workflow.id review.id candidate.id %}"
+                 alt="候选 {{ candidate.number }}" width="112" height="112">
+          </label>
+        {% endfor %}
+      </fieldset>
+      <button type="submit">提交选图</button>
+    </form>
+  {% else %}
+    {% for candidate in review.candidates %}
+      <p>所选图片 {{ candidate.number }} · {{ candidate.name }}</p>
+      <img class="workflow-image-thumbnail" src="{% url 'enterprise-review-image-preview' workflow.id review.id candidate.id %}"
+           alt="所选图片 {{ candidate.number }}" width="112" height="112">
+    {% endfor %}
+  {% endif %}
+{% endif %}

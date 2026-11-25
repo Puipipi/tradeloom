@@ -1,16 +1,21 @@
 ﻿param(
   [string]$DataRoot = (Join-Path $env:LOCALAPPDATA 'TradeLoomEnterpriseServer'),
   [string]$RuntimeSource = '',
-  [int]$Port = 27417
+  [int]$Port = 27417,
+  [int]$PostgresPort = 56427
 )
 $ErrorActionPreference = 'Stop'
 try {
   $config = Join-Path ([IO.Path]::GetFullPath($DataRoot)) 'server-config.json'
   if (Test-Path -LiteralPath $config -PathType Leaf) {
+    if ($PSBoundParameters.ContainsKey('PostgresPort')) {
+      $saved = Get-Content -LiteralPath $config -Raw | ConvertFrom-Json
+      if ($PostgresPort -ne [int]$saved.postgres_port) { throw 'PostgresPort differs from the installed port; existing data was left unchanged. Start without an override to reuse the installation.' }
+    }
     & (Join-Path $PSScriptRoot 'Start-EnterpriseServer.ps1') -DataRoot $DataRoot
   } else {
     Write-Host '首次启动：将安装独立台账服务，请自行设置管理员用户名和密码。'
-    & (Join-Path $PSScriptRoot 'Install-EnterpriseServer.ps1') -DataRoot $DataRoot -RuntimeSource $RuntimeSource -Port $Port
+    & (Join-Path $PSScriptRoot 'Install-EnterpriseServer.ps1') -DataRoot $DataRoot -RuntimeSource $RuntimeSource -Port $Port -PostgresPort $PostgresPort
   }
   # Resume administrator setup after an interrupted first installation.
   $installed = Get-Content -LiteralPath $config -Raw | ConvertFrom-Json

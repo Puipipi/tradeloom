@@ -4,7 +4,8 @@ import re
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
-from django.test import Client, TestCase
+from django.test import override_settings
+from .testing import EmailVerifiedClient as Client, EmailVerifiedTestCase as TestCase
 from django.utils import timezone
 
 from enterprise_portal.management.commands.configure_enterprise_groups import Command
@@ -54,7 +55,6 @@ class EnterprisePortalAccessTests(TestCase):
         csrf = re.search(rb'name="csrfmiddlewaretoken" value="([^"]+)"', page.content).group(1).decode()
         created = registrar.post("/enterprise/entries", {
             "csrfmiddlewaretoken": csrf,
-            "task_id": self.task.pk,
             "body": "registrar-new-private",
         })
         self.assertEqual(created.status_code, 302)
@@ -113,6 +113,25 @@ class EnterprisePortalAccessTests(TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertFalse(EnterpriseEntry.objects.filter(body="not-shared-to-unapproved-factory").exists())
 
+    def test_owner_factory_picker_and_two_factory_registration_scope(self):
+        first = Group.objects.create(name="工厂:合成甲")
+        second = Group.objects.create(name="工厂:合成乙")
+        self.registrar.groups.add(first)
+        self.registrar2.groups.add(second)
+        self.client.force_login(self.owner)
+        self.assertSetEqual(set(self.client.get("/enterprise/").context["factory_groups"]), {first, second})
+        self.assertEqual(self.client.post("/enterprise/entries", {"factory_group": second.pk, "body": "owner-to-second"}).status_code, 302)
+        self.client.force_login(self.registrar)
+        self.assertEqual(list(self.client.get("/enterprise/").context["factory_groups"]), [first])
+        self.assertEqual(self.client.post("/enterprise/entries", {"factory_group": first.pk, "body": "first-factory"}).status_code, 302)
+        self.assertEqual(self.client.post("/enterprise/entries", {"factory_group": second.pk, "body": "cross-factory-denied"}).status_code, 403)
+        self.client.force_login(self.registrar2)
+        page = self.client.get("/enterprise/")
+        self.assertContains(page, "owner-to-second")
+        self.assertNotContains(page, "first-factory")
+        self.assertEqual(self.client.post("/enterprise/entries", {"factory_group": second.pk, "body": "second-factory"}).status_code, 302)
+        self.assertEqual(self.client.post("/enterprise/entries", {"factory_group": first.pk, "body": "reverse-cross-denied"}).status_code, 403)
+
     def test_admin_can_manage_auth_accounts_and_groups(self):
         admin = Client()
         admin.force_login(self.admin)
@@ -130,13 +149,19 @@ class EnterprisePortalAccessTests(TestCase):
         Command().handle()
         self.assertTrue(self.registrar_group.permissions.filter(pk=extra.pk).exists())
 
+    @override_settings(ENTERPRISE_LOGIN_MAIL_TEST_BACKEND='django.core.mail.backends.locmem.EmailBackend')
     def test_csrf_logout_and_disabled_account(self):
+        self.registrar.email = 'registrar@example.invalid'; self.registrar.save(update_fields=['email'])
         client = Client(enforce_csrf_checks=True)
         page = client.get("/accounts/login/")
         csrf = re.search(rb'name="csrfmiddlewaretoken" value="([^"]+)"', page.content).group(1).decode()
         response = client.post("/accounts/login/", {
             "username": "registrar", "password": "Registrar-test-pass-123", "csrfmiddlewaretoken": csrf,
         })
+        self.assertEqual(response.status_code, 200)
+        from django.core import mail
+        code = re.search(r'\b([0-9]{6})\b', mail.outbox[-1].body).group(1)
+        response = client.post('/accounts/login/', {'action': 'verify', 'code': code, 'csrfmiddlewaretoken': csrf})
         self.assertEqual(response.status_code, 302)
         self.assertEqual(client.post("/enterprise/entries", {"body": "csrf-required"}).status_code, 403)
         page = client.get("/enterprise/")
@@ -152,4 +177,82 @@ class EnterprisePortalAccessTests(TestCase):
             "username": inactive.username, "password": "Inactive-test-pass-123", "csrfmiddlewaretoken": login_csrf,
         })
         self.assertEqual(denied.status_code, 200)
-        self.assertContains(denied, "用户名或密码不正确")
+        self.assertContains(denied, "账号或密码不正确")
+
+
+class EnterprisePolicyBoundaryTests(TestCase):
+    setUpTestData = classmethod(EnterprisePortalAccessTests.setUpTestData.__func__)
+    def test_capability_roles_and_no_sensitive_records(self):
+        from enterprise_portal.policy import policy_payload, is_enterprise_owner
+        from django.contrib.auth.models import AnonymousUser
+        self.assertFalse(is_enterprise_owner(AnonymousUser()))
+        for user, owner in [(self.owner, True), (self.registrar, False), (self.admin, True)]:
+            data = policy_payload(user)
+            self.assertEqual(data["capabilities"]["local_workbench"], owner)
+            self.assertEqual(data["capabilities"]["owner_tools"], owner)
+            self.assertNotIn(self.task.title, str(data))
+            ssh = next(row for row in data["permission_rows"] if row["key"] == "ssh")
+            self.assertEqual(ssh["read"], data["capabilities"]["server_ops"])
+            self.assertFalse(ssh["write"])
+            self.assertIn("不代表登录授权", ssh["scope"])
+        self.registrar.user_permissions.add(Permission.objects.get(codename="view_business_data"))
+        user = get_user_model().objects.get(pk=self.registrar.pk)
+        self.assertFalse(policy_payload(user)["capabilities"]["business_data"])
+        self.assertFalse(is_enterprise_owner(user))
+
+    def test_registrar_cannot_probe_task_or_receive_linked_title(self):
+        client = Client()
+        client.force_login(self.registrar)
+        for task_id in [str(self.task.pk), "999999999"]:
+            response = client.post("/enterprise/entries", {"task_id": task_id, "body": "blocked-probe"})
+            self.assertEqual(response.status_code, 403)
+        data = client.get("/api/enterprise/records").json()
+        self.assertNotIn("task_id", str(data))
+        self.assertNotIn(self.task.title, str(data))
+        self.assertFalse(EnterpriseEntry.objects.filter(body="blocked-probe").exists())
+
+    def test_other_factory_and_non_factory_groups_do_not_share(self):
+        from enterprise_portal.policy import visible_entries
+        other_factory = Group.objects.create(name="工厂:other")
+        generic = self.registrar_group
+        own_elsewhere = EnterpriseEntry.objects.create(created_by=self.registrar, factory_group=other_factory, body="other-factory")
+        generic_entry = EnterpriseEntry.objects.create(created_by=self.registrar2, factory_group=generic, body="not-a-factory")
+        ids = set(visible_entries(self.registrar).values_list("pk", flat=True))
+        self.assertNotIn(own_elsewhere.pk, ids)
+        self.assertNotIn(generic_entry.pk, ids)
+
+    def test_no_permission_account_denied_api_and_disabled_owner(self):
+        from enterprise_portal.policy import is_enterprise_owner
+        user = get_user_model().objects.create_user("no-permissions")
+        client = Client(); client.force_login(user)
+        self.assertEqual(client.get("/api/enterprise/records").status_code, 403)
+        self.owner.is_active = False
+        self.assertFalse(is_enterprise_owner(self.owner))
+
+    def test_explicit_technician_and_conflicting_factory_roles(self):
+        from enterprise_portal.policy import capability_policy, is_enterprise_owner
+        tech = get_user_model().objects.create_user("technician")
+        tech.user_permissions.add(Permission.objects.get(codename="use_server_operations"))
+        self.assertTrue(capability_policy(tech)["server_ops"])
+        self.assertFalse(capability_policy(tech)["owner_tools"])
+        self.assertFalse(capability_policy(tech)["local_workbench"])
+        self.owner.groups.add(self.registrar_group)
+        self.owner.user_permissions.add(Permission.objects.get(codename="use_server_operations"))
+        self.assertFalse(is_enterprise_owner(self.owner))
+        self.assertFalse(capability_policy(self.owner)["server_ops"])
+        self.assertFalse(capability_policy(self.owner)["business_data"])
+
+    def test_capabilities_endpoint_and_factory_admin_hard_deny(self):
+        response = self.client.get("/enterprise/capabilities/")
+        self.assertEqual(response.status_code, 302)
+        self.client.force_login(self.registrar)
+        response = self.client.get("/enterprise/capabilities/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Cache-Control"], "no-store")
+        self.assertFalse(response.json()["capabilities"]["server_ops"])
+        self.registrar.is_staff = True
+        self.registrar.is_superuser = True
+        self.registrar.save()
+        self.client.force_login(self.registrar)
+        self.assertEqual(self.client.get("/admin/").status_code, 403)
+        self.assertEqual(self.client.get("/admin/enterprise_portal/enterpriseentry/").status_code, 403)

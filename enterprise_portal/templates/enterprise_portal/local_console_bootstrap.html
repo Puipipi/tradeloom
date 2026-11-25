@@ -1,0 +1,23 @@
+<!doctype html><html lang="zh-Hans"><head><meta charset="utf-8">
+<script>
+// Remove the fragment before rendering or sending any request.
+const localGrant = location.hash.slice(1); history.replaceState(null, '', location.pathname);
+</script>
+<meta name="referrer" content="no-referrer"><title>服务器本机控制台</title></head>
+<body><p id="status">正在验证本机授权…</p><form hidden>{% csrf_token %}</form>
+<script>
+(async () => {
+  const status = document.getElementById('status');
+  if (!/^[A-Za-z0-9_-]{43}$/.test(localGrant)) { status.textContent = '请重新运行服务器本机入口。'; return; }
+  try {
+    const response = await fetch('/enterprise/local-console/redeem/', {
+      method: 'POST', credentials: 'same-origin', redirect: 'error',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded',
+        'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value},
+      body: new URLSearchParams({grant: localGrant})
+    });
+    if (!response.ok) throw new Error('授权失效');
+    await response.json(); location.replace('/enterprise/console/');
+  } catch (_) { status.textContent = '本机授权已失效，请重新运行入口或正常登录。'; }
+})();
+</script></body></html>

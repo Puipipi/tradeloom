@@ -1,0 +1,35 @@
+{% if review.upload_confirmation %}
+  <form method="post" enctype="multipart/form-data" action="{% url 'enterprise-review-image-upload' workflow.id review.id %}">
+    {% csrf_token %}
+    <input type="hidden" name="confirmation" value="{{ review.upload_confirmation }}">
+    <label>选择图片（最多 5 MB）
+      <input type="file" name="image" accept=".png,.jpg,.jpeg,.webp,.gif,.svg" required>
+    </label>
+    <button type="submit">上传补图</button>
+  </form>
+{% endif %}
+{% if review.unavailable %}<p>已选补图不可用，请返回工作流核对。</p>{% endif %}
+{% if review.uploads %}
+  {% if review.can_submit %}
+    <form method="post" action="{% url 'enterprise-submit-english-review' workflow.id review.id %}">
+      {% csrf_token %}
+      <fieldset>
+        <legend>选择已上传的图片</legend>
+        {% for upload in review.uploads %}
+          <label class="workflow-image-choice">
+            <span><input type="radio" name="upload_step_id" value="{{ upload.id }}" required> 已上传 {{ upload.name }}</span>
+            <img src="{% url 'enterprise-review-image-upload-preview' workflow.id review.id upload.id %}"
+                 alt="补图 {{ forloop.counter }}" width="112" height="112">
+          </label>
+        {% endfor %}
+      </fieldset>
+      <button type="submit">提交补图审核</button>
+    </form>
+  {% else %}
+    {% for upload in review.uploads %}
+      <p>所选补图 · {{ upload.name }}</p>
+      <img class="workflow-image-thumbnail" src="{% url 'enterprise-review-image-upload-preview' workflow.id review.id upload.id %}"
+           alt="所选补图" width="112" height="112">
+    {% endfor %}
+  {% endif %}
+{% endif %}

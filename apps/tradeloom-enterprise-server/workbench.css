@@ -1,0 +1,51 @@
+/* TradeLoom Personal portal palette, type and control sizes. */
+:root { color-scheme:light; --bg:#f5f7fa; --panel:#fff; --hover:#eef1f6; --border:#d7dde7; --text:#1f2430; --dim:#667085; --accent:#2563eb; --on-accent:#fff; }
+@media (prefers-color-scheme:dark) {
+  :root { color-scheme:dark; --bg:#0b0d12; --panel:#131722; --hover:#1a2030; --border:#232a3a; --text:#e6e8ee; --dim:#a5aec2; --accent:#4f8cff; --on-accent:#0b0d12; }
+}
+* { box-sizing:border-box; }
+[hidden] { display:none !important; }
+body { margin:0; background:var(--bg); color:var(--text); font:14px/1.6 "Segoe UI","Microsoft YaHei",system-ui,sans-serif; }
+.top { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:72px; padding:12px 24px; background:var(--panel); border-bottom:1px solid var(--border); }
+.top strong { font-size:22px; font-weight:650; }
+.top span { margin-inline-start:12px; color:var(--dim); }
+.layout { display:grid; grid-template-columns:165px minmax(0,1fr); gap:24px; max-width:1050px; margin:auto; padding:24px; }
+nav { display:grid; align-content:start; gap:8px; }
+nav button { text-align:left; }
+nav [aria-current=page] { border-color:var(--accent); color:var(--accent); }
+main { min-width:0; }
+section { padding:24px; background:var(--panel); border:1px solid var(--border); border-radius:8px; }
+h1 { margin:0 0 14px; font-size:24px; line-height:1.4; font-weight:600; }
+p { margin:8px 0 14px; color:var(--dim); overflow-wrap:anywhere; }
+#notice:not(:empty) { margin:0 0 14px; padding:10px 12px; border-left:3px solid var(--accent); background:var(--panel); color:var(--text); }
+#notice:empty { display:none; }
+.state { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin:14px 0 20px; }
+.state div { border-bottom:1px solid var(--border); padding-bottom:8px; }
+dt { color:var(--dim); } dd { margin:0; font-weight:600; overflow-wrap:anywhere; }
+.fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px 16px; }
+label { display:block; font-weight:500; }
+input, select { display:block; width:100%; min-width:0; min-height:40px; margin-top:4px; padding:8px 10px; background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:5px; font:inherit; }
+button { min-height:40px; padding:8px 12px; border:1px solid var(--border); border-radius:5px; background:var(--panel); color:var(--text); font:inherit; cursor:pointer; }
+button:not(:disabled):hover { background:var(--hover); }
+button:disabled { opacity:.55; cursor:default; }
+button.primary { background:var(--accent); color:var(--on-accent); border-color:var(--accent); font-weight:600; }
+button.primary:not(:disabled):hover { background:var(--accent); filter:brightness(.92); }
+:focus-visible { outline:3px solid var(--accent); outline-offset:3px; }
+.actions { display:flex; flex-wrap:wrap; gap:10px; }
+form button, #open-console { margin-top:14px; }
+#code-form { border-top:1px solid var(--border); margin-top:18px; padding-top:16px; }
+#code-form label { max-width:240px; }
+@media (max-width:640px) {
+  .layout { grid-template-columns:1fr; gap:14px; padding:14px; }
+  nav { display:flex; flex-wrap:wrap; }
+  section { padding:18px; }
+  .fields { grid-template-columns:1fr; }
+}
+@media (forced-colors:active) {
+  button.primary, nav [aria-current=page] { border:2px solid Highlight; }
+}
+.smtp-guide { border-top:1px solid var(--border); margin-top:20px; padding-top:13px; }
+.smtp-guide summary { cursor:pointer; color:var(--accent); font-weight:600; }
+.smtp-guide h2 { font-size:16px; margin-bottom:6px; }
+.smtp-guide ol { padding-inline-start:24px; }
+.smtp-guide li { margin-bottom:8px; overflow-wrap:anywhere; }

@@ -1,5 +1,6 @@
-param([string]$ElectronDist, [string]$OutputRoot)
+﻿param([string]$ElectronDist, [string]$OutputRoot, [ValidateSet('generic','owner','factory')][string]$Edition = 'generic')
 $ErrorActionPreference = 'Stop'
+$Edition = $Edition.ToLowerInvariant()
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $clientRoot = Join-Path $repoRoot 'apps\tradeloom-enterprise-client'
 $electronRoot = if ([string]::IsNullOrWhiteSpace($ElectronDist)) { Join-Path $clientRoot 'node_modules\electron\dist' } else { [IO.Path]::GetFullPath($ElectronDist) }
@@ -12,8 +13,9 @@ if (Test-Path -LiteralPath $outputRoot) { Remove-Item -LiteralPath $outputRoot -
 New-Item -ItemType Directory -Path $outputRoot,$appRoot | Out-Null
 Copy-Item -Path (Join-Path $electronRoot '*') -Destination $outputRoot -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $clientRoot 'package.json') -Destination (Join-Path $appRoot 'package.json')
-foreach ($file in @('main.cjs','preload.cjs','renderer.js','index.html','security.cjs')) { Copy-Item -LiteralPath (Join-Path $clientRoot $file) -Destination (Join-Path $appRoot $file) }
+foreach ($file in @('main.cjs','preload.cjs','renderer.js','index.html','security.cjs','login.cjs')) { Copy-Item -LiteralPath (Join-Path $clientRoot $file) -Destination (Join-Path $appRoot $file) }
+if ($Edition -ne 'generic') { [IO.File]::WriteAllText((Join-Path $appRoot 'edition.json'), ('{"edition":"' + $Edition + '"}'), (New-Object Text.UTF8Encoding($false))) }
 Move-Item -LiteralPath (Join-Path $outputRoot 'electron.exe') -Destination (Join-Path $outputRoot 'TradeLoom 企业服务器客户端.exe')
-Set-Content -LiteralPath (Join-Path $outputRoot '使用说明.txt') -Encoding utf8 -Value "双击 TradeLoom 企业服务器客户端.exe，输入企业 HTTPS 服务器地址并连接。客户端只保存服务器地址，不保存企业密码。此程序不会启动本机 PostgreSQL、Django 或 DSH。"
+Set-Content -LiteralPath (Join-Path $outputRoot '使用说明.txt') -Encoding utf8 -Value "双击 TradeLoom 企业服务器客户端.exe，输入域名或公网 IP、织贸内部账号和密码，通过后在同页填写绑定邮箱验证码。需配套支持邮箱验证的新版服务器；旧 rc15 密码登录服务不兼容。邮箱和 SMTP 由服务器管理员配置。客户端只保存服务器地址，不保存密码或验证码。此程序不会启动本机 PostgreSQL、Django 或 DSH。"
 Write-Output "Package: $outputRoot"
 Write-Output "Electron: v$version"

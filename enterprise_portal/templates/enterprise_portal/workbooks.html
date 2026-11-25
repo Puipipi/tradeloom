@@ -1,0 +1,75 @@
+{% load static %}<!doctype html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>来源工作簿 · 织贸企业服务</title>
+  <link rel="stylesheet" href="{% static 'enterprise_portal/console.css' %}">
+  <link rel="stylesheet" href="{% static 'enterprise_portal/portal.css' %}">
+</head>
+<body class="portal workbook-page">
+  <header class="portal-header">
+    <h1>来源工作簿</h1>
+    {% if record %}
+      <a href="{% url 'enterprise-workbooks' %}">返回我的工作簿</a>
+    {% else %}
+      <a href="{% url 'enterprise-home' %}">返回企业首页</a>
+    {% endif %}
+  </header>
+  <main class="portal-content">
+    {% if error %}<p role="alert">{{ error }}</p>{% endif %}
+    {% if record %}
+      <section>
+        <h2>{{ record.display_name }}</h2>
+        {% if sheet %}
+          <a href="{% url 'enterprise-workbook-download' record.pk %}">下载原件</a>
+          <form method="get" class="workbook-form" aria-label="切换工作表">
+            <label for="sheet-select">工作表</label>
+            <select id="sheet-select" name="sheet">
+              {% for option in sheets %}
+                <option value="{{ option.sheet_index }}"{% if option.sheet_index == sheet.sheet_index %} selected{% endif %}>{{ option.title }}</option>
+              {% endfor %}
+            </select>
+            <button type="submit">查看工作表</button>
+          </form>
+          <p>预览前 20 行、前 12 列。公式在这里不会计算。</p>
+          <div class="table-wrap" tabindex="0" aria-label="工作表预览">
+            <table>
+              <thead><tr><th scope="col">行</th>{% for column in columns %}<th scope="col">{{ column }}</th>{% endfor %}</tr></thead>
+              <tbody>{% for row in rows %}<tr><th scope="row">{{ forloop.counter }}</th>{% for value in row %}<td>{{ value }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+            </table>
+          </div>
+        {% endif %}
+      </section>
+    {% else %}
+      {% if storage_ready %}
+        <section>
+          <h2>导入工作簿</h2>
+          <form method="post" enctype="multipart/form-data" class="workbook-form">
+            {% csrf_token %}
+            <label for="workbook-file">选择 .xlsx 文件（最多 20 MB）</label>
+            <input id="workbook-file" name="workbook" type="file" accept=".xlsx" required>
+            <button type="submit">导入</button>
+          </form>
+        </section>
+      {% endif %}
+      <section>
+        <h2>我的工作簿</h2>
+        <ul>
+          {% for item in page %}
+            <li><a href="{% url 'enterprise-workbook-detail' item.pk %}">{{ item.display_name }}</a></li>
+          {% empty %}<li>还没有导入工作簿。</li>{% endfor %}
+        </ul>
+        {% if page.paginator.num_pages > 1 %}
+          <nav aria-label="工作簿分页">
+            {% if page.has_previous %}<a href="?page={{ page.previous_page_number }}">上一页</a>{% endif %}
+            <span>{{ page.number }} / {{ page.paginator.num_pages }} 页</span>
+            {% if page.has_next %}<a href="?page={{ page.next_page_number }}">下一页</a>{% endif %}
+          </nav>
+        {% endif %}
+      </section>
+    {% endif %}
+  </main>
+  {% include "enterprise_portal/live_permissions.html" %}
+</body>
+</html>

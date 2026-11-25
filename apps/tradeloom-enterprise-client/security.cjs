@@ -3,7 +3,9 @@ const ENTERPRISE_PATH = '/enterprise/'
 function normalizeServerOrigin(raw) {
   if (typeof raw !== 'string' || raw.length > 2048) throw new Error('服务器地址无效')
   let url
-  try { url = new URL(raw.trim()) } catch { throw new Error('请输入完整的服务器地址，例如 https://work.example.com') }
+  const value = raw.trim()
+  if (!value || /[\\\s]/.test(value)) throw new Error('请输入域名或公网 IP，可带端口')
+  try { url = new URL(/^[a-z][a-z\d+.-]*:\/\//i.test(value) ? value : `https://${value}`) } catch { throw new Error('请输入域名或公网 IP，可带端口；IPv6 请使用方括号') }
   if (url.username || url.password) throw new Error('服务器地址不能包含账号或密码')
   if (url.pathname !== '/' || url.search || url.hash) throw new Error('服务器地址只填写协议、主机名和可选端口')
   const loopback = url.hostname === '127.0.0.1' || url.hostname === '[::1]'

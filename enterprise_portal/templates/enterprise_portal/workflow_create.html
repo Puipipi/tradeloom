@@ -1,0 +1,44 @@
+{% load static %}<!doctype html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>创建业务工作流 · 织贸企业服务</title>
+  <link rel="stylesheet" href="{% static 'enterprise_portal/console.css' %}">
+  <link rel="stylesheet" href="{% static 'enterprise_portal/portal.css' %}">
+</head>
+<body class="portal business-workflows-page">
+  <header class="portal-header">
+    <h1>创建业务工作流</h1>
+    <a href="{% url 'enterprise-products' %}">返回批次与商品</a>
+  </header>
+  <main class="portal-content">
+    <section>
+      <h2>{{ batch.title }}</h2>
+      {% if error %}<p role="alert">{{ error }}</p>{% endif %}
+      {% if confirmation %}
+        <p>目标：{{ goal }}</p>
+        <p>计划：{{ task_label }}</p>
+        <p>批次资料：{{ sources.products }} 项商品，{{ sources.files }} 份文件。</p>
+        <p>确认后保存计划并排队，子任务等待后续处理。</p>
+        <form method="post" class="workflow-create-form">
+          {% csrf_token %}
+          <input type="hidden" name="confirmation" value="{{ confirmation }}">
+          <button type="submit" name="action" value="confirm">确认创建工作流</button>
+        </form>
+        <p><a href="{% url 'enterprise-create-from-batch' batch.pk %}">修改目标</a></p>
+      {% else %}
+        {% if reason %}<p role="status">{{ reason }}</p>{% endif %}
+        <form method="post" class="workflow-create-form">
+          {% csrf_token %}
+          <label for="workflow-goal">工作流目标</label>
+          <textarea id="workflow-goal" name="goal" maxlength="{{ max_goal }}" rows="3"
+                    placeholder="例如：整理本批产品资料" required>{{ goal }}</textarea>
+          <button type="submit" name="action" value="preview">预览计划</button>
+        </form>
+      {% endif %}
+    </section>
+  </main>
+  {% include "enterprise_portal/live_permissions.html" %}
+</body>
+</html>

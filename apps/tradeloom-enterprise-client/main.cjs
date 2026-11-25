@@ -4,27 +4,123 @@ const path = require('node:path')
 const { createHash } = require('node:crypto')
 const { pathToFileURL } = require('node:url')
 const { normalizeServerOrigin, enterpriseUrl, isSameOriginRequest } = require('./security.cjs')
+const { signIn, verifyCode, resendCode, sessionPolicy } = require('./login.cjs')
 
 app.setName('TradeLoom Enterprise Client')
 const SETTINGS_PARTITION = 'persist:tradeloom-enterprise-settings'
 const PRODUCT_PARTITION = 'persist:tradeloom-enterprise-web'
 const SMOKE_STANDALONE = process.argv.includes('--smoke-standalone')
 const SMOKE_ENTERPRISE = process.argv.includes('--smoke-enterprise')
-if (SMOKE_STANDALONE || SMOKE_ENTERPRISE) app.setPath('userData', path.join(app.getPath('temp'), 'TradeLoomEnterpriseSmoke', String(process.pid)))
+// The edition is a build-time local constant, never a server role assertion.
+let edition = 'generic'
+try {
+  const marker = JSON.parse(fs.readFileSync(path.join(__dirname, 'edition.json'), 'utf8'))
+  if (!['owner', 'factory'].includes(marker.edition)) throw new Error('Invalid client edition')
+  edition = marker.edition
+} catch (error) { if (error.code !== 'ENOENT') throw error }
+const qaRootArgument = process.argv.find(value => value.startsWith('--enterprise-qa-root='))
+const qaRoot = (SMOKE_STANDALONE || SMOKE_ENTERPRISE) && qaRootArgument ? qaRootArgument.slice('--enterprise-qa-root='.length) : null
+if (qaRoot !== null && !path.isAbsolute(qaRoot)) throw new Error('QA root must be absolute')
+if (edition !== 'generic') {
+  const base = qaRoot || ((SMOKE_STANDALONE || SMOKE_ENTERPRISE) ? path.join(app.getPath('temp'), 'TradeLoomEnterpriseSmoke', String(process.pid)) : app.getPath('appData'))
+  const profile = path.join(base, 'TradeLoom', `Enterprise-${edition}`)
+  fs.mkdirSync(profile, { recursive: true })
+  app.setPath('userData', profile)
+  app.setPath('sessionData', profile)
+} else if (SMOKE_STANDALONE || SMOKE_ENTERPRISE) {
+  const profile = qaRoot ? path.join(qaRoot, 'TradeLoom Enterprise Client') : path.join(app.getPath('temp'), 'TradeLoomEnterpriseSmoke', String(process.pid))
+  fs.mkdirSync(profile, { recursive: true })
+  app.setPath('userData', profile)
+  app.setPath('sessionData', profile)
+}
 let productWindow = null
+let connectedOrigin = ''
+let authorizationEpoch = 0
+const settingsWindows = new Set()
+const pendingSignIns = new WeakSet()
+let settingsWindow = null
+const emailChallenges = new Map()
+
+let policyRequest = null
+let installedMenuState = ''
+
+function policyContext() {
+  const win = productWindow
+  if (!win || win.isDestroyed() || !connectedOrigin) return null
+  const url = win.webContents.getURL()
+  try { if (new URL(url).origin !== connectedOrigin) return null } catch { return null }
+  return { win, url, origin: connectedOrigin, epoch: authorizationEpoch }
+}
+
+function currentContext(context) {
+  return context && context.win === productWindow && !context.win.isDestroyed()
+    && context.epoch === authorizationEpoch && context.origin === connectedOrigin
+    && context.url === context.win.webContents.getURL()
+}
+
+async function currentPolicy() {
+  const context = policyContext()
+  if (!context) return null
+  if (policyRequest) {
+    const existing = policyRequest
+    const result = await existing.promise
+    if (!currentContext(context)) return null
+    if (existing.context.win === context.win && existing.context.epoch === context.epoch && existing.context.url === context.url) return result
+    return currentPolicy()
+  }
+  const request = { context }
+  request.promise = (async () => {
+    try {
+      const url = `${context.origin}/enterprise/capabilities/?ui=1`
+      const response = await context.win.webContents.session.fetch(url, { redirect: 'error', cache: 'no-store', credentials: 'include', signal: AbortSignal.timeout(8000) })
+      if (!response.ok || response.redirected || (response.url && response.url !== url)) return null
+      const policy = await response.json()
+      return currentContext(context) ? policy : null
+    } catch { return null }
+    finally { if (policyRequest === request) policyRequest = null }
+  })()
+  policyRequest = request
+  return request.promise
+}
+
+function permits(policy, capability) {
+  return policy && policy.configuration_conflict !== true && policy.capabilities?.[capability] === true
+    && (capability !== 'local_workbench' || (policy.role === 'owner' && policy.capabilities?.owner_tools === true))
+}
+
+async function authorized(capability = 'local_workbench') {
+  return Boolean(permits(await currentPolicy(), capability))
+}
+
+async function refreshLocalMenu() {
+  const context = policyContext()
+  const policy = await currentPolicy()
+  if (currentContext(context)) installLocalMenu(Boolean(permits(policy, 'local_workbench')), Boolean(permits(policy, 'server_ops')))
+}
+
+async function openOwnerPage(relative) {
+  if (!await authorized("server_ops")) { installLocalMenu(false); return }
+  await productWindow.loadURL(`${connectedOrigin}${relative}`)
+}
 
 // Local application menu only. Remote pages cannot supply an executable path.
-function installLocalMenu() {
+function installLocalMenu(owner = false, ops = false) {
   const workbench = path.join(path.dirname(app.getPath('exe')), 'Workbench', '启动工作台.exe')
+  const state = `${owner && fs.existsSync(workbench)}:${ops}`
+  if (state === installedMenuState) return
+  installedMenuState = state
   Menu.setApplicationMenu(Menu.buildFromTemplate([{
     label: '个人端',
     submenu: [
       { label: '连接台账服务', click: () => localSettingsWindow() },
-      { label: '打开完整工作台', enabled: fs.existsSync(workbench), click: () => {
+      { label: '打开本地完整工作台', enabled: owner && fs.existsSync(workbench), click: async () => {
+        if (!await authorized()) { installLocalMenu(false); return }
         shell.openPath(workbench).then((error) => {
-          if (error) dialog.showErrorBox('无法打开完整工作台', '请确认个人端目录中的 Workbench 程序完整。')
+          if (error) dialog.showErrorBox('无法打开本地完整工作台', '请确认个人端目录中的 Workbench 程序完整。')
         })
       } },
+      { label: '服务端管理', enabled: ops, click: () => openOwnerPage('/enterprise/console/') },
+      { label: '服务端助手', enabled: ops, click: () => openOwnerPage('/enterprise/console/#assistant') },
       { type: 'separator' },
       { role: 'quit', label: '退出个人端' },
     ],
@@ -54,12 +150,16 @@ function saveConfig(raw) {
 }
 
 function localSettingsWindow(show = true) {
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    if (show) { settingsWindow.show(); settingsWindow.focus() }
+    return settingsWindow
+  }
   const win = new BrowserWindow({
     width: 500,
-    height: 300,
+    height: 600,
     show,
     minWidth: 430,
-    minHeight: 260,
+    minHeight: 560,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -68,6 +168,10 @@ function localSettingsWindow(show = true) {
       session: session.fromPartition(SETTINGS_PARTITION),
     },
   })
+  settingsWindow = win
+  const contents = win.webContents
+  settingsWindows.add(contents)
+  win.on('closed', () => { settingsWindows.delete(contents); emailChallenges.delete(contents); if (settingsWindow === win) settingsWindow = null })
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   win.webContents.on('will-navigate', (event, target) => {
     if (target !== pathToFileURL(path.join(__dirname, 'index.html')).href) event.preventDefault()
@@ -83,18 +187,23 @@ function installSameOriginFence(ses, serverOrigin) {
   })
 }
 
-function connect(rawOrigin, settingsWindow) {
-  const serverOrigin = saveConfig(rawOrigin)
-  if (productWindow && !productWindow.isDestroyed()) productWindow.close()
+function serverSession(serverOrigin) {
   const serverKey = createHash('sha256').update(serverOrigin).digest('hex').slice(0, 16)
   const ses = session.fromPartition(`${PRODUCT_PARTITION}-${serverKey}`)
   installSameOriginFence(ses, serverOrigin)
-  productWindow = new BrowserWindow({
+  return ses
+}
+
+async function connect(rawOrigin, settingsWindow) {
+  const serverOrigin = normalizeServerOrigin(rawOrigin)
+  const ses = serverSession(serverOrigin)
+  const previous = productWindow
+  const candidate = new BrowserWindow({
     width: 1280,
     height: 850,
     minWidth: 900,
     minHeight: 600,
-    show: !SMOKE_ENTERPRISE,
+    show: false,
     webPreferences: {
       contextIsolation: true,
       sandbox: true,
@@ -102,37 +211,111 @@ function connect(rawOrigin, settingsWindow) {
       session: ses,
     },
   })
+  candidate.webContents.on('did-start-navigation', (_event, _url, _inPlace, isMainFrame) => {
+    if (isMainFrame && candidate === productWindow) { authorizationEpoch += 1; installLocalMenu(false) }
+  })
+  candidate.webContents.on('did-finish-load', async () => {
+    if (candidate !== productWindow) return
+    const url = new URL(candidate.webContents.getURL())
+    if (url.pathname === '/accounts/login/') {
+      authorizationEpoch += 1
+      installLocalMenu(false)
+      localSettingsWindow()
+      candidate.close()
+      return
+    }
+    await refreshLocalMenu()
+  })
+  const poll = setInterval(() => {
+    if (candidate === productWindow && !candidate.isDestroyed() && candidate.isVisible() && !candidate.isMinimized()) refreshLocalMenu()
+  }, 5000)
+  candidate.on('focus', () => refreshLocalMenu())
+  candidate.on('show', () => refreshLocalMenu())
+  candidate.on('closed', () => {
+    clearInterval(poll)
+    if (candidate === productWindow) { productWindow = null; authorizationEpoch += 1; installLocalMenu(false) }
+  })
   const targetUrl = enterpriseUrl(serverOrigin)
-  const permitTarget = (target) => {
+  const permitTarget = target => {
     try { return new URL(target).origin === serverOrigin } catch { return false }
   }
-  productWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
-  productWindow.webContents.on('will-navigate', (event, target) => {
+  candidate.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  for (const name of ['will-navigate', 'will-redirect']) candidate.webContents.on(name, (event, target) => {
     if (!permitTarget(target)) event.preventDefault()
   })
-  productWindow.webContents.on('will-redirect', (event, target) => {
-    if (!permitTarget(target)) event.preventDefault()
-  })
-  return productWindow.loadURL(targetUrl).then(() => {
+  try {
+    await candidate.loadURL(targetUrl)
+    if (candidate.webContents.getURL() !== targetUrl) throw new Error('登录会话已失效，请重新登录。')
+    saveConfig(serverOrigin)
+    authorizationEpoch += 1
+    connectedOrigin = serverOrigin
+    productWindow = candidate
+    if (!SMOKE_ENTERPRISE) candidate.show()
+    if (previous && !previous.isDestroyed()) previous.close()
+    await refreshLocalMenu()
     if (settingsWindow && !settingsWindow.isDestroyed()) setTimeout(() => {
       if (!settingsWindow.isDestroyed()) settingsWindow.close()
     }, 250)
     return { serverOrigin, targetUrl }
-  }).catch((error) => {
-    if (productWindow && !productWindow.isDestroyed()) productWindow.destroy()
-    productWindow = null
-    throw new Error(`无法连接企业服务器：${error.message}`)
+  } catch {
+    if (!candidate.isDestroyed()) candidate.destroy()
+    throw new Error('无法打开已验证的企业会话，请重新登录。')
+  }
+}
+
+function requireSettingsSender(event) {
+  const expected = pathToFileURL(path.join(__dirname, 'index.html')).href
+  if (!settingsWindows.has(event.sender) || event.senderFrame !== event.sender.mainFrame || event.senderFrame?.url !== expected || event.sender.getURL() !== expected) throw new Error('仅本地连接设置可调用此操作。')
+}
+
+ipcMain.handle('enterprise:get-config', (event) => { requireSettingsSender(event); return { ...readConfig(), edition } })
+ipcMain.handle('enterprise:sign-in', async (event, credentials) => {
+  requireSettingsSender(event)
+  if (pendingSignIns.has(event.sender)) throw new Error('正在登录，请稍候。')
+  pendingSignIns.add(event.sender)
+  try {
+    const { serverOrigin, username, password } = credentials || {}
+    const origin = normalizeServerOrigin(serverOrigin)
+    const result = await signIn(serverSession(origin), origin, username, password)
+    emailChallenges.set(event.sender, origin)
+    return result
+  } finally { pendingSignIns.delete(event.sender) }
+})
+
+for (const [channel, operation] of [['enterprise:verify-code', verifyCode], ['enterprise:resend-code', resendCode]]) {
+  ipcMain.handle(channel, async (event, code) => {
+    requireSettingsSender(event)
+    const origin = emailChallenges.get(event.sender)
+    if (!origin) throw new Error('请先验证账号密码。')
+    if (pendingSignIns.has(event.sender)) throw new Error('正在登录，请稍候。')
+    pendingSignIns.add(event.sender)
+    try {
+      const result = await operation(serverSession(origin), origin, code)
+      if (channel === 'enterprise:resend-code') return result
+      const connected = await connect(origin, BrowserWindow.fromWebContents(event.sender))
+      emailChallenges.delete(event.sender)
+      return connected
+    } finally { pendingSignIns.delete(event.sender) }
   })
 }
 
-ipcMain.handle('enterprise:get-config', () => readConfig())
-ipcMain.handle('enterprise:connect', (event, rawOrigin) => {
-  const settingsWindow = BrowserWindow.fromWebContents(event.sender)
-  return connect(rawOrigin, settingsWindow)
+ipcMain.handle('enterprise:restart-login', event => {
+  requireSettingsSender(event)
+  if (pendingSignIns.has(event.sender)) throw new Error('正在登录，请稍候。')
+  emailChallenges.delete(event.sender)
 })
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   installLocalMenu()
+  const { serverOrigin } = readConfig()
+  if (serverOrigin && !SMOKE_STANDALONE) {
+    try {
+      if (await sessionPolicy(serverSession(serverOrigin), serverOrigin)) {
+        await connect(serverOrigin)
+        return
+      }
+    } catch { /* Expired or unreachable: return to the same three-field entry. */ }
+  }
   localSettingsWindow(!SMOKE_STANDALONE && !SMOKE_ENTERPRISE)
 })
 

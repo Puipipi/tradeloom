@@ -120,9 +120,14 @@ class WorkflowPagesTests(TestCase):
         self.assertContains(response, batch.id)
         self.assertContains(response, 'name="user_goal"')
         self.assertContains(response, "创建业务计划")
-        self.assertContains(response, f'href="/workflow-tasks/{workflow.id}"')
-        self.assertContains(response, f'href="/workflow-tasks/{workflow.id}#review-{review.id}"')
+        detail_url = f"/workflow-tasks/{workflow.id}"
+        self.assertContains(response, f'href="{detail_url}#workflow-plan"')
+        self.assertContains(response, f'href="{detail_url}#review-{review.id}"')
         self.assertContains(response, "待填写")
+
+        detail = self.client.get(detail_url)
+        self.assertContains(detail, 'id="workflow-plan"')
+        self.assertContains(detail, f'id="review-{review.id}"')
 
     def test_workflow_detail_is_read_only_and_renders_saved_data_safely(self):
         batch = self.make_batch(title="<批次 & A>")
@@ -260,26 +265,52 @@ class WorkflowPagesTests(TestCase):
         self.assertNotContains(response, "data-default-task-type")
         self.assertContains(response, "本地规则模拟")
         self.assertContains(response, "先解析目标")
-        self.assertContains(response, "查看候选和模拟标记后")
-        self.assertContains(response, "明确确认保存计划")
+        self.assertContains(response, 'data-intent-preview-endpoint="/api/workflow-intent/preview"')
+        self.assertContains(response, 'name="execution_mode"')
+        self.assertContains(response, 'data-intent-confirm disabled')
+        self.assertContains(response, "确认并保存计划")
         self.assertContains(response, "确认后只保存计划并排队，尚未运行子任务")
-        self.assertContains(response, "本页使用本地规则解析；也可接收聊天 Agent 的结构化提案，保存前仍需确认。")
         self.assertContains(response, 'id="workflow-create-error"')
         self.assertContains(response, 'id="workflow-create-notice"')
         self.assertContains(response, "app.js")
 
+        preview_url = "/api/workflow-intent/preview"
+        create_url = "/api/workflow-tasks"
+        payload = {"batch_id": batch.id, "user_goal": "整理本批产品资料", "execution_mode": "local_mock"}
+        self.assertEqual(Client(enforce_csrf_checks=True).post(
+            preview_url, payload, content_type="application/json",
+        ).status_code, 403)
+
         with patch("workbench.agents.mock_runtime.MockAgentRuntime.run_subtask") as run:
-            created = self.client.post(
-                "/api/workflow-tasks",
-                data=json.dumps({
-                    "batch_id": batch.id,
-                    "user_goal": "Prepare product data",
-                    "task_type": "prepare_product_data",
-                }),
-                content_type="application/json",
+            preview = self.client.post(preview_url, payload, content_type="application/json")
+            self.assertEqual(preview.status_code, 200)
+            plan = preview.json()
+            self.assertEqual(plan["status"], "ready")
+            self.assertFalse(WorkflowTask.objects.filter(batch=batch).exists())
+
+            confirmation = {
+                **payload,
+                "task_type": plan["action"]["task_type"],
+                "confirmation_token": plan["confirmation_token"],
+                "idempotency_key": "desktop-confirm-01",
+            }
+            rejected = self.client.post(
+                create_url, {**confirmation, "user_goal": "生成英文目录"}, content_type="application/json",
             )
-        self.assertEqual(created.status_code, 201)
-        self.assertEqual(created.json()["status"], "queued")
-        self.assertEqual(len(created.json()["subtasks"]), 2)
+            self.assertEqual(rejected.status_code, 409)
+            self.assertEqual(rejected.json()["code"], "intent_confirmation_invalid")
+            self.assertFalse(WorkflowTask.objects.filter(batch=batch).exists())
+
+            created = self.client.post(create_url, confirmation, content_type="application/json")
+            self.assertEqual(created.status_code, 201)
         run.assert_not_called()
+
+        saved = WorkflowTask.objects.get(pk=created.json()["id"], batch=batch)
+        self.assertEqual(saved.status, "queued")
+        self.assertEqual(saved.user_goal, payload["user_goal"])
+        self.assertTrue(WorkflowStep.objects.filter(task=saved, step_key="center_plan").exists())
+        self.assertCountEqual(
+            SubTask.objects.filter(task=saved).values_list("agent_role", "status"),
+            [("product_profile", "queued"), ("delivery_quality", "queued")],
+        )
 

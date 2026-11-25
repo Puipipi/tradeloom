@@ -42,23 +42,20 @@ app.whenReady().then(async () => {
     const settings = await waitForSettingsWindow()
     const initialConfig = await settings.webContents.executeJavaScript('window.tradeloomEnterprise.getConfig()')
     if (initialConfig.serverOrigin !== '') throw new Error('fresh client contains a preconfigured server')
-    const workbenchMenu = Menu.getApplicationMenu()?.items.flatMap((item) => item.submenu?.items || []).find((item) => item.label === '打开完整工作台')
+    const workbenchMenu = Menu.getApplicationMenu()?.items.flatMap((item) => item.submenu?.items || []).find((item) => item.label === '打开本地完整工作台')
     if (!workbenchMenu) throw new Error('local workbench menu is missing')
-    await settings.webContents.executeJavaScript(`window.tradeloomEnterprise.connect(${JSON.stringify(origin)})`)
+    const initial = await settings.webContents.executeJavaScript(`({ fields: document.querySelectorAll('input').length, username: document.querySelector('#username').value, password: document.querySelector('#password').value })`)
+    if (initial.fields !== 4 || initial.username || initial.password) throw new Error('local login must start with empty credentials and hidden code field')
+    const started = await settings.webContents.executeJavaScript(`window.tradeloomEnterprise.signIn(${JSON.stringify({ serverOrigin: origin, username: credential.username, password: credential.password })})`)
+    if (started.step !== 'email_code') throw new Error('password stage did not require email verification')
+    if (!process.argv.includes('--code-stdin')) throw new Error('Synthetic email code must be supplied via stdin with --code-stdin')
+    const code = fs.readFileSync(0, 'utf8').trim()
+    await settings.webContents.executeJavaScript(`window.tradeloomEnterprise.verifyCode(${JSON.stringify(code)})`)
     remote = BrowserWindow.getAllWindows().find((win) => win !== settings && !win.isDestroyed())
     if (!remote) throw new Error('production main did not open the enterprise window')
-    const loginPath = new URL(remote.webContents.getURL()).pathname
-    if (!['/accounts/login/', entryPath].includes(loginPath)) throw new Error('unexpected enterprise login path')
-    const before = await remote.webContents.executeJavaScript(`({ url: location.href, hasLogin: Boolean(document.querySelector('input[type="password"]')), hasCsrf: Boolean(document.querySelector('[name="csrfmiddlewaretoken"]')), preloadVisible: typeof window.tradeloomEnterprise !== 'undefined', nodeVisible: typeof require !== 'undefined' })`)
-    if (!before.hasLogin || !before.hasCsrf) throw new Error('Django login form or CSRF token missing')
-    const loaded = waitForLoad(remote.webContents, 'Django login')
-    await remote.webContents.executeJavaScript(`(() => { const u = document.querySelector('input[name="username"], input[type="email"]'); const p = document.querySelector('input[name="password"], input[type="password"]'); if (!u || !p || !p.form) throw new Error('standard login form missing'); u.value = ${JSON.stringify(credential.username)}; p.value = ${JSON.stringify(credential.password)}; p.form.requestSubmit(); })()`)
-    await loaded
     const after = await remote.webContents.executeJavaScript(`({ url: location.href, title: document.title, loginStillPresent: Boolean(document.querySelector('input[type="password"]')), preloadVisible: typeof window.tradeloomEnterprise !== 'undefined', nodeVisible: typeof require !== 'undefined' })`)
-    if (after.loginStillPresent || new URL(after.url).origin !== origin || new URL(after.url).pathname !== '/enterprise/' || /server error/i.test(after.title)) {
-      throw new Error('Django login did not render the authenticated enterprise page')
-    }
-    const result = { client: 'TradeLoom Enterprise Electron smoke', accountLabel: label, origin, entryPath, initialOriginEmpty: true, localWorkbenchMenuPresent: true, localWorkbenchMenuEnabled: workbenchMenu.enabled, initialLoginPath: loginPath, loginFormHadCsrf: before.hasCsrf, loggedIn: true, sameOrigin: true, remotePreloadAbsent: !after.preloadVisible, remoteNodeAbsent: !after.nodeVisible, title: after.title, finalPath: new URL(after.url).pathname }
+    if (after.loginStillPresent || new URL(after.url).origin !== origin || new URL(after.url).pathname !== '/enterprise/' || /server error/i.test(after.title)) throw new Error('local login did not render the authenticated enterprise page')
+    const result = { client: 'TradeLoom Enterprise Electron smoke', accountLabel: label, origin, entryPath, initialOriginEmpty: true, localWorkbenchMenuPresent: true, localWorkbenchMenuEnabled: workbenchMenu.enabled, threeFieldLocalLogin: true, loggedIn: true, sameOrigin: true, remotePreloadAbsent: !after.preloadVisible, remoteNodeAbsent: !after.nodeVisible, title: after.title, finalPath: new URL(after.url).pathname }
     fs.writeFileSync(path.resolve(evidenceFile), JSON.stringify(result, null, 2), { mode: 0o600 })
     console.log(JSON.stringify({ status: 'ok', ...result }))
     app.exit(0)

@@ -1,0 +1,13 @@
+{
+  "name": "tradeloom-enterprise-server",
+  "version": "0.1.0",
+  "private": true,
+  "main": "entry.cjs",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test tests/backend.test.cjs"
+  },
+  "devDependencies": {
+    "electron": "45.4.1"
+  }
+}

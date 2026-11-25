@@ -1,0 +1,27 @@
+{% load static %}<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{ title }}</title><link rel="stylesheet" href="{% static 'enterprise_portal/console.css' %}"><link rel="stylesheet" href="{% static 'enterprise_portal/portal.css' %}"></head><body class="portal business-page">
+<header class="portal-header"><h1>{{ title }}</h1><a href="/enterprise/">返回企业台账</a></header><main class="portal-content">
+<nav class="business-nav" aria-label="只读业务资料">{% if caps.business_data %}<a href="/enterprise/business/products/"{% if kind == "products" %} aria-current="page"{% endif %}>批次与商品</a>{% endif %}{% if caps.customer_data %}<a href="/enterprise/business/customers/"{% if kind == "customers" %} aria-current="page"{% endif %}>客户名录</a>{% endif %}{% if caps.quotation_data %}<a href="/enterprise/business/quotations/"{% if kind == "quotations" %} aria-current="page"{% endif %}>来源报价记录</a>{% endif %}</nav>
+{% if kind == "products" %}
+<section aria-label="查找商品">
+  <form method="get" class="business-product-search">
+    <label for="product-search">SKU 或商品名称</label>
+    <input id="product-search" type="search" name="q" value="{{ query }}" maxlength="120">
+    <button type="submit">查找商品</button>
+    {% if query %}<a href="{% url 'enterprise-products' %}">清除搜索</a>{% endif %}
+  </form>
+  <p>{{ page.paginator.count }} 项商品{% if query %}符合「{{ query }}」{% endif %}</p>
+</section>
+{% else %}
+<p>只读当前企业数据库中的资料，每类最多{{ limit }}条；未连接完整 ERP。</p>
+{% endif %}
+{% if kind == "quotations" %}<p>最近{{ limit }}条来源中仅展示关系和数值校验通过的报价记录；不是商品价目或正式售价，不推算数量、单位或价格性质。</p>{% elif kind == "customers" %}<p>仅客户名称与时间，不含联系方式、备注或来源原文。</p>{% endif %}
+<section><div class="table-wrap"><table><thead><tr>{% for column in columns %}<th scope="col">{{ column }}</th>{% endfor %}</tr></thead><tbody>{% for row in rows %}<tr>{% for cell in row %}<td>{{ cell|default_if_none:"—" }}</td>{% endfor %}</tr>{% empty %}<tr><td colspan="{{ columns|length }}">本次受限查询中没有符合条件的资料。</td></tr>{% endfor %}</tbody></table></div></section>
+{% if page.paginator.num_pages > 1 %}
+<nav class="business-product-pages" aria-label="商品分页">
+  {% if page.has_previous %}<a href="?q={{ query|urlencode }}&amp;page={{ page.previous_page_number }}">上一页</a>{% endif %}
+  <span>第 {{ page.number }} / {{ page.paginator.num_pages }} 页</span>
+  {% if page.has_next %}<a href="?q={{ query|urlencode }}&amp;page={{ page.next_page_number }}">下一页</a>{% endif %}
+</nav>
+{% endif %}
+{% if batches %}<section><h2>服务端批次</h2><ul>{% for batch in batches %}<li>{{ batch.title }} · {{ batch.mode }} · {{ batch.status }} · {{ batch.created_at }}{% if can_create_workflow %} · <a href="{% url 'enterprise-create-from-batch' batch.id %}">创建工作流</a>{% endif %}</li>{% endfor %}</ul></section>{% endif %}
+</main>{% include "enterprise_portal/live_permissions.html" %}</body></html>
