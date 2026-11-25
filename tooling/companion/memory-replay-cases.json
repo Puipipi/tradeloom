@@ -1,0 +1,2362 @@
+{
+  "fixture_version": 1,
+  "ruleset": "09e-r2+r2.1",
+  "scope": "固定15组、编译进真实产品测试的合成提案和API夹具；不是原52段通用步骤DSL或任意模型回包注入器。 A2保留15组；ADD47纳入Page v3 golden后共53来源，更新Worker真实展开名、已迁移夹具及owner4974的真实phone/route机制说明；版本门不改。映射与哈希不等于执行，owner显式skip仍按原runner为NOT_RUN。 ADD47恢复四条延后检查并补维护增量边界，全部仍须运行，恢复active不等于通过。",
+  "suites": {
+    "sdk": {
+      "cwd": "packages/dsh_client",
+      "command": [
+        "dart",
+        "test",
+        "tool/companion_memory_replay_test.dart",
+        "--reporter",
+        "expanded"
+      ],
+      "guards": [
+        "offline rejects external HTTP before DNS",
+        "offline allows numeric loopback HTTP",
+        "offline rejects external HTTP redirects"
+      ]
+    },
+    "app": {
+      "cwd": "app",
+      "command": [
+        "flutter",
+        "test",
+        "--no-pub",
+        "tool/companion_memory_replay_test.dart",
+        "--reporter",
+        "expanded"
+      ],
+      "guards": [
+        "offline rejects external HTTP before DNS",
+        "offline allows numeric loopback HTTP",
+        "offline rejects external HTTP redirects",
+        "offline reinstalls guard after widget binding",
+        "offline permits MockClient responses"
+      ]
+    },
+    "engine": {
+      "cwd": ".",
+      "guards": [],
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=junit",
+        "runtime/tests/companion-phone-memory-integration.test.mjs",
+        "runtime/tests/companion-chat-usage-integration.test.mjs",
+        "runtime/tests/companion-phone-memory-replay.test.mjs"
+      ]
+    }
+  },
+  "cases": [
+    {
+      "id": 1,
+      "title": "旧手记迁入、严格快照和有据清理",
+      "original_ids": [
+        "07-48"
+      ],
+      "checks": [
+        {
+          "id": "relative-date-and-dedup",
+          "suite": "sdk",
+          "name": "test/companion_memory_store_test.dart migration is idempotent and does not manufacture a relative date or reality",
+          "file": "packages/dsh_client/test/companion_memory_store_test.dart"
+        },
+        {
+          "id": "strict-full-snapshot",
+          "suite": "sdk",
+          "name": "test/companion_memory_store_test.dart bad or partial remote snapshot never becomes a smaller successful import",
+          "file": "packages/dsh_client/test/companion_memory_store_test.dart"
+        },
+        {
+          "id": "readback-before-cleanup",
+          "suite": "sdk",
+          "name": "test/companion_memory_store_test.dart readback fails if an imported card is missing before source cleanup",
+          "file": "packages/dsh_client/test/companion_memory_store_test.dart"
+        },
+        {
+          "id": "vitals-kept",
+          "suite": "sdk",
+          "name": "test/companion_memory_store_test.dart conditional local migration removes only imported cards and preserves vitals",
+          "file": "packages/dsh_client/test/companion_memory_store_test.dart"
+        },
+        {
+          "id": "r-plus-one-refuses",
+          "suite": "sdk",
+          "name": "test/companion_memory_store_test.dart external r+1 stops local cleanup without erasing the new row",
+          "file": "packages/dsh_client/test/companion_memory_store_test.dart"
+        },
+        {
+          "id": "resume-after-partial-cleanup",
+          "suite": "sdk",
+          "name": "test/companion_migration_recovery_test.dart actual SDK HTTP migration resumes after one strict delete and SQLite reopen",
+          "file": "packages/dsh_client/test/companion_migration_recovery_test.dart",
+          "scope": "实际 SDK + loopback HTTP；不是实际远程 Host。"
+        },
+        {
+          "id": "lost-ack-fresh-proof",
+          "suite": "sdk",
+          "name": "test/companion_migration_recovery_test.dart source deletion with lost local ACK is completed only from a fresh full absence read",
+          "file": "packages/dsh_client/test/companion_migration_recovery_test.dart"
+        },
+        {
+          "id": "owner-all-legacy-real",
+          "suite": "app",
+          "name": "test/companion/companion_memory_owner_test.dart hand-written memories carried over from before count as real",
+          "file": "app/test/companion/companion_memory_owner_test.dart"
+        },
+        {
+          "id": "B03-sdk-ledger-4",
+          "suite": "sdk",
+          "name": "test/companion_followup_store_test.dart B03 followup generation shares the auxiliary ledger v6 migration preserves receipts and shown opportunities while removing the fixed line",
+          "file": "packages/dsh_client/test/companion_followup_store_test.dart"
+        },
+        {
+          "id": "B03-sdk-ledger-5",
+          "suite": "sdk",
+          "name": "test/companion_followup_store_test.dart B03 followup generation shares the auxiliary ledger failed v7 migration rolls the request CHECK and fixed-line cleanup back together",
+          "file": "packages/dsh_client/test/companion_followup_store_test.dart"
+        }
+      ],
+      "limits": [
+        "不含真实手机/主机部署；模拟网络与临时 SQLite 使用产品清理 API。"
+      ],
+      "required_gaps": []
+    },
+    {
+      "id": 2,
+      "title": "只说一次、原时与退出恢复",
+      "original_ids": [
+        "07-37",
+        "07-52",
+        "07-35",
+        "rotation-35"
+      ],
+      "checks": [
+        {
+          "id": "source-stable-reopen-dedup",
+          "suite": "sdk",
+          "name": "test/companion_memory_flow_test.dart durable source and ordered queue a stable send and its claimed batch survive reopen without duplicating a statement",
+          "file": "packages/dsh_client/test/companion_memory_flow_test.dart"
+        },
+        {
+          "id": "save-failure-transaction",
+          "suite": "sdk",
+          "name": "test/companion_memory_flow_test.dart durable source and ordered queue source save failure rolls back the message and sequence before any request can leave",
+          "file": "packages/dsh_client/test/companion_memory_flow_test.dart",
+          "scope": "存储事务失败；此测试没有真实 Page 发送器。"
+        },
+        {
+          "id": "editing-preserves-original-clock",
+          "suite": "sdk",
+          "name": "test/companion_memory_flow_test.dart durable source and ordered queue editing preserves first identity, original clock and offset while superseding the event",
+          "file": "packages/dsh_client/test/companion_memory_flow_test.dart"
+        },
+        {
+          "id": "outbound-original-clock",
+          "suite": "sdk",
+          "name": "test/companion_memory_rules_test.dart 09s extraction boundary delayed and edited sources send their original UTC and offset, not the processing day",
+          "file": "packages/dsh_client/test/companion_memory_rules_test.dart"
+        },
+        {
+          "id": "outbound-sdk-envelope",
+          "suite": "app",
+          "name": "test/companion/companion_memory_input_test.dart escaped input fits the actual SDK envelope and preserves the original clock and text",
+          "file": "app/test/companion/companion_memory_input_test.dart",
+          "scope": "真实 phone Messages 完整 UTF-8 body（system/messages/tools/转义）与原 estimator/reservation，source 原文/原时刻保持；正例 escaped 重复128，超长 whitespace/emoji 原规模不变且零请求。稳定名称中的 SDK 字样不表示仍测旧 Host JSON operations 协议；NOT_RUN。"
+        },
+        {
+          "id": "owner-reopen",
+          "suite": "app",
+          "name": "test/companion/companion_memory_lifecycle_test.dart one path gives one owner across visits, and an ordinary container restart reopens its archive",
+          "file": "app/test/companion/companion_memory_lifecycle_test.dart",
+          "scope": "原 owner/container 重开正文与名称保留，真实 SQLite 路径和唯一 owner；同文件前两维护例另迁 actual Light/Owner/Worker，未执行。"
+        },
+        {
+          "id": "dispose-keeps-late-receipt",
+          "suite": "app",
+          "name": "test/companion/companion_memory_lifecycle_test.dart ordinary light chat drains its real SSE finally receipt before owner disposal closes SQLite",
+          "file": "app/test/companion/companion_memory_lifecycle_test.dart",
+          "scope": "原普通 light chat 真实 SSE finally/owner disposal 断言保持。新维护取消例只保存已见 usage，未见 final 不伪造；未监听 controller 的 teardown 显式消费后关闭，全部 NOT_RUN。"
+        },
+        {
+          "id": "page-save-failure-no-post-2",
+          "suite": "app",
+          "name": "test/companion/companion_page_test.dart page light mode a source transaction failure keeps the draft and sends no model request",
+          "file": "app/test/companion/companion_page_test.dart",
+          "scope": "Actual Page/SQLite/source transaction/HTTP MockClient and production extractor; fixed empty extraction proposal. No external model semantics."
+        },
+        {
+          "id": "page-retry-same-source-1",
+          "suite": "app",
+          "name": "test/companion/companion_page_test.dart page light mode a refused key keeps the original source and brings the draft back",
+          "file": "app/test/companion/companion_page_test.dart",
+          "scope": "Actual Page/SQLite/source transaction/HTTP MockClient and production extractor; fixed empty extraction proposal. No external model semantics."
+        },
+        {
+          "id": "midnight-paired-date-receipt-1",
+          "suite": "app",
+          "name": "test/companion/companion_memory_dates_replay_test.dart fixture 2 original time crosses midnight in actual extraction POST and usage receipt",
+          "file": "app/test/companion/companion_memory_dates_replay_test.dart",
+          "scope": "真实 SQLite/Owner/Worker 与 maintenance tools、实际 phone Messages body/每 HTTP receipt；event_time 结构由原校验器校验，首 source 的 said_at_utc/offset_minutes/原 wording 与 processed_at_utc 分开断言。编辑保原时、独立新源另定日期；固定回包不证明模型会理解日期，未运行时区/native/后台调度。"
+        },
+        {
+          "id": "monday-edit-vs-wednesday-new-statement-2",
+          "suite": "app",
+          "name": "test/companion/companion_memory_dates_replay_test.dart fixture 2 editing Monday text keeps Tuesday while a new Wednesday source stores Thursday",
+          "file": "app/test/companion/companion_memory_dates_replay_test.dart",
+          "scope": "真实 SQLite/Owner/Worker 与 maintenance tools、实际 phone Messages body/每 HTTP receipt；event_time 结构由原校验器校验，首 source 的 said_at_utc/offset_minutes/原 wording 与 processed_at_utc 分开断言。编辑保原时、独立新源另定日期；固定回包不证明模型会理解日期，未运行时区/native/后台调度。"
+        },
+        {
+          "id": "ui-merged-lines-stable-source-ids-1",
+          "suite": "app",
+          "name": "test/companion/companion_page_test.dart page light mode fixture 2 grouped Log names keep two submitted originals after reopening SQLite",
+          "file": "app/test/companion/companion_page_test.dart",
+          "scope": "Two actual failed chat HTTP attempts, real Log renders two originals with one speaker name, exact SQLite IDs/first_seq/original times survive reopen and actual background extraction. No invented merged UI source or successful chat."
+        },
+        {
+          "id": "worker-private-extraction-completes-two-originals",
+          "suite": "app",
+          "name": "test/companion/companion_memory_worker_test.dart ADD46 character extraction completes two remembered originals with a fully metered continuation",
+          "file": "app/test/companion/companion_memory_worker_test.dart",
+          "scope": "真实Owner/Worker/SQLite/HTTP工具续轮，保两条原话、原始时刻、完整proof、每次完整wire估算预留与独立结算；不替代Page/Log/重开回归，固定SSE非真模型，NOT_RUN。"
+        },
+        {
+          "id": "worker-maintenance-increment-6500",
+          "suite": "app",
+          "name": "test/companion/companion_memory_worker_test.dart ADD47 maintenance continuation input 6500 keeps full accounting and a bounded increment",
+          "file": "app/test/companion/companion_memory_worker_test.dart",
+          "scope": "沿现有estimate注入口，首体5500，续体6500可发且完整预留/11501因新增6001不发。受控估算器边界回归，不是真provider成本或实际预算观测；真实HTTP替身、工具、SQLite及usage路径，NOT_RUN。"
+        },
+        {
+          "id": "worker-maintenance-increment-11501",
+          "suite": "app",
+          "name": "test/companion/companion_memory_worker_test.dart ADD47 maintenance continuation input 11501 keeps full accounting and a bounded increment",
+          "file": "app/test/companion/companion_memory_worker_test.dart",
+          "scope": "沿现有estimate注入口，首体5500，续体6500可发且完整预留/11501因新增6001不发。受控估算器边界回归，不是真provider成本或实际预算观测；真实HTTP替身、工具、SQLite及usage路径，NOT_RUN。"
+        }
+      ],
+      "limits": [
+        "当前Log真实行为是连续同说话人只显示一次名字，正文仍为独立行；不声称产品有另一种拼成单行的UI功能。"
+      ],
+      "required_gaps": []
+    },
+    {
+      "id": 3,
+      "title": "门槛、完整无工具结果、有限失败收尾和超长放行",
+      "original_ids": [
+        "07-38",
+        "07-39",
+        "07-41"
+      ],
+      "checks": [
+        {
+          "id": "eight-and-token-threshold",
+          "suite": "sdk",
+          "name": "test/companion_memory_flow_test.dart durable source and ordered queue only real user inputs count toward eight, and a 1500-token source also triggers",
+          "file": "packages/dsh_client/test/companion_memory_flow_test.dart"
+        },
+        {
+          "id": "two-minute-tail",
+          "suite": "sdk",
+          "name": "test/companion_memory_flow_test.dart durable source and ordered queue the two-minute quiet tail uses queue time, not an old statement date",
+          "file": "packages/dsh_client/test/companion_memory_flow_test.dart"
+        },
+        {
+          "id": "batch-limit-cursor",
+          "suite": "sdk",
+          "name": "test/companion_memory_flow_test.dart durable source and ordered queue a batch has at most 32 intact sources and advances across manual sequence gaps",
+          "file": "packages/dsh_client/test/companion_memory_flow_test.dart"
+        },
+        {
+          "id": "complete-empty-worker",
+          "suite": "app",
+          "name": "test/companion/companion_memory_worker_test.dart A2 a complete no-tool answer processes the exact original sources and preserves provider usage",
+          "file": "app/test/companion/companion_memory_worker_test.dart",
+          "scope": "A2 Messages 完整无工具 end_turn：实际原话/原时刻、整 body reservation、event done、原始 start/final usage；不造维护聊天。不是旧 JSON operations 包装。"
+        },
+        {
+          "id": "two-invalid-stable-batch",
+          "suite": "app",
+          "name": "test/companion/companion_memory_worker_test.dart A2 a failed held extract retires only its captured event while a newer source gets a distinct request",
+          "file": "app/test/companion/companion_memory_worker_test.dart",
+          "scope": "真实 held extract 捕获 u1 后提交 u2；一次损坏 tool 参数仅使 u1 的相同 source_rev/event_seq skipped/maintenance_incomplete，u2 pending 后由独立 parent/receipt 完成；不是两次 JSON 格式重试，也不是 Page 新提交取消集成。"
+        },
+        {
+          "id": "wait-does-not-spend-format",
+          "suite": "sdk",
+          "name": "test/companion_memory_flow_test.dart durable source and ordered queue network waiting preserves the head and does not consume format retries",
+          "file": "packages/dsh_client/test/companion_memory_flow_test.dart"
+        },
+        {
+          "id": "missing-stop-keeps-pending",
+          "suite": "app",
+          "name": "test/companion/companion_memory_worker_test.dart A2 incomplete keeps its actual usage and cannot complete source processing",
+          "file": "app/test/companion/companion_memory_worker_test.dart",
+          "scope": "精确 incomplete 展开：已发非完整维护不能标 done；原事件 skipped/maintenance_incomplete、format_failures=0、下一机会无新请求。该展开未单独逐字比较 raw_usage；实际 raw 对象由 complete-empty-worker/sse-to-stored-raw 的真实分支核。"
+        },
+        {
+          "id": "same-complete-reply-once",
+          "suite": "sdk",
+          "name": "test/companion_memory_flow_test.dart durable source and ordered queue a stable send and its claimed batch survive reopen without duplicating a statement",
+          "file": "packages/dsh_client/test/companion_memory_flow_test.dart"
+        },
+        {
+          "id": "oversized-source-next-can-run",
+          "suite": "sdk",
+          "name": "test/companion_memory_flow_test.dart durable source and ordered queue one individually oversized source is visibly skipped without blocking the next source",
+          "file": "packages/dsh_client/test/companion_memory_flow_test.dart"
+        },
+        {
+          "id": "optional-context-not-oversized-source",
+          "suite": "sdk",
+          "name": "test/companion_memory_flow_test.dart durable source and ordered queue optional existing context cannot make a short source look oversized",
+          "file": "packages/dsh_client/test/companion_memory_flow_test.dart"
+        },
+        {
+          "id": "stale-bad-reply-no-format-attempt",
+          "suite": "sdk",
+          "name": "test/companion_memory_flow_test.dart durable source and ordered queue source or control changes before an invalid response do not spend a format attempt",
+          "file": "packages/dsh_client/test/companion_memory_flow_test.dart"
+        }
+      ],
+      "limits": [
+        "推进模拟时钟只提供运行机会；没有操作系统两分钟准时后台调度或一期长文分片承诺。",
+        "原低层SDK格式/队列兼容检查不代表A2 Worker仍执行两次格式重试；A2的已派发不完整终态见各active check scope。"
+      ],
+      "required_gaps": []
+    },
+    {
+      "id": 4,
+      "title": "纠正、取消、旧编辑与本人改口",
+      "original_ids": [
+        "07-21",
+        "07-27",
+        "07-42",
+        "rotation-33",
+        "rotation-34"
+      ],
+      "checks": [
+        {
+          "id": "explicit-correction-and-derived-proof",
+          "suite": "sdk",
+          "name": "test/companion_memory_flow_test.dart immediate controls and deletion an explicit correction replaces the wrong fact and its derivatives with the whole new source",
+          "file": "packages/dsh_client/test/companion_memory_flow_test.dart"
+        },
+        {
+          "id": "cancel-fences-late-and-old-create",
+          "suite": "sdk",
+          "name": "test/companion_memory_flow_test.dart immediate controls and deletion cancellation blocks a late reply and old re-extraction while a later independent plan can be created",
+          "file": "packages/dsh_client/test/companion_memory_flow_test.dart"
+        },
+        {
+          "id": "old-edit-vs-independent-new-replace",
+          "suite": "sdk",
+          "name": "test/companion_memory_flow_test.dart current values and atomic proposal commit editing an old statement cannot undo a later independent current value",
+          "file": "packages/dsh_client/test/companion_memory_flow_test.dart",
+          "scope": "已明确 target_id 的同事项 replace；不证明所有 targetless create 的一般语义资格。"
+        },
+        {
+          "id": "literal-create-after-manual-true",
+          "suite": "sdk",
+          "name": "test/companion_memory_flow_test.dart current values and atomic proposal commit A3 create without proposed keywords cannot bypass a later manual value (true)",
+          "file": "packages/dsh_client/test/companion_memory_flow_test.dart",
+          "scope": "有限字面锚；独立无交集事实保留。",
+          "source_template": "A3 create without proposed keywords cannot bypass a later manual value ($manualBeforeClaim)"
+        },
+        {
+          "id": "literal-create-after-manual-false",
+          "suite": "sdk",
+          "name": "test/companion_memory_flow_test.dart current values and atomic proposal commit A3 create without proposed keywords cannot bypass a later manual value (false)",
+          "file": "packages/dsh_client/test/companion_memory_flow_test.dart",
+          "scope": "有限字面锚；独立无交集事实保留。",
+          "source_template": "A3 create without proposed keywords cannot bypass a later manual value ($manualBeforeClaim)"
+        },
+        {
+          "id": "pending-followup-cancelled-ui",
+          "suite": "app",
+          "name": "test/companion/companion_invite_test.dart a pending memory question yields to cancelled through the real composer",
+          "file": "app/test/companion/companion_invite_test.dart",
+          "source_template": "a pending memory question yields to $state through the real composer"
+        },
+        {
+          "id": "real-edits-control-fence",
+          "suite": "sdk",
+          "name": "test/companion_memory_flow_test.dart immediate controls and deletion ordinary extraction does not invalidate a prepared chat, but real edits and manual changes do",
+          "file": "packages/dsh_client/test/companion_memory_flow_test.dart"
+        },
+        {
+          "id": "owner-current-edit",
+          "suite": "app",
+          "name": "test/companion/companion_memory_owner_test.dart editing what she remembers is a new current value, without inventing history",
+          "file": "app/test/companion/companion_memory_owner_test.dart"
+        },
+        {
+          "id": "owner-minimal-controls",
+          "suite": "app",
+          "name": "test/companion/companion_memory_owner_test.dart the page offers only edit and forget, no mechanism controls",
+          "file": "app/test/companion/companion_memory_owner_test.dart"
+        },
+        {
+          "id": "late-chat-speech-and-save-1",
+          "suite": "app",
+          "name": "test/companion/companion_stream_state_test.dart fixture 4 a composer correction retires a late full reply before speech and last-line writes",
+          "file": "app/test/companion/companion_stream_state_test.dart",
+          "scope": "新 owner 的实际 Page/phone Agent/SQLite/voice-widget channel 边界，固定 Messages/模型 revise 工具与迟到回复；保原名称，不能仍称旧 Host ChatController 帧机制。无 provider/native 执行证明。"
+        },
+        {
+          "id": "writing-group-vs-explicit-preference-change-1",
+          "suite": "app",
+          "name": "test/companion/companion_page_test.dart page light mode fixture 4 joining a writing group keeps the original preference in the next Page request",
+          "file": "app/test/companion/companion_page_test.dart",
+          "scope": "Fixed qualified proposals through actual parser and store; real next Page HTTP memory block and complete support. Does not grade model semantic identification of joining a group versus a new preference."
+        },
+        {
+          "id": "writing-group-vs-explicit-preference-change-2",
+          "suite": "app",
+          "name": "test/companion/companion_page_test.dart page light mode fixture 4 a personal writing change reaches the next Page request with its own complete source",
+          "file": "app/test/companion/companion_page_test.dart",
+          "scope": "Fixed qualified proposals through actual parser and store; real next Page HTTP memory block and complete support. Does not grade model semantic identification of joining a group versus a new preference."
+        }
+      ],
+      "limits": [
+        "一般targetless同事项仍BLOCKED_SCOPE；本组有限断言通过不关闭该要求，不把它记为NOT_APPLICABLE。"
+      ],
+      "required_gaps": []
+    },
+    {
+      "id": 5,
+      "title": "少提、禁提、忘记与旧序号分界",
+      "original_ids": [
+        "07-16",
+        "07-17",
+        "07-18",
+        "07-47"
+      ],
+      "checks": [
+        {
+          "id": "less-never-explicit-current-topic",
+          "suite": "sdk",
+          "name": "test/companion_memory_flow_test.dart immediate controls and deletion less, never and explicit reopening retain distinct persistent behavior",
+          "file": "packages/dsh_client/test/companion_memory_flow_test.dart"
+        },
+        {
+          "id": "forget-with-budget-exhaustion",
+          "suite": "sdk",
+          "name": "test/companion_memory_flow_test.dart immediate controls and deletion forget removes controlled working copies, retains disjoint proof and cuts global history through the command",
+          "file": "packages/dsh_client/test/companion_memory_flow_test.dart",
+          "scope": "此测试确实先占满辅助额度，控制不发新请求；后编辑复合旧源仍被分界排除。"
+        },
+        {
+          "id": "forget-raw-delete-independent-proof",
+          "suite": "sdk",
+          "name": "test/companion_memory_flow_test.dart immediate controls and deletion forget with raw deletion removes whole source groups before foreign keys and preserves independent proof",
+          "file": "packages/dsh_client/test/companion_memory_flow_test.dart"
+        },
+        {
+          "id": "model-history-and-extraction-cutoff",
+          "suite": "sdk",
+          "name": "test/companion_memory_flow_test.dart durable source and ordered queue model history and future extraction respect the first-sequence cutoff across rooms",
+          "file": "packages/dsh_client/test/companion_memory_flow_test.dart",
+          "scope": "此条用 SQL 设边界；真正控制事务由同组另外测试覆盖。"
+        },
+        {
+          "id": "controlled-create-never",
+          "suite": "sdk",
+          "name": "test/companion_memory_flow_test.dart immediate controls and deletion a new create inherits a unique never topic without taking an independent fact from the same source",
+          "file": "packages/dsh_client/test/companion_memory_flow_test.dart",
+          "source_template": "a new create inherits a unique $mode topic without taking an independent fact from the same source"
+        },
+        {
+          "id": "consolidation-cutoff",
+          "suite": "sdk",
+          "name": "test/companion_memory_merge_test.dart old source text cannot cross the archive boundary into consolidation",
+          "file": "packages/dsh_client/test/companion_memory_merge_test.dart"
+        },
+        {
+          "id": "independent-old-proof-kept",
+          "suite": "sdk",
+          "name": "test/companion_memory_merge_test.dart valid independent proofs omitted by the outbound cutoff survive a later merge",
+          "file": "packages/dsh_client/test/companion_memory_merge_test.dart"
+        },
+        {
+          "id": "widget-ack-current",
+          "suite": "sdk",
+          "name": "test/companion_memory_flow_test.dart immediate controls and deletion widget clears are acknowledged only at the exact current control revision",
+          "file": "packages/dsh_client/test/companion_memory_flow_test.dart"
+        },
+        {
+          "id": "widget-stale-line-fenced",
+          "suite": "app",
+          "name": "test/companion/companion_widget_memory_test.dart a queued old line cannot follow a newer unconditional clear",
+          "file": "app/test/companion/companion_widget_memory_test.dart"
+        },
+        {
+          "id": "owner-forget-native-ack",
+          "suite": "app",
+          "name": "test/companion/companion_memory_owner_test.dart forget removes the card and clears line and saidAt with native acknowledgement",
+          "file": "app/test/companion/companion_memory_owner_test.dart"
+        },
+        {
+          "id": "owner-forget-native-failure",
+          "suite": "app",
+          "name": "test/companion/companion_memory_owner_test.dart native failure leaves clear pending after a successful forget",
+          "file": "app/test/companion/companion_memory_owner_test.dart"
+        },
+        {
+          "id": "never-old-mixed-edit-all-three-outbounds-1",
+          "suite": "app",
+          "name": "test/companion/companion_memory_control_replay_test.dart fixture 5 never survives editing old mixed source across reopen and all three actual request paths",
+          "file": "app/test/companion/companion_memory_control_replay_test.dart",
+          "scope": "真实 SQLite/Owner/Worker/CompanionAgentMemoryTools.maintenance 与 Messages tool_use/tool_result 续轮、原 light chat/usage；持续 never、显式公开 normal 解除、旧源 cutoff/重开/独立证明断言保留。卡写通过真实工具；本卡正文只匹配 exact character 域。固定模型回包，不是 Page 的控制意图识别或自然语义运行证明。"
+        },
+        {
+          "id": "never-old-mixed-edit-all-three-outbounds-2",
+          "suite": "app",
+          "name": "test/companion/companion_memory_control_replay_test.dart fixture 5 forget keeps the edited old source out but admits a new source across all three actual request paths",
+          "file": "app/test/companion/companion_memory_control_replay_test.dart",
+          "scope": "真实 SQLite/Owner/Worker/CompanionAgentMemoryTools.maintenance 与 Messages tool_use/tool_result 续轮、原 light chat/usage；持续 never、显式公开 normal 解除、旧源 cutoff/重开/独立证明断言保留。卡写通过真实工具；本卡正文只匹配 exact character 域。固定模型回包，不是 Page 的控制意图识别或自然语义运行证明。"
+        },
+        {
+          "id": "never-old-mixed-edit-all-three-outbounds-3",
+          "suite": "app",
+          "name": "test/companion/companion_memory_control_replay_test.dart fixture 5 natural normal command releases the saved control before new source extraction and actual chat",
+          "file": "app/test/companion/companion_memory_control_replay_test.dart",
+          "scope": "真实 SQLite/Owner/Worker/CompanionAgentMemoryTools.maintenance 与 Messages tool_use/tool_result 续轮、原 light chat/usage；持续 never、显式公开 normal 解除、旧源 cutoff/重开/独立证明断言保留。卡写通过真实工具；本卡正文只匹配 exact character 域。固定模型回包，不是 Page 的控制意图识别或自然语义运行证明。"
+        },
+        {
+          "id": "control-anchor-lifecycle-1",
+          "suite": "sdk",
+          "name": "test/companion_memory_control_anchor_test.dart less control survives sole-proof withdrawal and restart without becoming fact evidence",
+          "file": "packages/dsh_client/test/companion_memory_control_anchor_test.dart",
+          "scope": "控制元数据与事实证明分离；编辑后删除另列R16真实生命周期回归。"
+        },
+        {
+          "id": "control-anchor-lifecycle-2",
+          "suite": "sdk",
+          "name": "test/companion_memory_control_anchor_test.dart never control survives sole-proof withdrawal and restart without becoming fact evidence",
+          "file": "packages/dsh_client/test/companion_memory_control_anchor_test.dart",
+          "scope": "控制元数据与事实证明分离；编辑后删除另列R16真实生命周期回归。"
+        },
+        {
+          "id": "control-anchor-lifecycle-3",
+          "suite": "sdk",
+          "name": "test/companion_memory_control_anchor_test.dart reaffirming and switching less or never retains proved anchors until explicit normal",
+          "file": "packages/dsh_client/test/companion_memory_control_anchor_test.dart",
+          "scope": "控制元数据与事实证明分离；编辑后删除另列R16真实生命周期回归。"
+        },
+        {
+          "id": "control-anchor-lifecycle-4",
+          "suite": "sdk",
+          "name": "test/companion_memory_control_anchor_test.dart control-only anchors do not make a forgotten fact or cancelled plan target",
+          "file": "packages/dsh_client/test/companion_memory_control_anchor_test.dart",
+          "scope": "控制元数据与事实证明分离；编辑后删除另列R16真实生命周期回归。"
+        },
+        {
+          "id": "control-anchor-lifecycle-5",
+          "suite": "sdk",
+          "name": "test/companion_memory_control_anchor_test.dart two saved control topics with the same literal anchor remain ambiguous",
+          "file": "packages/dsh_client/test/companion_memory_control_anchor_test.dart",
+          "scope": "控制元数据与事实证明分离；编辑后删除另列R16真实生命周期回归。"
+        },
+        {
+          "id": "control-anchor-lifecycle-6",
+          "suite": "sdk",
+          "name": "test/companion_memory_control_anchor_test.dart a generated card cannot widen the saved control vocabulary to an independent fact",
+          "file": "packages/dsh_client/test/companion_memory_control_anchor_test.dart",
+          "scope": "控制元数据与事实证明分离；编辑后删除另列R16真实生命周期回归。"
+        },
+        {
+          "id": "control-anchor-lifecycle-7",
+          "suite": "sdk",
+          "name": "test/companion_memory_control_anchor_test.dart forget deletes the final controlled topic and its anchors (raw=false)",
+          "file": "packages/dsh_client/test/companion_memory_control_anchor_test.dart",
+          "scope": "控制元数据与事实证明分离；编辑后删除另列R16真实生命周期回归。"
+        },
+        {
+          "id": "control-anchor-lifecycle-8",
+          "suite": "sdk",
+          "name": "test/companion_memory_control_anchor_test.dart forget deletes the final controlled topic and its anchors (raw=true)",
+          "file": "packages/dsh_client/test/companion_memory_control_anchor_test.dart",
+          "scope": "控制元数据与事实证明分离；编辑后删除另列R16真实生命周期回归。"
+        },
+        {
+          "id": "control-anchor-lifecycle-9",
+          "suite": "sdk",
+          "name": "test/companion_memory_control_anchor_test.dart deleting the original proved source also deletes its final controlled topic",
+          "file": "packages/dsh_client/test/companion_memory_control_anchor_test.dart",
+          "scope": "控制元数据与事实证明分离；编辑后删除另列R16真实生命周期回归。"
+        },
+        {
+          "id": "control-anchor-lifecycle-10",
+          "suite": "sdk",
+          "name": "test/companion_memory_control_anchor_test.dart a real v8 upgrade recovers only the still-proved vocabulary of existing controls",
+          "file": "packages/dsh_client/test/companion_memory_control_anchor_test.dart",
+          "scope": "控制元数据与事实证明分离；编辑后删除另列R16真实生命周期回归。"
+        },
+        {
+          "id": "control-anchor-lifecycle-11",
+          "suite": "sdk",
+          "name": "test/companion_memory_control_anchor_test.dart a damaged v8 control does not invent lost anchors from withdrawn fact text",
+          "file": "packages/dsh_client/test/companion_memory_control_anchor_test.dart",
+          "scope": "控制元数据与事实证明分离；编辑后删除另列R16真实生命周期回归。"
+        },
+        {
+          "id": "control-anchor-lifecycle-12",
+          "suite": "sdk",
+          "name": "test/companion_memory_control_anchor_test.dart merging two less topics preserves both explicit control vocabularies",
+          "file": "packages/dsh_client/test/companion_memory_control_anchor_test.dart",
+          "scope": "控制元数据与事实证明分离；编辑后删除另列R16真实生命周期回归。"
+        },
+        {
+          "id": "edited-source-cleanup-1",
+          "suite": "sdk",
+          "name": "test/companion_memory_delete_lineage_test.dart deleting an edited original removes its withdrawn facts and final control while preserving independent coffee",
+          "file": "packages/dsh_client/test/companion_memory_delete_lineage_test.dart",
+          "scope": "新v10有限关系闭包已独立源码推导；真实存储/重开/迁移/AND-OR/manual测试仍须执行，旧丢失历史不得猜恢复。"
+        },
+        {
+          "id": "edited-source-cleanup-2",
+          "suite": "sdk",
+          "name": "test/companion_memory_delete_lineage_test.dart an edited member withdraws its whole AND proof and deleting the other original cleans the card",
+          "file": "packages/dsh_client/test/companion_memory_delete_lineage_test.dart",
+          "scope": "新v10有限关系闭包已独立源码推导；真实存储/重开/迁移/AND-OR/manual测试仍须执行，旧丢失历史不得猜恢复。"
+        },
+        {
+          "id": "edited-source-cleanup-3",
+          "suite": "sdk",
+          "name": "test/companion_memory_delete_lineage_test.dart deleting a historical source keeps a complete independent OR proof",
+          "file": "packages/dsh_client/test/companion_memory_delete_lineage_test.dart",
+          "scope": "新v10有限关系闭包已独立源码推导；真实存储/重开/迁移/AND-OR/manual测试仍须执行，旧丢失历史不得猜恢复。"
+        },
+        {
+          "id": "edited-source-cleanup-4",
+          "suite": "sdk",
+          "name": "test/companion_memory_delete_lineage_test.dart merge transfers the removed card cleanup identity before its cascade",
+          "file": "packages/dsh_client/test/companion_memory_delete_lineage_test.dart",
+          "scope": "新v10有限关系闭包已独立源码推导；真实存储/重开/迁移/AND-OR/manual测试仍须执行，旧丢失历史不得猜恢复。"
+        },
+        {
+          "id": "edited-source-cleanup-5",
+          "suite": "sdk",
+          "name": "test/companion_memory_delete_lineage_test.dart replace and a separately sourced past sentence keep only their own new source identities",
+          "file": "packages/dsh_client/test/companion_memory_delete_lineage_test.dart",
+          "scope": "新v10有限关系闭包已独立源码推导；真实存储/重开/迁移/AND-OR/manual测试仍须执行，旧丢失历史不得猜恢复。"
+        },
+        {
+          "id": "edited-source-cleanup-6",
+          "suite": "sdk",
+          "name": "test/companion_memory_delete_lineage_test.dart an explicit correction replaces its cleanup source as well as its factual proof",
+          "file": "packages/dsh_client/test/companion_memory_delete_lineage_test.dart",
+          "scope": "新v10有限关系闭包已独立源码推导；真实存储/重开/迁移/AND-OR/manual测试仍须执行，旧丢失历史不得猜恢复。"
+        },
+        {
+          "id": "edited-source-cleanup-7",
+          "suite": "sdk",
+          "name": "test/companion_memory_delete_lineage_test.dart manual current wording is independent of the former automatic source",
+          "file": "packages/dsh_client/test/companion_memory_delete_lineage_test.dart",
+          "scope": "新v10有限关系闭包已独立源码推导；真实存储/重开/迁移/AND-OR/manual测试仍须执行，旧丢失历史不得猜恢复。"
+        },
+        {
+          "id": "edited-source-cleanup-8",
+          "suite": "sdk",
+          "name": "test/companion_memory_delete_lineage_test.dart exact withdrawn forget deletes one fact and only deletes its original when requested (raw=false)",
+          "file": "packages/dsh_client/test/companion_memory_delete_lineage_test.dart",
+          "scope": "新v10有限关系闭包已独立源码推导；真实存储/重开/迁移/AND-OR/manual测试仍须执行，旧丢失历史不得猜恢复。"
+        },
+        {
+          "id": "edited-source-cleanup-9",
+          "suite": "sdk",
+          "name": "test/companion_memory_delete_lineage_test.dart exact withdrawn forget deletes one fact and only deletes its original when requested (raw=true)",
+          "file": "packages/dsh_client/test/companion_memory_delete_lineage_test.dart",
+          "scope": "新v10有限关系闭包已独立源码推导；真实存储/重开/迁移/AND-OR/manual测试仍须执行，旧丢失历史不得猜恢复。"
+        },
+        {
+          "id": "edited-source-cleanup-10",
+          "suite": "sdk",
+          "name": "test/companion_memory_delete_lineage_test.dart an active and withdrawn fact with the same full sentence are two ambiguous forget targets",
+          "file": "packages/dsh_client/test/companion_memory_delete_lineage_test.dart",
+          "scope": "新v10有限关系闭包已独立源码推导；真实存储/重开/迁移/AND-OR/manual测试仍须执行，旧丢失历史不得猜恢复。"
+        },
+        {
+          "id": "edited-source-cleanup-11",
+          "suite": "sdk",
+          "name": "test/companion_memory_delete_lineage_test.dart withdrawn cleanup wording does not become a cancellation correction or topic-word forget target",
+          "file": "packages/dsh_client/test/companion_memory_delete_lineage_test.dart",
+          "scope": "新v10有限关系闭包已独立源码推导；真实存储/重开/迁移/AND-OR/manual测试仍须执行，旧丢失历史不得猜恢复。"
+        },
+        {
+          "id": "edited-source-cleanup-12",
+          "suite": "sdk",
+          "name": "test/companion_memory_delete_lineage_test.dart real v9 migration backfills current identities before a later edit and raw deletion",
+          "file": "packages/dsh_client/test/companion_memory_delete_lineage_test.dart",
+          "scope": "新v10有限关系闭包已独立源码推导；真实存储/重开/迁移/AND-OR/manual测试仍须执行，旧丢失历史不得猜恢复。"
+        },
+        {
+          "id": "edited-source-cleanup-13",
+          "suite": "sdk",
+          "name": "test/companion_memory_delete_lineage_test.dart lost v9 original identity cannot be invented or reported as a successful raw deletion",
+          "file": "packages/dsh_client/test/companion_memory_delete_lineage_test.dart",
+          "scope": "新v10有限关系闭包已独立源码推导；真实存储/重开/迁移/AND-OR/manual测试仍须执行，旧丢失历史不得猜恢复。"
+        },
+        {
+          "id": "edited-source-cleanup-14",
+          "suite": "sdk",
+          "name": "test/companion_memory_delete_lineage_test.dart v9 partial OR history backfill does not invent its previously removed source edge",
+          "file": "packages/dsh_client/test/companion_memory_delete_lineage_test.dart",
+          "scope": "新v10有限关系闭包已独立源码推导；真实存储/重开/迁移/AND-OR/manual测试仍须执行，旧丢失历史不得猜恢复。"
+        },
+        {
+          "id": "edited-source-cleanup-15",
+          "suite": "sdk",
+          "name": "test/companion_memory_delete_lineage_test.dart partial legacy OR loss rejects natural raw forget without deleting cards sources or recording success",
+          "file": "packages/dsh_client/test/companion_memory_delete_lineage_test.dart",
+          "scope": "新v10有限关系闭包已独立源码推导；真实存储/重开/迁移/AND-OR/manual测试仍须执行，旧丢失历史不得猜恢复。"
+        },
+        {
+          "id": "edited-source-cleanup-16",
+          "suite": "sdk",
+          "name": "test/companion_memory_delete_lineage_test.dart merge preserves incomplete history and pinning cannot certify it",
+          "file": "packages/dsh_client/test/companion_memory_delete_lineage_test.dart",
+          "scope": "新v10有限关系闭包已独立源码推导；真实存储/重开/迁移/AND-OR/manual测试仍须执行，旧丢失历史不得猜恢复。"
+        },
+        {
+          "id": "edited-source-cleanup-17",
+          "suite": "sdk",
+          "name": "test/companion_memory_delete_lineage_test.dart a replace with its own new basis can replace incomplete legacy history",
+          "file": "packages/dsh_client/test/companion_memory_delete_lineage_test.dart",
+          "scope": "新v10有限关系闭包已独立源码推导；真实存储/重开/迁移/AND-OR/manual测试仍须执行，旧丢失历史不得猜恢复。"
+        },
+        {
+          "id": "edited-source-cleanup-18",
+          "suite": "sdk",
+          "name": "test/companion_memory_delete_lineage_test.dart a correct with its own new basis can replace incomplete legacy history",
+          "file": "packages/dsh_client/test/companion_memory_delete_lineage_test.dart",
+          "scope": "新v10有限关系闭包已独立源码推导；真实存储/重开/迁移/AND-OR/manual测试仍须执行，旧丢失历史不得猜恢复。"
+        },
+        {
+          "id": "edited-source-cleanup-19",
+          "suite": "sdk",
+          "name": "test/companion_memory_delete_lineage_test.dart a manual with its own new basis can replace incomplete legacy history",
+          "file": "packages/dsh_client/test/companion_memory_delete_lineage_test.dart",
+          "scope": "新v10有限关系闭包已独立源码推导；真实存储/重开/迁移/AND-OR/manual测试仍须执行，旧丢失历史不得猜恢复。"
+        },
+        {
+          "id": "edited-source-cleanup-20",
+          "suite": "sdk",
+          "name": "test/companion_memory_delete_lineage_test.dart same-body replace preserves cleanup history when legacy uncertainty is false",
+          "file": "packages/dsh_client/test/companion_memory_delete_lineage_test.dart",
+          "scope": "新v10有限关系闭包已独立源码推导；真实存储/重开/迁移/AND-OR/manual测试仍须执行，旧丢失历史不得猜恢复。"
+        },
+        {
+          "id": "edited-source-cleanup-21",
+          "suite": "sdk",
+          "name": "test/companion_memory_delete_lineage_test.dart same-body correct preserves cleanup history when legacy uncertainty is false",
+          "file": "packages/dsh_client/test/companion_memory_delete_lineage_test.dart",
+          "scope": "新v10有限关系闭包已独立源码推导；真实存储/重开/迁移/AND-OR/manual测试仍须执行，旧丢失历史不得猜恢复。"
+        },
+        {
+          "id": "edited-source-cleanup-22",
+          "suite": "sdk",
+          "name": "test/companion_memory_delete_lineage_test.dart same-body replace preserves cleanup history when legacy uncertainty is true",
+          "file": "packages/dsh_client/test/companion_memory_delete_lineage_test.dart",
+          "scope": "新v10有限关系闭包已独立源码推导；真实存储/重开/迁移/AND-OR/manual测试仍须执行，旧丢失历史不得猜恢复。"
+        },
+        {
+          "id": "edited-source-cleanup-23",
+          "suite": "sdk",
+          "name": "test/companion_memory_delete_lineage_test.dart same-body correct preserves cleanup history when legacy uncertainty is true",
+          "file": "packages/dsh_client/test/companion_memory_delete_lineage_test.dart",
+          "scope": "新v10有限关系闭包已独立源码推导；真实存储/重开/迁移/AND-OR/manual测试仍须执行，旧丢失历史不得猜恢复。"
+        },
+        {
+          "id": "edited-source-cleanup-24",
+          "suite": "sdk",
+          "name": "test/companion_memory_delete_lineage_test.dart a manual label cannot bypass an incomplete source history",
+          "file": "packages/dsh_client/test/companion_memory_delete_lineage_test.dart",
+          "scope": "新v10有限关系闭包已独立源码推导；真实存储/重开/迁移/AND-OR/manual测试仍须执行，旧丢失历史不得猜恢复。"
+        },
+        {
+          "id": "edited-source-cleanup-25",
+          "suite": "sdk",
+          "name": "test/companion_memory_delete_lineage_test.dart legacy imported manual values without phone sources have complete local cleanup history",
+          "file": "packages/dsh_client/test/companion_memory_delete_lineage_test.dart",
+          "scope": "新v10有限关系闭包已独立源码推导；真实存储/重开/迁移/AND-OR/manual测试仍须执行，旧丢失历史不得猜恢复。"
+        },
+        {
+          "id": "edited-source-cleanup-26",
+          "suite": "sdk",
+          "name": "test/companion_memory_delete_lineage_test.dart raw forget checks a copied-proof card that will lose its last group (legacy=false)",
+          "file": "packages/dsh_client/test/companion_memory_delete_lineage_test.dart",
+          "scope": "新v10有限关系闭包已独立源码推导；真实存储/重开/迁移/AND-OR/manual测试仍须执行，旧丢失历史不得猜恢复。"
+        },
+        {
+          "id": "edited-source-cleanup-27",
+          "suite": "sdk",
+          "name": "test/companion_memory_delete_lineage_test.dart raw forget checks a copied-proof card that will lose its last group (legacy=true)",
+          "file": "packages/dsh_client/test/companion_memory_delete_lineage_test.dart",
+          "scope": "新v10有限关系闭包已独立源码推导；真实存储/重开/迁移/AND-OR/manual测试仍须执行，旧丢失历史不得猜恢复。"
+        },
+        {
+          "id": "edited-source-cleanup-28",
+          "suite": "sdk",
+          "name": "test/companion_memory_delete_lineage_test.dart a copied-proof card with independent G4 stays outside raw cleanup even with legacy=false",
+          "file": "packages/dsh_client/test/companion_memory_delete_lineage_test.dart",
+          "scope": "新v10有限关系闭包已独立源码推导；真实存储/重开/迁移/AND-OR/manual测试仍须执行，旧丢失历史不得猜恢复。"
+        },
+        {
+          "id": "edited-source-cleanup-29",
+          "suite": "sdk",
+          "name": "test/companion_memory_delete_lineage_test.dart a copied-proof card with independent G4 stays outside raw cleanup even with legacy=true",
+          "file": "packages/dsh_client/test/companion_memory_delete_lineage_test.dart",
+          "scope": "新v10有限关系闭包已独立源码推导；真实存储/重开/迁移/AND-OR/manual测试仍须执行，旧丢失历史不得猜恢复。"
+        },
+        {
+          "id": "edited-source-cleanup-30",
+          "suite": "sdk",
+          "name": "test/companion_memory_delete_lineage_test.dart a newly selected raw source expands cleanup through a second nonliteral proof-dependent card",
+          "file": "packages/dsh_client/test/companion_memory_delete_lineage_test.dart",
+          "scope": "新v10有限关系闭包已独立源码推导；真实存储/重开/迁移/AND-OR/manual测试仍须执行，旧丢失历史不得猜恢复。"
+        },
+        {
+          "id": "edited-source-cleanup-31",
+          "suite": "sdk",
+          "name": "test/companion_memory_delete_lineage_test.dart raw forget rejects incomplete legacy history anywhere in the literal deletion closure",
+          "file": "packages/dsh_client/test/companion_memory_delete_lineage_test.dart",
+          "scope": "新v10有限关系闭包已独立源码推导；真实存储/重开/迁移/AND-OR/manual测试仍须执行，旧丢失历史不得猜恢复。"
+        },
+        {
+          "id": "edited-source-cleanup-32",
+          "suite": "sdk",
+          "name": "test/companion_memory_delete_lineage_test.dart raw forget follows a new withdrawn composite identity when its current original still contains the root sentence",
+          "file": "packages/dsh_client/test/companion_memory_delete_lineage_test.dart",
+          "scope": "新v10有限关系闭包已独立源码推导；真实存储/重开/迁移/AND-OR/manual测试仍须执行，旧丢失历史不得猜恢复。"
+        },
+        {
+          "id": "edited-source-cleanup-33",
+          "suite": "sdk",
+          "name": "test/companion_memory_delete_lineage_test.dart unproved historical AND contribution refuses raw cleanup without deleting its independent source",
+          "file": "packages/dsh_client/test/companion_memory_delete_lineage_test.dart",
+          "scope": "新v10有限关系闭包已独立源码推导；真实存储/重开/迁移/AND-OR/manual测试仍须执行，旧丢失历史不得猜恢复。"
+        },
+        {
+          "id": "edited-source-cleanup-34",
+          "suite": "sdk",
+          "name": "test/companion_memory_delete_lineage_test.dart fresh complete AND cleanup preserves the independent Y message and card",
+          "file": "packages/dsh_client/test/companion_memory_delete_lineage_test.dart",
+          "scope": "新v10有限关系闭包已独立源码推导；真实存储/重开/迁移/AND-OR/manual测试仍须执行，旧丢失历史不得猜恢复。"
+        },
+        {
+          "id": "edited-source-cleanup-35",
+          "suite": "sdk",
+          "name": "test/companion_memory_delete_lineage_test.dart a reused historical source with 。 keeps its lost role through a new AND proof and merge",
+          "file": "packages/dsh_client/test/companion_memory_delete_lineage_test.dart",
+          "scope": "新v10有限关系闭包已独立源码推导；真实存储/重开/迁移/AND-OR/manual测试仍须执行，旧丢失历史不得猜恢复。"
+        },
+        {
+          "id": "edited-source-cleanup-36",
+          "suite": "sdk",
+          "name": "test/companion_memory_delete_lineage_test.dart a reused historical source with ！ keeps its lost role through a new AND proof and merge",
+          "file": "packages/dsh_client/test/companion_memory_delete_lineage_test.dart",
+          "scope": "新v10有限关系闭包已独立源码推导；真实存储/重开/迁移/AND-OR/manual测试仍须执行，旧丢失历史不得猜恢复。"
+        },
+        {
+          "id": "edited-source-cleanup-37",
+          "suite": "sdk",
+          "name": "test/companion_memory_delete_lineage_test.dart editing another AND member marks an unchanged source even when it already has a separate Y role",
+          "file": "packages/dsh_client/test/companion_memory_delete_lineage_test.dart",
+          "scope": "新v10有限关系闭包已独立源码推导；真实存储/重开/迁移/AND-OR/manual测试仍须执行，旧丢失历史不得猜恢复。"
+        },
+        {
+          "id": "edited-source-cleanup-outbounds",
+          "suite": "app",
+          "name": "test/companion/companion_memory_control_replay_test.dart fixture 16 deleting edited raw source removes withdrawn facts before extraction consolidation and actual chat",
+          "file": "app/test/companion/companion_memory_control_replay_test.dart",
+          "scope": "真实 SQLite/Owner/Worker/CompanionAgentMemoryTools.maintenance 与 Messages tool_use/tool_result 续轮、原 light chat/usage；持续 never、显式公开 normal 解除、旧源 cutoff/重开/独立证明断言保留。卡写通过真实工具；本卡正文只匹配 exact character 域。固定模型回包，不是 Page 的控制意图识别或自然语义运行证明。"
+        }
+      ],
+      "limits": [],
+      "required_gaps": []
+    },
+    {
+      "id": 6,
+      "title": "现实与故事、手工置顶不作归属证明",
+      "original_ids": [
+        "07-11",
+        "07-44",
+        "07-49"
+      ],
+      "checks": [
+        {
+          "id": "real-user-source-only",
+          "suite": "sdk",
+          "name": "test/companion_memory_rules_test.dart 09s extraction boundary each fact needs a verbatim quote from the referenced real user version",
+          "file": "packages/dsh_client/test/companion_memory_rules_test.dart"
+        },
+        {
+          "id": "story-and-unknown-selector-excluded",
+          "suite": "sdk",
+          "name": "test/companion_memory_rules_test.dart 09e-r2 two-pass recall reality, current support, expiry and explicit past wording precede ranking",
+          "file": "packages/dsh_client/test/companion_memory_rules_test.dart"
+        },
+        {
+          "id": "long-pin-not-manual-evidence",
+          "suite": "sdk",
+          "name": "test/companion_memory_flow_test.dart immediate controls and deletion pinning a long automatic card does not turn it into a manual statement or apply the legacy text limit",
+          "file": "packages/dsh_client/test/companion_memory_flow_test.dart"
+        },
+        {
+          "id": "only-explicit-legacy-reality",
+          "suite": "sdk",
+          "name": "test/companion_memory_flow_test.dart immediate controls and deletion only an explicit legacy reality confirmation changes display-only eligibility",
+          "file": "packages/dsh_client/test/companion_memory_flow_test.dart"
+        },
+        {
+          "id": "story-not-consolidation",
+          "suite": "sdk",
+          "name": "test/companion_memory_merge_test.dart story and assistant lines never become real consolidation evidence",
+          "file": "packages/dsh_client/test/companion_memory_merge_test.dart"
+        },
+        {
+          "id": "pinned-script-unknown-real-outbound-1",
+          "suite": "app",
+          "name": "test/companion/companion_page_test.dart page light mode explicit story and generic unconfirmed cards survive reentry but stay out of the real request",
+          "file": "app/test/companion/companion_page_test.dart",
+          "scope": "Actual CompanionPage/SQLite/reentry/Log/final light request; explicit low-level story/unconfirmed fixtures, not Tavern UI proof or model semantics."
+        },
+        {
+          "id": "same-story-reentry-and-real-request-1",
+          "suite": "app",
+          "name": "test/companion/companion_page_test.dart page light mode fixture 6 original Tavern chat reopens with its story name while the real Page keeps its own name",
+          "file": "app/test/companion/companion_page_test.dart",
+          "scope": "Actual existing Tavern and Companion UI/engines/stores with final HTTP peers controlled offline; no PreviewTavern, no synthetic story API, no tavern/roleplay product edit. Does not grade external-model response semantics."
+        }
+      ],
+      "limits": [
+        "ADD04覆盖旧手记归属规则：App旧手记一律real。generic SDK未确认行与显式story行仍测过滤，不把它们冒充owner旧手记迁入结果。"
+      ],
+      "required_gaps": []
+    },
+    {
+      "id": 7,
+      "title": "两遍选择、空块和实例绑定",
+      "original_ids": [
+        "07-42",
+        "07-45",
+        "07-02",
+        "rotation-25"
+      ],
+      "checks": [
+        {
+          "id": "preference-first",
+          "suite": "sdk",
+          "name": "test/companion_memory_rules_test.dart 09e-r2 two-pass recall a zero-hit response preference remains before a matching topic",
+          "file": "packages/dsh_client/test/companion_memory_rules_test.dart"
+        },
+        {
+          "id": "shared-six-slots",
+          "suite": "sdk",
+          "name": "test/companion_memory_rules_test.dart 09e-r2 two-pass recall both passes share six slots; a third matching preference can join pass two once",
+          "file": "packages/dsh_client/test/companion_memory_rules_test.dart"
+        },
+        {
+          "id": "pinned-food-not-fallback",
+          "suite": "sdk",
+          "name": "test/companion_memory_rules_test.dart 09e-r2 two-pass recall pinned birthday, taste and unsupported preference wording are not response fallback",
+          "file": "packages/dsh_client/test/companion_memory_rules_test.dart"
+        },
+        {
+          "id": "less-never-fallback",
+          "suite": "sdk",
+          "name": "test/companion_memory_rules_test.dart 09e-r2 two-pass recall less disables fallback but permits matches; never needs an explicit current invitation",
+          "file": "packages/dsh_client/test/companion_memory_rules_test.dart"
+        },
+        {
+          "id": "literal-manual-empty-keywords",
+          "suite": "sdk",
+          "name": "test/companion_memory_rules_test.dart 09e-r2 two-pass recall keywordless manual cards use the entire literal input only in pass two",
+          "file": "packages/dsh_client/test/companion_memory_rules_test.dart"
+        },
+        {
+          "id": "1200-1201-final-block",
+          "suite": "sdk",
+          "name": "test/companion_memory_rules_test.dart 09e-r2 two-pass recall the serialized block accepts 1200 scalars including emoji and escaping; 1201 skips the whole card",
+          "file": "packages/dsh_client/test/companion_memory_rules_test.dart"
+        },
+        {
+          "id": "skip-long-continue",
+          "suite": "sdk",
+          "name": "test/companion_memory_rules_test.dart 09e-r2 two-pass recall overlong first-pass cards do not prevent later fitting preferences",
+          "file": "packages/dsh_client/test/companion_memory_rules_test.dart"
+        },
+        {
+          "id": "zero-hit-no-old-selection",
+          "suite": "sdk",
+          "name": "test/companion_memory_rules_test.dart 09e-r2 two-pass recall a new empty selection carries no previous-turn items",
+          "file": "packages/dsh_client/test/companion_memory_rules_test.dart"
+        },
+        {
+          "id": "page-real-request-and-next-empty",
+          "suite": "app",
+          "name": "test/companion/companion_page_test.dart page light mode selected phone memories travel beside this request, outside her stable persona",
+          "file": "app/test/companion/companion_page_test.dart",
+          "scope": "隔离修正：明示关键词点心正例，再发零命中下一请求；两次实际轻量HTTP请求体，MockClient边界。"
+        },
+        {
+          "id": "exact-request-id-prepare",
+          "suite": "sdk",
+          "name": "test/companion_prompt_context_test.dart prepare preserves the exact request id/body; never retries a conflict itself",
+          "file": "packages/dsh_client/test/companion_prompt_context_test.dart"
+        },
+        {
+          "id": "exact-durable-commit",
+          "suite": "sdk",
+          "name": "test/companion_prompt_commit_test.dart RPC acceptance keeps events; only the exact durable commit yields snapshot ids",
+          "file": "packages/dsh_client/test/companion_prompt_commit_test.dart"
+        },
+        {
+          "id": "reconnect-no-old-target",
+          "suite": "sdk",
+          "name": "test/companion_prompt_commit_test.dart same client reconnect never lets an old event consume a new target snapshot",
+          "file": "packages/dsh_client/test/companion_prompt_commit_test.dart"
+        },
+        {
+          "id": "retired-follow-no-callback",
+          "suite": "sdk",
+          "name": "test/companion_prompt_commit_test.dart retired follow rejects a queued old callback before a replacement mux exists",
+          "file": "packages/dsh_client/test/companion_prompt_commit_test.dart"
+        },
+        {
+          "id": "old-host-clean-chat",
+          "suite": "app",
+          "name": "test/companion/companion_recall_room_test.dart a valid old host sends ordinary chat without a background memory warning or legacy recall",
+          "file": "app/test/companion/companion_recall_room_test.dart"
+        },
+        {
+          "id": "both-mode-same-bytes-real-engine-1",
+          "suite": "app",
+          "name": "test/companion/companion_page_test.dart page light mode shared phone golden matches the final light HTTP request bytes and ordered IDs",
+          "file": "app/test/companion/companion_page_test.dart",
+          "scope": "Real SQLite saveManual + production Page selector + final light request serialization captured at MockClient HTTP seam. Complete block UTF-8 and ordered IDs equal shared fixture. No external model call, no answer semantics."
+        },
+        {
+          "id": "actual-engine-boundary-1",
+          "suite": "engine",
+          "name": "actual main loop sends the exact phone JSON once, then zero times for empty; Session keeps original humans",
+          "file": "runtime/tests/companion-phone-memory-integration.test.mjs",
+          "scope": "真实锁定engine与实际adapter POST；供应商HTTP回包合成，DSH_PREFIX缺失必须NOT_RUN。"
+        },
+        {
+          "id": "actual-engine-boundary-2",
+          "suite": "engine",
+          "name": "actual unmarked auxiliary LlmRuntime calls cannot inherit an active phone selection",
+          "file": "runtime/tests/companion-phone-memory-integration.test.mjs",
+          "scope": "真实锁定engine与实际adapter POST；供应商HTTP回包合成，DSH_PREFIX缺失必须NOT_RUN。"
+        },
+        {
+          "id": "actual-engine-boundary-3",
+          "suite": "engine",
+          "name": "control received during actual provider credential await prevents the physical POST",
+          "file": "runtime/tests/companion-phone-memory-integration.test.mjs",
+          "scope": "真实锁定engine与实际adapter POST；供应商HTTP回包合成，DSH_PREFIX缺失必须NOT_RUN。"
+        },
+        {
+          "id": "actual-engine-boundary-4",
+          "suite": "engine",
+          "name": "actual Session replay and compaction contain no request-only phone selection",
+          "file": "runtime/tests/companion-phone-memory-integration.test.mjs",
+          "scope": "真实锁定engine与实际adapter POST；供应商HTTP回包合成，DSH_PREFIX缺失必须NOT_RUN。"
+        },
+        {
+          "id": "actual-engine-lifecycle-1",
+          "suite": "engine",
+          "name": "fixture 7 shared golden reaches actual engine bytes and same HTTP entry rejects a replaced actual Agent",
+          "file": "runtime/tests/companion-phone-memory-replay.test.mjs",
+          "scope": "同一shared golden；实际dispose/recreate及两OS子进程snapshot/seed，不等于完整WebHost自动磁盘恢复。"
+        },
+        {
+          "id": "actual-engine-lifecycle-2",
+          "suite": "engine",
+          "name": "fixture 7 actual process restart rejects old instance and never restores phone data into final requests",
+          "file": "runtime/tests/companion-phone-memory-replay.test.mjs",
+          "scope": "同一shared golden；实际dispose/recreate及两OS子进程snapshot/seed，不等于完整WebHost自动磁盘恢复。"
+        },
+        {
+          "id": "B03-companion_host_memory_transport_test-1",
+          "suite": "app",
+          "name": "test/companion/companion_host_memory_transport_test.dart B03 full followup uses the real auxiliary HTTP and ledger",
+          "file": "app/test/companion/companion_host_memory_transport_test.dart",
+          "scope": "实际 worker.followup/Host auxiliary HTTP/原 SQLite 收据与原 B03 入口；本文件迁移不把 A2 手机维护伪装为 Host extract。固定网络边界，不是实际 Host/provider/native 或完整 Page 运行成绩。"
+        },
+        {
+          "id": "B03-companion_host_memory_transport_test-2",
+          "suite": "app",
+          "name": "test/companion/companion_host_memory_transport_test.dart B03 full followup old-host rejection is silent",
+          "file": "app/test/companion/companion_host_memory_transport_test.dart",
+          "scope": "实际 worker.followup/Host auxiliary HTTP/原 SQLite 收据与原 B03 入口；本文件迁移不把 A2 手机维护伪装为 Host extract。固定网络边界，不是实际 Host/provider/native 或完整 Page 运行成绩。"
+        },
+        {
+          "id": "B03-full-page-1",
+          "suite": "app",
+          "name": "test/companion/companion_stream_state_test.dart full Page drafts its actual followup through the phone memory route, covered=false",
+          "file": "app/test/companion/companion_stream_state_test.dart",
+          "scope": "真实 full Page→Owner→Worker→phone Messages followup→SQLite 收据；当前可见房间实际呈现一次，Host discovery/posts 为零。固定 HTTP 回包；不声称仍走旧 Host auxiliary，也不证明模型语义或原生播放。"
+        },
+        {
+          "id": "B03-sdk-transport-1",
+          "suite": "sdk",
+          "name": "test/companion_auxiliary_api_test.dart followup uses the same frozen selected provider and returns its exact NDJSON receipt",
+          "file": "packages/dsh_client/test/companion_auxiliary_api_test.dart"
+        },
+        {
+          "id": "B03-sdk-transport-2",
+          "suite": "sdk",
+          "name": "test/companion_auxiliary_api_test.dart an older host rejecting followup proves unsent without a fallback POST",
+          "file": "packages/dsh_client/test/companion_auxiliary_api_test.dart"
+        }
+      ],
+      "limits": [
+        "真实完整回答是否用对偏好属于live-answer，offline不评价语义或体验。",
+        "默认6与硬限12不意味着新增产品入口强行测12。"
+      ],
+      "required_gaps": []
+    },
+    {
+      "id": 8,
+      "title": "原始用量、未知保留、重复回执和新请求",
+      "original_ids": [
+        "07-39",
+        "07-41",
+        "07-47"
+      ],
+      "checks": [
+        {
+          "id": "final-not-plus-start",
+          "suite": "app",
+          "name": "test/companion/companion_light_test.dart reply the final cumulative receipt keeps both raw objects, without adding or taking maxima",
+          "file": "app/test/companion/companion_light_test.dart"
+        },
+        {
+          "id": "stop-lost-start-only",
+          "suite": "app",
+          "name": "test/companion/companion_light_test.dart reply ends a lost message_stop keeps final usage; start-only disconnect keeps the final unknown",
+          "file": "app/test/companion/companion_light_test.dart"
+        },
+        {
+          "id": "onSent-and-no-key",
+          "suite": "app",
+          "name": "test/companion/companion_light_test.dart reply onSent occurs at client.send, while no-key and failed local reservation never send",
+          "file": "app/test/companion/companion_light_test.dart"
+        },
+        {
+          "id": "worker-http401-vs-no-key",
+          "suite": "app",
+          "name": "test/companion/companion_memory_worker_test.dart A2 HTTP 401 configuration failure settles its sent receipt without a format retry",
+          "file": "app/test/companion/companion_memory_worker_test.dart",
+          "scope": "精确 HTTP 401 展开：sent_at/finished、原事件 maintenance_incomplete、无格式重试/无自动新请求；随后空 key 请求总数仍为1。不是未派发零成本。"
+        },
+        {
+          "id": "sse-to-stored-raw",
+          "suite": "app",
+          "name": "test/companion/companion_memory_worker_test.dart A2 a complete no-tool answer processes the exact original sources and preserves provider usage",
+          "file": "app/test/companion/companion_memory_worker_test.dart",
+          "scope": "与 case3 同一真实用例：final_usage 原对象、input_uncached=20、start_usage={input_tokens:900}，不累加。重复引用不算另一测试。"
+        },
+        {
+          "id": "receipt-idempotent",
+          "suite": "sdk",
+          "name": "test/companion_memory_flow_test.dart request receipts and rolling reservations frozen final SSE usage survives storage unchanged, even without stop, and a replay is idempotent",
+          "file": "packages/dsh_client/test/companion_memory_flow_test.dart"
+        },
+        {
+          "id": "start-only-unknown-reservation",
+          "suite": "sdk",
+          "name": "test/companion_memory_flow_test.dart request receipts and rolling reservations start-only and missing final components keep reservations instead of becoming free",
+          "file": "packages/dsh_client/test/companion_memory_flow_test.dart"
+        },
+        {
+          "id": "new-request-each-attempt",
+          "suite": "sdk",
+          "name": "test/companion_memory_flow_test.dart request receipts and rolling reservations ten real extraction attempts include retries and failures even when actual usage is zero",
+          "file": "packages/dsh_client/test/companion_memory_flow_test.dart",
+          "scope": "存储账本入口的多attempt/receipt规则；实际HTTP重试由本组另列engine测试观察。"
+        },
+        {
+          "id": "late-cancelled-usage",
+          "suite": "sdk",
+          "name": "test/companion_memory_flow_test.dart request receipts and rolling reservations a cancelled chat accepts its once-only late finally usage without losing its terminal state",
+          "file": "packages/dsh_client/test/companion_memory_flow_test.dart"
+        },
+        {
+          "id": "physical-host-requests",
+          "suite": "sdk",
+          "name": "test/companion_memory_flow_test.dart durable ordinary host chat receipts one prompt with two physical fetches keeps two exact raw receipts and no auxiliary reservation",
+          "file": "packages/dsh_client/test/companion_memory_flow_test.dart",
+          "scope": "存储账本入口的多attempt/receipt规则；实际HTTP重试由本组另列engine测试观察。"
+        },
+        {
+          "id": "shared-root-no-double-charge",
+          "suite": "sdk",
+          "name": "test/companion_memory_flow_test.dart durable ordinary host chat receipts same-turn roots share one global physical receipt instead of charging it twice",
+          "file": "packages/dsh_client/test/companion_memory_flow_test.dart"
+        },
+        {
+          "id": "raw-host-sdk-input",
+          "suite": "sdk",
+          "name": "test/companion_auxiliary_api_test.dart partial final usage survives a missing finish without adding the start",
+          "file": "packages/dsh_client/test/companion_auxiliary_api_test.dart"
+        },
+        {
+          "id": "generic-unknown-not-zero",
+          "suite": "app",
+          "name": "test/companion/companion_host_memory_transport_test.dart selected generic provider can complete with unknown dispatch and raw usage",
+          "file": "app/test/companion/companion_host_memory_transport_test.dart",
+          "scope": "保留实际 Host auxiliary/generic-provider 收据边界。A2维护不再借 Host worker.extract；本文件错误变体转实际 followup，保 uncertain/proven-unsent、raw usage、预算与零自动重试，8个原展开正文保持。不是全模式模型运行证明。"
+        },
+        {
+          "id": "owner-raw-retained",
+          "suite": "app",
+          "name": "test/companion/companion_host_usage_owner_test.dart pull uses the saved instance and old Session, retaining nullable raw fields exactly once",
+          "file": "app/test/companion/companion_host_usage_owner_test.dart"
+        },
+        {
+          "id": "control-works-over-budget",
+          "suite": "sdk",
+          "name": "test/companion_memory_flow_test.dart immediate controls and deletion forget removes controlled working copies, retains disjoint proof and cuts global history through the command",
+          "file": "packages/dsh_client/test/companion_memory_flow_test.dart"
+        },
+        {
+          "id": "actual-engine-physical-receipt-1",
+          "suite": "engine",
+          "name": "actual full-engine ordinary turn closes one physical receipt without writing accounting metadata or phone context into Session",
+          "file": "runtime/tests/companion-chat-usage-integration.test.mjs",
+          "scope": "真正adapter HTTP调用和真实ReactLoop重试/工具续轮；合成供应商回包，未用真实账户。"
+        },
+        {
+          "id": "actual-engine-physical-receipt-2",
+          "suite": "engine",
+          "name": "actual ReactLoop retry and tool continuation remain enabled and produce three separate physical receipts",
+          "file": "runtime/tests/companion-chat-usage-integration.test.mjs",
+          "scope": "真正adapter HTTP调用和真实ReactLoop重试/工具续轮；合成供应商回包，未用真实账户。"
+        }
+      ],
+      "limits": [
+        "供应商原始对象是合成fixture，不能充实际账单；generic normalized统计与原厂计费分项分开。",
+        "本模式外部调用应为0，但必须先有禁网guard证据；真实charged_amount仍null。"
+      ],
+      "required_gaps": []
+    },
+    {
+      "id": 9,
+      "title": "明确邀约与只有日期的计划",
+      "original_ids": [
+        "07-25",
+        "07-26"
+      ],
+      "checks": [
+        {
+          "id": "invitation-not-date",
+          "suite": "sdk",
+          "name": "test/companion_followup_store_test.dart current invitation, one presentation, original time fixture 9 authorizes a direct question but a date with a mistaken model label does not",
+          "file": "packages/dsh_client/test/companion_followup_store_test.dart"
+        },
+        {
+          "id": "unparsed-wording-not-invented-question",
+          "suite": "sdk",
+          "name": "test/companion_followup_store_test.dart current invitation, one presentation, original time wording limits stay in the complete invitation for generation; no local question is substituted",
+          "file": "packages/dsh_client/test/companion_followup_store_test.dart",
+          "scope": "ADD06改为真实拟文，原话限制完整交给生成；不再用有限本地模板决定是否能开口。"
+        },
+        {
+          "id": "unknown-time-token-not-substring",
+          "suite": "sdk",
+          "name": "test/companion_followup_store_test.dart current invitation, one presentation, original time an unsupported longer time token cannot be shortened to a familiar weekday",
+          "file": "packages/dsh_client/test/companion_followup_store_test.dart"
+        },
+        {
+          "id": "shared-initiative-gap",
+          "suite": "sdk",
+          "name": "test/companion_followup_store_test.dart one durable initiative ledger ordinary invitation and followup share both gap and rolling daily allowance",
+          "file": "packages/dsh_client/test/companion_followup_store_test.dart"
+        },
+        {
+          "id": "followup-own-day-cap",
+          "suite": "sdk",
+          "name": "test/companion_followup_store_test.dart one durable initiative ledger followup independently caps one per rolling day, without making ordinary invitations free",
+          "file": "packages/dsh_client/test/companion_followup_store_test.dart"
+        },
+        {
+          "id": "existing-pace-gap",
+          "suite": "app",
+          "name": "test/companion/companion_initiative_test.dart pace each pace keeps its own distance from the last line",
+          "file": "app/test/companion/companion_initiative_test.dart"
+        },
+        {
+          "id": "actual-memory-question-once",
+          "suite": "app",
+          "name": "test/companion/companion_invite_test.dart an invited memory question stays visible and is not repeated after a silent restart",
+          "file": "app/test/companion/companion_invite_test.dart"
+        },
+        {
+          "id": "off-original-owner",
+          "suite": "app",
+          "name": "test/companion/companion_initiative_owner_test.dart switched off: none; a screen reader holds it until answered",
+          "file": "app/test/companion/companion_initiative_owner_test.dart"
+        },
+        {
+          "id": "each-pace-real-invited-vs-plan-pair-1",
+          "suite": "app",
+          "name": "test/companion/companion_invite_test.dart fixture 9 off invitation uses the actual room gate",
+          "file": "app/test/companion/companion_invite_test.dart",
+          "scope": "Eight actual Page/SQLite/initiative/clock matrix cases. Positive invitation+pace cases make one actual light MockClient SSE followup request with raw final usage then one display. Off and uninvited plans make no followup request. No external model semantic judgment."
+        },
+        {
+          "id": "each-pace-real-invited-vs-plan-pair-2",
+          "suite": "app",
+          "name": "test/companion/companion_invite_test.dart fixture 9 off date-only plan uses the actual room gate",
+          "file": "app/test/companion/companion_invite_test.dart",
+          "scope": "Eight actual Page/SQLite/initiative/clock matrix cases. Positive invitation+pace cases make one actual light MockClient SSE followup request with raw final usage then one display. Off and uninvited plans make no followup request. No external model semantic judgment."
+        },
+        {
+          "id": "each-pace-real-invited-vs-plan-pair-3",
+          "suite": "app",
+          "name": "test/companion/companion_invite_test.dart fixture 9 rare invitation uses the actual room gate",
+          "file": "app/test/companion/companion_invite_test.dart",
+          "scope": "Eight actual Page/SQLite/initiative/clock matrix cases. Positive invitation+pace cases make one actual light MockClient SSE followup request with raw final usage then one display. Off and uninvited plans make no followup request. No external model semantic judgment."
+        },
+        {
+          "id": "each-pace-real-invited-vs-plan-pair-4",
+          "suite": "app",
+          "name": "test/companion/companion_invite_test.dart fixture 9 rare date-only plan uses the actual room gate",
+          "file": "app/test/companion/companion_invite_test.dart",
+          "scope": "Eight actual Page/SQLite/initiative/clock matrix cases. Positive invitation+pace cases make one actual light MockClient SSE followup request with raw final usage then one display. Off and uninvited plans make no followup request. No external model semantic judgment."
+        },
+        {
+          "id": "each-pace-real-invited-vs-plan-pair-5",
+          "suite": "app",
+          "name": "test/companion/companion_invite_test.dart fixture 9 often invitation uses the actual room gate",
+          "file": "app/test/companion/companion_invite_test.dart",
+          "scope": "Eight actual Page/SQLite/initiative/clock matrix cases. Positive invitation+pace cases make one actual light MockClient SSE followup request with raw final usage then one display. Off and uninvited plans make no followup request. No external model semantic judgment."
+        },
+        {
+          "id": "each-pace-real-invited-vs-plan-pair-6",
+          "suite": "app",
+          "name": "test/companion/companion_invite_test.dart fixture 9 often date-only plan uses the actual room gate",
+          "file": "app/test/companion/companion_invite_test.dart",
+          "scope": "Eight actual Page/SQLite/initiative/clock matrix cases. Positive invitation+pace cases make one actual light MockClient SSE followup request with raw final usage then one display. Off and uninvited plans make no followup request. No external model semantic judgment."
+        },
+        {
+          "id": "each-pace-real-invited-vs-plan-pair-7",
+          "suite": "app",
+          "name": "test/companion/companion_invite_test.dart fixture 9 chatty invitation uses the actual room gate",
+          "file": "app/test/companion/companion_invite_test.dart",
+          "scope": "Eight actual Page/SQLite/initiative/clock matrix cases. Positive invitation+pace cases make one actual light MockClient SSE followup request with raw final usage then one display. Off and uninvited plans make no followup request. No external model semantic judgment."
+        },
+        {
+          "id": "each-pace-real-invited-vs-plan-pair-8",
+          "suite": "app",
+          "name": "test/companion/companion_invite_test.dart fixture 9 chatty date-only plan uses the actual room gate",
+          "file": "app/test/companion/companion_invite_test.dart",
+          "scope": "Eight actual Page/SQLite/initiative/clock matrix cases. Positive invitation+pace cases make one actual light MockClient SSE followup request with raw final usage then one display. Off and uninvited plans make no followup request. No external model semantic judgment."
+        },
+        {
+          "id": "B03-companion_memory_worker_test-1",
+          "suite": "app",
+          "name": "test/companion/companion_memory_worker_test.dart B03 actual followup POST carries original invitation support and persona with a separate usage receipt",
+          "file": "app/test/companion/companion_memory_worker_test.dart",
+          "scope": "真实worker/owner/Page/transport与收据；仅最终HTTP/系统边界合成，模型口吻和语义须另取证。"
+        },
+        {
+          "id": "B03-companion_invite_test-1",
+          "suite": "app",
+          "name": "test/companion/companion_invite_test.dart B03 offline wording stays silent without a display debit or idle request loop",
+          "file": "app/test/companion/companion_invite_test.dart",
+          "scope": "真实worker/owner/Page/transport与收据；仅最终HTTP/系统边界合成，模型口吻和语义须另取证。"
+        },
+        {
+          "id": "B03-companion_invite_test-2",
+          "suite": "app",
+          "name": "test/companion/companion_invite_test.dart B03 silent wording stays silent without a display debit or idle request loop",
+          "file": "app/test/companion/companion_invite_test.dart",
+          "scope": "真实worker/owner/Page/transport与收据；仅最终HTTP/系统边界合成，模型口吻和语义须另取证。"
+        },
+        {
+          "id": "B03-companion_invite_test-3",
+          "suite": "app",
+          "name": "test/companion/companion_invite_test.dart B03 invalid wording stays silent without a display debit or idle request loop",
+          "file": "app/test/companion/companion_invite_test.dart",
+          "scope": "真实worker/owner/Page/transport与收据；仅最终HTTP/系统边界合成，模型口吻和语义须另取证。"
+        },
+        {
+          "id": "B03-companion_invite_test-4",
+          "suite": "app",
+          "name": "test/companion/companion_invite_test.dart B03 max_tokens wording stays silent without a display debit or idle request loop",
+          "file": "app/test/companion/companion_invite_test.dart",
+          "scope": "真实worker/owner/Page/transport与收据；仅最终HTTP/系统边界合成，模型口吻和语义须另取证。"
+        },
+        {
+          "id": "B03-companion_invite_test-5",
+          "suite": "app",
+          "name": "test/companion/companion_invite_test.dart B03 a later room visit can retry failed wording and show the new actual line",
+          "file": "app/test/companion/companion_invite_test.dart",
+          "scope": "真实worker/owner/Page/transport与收据；仅最终HTTP/系统边界合成，模型口吻和语义须另取证。"
+        },
+        {
+          "id": "B03-envelope-1",
+          "suite": "sdk",
+          "name": "test/companion_memory_rules_test.dart 09s D followup response envelope a single line is returned verbatim and silent is distinct from an empty line",
+          "file": "packages/dsh_client/test/companion_memory_rules_test.dart",
+          "scope": "只检查固定响应结构/单行/问号数量，不将结构合法推成模型遵守全部语义限制。"
+        },
+        {
+          "id": "B03-envelope-2",
+          "suite": "sdk",
+          "name": "test/companion_memory_rules_test.dart 09s D followup response envelope rejects missing text",
+          "file": "packages/dsh_client/test/companion_memory_rules_test.dart",
+          "scope": "只检查固定响应结构/单行/问号数量，不将结构合法推成模型遵守全部语义限制。"
+        },
+        {
+          "id": "B03-envelope-3",
+          "suite": "sdk",
+          "name": "test/companion_memory_rules_test.dart 09s D followup response envelope rejects extra topic authority",
+          "file": "packages/dsh_client/test/companion_memory_rules_test.dart",
+          "scope": "只检查固定响应结构/单行/问号数量，不将结构合法推成模型遵守全部语义限制。"
+        },
+        {
+          "id": "B03-envelope-4",
+          "suite": "sdk",
+          "name": "test/companion_memory_rules_test.dart 09s D followup response envelope rejects empty line",
+          "file": "packages/dsh_client/test/companion_memory_rules_test.dart",
+          "scope": "只检查固定响应结构/单行/问号数量，不将结构合法推成模型遵守全部语义限制。"
+        },
+        {
+          "id": "B03-envelope-5",
+          "suite": "sdk",
+          "name": "test/companion_memory_rules_test.dart 09s D followup response envelope rejects blank line",
+          "file": "packages/dsh_client/test/companion_memory_rules_test.dart",
+          "scope": "只检查固定响应结构/单行/问号数量，不将结构合法推成模型遵守全部语义限制。"
+        },
+        {
+          "id": "B03-envelope-6",
+          "suite": "sdk",
+          "name": "test/companion_memory_rules_test.dart 09s D followup response envelope rejects silent with words",
+          "file": "packages/dsh_client/test/companion_memory_rules_test.dart",
+          "scope": "只检查固定响应结构/单行/问号数量，不将结构合法推成模型遵守全部语义限制。"
+        },
+        {
+          "id": "B03-envelope-7",
+          "suite": "sdk",
+          "name": "test/companion_memory_rules_test.dart 09s D followup response envelope rejects unknown action",
+          "file": "packages/dsh_client/test/companion_memory_rules_test.dart",
+          "scope": "只检查固定响应结构/单行/问号数量，不将结构合法推成模型遵守全部语义限制。"
+        },
+        {
+          "id": "B03-envelope-8",
+          "suite": "sdk",
+          "name": "test/companion_memory_rules_test.dart 09s D followup response envelope rejects multiline",
+          "file": "packages/dsh_client/test/companion_memory_rules_test.dart",
+          "scope": "只检查固定响应结构/单行/问号数量，不将结构合法推成模型遵守全部语义限制。"
+        },
+        {
+          "id": "B03-envelope-9",
+          "suite": "sdk",
+          "name": "test/companion_memory_rules_test.dart 09s D followup response envelope rejects next line",
+          "file": "packages/dsh_client/test/companion_memory_rules_test.dart",
+          "scope": "只检查固定响应结构/单行/问号数量，不将结构合法推成模型遵守全部语义限制。"
+        },
+        {
+          "id": "B03-envelope-10",
+          "suite": "sdk",
+          "name": "test/companion_memory_rules_test.dart 09s D followup response envelope rejects unicode line break",
+          "file": "packages/dsh_client/test/companion_memory_rules_test.dart",
+          "scope": "只检查固定响应结构/单行/问号数量，不将结构合法推成模型遵守全部语义限制。"
+        },
+        {
+          "id": "B03-envelope-11",
+          "suite": "sdk",
+          "name": "test/companion_memory_rules_test.dart 09s D followup response envelope rejects two questions",
+          "file": "packages/dsh_client/test/companion_memory_rules_test.dart",
+          "scope": "只检查固定响应结构/单行/问号数量，不将结构合法推成模型遵守全部语义限制。"
+        },
+        {
+          "id": "B03-envelope-12",
+          "suite": "sdk",
+          "name": "test/companion_memory_rules_test.dart 09s D followup response envelope rejects control character",
+          "file": "packages/dsh_client/test/companion_memory_rules_test.dart",
+          "scope": "只检查固定响应结构/单行/问号数量，不将结构合法推成模型遵守全部语义限制。"
+        },
+        {
+          "id": "B03-envelope-13",
+          "suite": "sdk",
+          "name": "test/companion_memory_rules_test.dart 09s D followup response envelope rejects wrong text type",
+          "file": "packages/dsh_client/test/companion_memory_rules_test.dart",
+          "scope": "只检查固定响应结构/单行/问号数量，不将结构合法推成模型遵守全部语义限制。"
+        },
+        {
+          "id": "B03-envelope-14",
+          "suite": "sdk",
+          "name": "test/companion_memory_rules_test.dart 09s D followup response envelope rejects array envelope",
+          "file": "packages/dsh_client/test/companion_memory_rules_test.dart",
+          "scope": "只检查固定响应结构/单行/问号数量，不将结构合法推成模型遵守全部语义限制。"
+        },
+        {
+          "id": "B03-envelope-15",
+          "suite": "sdk",
+          "name": "test/companion_memory_rules_test.dart 09s D followup response envelope prose or fenced JSON is not repaired into permission to speak",
+          "file": "packages/dsh_client/test/companion_memory_rules_test.dart",
+          "scope": "只检查固定响应结构/单行/问号数量，不将结构合法推成模型遵守全部语义限制。"
+        }
+      ],
+      "limits": [],
+      "required_gaps": []
+    },
+    {
+      "id": 10,
+      "title": "最后呈现检查深夜与审批占用",
+      "original_ids": [
+        "07-30",
+        "07-31"
+      ],
+      "checks": [
+        {
+          "id": "clock-crosses-23-before-render",
+          "suite": "app",
+          "name": "test/companion/companion_signal_owner_test.dart last current callback crosses 23:00 and fresh staging rejects the ordinary signal",
+          "file": "app/test/companion/companion_signal_owner_test.dart",
+          "scope": "实际owner，但候选为普通signal，不是存储captured followup。"
+        },
+        {
+          "id": "approval-between-offer-present",
+          "suite": "app",
+          "name": "test/companion/companion_initiative_test.dart approval arriving between offer and present prevents show without spending quota",
+          "file": "app/test/companion/companion_initiative_test.dart",
+          "scope": "生产纯controller事件与quota；不是Page真实审批事件。"
+        },
+        {
+          "id": "ordinary-night-separate",
+          "suite": "app",
+          "name": "test/companion/companion_signal_initiative_test.dart ordinary signals and invitations stay silent from local 23:00 to 07:00",
+          "file": "app/test/companion/companion_signal_initiative_test.dart"
+        },
+        {
+          "id": "night-opt-in-separate-quota",
+          "suite": "app",
+          "name": "test/companion/companion_signal_initiative_test.dart night care requires separate opt-in and atomically spends night plus shared quota",
+          "file": "app/test/companion/companion_signal_initiative_test.dart"
+        },
+        {
+          "id": "source-reentry-current-check",
+          "suite": "app",
+          "name": "test/companion/companion_signal_owner_test.dart canPresent reentrant source cancellation is checked again before presentation",
+          "file": "app/test/companion/companion_signal_owner_test.dart"
+        },
+        {
+          "id": "render-false-release",
+          "suite": "sdk",
+          "name": "test/companion_followup_store_test.dart one durable initiative ledger a known false render releases both reservation and opportunity; insert failure rolls both back",
+          "file": "packages/dsh_client/test/companion_followup_store_test.dart"
+        },
+        {
+          "id": "captured-followup-approval-page-1",
+          "suite": "app",
+          "name": "test/companion/companion_stream_state_test.dart fixture 10 a captured followup waits while the tasks page covers the room",
+          "file": "app/test/companion/companion_stream_state_test.dart",
+          "scope": "真实 Page 捕获机会后打开实际 CompanionTasksPage；route 持续覆盖期间无 generation HTTP、无 presentation/展示扣额，原机会仍 pending。测试新的任务页覆盖机制，不声称生成了原房内真实 approval 卡；无模型或设备运行证明。"
+        },
+        {
+          "id": "captured-followup-23-page-2",
+          "suite": "app",
+          "name": "test/companion/companion_stream_state_test.dart fixture 10 a captured followup is not shown after the actual clock reaches 23",
+          "file": "app/test/companion/companion_stream_state_test.dart",
+          "scope": "实际 Page、捕获的 followup、注入生产时钟与 SQLite，真实时间越23后不呈现/不扣展示额；不声称该例生成房内 approval 卡。固定边界，NOT_RUN。"
+        },
+        {
+          "id": "B03-companion_signal_owner_test-1",
+          "suite": "app",
+          "name": "test/companion/companion_signal_owner_test.dart B03 preparation waits for the real quiet offer and reserves only after a fresh observation",
+          "file": "app/test/companion/companion_signal_owner_test.dart",
+          "scope": "真实worker/owner/Page/transport与收据；仅最终HTTP/系统边界合成，模型口吻和语义须另取证。"
+        },
+        {
+          "id": "B03-companion_signal_owner_test-2",
+          "suite": "app",
+          "name": "test/companion/companion_signal_owner_test.dart B03 failed preparation retires its offer so another real signal can present",
+          "file": "app/test/companion/companion_signal_owner_test.dart",
+          "scope": "真实worker/owner/Page/transport与收据；仅最终HTTP/系统边界合成，模型口吻和语义须另取证。"
+        },
+        {
+          "id": "B03-companion_signal_owner_test-3",
+          "suite": "app",
+          "name": "test/companion/companion_signal_owner_test.dart B03 leaving during preparation discards the completed wording without a reservation",
+          "file": "app/test/companion/companion_signal_owner_test.dart",
+          "scope": "真实worker/owner/Page/transport与收据；仅最终HTTP/系统边界合成，模型口吻和语义须另取证。"
+        },
+        {
+          "id": "B03-companion_invite_test-8",
+          "suite": "app",
+          "name": "test/companion/companion_invite_test.dart B03 修琴取消了 arriving during generation fences the late wording but retains usage",
+          "file": "app/test/companion/companion_invite_test.dart",
+          "scope": "真实worker/owner/Page/transport与收据；仅最终HTTP/系统边界合成，模型口吻和语义须另取证。"
+        },
+        {
+          "id": "B03-companion_invite_test-9",
+          "suite": "app",
+          "name": "test/companion/companion_invite_test.dart B03 以后别提修琴 arriving during generation fences the late wording but retains usage",
+          "file": "app/test/companion/companion_invite_test.dart",
+          "scope": "真实worker/owner/Page/transport与收据；仅最终HTTP/系统边界合成，模型口吻和语义须另取证。"
+        },
+        {
+          "id": "B03-companion_invite_test-10",
+          "suite": "app",
+          "name": "test/companion/companion_invite_test.dart B03 wording completed after 23:00 is not presented or spent",
+          "file": "app/test/companion/companion_invite_test.dart",
+          "scope": "真实worker/owner/Page/transport与收据；仅最终HTTP/系统边界合成，模型口吻和语义须另取证。"
+        },
+        {
+          "id": "B03-full-page-2",
+          "suite": "app",
+          "name": "test/companion/companion_stream_state_test.dart full Page drafts its actual followup through the phone memory route, covered=true",
+          "file": "app/test/companion/companion_stream_state_test.dart",
+          "scope": "真实 full Page 先发 phone Messages followup，再由普通 Scaffold route 覆盖房间；迟到实际回包保留 receipt 而不显示/扣展示额。不是房内真实 approval 卡，也不是 Host auxiliary；固定 HTTP，NOT_RUN。"
+        }
+      ],
+      "limits": [],
+      "required_gaps": []
+    },
+    {
+      "id": 11,
+      "title": "沉默后不重问、展示前告别",
+      "original_ids": [
+        "07-32",
+        "07-36"
+      ],
+      "checks": [
+        {
+          "id": "shown-silence-restart-page",
+          "suite": "app",
+          "name": "test/companion/companion_invite_test.dart an invited memory question stays visible and is not repeated after a silent restart",
+          "file": "app/test/companion/companion_invite_test.dart"
+        },
+        {
+          "id": "captured-shown-ticket-not-reserved-again",
+          "suite": "sdk",
+          "name": "test/companion_followup_store_test.dart current invitation, one presentation, original time shown stays current for its existing bubble but cannot be reserved again after silence or restart",
+          "file": "packages/dsh_client/test/companion_followup_store_test.dart"
+        },
+        {
+          "id": "reserved-death-unknown",
+          "suite": "sdk",
+          "name": "test/companion_followup_store_test.dart one durable initiative ledger process death with a reservation becomes unknown, never a replay or a free slot",
+          "file": "packages/dsh_client/test/companion_followup_store_test.dart"
+        },
+        {
+          "id": "render-throw-unknown-spend",
+          "suite": "app",
+          "name": "test/companion/companion_signal_owner_test.dart actual presentation throw retains an unknown spend",
+          "file": "app/test/companion/companion_signal_owner_test.dart",
+          "source_template": "actual presentation ${throws ? 'throw retains an unknown spend' : 'false releases its reservation'}"
+        },
+        {
+          "id": "ordinary-activation-cancels",
+          "suite": "app",
+          "name": "test/companion/companion_initiative_owner_test.dart anything the person does first means no invitation this visit",
+          "file": "app/test/companion/companion_initiative_owner_test.dart",
+          "scope": "原owner普通activation；不是具体告别句的Page路由。"
+        },
+        {
+          "id": "farewell-before-followup-presentation-1",
+          "suite": "app",
+          "name": "test/companion/companion_invite_test.dart saying goodbye before the pending question is shown retires this visit without a spend",
+          "file": "app/test/companion/companion_invite_test.dart",
+          "scope": "Actual Page composer, real SQLite store/initiative/clock, light MockClient SSE with UTF-8 and raw usage. Successful chat reaches finished receipt, assistant source, empty composer and idle feedback before generated followup observation. No external model semantic claim."
+        },
+        {
+          "id": "farewell-before-followup-presentation-2",
+          "suite": "app",
+          "name": "test/companion/companion_invite_test.dart fixture 11 English farewell is distinguished after a successful chat becomes idle",
+          "file": "app/test/companion/companion_invite_test.dart",
+          "scope": "Actual Page composer, real SQLite store/initiative/clock, light MockClient SSE with UTF-8 and raw usage. Successful chat reaches finished receipt, assistant source, empty composer and idle feedback before generated followup observation. No external model semantic claim."
+        },
+        {
+          "id": "farewell-before-followup-presentation-3",
+          "suite": "app",
+          "name": "test/companion/companion_invite_test.dart fixture 11 ordinary chat is distinguished after a successful chat becomes idle",
+          "file": "app/test/companion/companion_invite_test.dart",
+          "scope": "Actual Page composer, real SQLite store/initiative/clock, light MockClient SSE with UTF-8 and raw usage. Successful chat reaches finished receipt, assistant source, empty composer and idle feedback before generated followup observation. No external model semantic claim."
+        },
+        {
+          "id": "farewell-before-followup-presentation-4",
+          "suite": "app",
+          "name": "test/companion/companion_invite_test.dart fixture 11 quoted farewell is distinguished after a successful chat becomes idle",
+          "file": "app/test/companion/companion_invite_test.dart",
+          "scope": "Actual Page composer, real SQLite store/initiative/clock, light MockClient SSE with UTF-8 and raw usage. Successful chat reaches finished receipt, assistant source, empty composer and idle feedback before generated followup observation. No external model semantic claim."
+        },
+        {
+          "id": "farewell-before-followup-presentation-5",
+          "suite": "app",
+          "name": "test/companion/companion_invite_test.dart fixture 11 negated farewell is distinguished after a successful chat becomes idle",
+          "file": "app/test/companion/companion_invite_test.dart",
+          "scope": "Actual Page composer, real SQLite store/initiative/clock, light MockClient SSE with UTF-8 and raw usage. Successful chat reaches finished receipt, assistant source, empty composer and idle feedback before generated followup observation. No external model semantic claim."
+        },
+        {
+          "id": "farewell-before-followup-presentation-6",
+          "suite": "app",
+          "name": "test/companion/companion_invite_test.dart fixture 11 story dialogue is distinguished after a successful chat becomes idle",
+          "file": "app/test/companion/companion_invite_test.dart",
+          "scope": "Actual Page composer, real SQLite store/initiative/clock, light MockClient SSE with UTF-8 and raw usage. Successful chat reaches finished receipt, assistant source, empty composer and idle feedback before generated followup observation. No external model semantic claim."
+        },
+        {
+          "id": "farewell-before-followup-presentation-7",
+          "suite": "app",
+          "name": "test/companion/companion_invite_test.dart fixture 11 a failed farewell source does not retire the invitation after the draft is cleared",
+          "file": "app/test/companion/companion_invite_test.dart",
+          "scope": "Actual Page composer and real SQLite transaction failure: the farewell source rolls back, with zero chat POSTs and no successful chat receipt. After the trigger is removed and the retained draft is cleared, the existing invitation can generate and present one followup through the real worker and UTF-8 MockClient SSE. No external model semantic claim."
+        },
+        {
+          "id": "farewell-before-followup-presentation-8",
+          "suite": "app",
+          "name": "test/companion/companion_invite_test.dart fixture 11 a successful farewell during generation fences late wording without a display debit",
+          "file": "app/test/companion/companion_invite_test.dart",
+          "scope": "Actual Page composer, real SQLite store/initiative/clock, light MockClient SSE with UTF-8 and raw usage. Successful chat reaches finished receipt, assistant source, empty composer and idle feedback before generated followup observation. No external model semantic claim."
+        }
+      ],
+      "limits": [],
+      "required_gaps": []
+    },
+    {
+      "id": 12,
+      "title": "取消与时间未定的延期",
+      "original_ids": [
+        "07-27",
+        "07-28"
+      ],
+      "checks": [
+        {
+          "id": "page-cancelled",
+          "suite": "app",
+          "name": "test/companion/companion_invite_test.dart a pending memory question yields to cancelled through the real composer",
+          "file": "app/test/companion/companion_invite_test.dart",
+          "source_template": "a pending memory question yields to $state through the real composer"
+        },
+        {
+          "id": "page-postponed",
+          "suite": "app",
+          "name": "test/companion/companion_invite_test.dart a pending memory question yields to postponed through the real composer",
+          "file": "app/test/companion/companion_invite_test.dart",
+          "source_template": "a pending memory question yields to $state through the real composer"
+        },
+        {
+          "id": "cancel-captured-reservation",
+          "suite": "sdk",
+          "name": "test/companion_followup_store_test.dart current invitation, one presentation, original time cancel after reserve invalidates captured content; release does not reopen it",
+          "file": "packages/dsh_client/test/companion_followup_store_test.dart"
+        },
+        {
+          "id": "postponed-needs-new-explicit-date",
+          "suite": "sdk",
+          "name": "test/companion_followup_store_test.dart current invitation, one presentation, original time postponement drops only the selected old date and requires a new explicit arrangement",
+          "file": "packages/dsh_client/test/companion_followup_store_test.dart"
+        },
+        {
+          "id": "unresolved-no-fabricated-target",
+          "suite": "sdk",
+          "name": "test/companion_followup_store_test.dart current invitation, one presentation, original time unresolved scope also fences unmaterialized invitations and ones extracted only after restart",
+          "file": "packages/dsh_client/test/companion_followup_store_test.dart"
+        },
+        {
+          "id": "cancelled-not-active-selection",
+          "suite": "sdk",
+          "name": "test/companion_memory_rules_test.dart explicit control targeting a cancelled or postponed plan stays visible data but is never selected as a live plan",
+          "file": "packages/dsh_client/test/companion_memory_rules_test.dart"
+        }
+      ],
+      "limits": [
+        "口语定位只覆盖已支持的明确词法/独立真实来源；一般同义表达不因此获保证。"
+      ],
+      "required_gaps": []
+    },
+    {
+      "id": 13,
+      "title": "合并同义预写提案并保留生日例外",
+      "original_ids": [
+        "07-01",
+        "07-02",
+        "07-03"
+      ],
+      "checks": [
+        {
+          "id": "fixture13-known-good-and-bad",
+          "suite": "sdk",
+          "name": "test/companion_memory_merge_test.dart fixture 13 merges the two daily preferences while keeping the birthday cup exception",
+          "file": "packages/dsh_client/test/companion_memory_merge_test.dart"
+        },
+        {
+          "id": "exact-local-no-claim",
+          "suite": "sdk",
+          "name": "test/companion_memory_merge_test.dart an identical sentence with the same complete source is deduplicated locally without a claim",
+          "file": "packages/dsh_client/test/companion_memory_merge_test.dart"
+        },
+        {
+          "id": "complete-proofs-kept",
+          "suite": "sdk",
+          "name": "test/companion_memory_merge_test.dart a later merge keeps all earlier independent groups, not just the latest model citations",
+          "file": "packages/dsh_client/test/companion_memory_merge_test.dart"
+        },
+        {
+          "id": "and-or-group-semantics",
+          "suite": "sdk",
+          "name": "test/companion_memory_merge_test.dart merging preserves AND inside a support group and OR between complete groups",
+          "file": "packages/dsh_client/test/companion_memory_merge_test.dart"
+        },
+        {
+          "id": "conditions-not-merged",
+          "suite": "sdk",
+          "name": "test/companion_memory_merge_rules_test.dart represented period and condition differences reject a merge even if the model keeps target text",
+          "file": "packages/dsh_client/test/companion_memory_merge_rules_test.dart"
+        },
+        {
+          "id": "not-same-tomorrow-from-different-days",
+          "suite": "sdk",
+          "name": "test/companion_memory_merge_test.dart same raw tomorrow text from different original days is not locally declared equal",
+          "file": "packages/dsh_client/test/companion_memory_merge_test.dart"
+        },
+        {
+          "id": "local-ui-notifies",
+          "suite": "app",
+          "name": "test/companion/companion_memory_owner_test.dart local consolidation notifies the real memories page when the host has no model route",
+          "file": "app/test/companion/companion_memory_owner_test.dart"
+        },
+        {
+          "id": "daily-and-birthday-next-chat-context-1",
+          "suite": "sdk",
+          "name": "test/companion_memory_chat_replay_test.dart fixture 13 reopened merge keeps daily and birthday conditions in actual SDK chat requests",
+          "file": "packages/dsh_client/test/companion_memory_chat_replay_test.dart",
+          "scope": "Production SQLite store + proposal parsers + selector + pure Dart context plan + actual SDK loopback prompt-context and prompt RPC HTTP. No engine Session/provider POST, no model answer semantics."
+        }
+      ],
+      "limits": [
+        "冻结提案接收/拒绝可测；模型等义判断属live-merge，不计offline通过。"
+      ],
+      "required_gaps": []
+    },
+    {
+      "id": 14,
+      "title": "删后旧维护不复活、酒馆故事不成现实",
+      "original_ids": [
+        "07-17",
+        "07-18",
+        "07-20",
+        "07-46"
+      ],
+      "checks": [
+        {
+          "id": "fixture14-source-delete-reopen",
+          "suite": "sdk",
+          "name": "test/companion_memory_merge_test.dart fixture 14 deletes a source before the reply; restart and the next actual input omit it and roleplay",
+          "file": "packages/dsh_client/test/companion_memory_merge_test.dart",
+          "scope": "这里next actual input是consolidationInput，不是最终聊天请求。"
+        },
+        {
+          "id": "cancelled-late-worker-merge",
+          "suite": "app",
+          "name": "test/companion/companion_memory_worker_test.dart A2 extract and organize share the lane and cancellation preserves the original receipt",
+          "file": "app/test/companion/companion_memory_worker_test.dart",
+          "scope": "真实 Worker/SQLite/MockClient：held organize 时其它维护 idle；stop 加真实删原话后释放旧 merge，stale 且不回填，已发 receipt 收尾；不是 Page 取消集成。"
+        },
+        {
+          "id": "story-excluded-from-merge-evidence",
+          "suite": "sdk",
+          "name": "test/companion_memory_merge_test.dart story and assistant lines never become real consolidation evidence",
+          "file": "packages/dsh_client/test/companion_memory_merge_test.dart"
+        },
+        {
+          "id": "independent-proofs-preserved",
+          "suite": "sdk",
+          "name": "test/companion_memory_merge_test.dart valid independent proofs omitted by the outbound cutoff survive a later merge",
+          "file": "packages/dsh_client/test/companion_memory_merge_test.dart"
+        },
+        {
+          "id": "next-real-chat-after-delete-restart-2",
+          "suite": "sdk",
+          "name": "test/companion_memory_chat_replay_test.dart fixture 14 deleted source never topic and story stay out of the next SDK chat after reopen",
+          "file": "packages/dsh_client/test/companion_memory_chat_replay_test.dart",
+          "scope": "Production SQLite store + proposal parsers + selector + pure Dart context plan + actual SDK loopback prompt-context and prompt RPC HTTP. No engine Session/provider POST, no model answer semantics."
+        }
+      ],
+      "limits": [
+        "酒馆scope=story的旧隔离合同仍保留；A2的真实our_story和diary另有产品入口，其角色/证明/删除机制由独立A2用例验收，不冒称本组旧15案例已经覆盖。"
+      ],
+      "required_gaps": []
+    },
+    {
+      "id": 15,
+      "title": "没有变化不整理、滚动额度与不编结果",
+      "original_ids": [
+        "07-09",
+        "07-40"
+      ],
+      "checks": [
+        {
+          "id": "fixture15-no-invented-outcome",
+          "suite": "sdk",
+          "name": "test/companion_memory_merge_test.dart fixture 15 passing the planned day cannot become an invented successful interview",
+          "file": "packages/dsh_client/test/companion_memory_merge_test.dart"
+        },
+        {
+          "id": "exact-local-no-cloud",
+          "suite": "app",
+          "name": "test/companion/companion_memory_worker_test.dart A2 safe exact local consolidation needs no credentials and an oversized model envelope leaves other cards untouched",
+          "file": "app/test/companion/companion_memory_worker_test.dart",
+          "scope": "保留原 oracle：真实相同有效 proof 两卡、无 key，经真实 Worker/Store 本地合一对，0 HTTP/0 cloud claim。另一独立非 exact 两卡遇真实完整 envelope 超额，保持两卡/0请求/0claim；不把不同文本直接并掉。"
+        },
+        {
+          "id": "no-self-trigger-after-24h",
+          "suite": "app",
+          "name": "test/companion/companion_memory_worker_test.dart A2 organize does not trigger itself across an unchanged day but accepts a later day with real new sources",
+          "file": "app/test/companion/companion_memory_worker_test.dart",
+          "scope": "首轮覆盖已完整日后，模型 merge+续轮有2物理HTTP/1parent；无外部来源/卡变化再过86400001ms仍idle/仍2HTTP，含自己写入不自触发。随后真实新当日原话先idle、次日完整才增1HTTP/新parent。保留零云原oracle，不误把新完整日材料视为日期自触发。"
+        },
+        {
+          "id": "new-change-still-one-per-window",
+          "suite": "app",
+          "name": "test/companion/companion_memory_worker_test.dart A2 organize uses completed tool results, one parent, and one receipt for each physical request",
+          "file": "app/test/companion/companion_memory_worker_test.dart",
+          "scope": "实际前一完整日源：merge+tool_result续轮2张不同receipt同1parent；pin外部变化不能在24h内领第二parent，跨86400001ms后才第3HTTP。A2日上限单位是实际parent机会，每物理HTTP独立收费，不冒称一天只能1HTTP。"
+        },
+        {
+          "id": "bad-complete-no-auto-retry",
+          "suite": "app",
+          "name": "test/companion/companion_memory_worker_test.dart A2 a sent malformed tool turn closes without an automatic format retry or mutation",
+          "file": "app/test/companion/companion_memory_worker_test.dart",
+          "scope": "实际完整工具帧而参数JSON损坏：waiting、两卡不变、child关闭、无自动格式重试；新原话仍pending/format0，不能把旧完整JSON提案协议当现执行入口。"
+        },
+        {
+          "id": "common-token-reservation-chat-independent",
+          "suite": "sdk",
+          "name": "test/companion_memory_flow_test.dart request receipts and rolling reservations extraction and organization share token reservations, while chat retains a separate receipt",
+          "file": "packages/dsh_client/test/companion_memory_flow_test.dart",
+          "scope": "真实预算API；未发送正常聊天。"
+        },
+        {
+          "id": "organize-wire-kind",
+          "suite": "app",
+          "name": "test/companion/companion_host_memory_transport_test.dart the organize ledger category uses the actual consolidate host wire kind",
+          "file": "app/test/companion/companion_host_memory_transport_test.dart",
+          "scope": "保留原公开 Host transport 的 organize→consolidate wire-kind/ledger 检查；这是兼容 transport 边界，不声称 A2 当前 extract/organize Worker 走 Host。NOT_RUN。"
+        },
+        {
+          "id": "empty-archive-24h-no-cloud-1",
+          "suite": "app",
+          "name": "test/companion/companion_memory_idle_replay_test.dart fixture 15 empty archive makes no auxiliary HTTP request across 24 hours of opportunities",
+          "file": "app/test/companion/companion_memory_idle_replay_test.dart",
+          "scope": "真实 Owner/Worker/maintenance tools/phone Messages。空库25机会（含0与24h）零 HTTP/receipt；非空先公开 Store 工具准备两卡，完成真实 extract 与完整日日 organize 各一 receipt，再跨24h25机会零新增。保零云原 oracle，不把尚未完成日材料混成无变化；固定 HTTP，NOT_RUN。"
+        },
+        {
+          "id": "empty-archive-24h-no-cloud-2",
+          "suite": "app",
+          "name": "test/companion/companion_memory_idle_replay_test.dart fixture 15 an examined unchanged archive makes no auxiliary HTTP request across 24 hours",
+          "file": "app/test/companion/companion_memory_idle_replay_test.dart",
+          "scope": "真实 Owner/Worker/maintenance tools/phone Messages。空库25机会（含0与24h）零 HTTP/receipt；非空先公开 Store 工具准备两卡，完成真实 extract 与完整日日 organize 各一 receipt，再跨24h25机会零新增。保零云原 oracle，不把尚未完成日材料混成无变化；固定 HTTP，NOT_RUN。"
+        },
+        {
+          "id": "ordinary-chat-after-organize-limit-1",
+          "suite": "app",
+          "name": "test/companion/companion_page_test.dart page light mode fixture 15 ordinary Page chat still sends after a real organize request reaches the daily limit",
+          "file": "app/test/companion/companion_page_test.dart",
+          "scope": "Real shared owner/worker/SQLite/MockClient SSE and Page final chat request; no prefilled usage rows or external model."
+        },
+        {
+          "id": "B03-companion_memory_worker_test-2",
+          "suite": "app",
+          "name": "test/companion/companion_memory_worker_test.dart B03 extraction and wording share one actual request lane while a late cancelled answer is still charged",
+          "file": "app/test/companion/companion_memory_worker_test.dart",
+          "scope": "真实worker/owner/Page/transport与收据；仅最终HTTP/系统边界合成，模型口吻和语义须另取证。"
+        },
+        {
+          "id": "B03-companion_memory_worker_test-3",
+          "suite": "app",
+          "name": "test/companion/companion_memory_worker_test.dart B03 oversize whole input and an absent key never create a request or truncate evidence",
+          "file": "app/test/companion/companion_memory_worker_test.dart",
+          "scope": "真实worker/owner/Page/transport与收据；仅最终HTTP/系统边界合成，模型口吻和语义须另取证。"
+        },
+        {
+          "id": "B03-companion_invite_test-6",
+          "suite": "app",
+          "name": "test/companion/companion_invite_test.dart B03 absent credentials keep the current invitation pending without any HTTP",
+          "file": "app/test/companion/companion_invite_test.dart",
+          "scope": "真实worker/owner/Page/transport与收据；仅最终HTTP/系统边界合成，模型口吻和语义须另取证。"
+        },
+        {
+          "id": "B03-companion_invite_test-7",
+          "suite": "app",
+          "name": "test/companion/companion_invite_test.dart B03 actual auxiliary usage exhausting the shared output budget suppresses the Page wording POST",
+          "file": "app/test/companion/companion_invite_test.dart",
+          "scope": "新 owner 单例后继沿真实 Owner/phone Messages maintenance 与实际独立 usage receipts 耗尽共享 output 预算，再真实房间观察 followup POST 被128预留门抑制。原名/预算 oracle 保留；固定回包，非模型/native运行。"
+        },
+        {
+          "id": "B03-sdk-ledger-1",
+          "suite": "sdk",
+          "name": "test/companion_followup_store_test.dart B03 followup generation shares the auxiliary ledger followup attempts do not consume extract or organize count slots",
+          "file": "packages/dsh_client/test/companion_followup_store_test.dart"
+        },
+        {
+          "id": "B03-sdk-ledger-2",
+          "suite": "sdk",
+          "name": "test/companion_followup_store_test.dart B03 followup generation shares the auxiliary ledger uncertain followup holds shared tokens through restart; only proved unsent can release",
+          "file": "packages/dsh_client/test/companion_followup_store_test.dart"
+        },
+        {
+          "id": "B03-sdk-ledger-3",
+          "suite": "sdk",
+          "name": "test/companion_followup_store_test.dart B03 followup generation shares the auxiliary ledger followup raw usage remains charged to the default route for thirty rolling days",
+          "file": "packages/dsh_client/test/companion_followup_store_test.dart"
+        },
+        {
+          "id": "C-full-route-unavailable-followup",
+          "suite": "app",
+          "name": "test/companion/companion_memory_worker_test.dart followup stays pending when the full room has no model route",
+          "file": "app/test/companion/companion_memory_worker_test.dart"
+        }
+      ],
+      "limits": [
+        "无变化零云及安全exact本地合并继续有效。parent额度是上限而非每天必发；真实新完整日材料是允许的新任务。模型同义判断、设备后台时机与真实费用仍单独NOT_RUN。"
+      ],
+      "required_gaps": []
+    }
+  ],
+  "superseded_checks": [
+    {
+      "case_id": 4,
+      "check": {
+        "id": "current-edit-vs-wording-ui",
+        "suite": "app",
+        "name": "test/companion/companion_memory_owner_test.dart current details and wording use different explicit edit actions, without inventing history",
+        "file": "app/test/companion/companion_memory_owner_test.dart",
+        "missing": false,
+        "status_at_inventory": "NOT_RUN"
+      },
+      "disposition": "SUPERSEDED_BY_ADDENDUM_04",
+      "reason": "owner手记页只保留改一改和忘掉；相应底层控制/收据仍另有真实检查。"
+    },
+    {
+      "case_id": 4,
+      "check": {
+        "id": "cancel-one-independent-plan-ui",
+        "suite": "app",
+        "name": "test/companion/companion_memory_owner_test.dart cancel this plan preserves a separate plan sharing its expression topic",
+        "file": "app/test/companion/companion_memory_owner_test.dart",
+        "missing": false,
+        "status_at_inventory": "NOT_RUN"
+      },
+      "disposition": "SUPERSEDED_BY_ADDENDUM_04",
+      "reason": "owner手记页只保留改一改和忘掉；相应底层控制/收据仍另有真实检查。"
+    },
+    {
+      "case_id": 5,
+      "check": {
+        "id": "page-control-widget-ack",
+        "suite": "app",
+        "name": "test/companion/companion_memory_owner_test.dart never keeps the card and forget removes it; both clear line and saidAt with native acknowledgement",
+        "file": "app/test/companion/companion_memory_owner_test.dart",
+        "missing": false,
+        "status_at_inventory": "NOT_RUN"
+      },
+      "disposition": "SUPERSEDED_BY_ADDENDUM_04",
+      "reason": "owner手记页只保留改一改和忘掉；相应底层控制/收据仍另有真实检查。"
+    },
+    {
+      "case_id": 6,
+      "check": {
+        "id": "legacy-confirmation-ui",
+        "suite": "app",
+        "name": "test/companion/companion_memory_owner_test.dart legacy reality confirmation is reachable and pin does not grant it",
+        "file": "app/test/companion/companion_memory_owner_test.dart",
+        "missing": false,
+        "status_at_inventory": "NOT_RUN"
+      },
+      "disposition": "SUPERSEDED_BY_ADDENDUM_04",
+      "reason": "owner手记页只保留改一改和忘掉；相应底层控制/收据仍另有真实检查。"
+    },
+    {
+      "case_id": 8,
+      "check": {
+        "id": "unknown-view-not-free",
+        "suite": "app",
+        "name": "test/companion/companion_memory_owner_test.dart usage view keeps four components separate and pending coverage is never shown as free",
+        "file": "app/test/companion/companion_memory_owner_test.dart",
+        "missing": false,
+        "status_at_inventory": "NOT_RUN"
+      },
+      "disposition": "SUPERSEDED_BY_ADDENDUM_04",
+      "reason": "owner手记页只保留改一改和忘掉；相应底层控制/收据仍另有真实检查。"
+    },
+    {
+      "case_id": 3,
+      "check": {
+        "id": "complete-empty-worker",
+        "suite": "app",
+        "name": "test/companion/companion_memory_worker_test.dart complete empty result commits the exact saved source and raw final receipt",
+        "file": "app/test/companion/companion_memory_worker_test.dart"
+      },
+      "disposition": "A2_WIRE_ENVELOPE_ONLY_SUPERSEDED",
+      "reason": "旧schema2空operations包装退役；完整无工具结果完成真实源与原始收据的要求由同id active check保留。",
+      "replacement_check_id": "complete-empty-worker",
+      "status": "HISTORICAL_SCOPE_NOT_EXECUTED"
+    },
+    {
+      "case_id": 3,
+      "check": {
+        "id": "two-invalid-stable-batch",
+        "suite": "app",
+        "name": "test/companion/companion_memory_worker_test.dart two complete malformed replies skip only their stable batch despite a newer input",
+        "file": "app/test/companion/companion_memory_worker_test.dart"
+      },
+      "disposition": "A2_TWO_FORMAT_RETRY_POLICY_SUPERSEDED",
+      "reason": "A2不再自动两次JSON格式重试；已发不完整scope保守退休，不吞后提交u2的风险由同id真实held用例承接。",
+      "replacement_check_id": "two-invalid-stable-batch",
+      "status": "HISTORICAL_SCOPE_NOT_EXECUTED"
+    },
+    {
+      "case_id": 3,
+      "check": {
+        "id": "missing-stop-keeps-pending",
+        "suite": "app",
+        "name": "test/companion/companion_memory_worker_test.dart missing message_stop preserves usage and leaves the batch waiting",
+        "file": "app/test/companion/companion_memory_worker_test.dart"
+      },
+      "disposition": "A2_SENT_INCOMPLETE_RETIREMENT_SUPERSEDES_PENDING_RETRY",
+      "reason": "旧已派发缺stop继续pending规则改为维护scope skipped/maintenance_incomplete，不标processed、不自动重规划；实际原话和收据保留。",
+      "replacement_check_id": "missing-stop-keeps-pending",
+      "status": "HISTORICAL_SCOPE_NOT_EXECUTED"
+    },
+    {
+      "case_id": 15,
+      "check": {
+        "id": "new-change-still-one-per-window",
+        "suite": "app",
+        "name": "test/companion/companion_memory_worker_test.dart a new change waits for the same rolling organize allowance rather than opening another model request",
+        "file": "app/test/companion/companion_memory_worker_test.dart"
+      },
+      "disposition": "A2_DAILY_UNIT_IS_PARENT_NOT_ONE_HTTP",
+      "reason": "旧一天一次物理整理请求改为一天一个真实parent工具机会；每HTTP仍独立receipt与总预算，新变化不能买第二parent的原风险保留。",
+      "replacement_check_id": "new-change-still-one-per-window",
+      "status": "HISTORICAL_SCOPE_NOT_EXECUTED"
+    },
+    {
+      "case_id": 15,
+      "check": {
+        "id": "bad-complete-no-auto-retry",
+        "suite": "app",
+        "name": "test/companion/companion_memory_worker_test.dart a complete invalid consolidation is examined once and does not become an automatic format retry",
+        "file": "app/test/companion/companion_memory_worker_test.dart"
+      },
+      "disposition": "A2_JSON_PROPOSAL_ENVELOPE_SUPERSEDED",
+      "reason": "旧完整JSON consolidation包装退役，保留已发坏工具参数不自动重试/不写卡的同id active check。",
+      "replacement_check_id": "bad-complete-no-auto-retry",
+      "status": "HISTORICAL_SCOPE_NOT_EXECUTED"
+    },
+    {
+      "case_id": 7,
+      "check": {
+        "id": "B03-full-page-1",
+        "suite": "app",
+        "name": "test/companion/companion_stream_state_test.dart full Page drafts its actual followup through the selected auxiliary route, approval=false",
+        "file": "app/test/companion/companion_stream_state_test.dart",
+        "scope": "真实full Page→owner→worker→HTTP→SDK收据；审批期间迟到拟文不得显示，明确固定最终HTTP peer。"
+      },
+      "disposition": "OWNER_4974_PHONE_ROUTE_AND_TASKS_PAGE_COVERAGE_REPLACES_OLD_ENTRY",
+      "reason": "Owner moved full-room wording to the phone route and approvals out of the room. Active check keeps its ID and describes actual covered-route assertions; it does not claim the former Host transport or in-room approval-card mechanism.",
+      "replacement_check_id": "B03-full-page-1",
+      "status": "HISTORICAL_SCOPE_NOT_EXECUTED"
+    },
+    {
+      "case_id": 10,
+      "check": {
+        "id": "captured-followup-approval-page-1",
+        "suite": "app",
+        "name": "test/companion/companion_stream_state_test.dart fixture 10 a captured followup waits while a real approval card is open",
+        "file": "app/test/companion/companion_stream_state_test.dart",
+        "scope": "Actual Page + ChatController approval UI / injected production clock + SQLite; available HTTP boundary fixed by B03 peer. No external model or semantic judgment. This tests before generation; B03 tests separately cover approval after the generation request."
+      },
+      "disposition": "OWNER_4974_PHONE_ROUTE_AND_TASKS_PAGE_COVERAGE_REPLACES_OLD_ENTRY",
+      "reason": "Owner moved full-room wording to the phone route and approvals out of the room. Active check keeps its ID and describes actual covered-route assertions; it does not claim the former Host transport or in-room approval-card mechanism.",
+      "replacement_check_id": "captured-followup-approval-page-1",
+      "status": "HISTORICAL_SCOPE_NOT_EXECUTED"
+    },
+    {
+      "case_id": 10,
+      "check": {
+        "id": "B03-full-page-2",
+        "suite": "app",
+        "name": "test/companion/companion_stream_state_test.dart full Page drafts its actual followup through the selected auxiliary route, approval=true",
+        "file": "app/test/companion/companion_stream_state_test.dart",
+        "scope": "真实full Page→owner→worker→HTTP→SDK收据；审批期间迟到拟文不得显示，明确固定最终HTTP peer。"
+      },
+      "disposition": "OWNER_4974_PHONE_ROUTE_AND_TASKS_PAGE_COVERAGE_REPLACES_OLD_ENTRY",
+      "reason": "Owner moved full-room wording to the phone route and approvals out of the room. Active check keeps its ID and describes actual covered-route assertions; it does not claim the former Host transport or in-room approval-card mechanism.",
+      "replacement_check_id": "B03-full-page-2",
+      "status": "HISTORICAL_SCOPE_NOT_EXECUTED"
+    }
+  ],
+  "unresolved_requirements": [
+    {
+      "case_id": 4,
+      "status": "BLOCKED_SCOPE",
+      "reason": "所有 targetless create 的同主体同事项判定仍是已声明有限字面范围；已有 source 曾抽过也没有可用谱系硬保证。不可将显式 replace 测试扩称一般语义闭环。",
+      "settles_with": "真实同主体同事项反例能被生产写入规则阻挡的独立证据，或明确缩窄该一般语义合同的产品决定。"
+    }
+  ],
+  "source_reviews": [
+    {
+      "patch_sha256": "9501eb7b29c515df4ba12408b8d13ac3d8356b3f07f8fb6133889efb33acd417",
+      "review_sha256": "3870553b109f30e4db1a60af8f5fea988ffa5ff40cc7842d4c4c99094548bbe8",
+      "status": "PASS_SCOPED_SOURCE_NOT_RUN",
+      "does_not_close_general_targetless_scope": true
+    },
+    {
+      "patch_sha256": "961af3990fae3bfb13e4a74618843c771260f45dce36d20a90fb4e6200833773",
+      "review_sha256": "1aa73a953ae4746f3d530228c39e08b7659553860afbd9a7015bb0f7d4185f02",
+      "status": "PASS_SCOPED_SOURCE_NOT_RUN",
+      "does_not_close_general_targetless_scope": true
+    },
+    {
+      "patch_sha256": "79e112e3cfef2147ca60a6c23a38074082a4772cbd906b59f8f9f27d9148c9e7",
+      "review_sha256": "fe8fb8d6fd8733be48ee1522157a77c5d70c1fbc8ced9d71b266daf87560b424",
+      "status": "PASS_SCOPED_SOURCE_NOT_RUN",
+      "does_not_close_general_targetless_scope": true
+    }
+  ],
+  "separate_modes": [
+    {
+      "mode": "live-extract",
+      "status": "NOT_RUN",
+      "reason": "No actual model calls; golden proposals cannot measure model extraction."
+    },
+    {
+      "mode": "live-answer",
+      "status": "NOT_RUN",
+      "reason": "No real generated full answers or participant ratings."
+    },
+    {
+      "mode": "device",
+      "status": "NOT_RUN",
+      "reason": "No real Android presentation/audio/OS scheduling run."
+    }
+  ],
+  "limits": [
+    "所有数据合成，未使用真实账户/用户数据库/模型费用。",
+    "Dart HTTP guard不覆盖编译/pub/native资产/任意native sockets；依赖准备单列。",
+    "一个测试可被多组引用；unique_test_counts按suite+完整名去重，非断言数。",
+    "有限offline通过不关闭unresolved_requirements，不替代live提案/回答/设备评价。"
+  ],
+  "fixture_sources": [
+    "app/test/companion/companion_host_memory_transport_test.dart",
+    "app/test/companion/companion_host_usage_owner_test.dart",
+    "app/test/companion/companion_initiative_owner_test.dart",
+    "app/test/companion/companion_initiative_test.dart",
+    "app/test/companion/companion_invite_test.dart",
+    "app/test/companion/companion_light_test.dart",
+    "app/test/companion/companion_memory_control_replay_test.dart",
+    "app/test/companion/companion_memory_dates_replay_test.dart",
+    "app/test/companion/companion_memory_idle_replay_test.dart",
+    "app/test/companion/companion_memory_input_test.dart",
+    "app/test/companion/companion_memory_lifecycle_test.dart",
+    "app/test/companion/companion_memory_owner_test.dart",
+    "app/test/companion/companion_memory_worker_test.dart",
+    "app/test/companion/companion_page_test.dart",
+    "app/test/companion/companion_recall_room_test.dart",
+    "app/test/companion/companion_signal_initiative_test.dart",
+    "app/test/companion/companion_signal_owner_test.dart",
+    "app/test/companion/companion_stream_state_test.dart",
+    "app/test/companion/companion_test_settle.dart",
+    "app/test/companion/companion_widget_memory_test.dart",
+    "app/test/companion/initiative_memory.dart",
+    "app/test/companion/phone_keeper_fake.dart",
+    "app/test/flutter_test_config.dart",
+    "app/test/support/bundle.dart",
+    "app/test/support/bundle_widgets.dart",
+    "app/test/support/companion_notes_peer.dart",
+    "app/test/support/companion_session_peer.dart",
+    "app/test/support/test_defaults.dart",
+    "app/test/support/test_fonts.dart",
+    "app/tool/companion_memory_replay_test.dart",
+    "packages/dsh_client/test/companion_auxiliary_api_test.dart",
+    "packages/dsh_client/test/companion_followup_store_test.dart",
+    "packages/dsh_client/test/companion_memory_chat_replay_test.dart",
+    "packages/dsh_client/test/companion_memory_control_anchor_test.dart",
+    "packages/dsh_client/test/companion_memory_delete_lineage_test.dart",
+    "packages/dsh_client/test/companion_memory_flow_test.dart",
+    "packages/dsh_client/test/companion_memory_merge_rules_test.dart",
+    "packages/dsh_client/test/companion_memory_merge_test.dart",
+    "packages/dsh_client/test/companion_memory_rules_test.dart",
+    "packages/dsh_client/test/companion_memory_store_test.dart",
+    "packages/dsh_client/test/companion_migration_recovery_test.dart",
+    "packages/dsh_client/test/companion_prompt_commit_test.dart",
+    "packages/dsh_client/test/companion_prompt_context_test.dart",
+    "packages/dsh_client/test/support/fake_dsh.dart",
+    "packages/dsh_client/test/support/old_memory_schema.dart",
+    "packages/dsh_client/tool/companion_memory_replay_test.dart",
+    "runtime/tests/companion-chat-usage-integration.test.mjs",
+    "runtime/tests/companion-phone-memory-integration.test.mjs",
+    "runtime/tests/companion-phone-memory-replay.test.mjs",
+    "runtime/tests/fixtures/companion-phone-replay.mjs",
+    "runtime/tests/fixtures/companion-phone-restart.mjs",
+    "runtime/tests/fixtures/companion-recall-engine.mjs",
+    "tooling/companion/fixtures/phone-context.json",
+    "tooling/companion/offline_http.dart",
+    "tooling/companion/fixtures/page-phone-context-v3.json"
+  ],
+  "a2_worker_contract": {
+    "status": "SOURCE_MAPPING_ONLY_ALL_NOT_RUN",
+    "parent_commit": "0ba538be94caa148032418555c23cf74e7e74b60",
+    "worker_sha256": "0839d0b147f02a26f58b12f38514f1c3717c5bb9e95852cb34b5326f4595fc5f",
+    "worker_definitions": 15,
+    "worker_expanded_cases": 21,
+    "sdk_successor_patch_sha256": "97205ff0161d25793ceef0a9983fd3b345de8739295f16eab027eaddd252d4aa",
+    "version_policy": "fixture_version=1 and ruleset=09e-r2+r2.1 retained for existing reader; this metadata is non-executing.",
+    "retained_oracles": [
+      "exact-local-no-cloud",
+      "no-self-trigger-after-24h"
+    ],
+    "retired_scope_notes": [
+      {
+        "case_id": 14,
+        "previous_limits": [
+          "无日记产品入口的独立日记删除分支属于原长期能力，本期不为测试新增。"
+        ],
+        "reason": "ADD38 explicitly adds diary and real role-scoped stories; old no-diary-product limit no longer describes A2."
+      }
+    ],
+    "new_a2_suites": "SDK agent-memory/tools and local embedding suites remain separately bound NOT_RUN; original A2 fixture_sources had52, ADD47 adds the current Page v3 golden for53."
+  },
+  "known_owner_skips": [
+    {
+      "case_id": 12,
+      "check_id": "page-postponed",
+      "name": "test/companion/companion_invite_test.dart a pending memory question yields to postponed through the real composer",
+      "file": "app/test/companion/companion_invite_test.dart",
+      "source_sha256": "24c509314b4f252cb7d548c59a0bd622d47b53fb0265c8ba26682b26c71da5e2",
+      "condition_literal": "skip: state == 'postponed'",
+      "reason": "Owner explicitly records that current Agent tools have cancel but no postpone. Preserve the original active check and owner skip; do not delete the requirement.",
+      "reporting": "Informational current-source note only. Existing runner maps actual skipped events to NOT_RUN; this does not override future real test results and adds no permanent required_gap."
+    }
+  ],
+  "a2_replay_fixture_contract": {
+    "status": "SOURCE_MAPPING_ONLY_ALL_PRODUCT_NOT_RUN",
+    "parent_commit": "4974fe8bfbc827e045d02331309508a32010c2dd",
+    "owner_four_sources_preserved_except_root_budget_fixture": [
+      "app/test/companion/companion_invite_test.dart",
+      "app/test/companion/companion_page_test.dart",
+      "app/test/companion/companion_recall_room_test.dart",
+      "app/test/companion/companion_stream_state_test.dart"
+    ],
+    "changed_owner_names": 3,
+    "new_source_suites_added_to_fixture_sources": 0,
+    "wire": "Current maintenance is real phone Messages plus persistent tools; old JSON proposal envelopes survive only as explicit legacy fixture setup or compatibility boundaries, not the current maintenance transport.",
+    "receipts": "Each physical tool continuation has its own real request receipt; full logical maintenance is not one HTTP.",
+    "dates_and_controls": "Structured event_time and continuing topic controls have production successors; the control fixture also requires the closure and text-block-index one-line successors.",
+    "owner_skip_policy": "Do not turn the postponed owner skip into PASS or silently remove its active check.",
+    "boundary": "No claims of Dart syntax/analyzer success, model semantics, OS scheduling, native execution or A3 user acceptance."
+  }
+}

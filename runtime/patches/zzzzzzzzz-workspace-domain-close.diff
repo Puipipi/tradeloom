@@ -1,0 +1,16 @@
+--- a/node_modules/@deepseek-ai/dsh-workspace/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-workspace/lib/index.js
+@@ -393,7 +393,12 @@
+ 	/** Open the domain, finish bootstrap when required, and rebuild the ordered cache. */
+ 	async [Service.init]() {
+ 		const domain = await this.ctx.storageDomain.open(workspaceDomainSpec);
+-		this.ctx.effect(() => () => domain.close(), "workspace.domainClose");
++		try {
++			this.ctx.effect(() => () => domain.close(), "workspace.domainClose");
++		} catch (error) {
++			await domain.close();
++			throw error;
++		}
+ 		this.table = domain.table("workspaces");
+ 		this.global = domain.global;
+ 		this.state = domain.global.get();

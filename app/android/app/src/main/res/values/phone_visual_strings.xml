@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="phone_log_coordinate">Coordinate gesture %1$s · %2$s</string>
+    <string name="phone_confirm_coordinate_long">Long press (%2$s, %3$s) on the screenshot in “%1$s”</string>
+    <string name="phone_confirm_coordinate_swipe">Swipe from (%2$d,%3$d) to (%4$d,%5$d) in “%1$s”, for %6$d ms</string>
+    <string name="phone_status_coordinate">Perform a gesture on the screenshot</string>
+</resources>

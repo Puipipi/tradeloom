@@ -1,0 +1,201 @@
+# DSH 0.2.2-rc.1: refresh changed cold projection records without cross-process write-back.
+--- a/node_modules/@deepseek-ai/dsh-api-session-controller/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-api-session-controller/lib/index.js
+@@ -2680,6 +2680,8 @@
+ 	ctx;
+ 	workSliceMs;
+ 	listMetadata;
++	// Read-only fallback summaries for the current cold set; persistence owns revisions.
++	coldHints = new Map();
+ 	/**
+ 	* @param ctx - Host context carrying Session, query, persistence, and projection services.
+ 	* @param workSliceMs - Resolved positive integral list-work budget in milliseconds.
+@@ -2768,9 +2770,14 @@
+ 				yieldDeadline = performance.now() + this.workSliceMs;
+ 			}
+ 		}
++		const coldIds = new Set(cold.map(({ header }) => header.id));
++		const coldHints = new Map([...this.coldHints].filter(([id]) => coldIds.has(id)));
++		// An older overlapping list may finish later; keep its updates in its own map.
++		this.coldHints = coldHints;
+ 		for (const record of cold) {
+ 			signal?.throwIfAborted();
+-			items.push(this.summarizeCold(record));
++			const item = await this.summarizeCold(record, signal, coldHints);
++			if (item !== void 0) items.push(item);
+ 			if (performance.now() >= yieldDeadline) {
+ 				await scheduler.yield();
+ 				signal?.throwIfAborted();
+@@ -2781,8 +2788,44 @@
+ 		items.sort((left, right) => right.updatedAt - left.updatedAt);
+ 		return items;
+ 	}
+-	summarizeCold({ header, formatStatus }) {
+-		const projections = this.projectionsFor(header, void 0);
++	async summarizeCold({ header, formatStatus }, signal, coldHints) {
++		let projections;
++		try {
++			await this.ctx.get("sessionProjectionCache")?.refresh(header.id);
++			signal?.throwIfAborted();
++			const live = this.ctx.sessions.get(header.id);
++			if (live !== void 0) return this.summaryFor(live);
++			projections = this.projectionsFor(header, void 0);
++			if (projections?.values.sessionListMetadata === void 0) {
++				const persistence = this.ctx.get("sessionPersistence");
++				const stored = await persistence?.stat(header.id, { signal });
++				signal?.throwIfAborted();
++				if (stored === void 0) return;
++				const cached = coldHints.get(header.id);
++				if (cached?.identity === persistence.identity && cached.revision === stored.revision) {
++					header = cached.header;
++					projections = cached.projections;
++				} else {
++					const observation = await this.ctx.sessionQuery.observeSession(header.id, { signal });
++					try {
++						header = observation.header;
++						projections = hintsOf("sequenced", observation.projections);
++						if (observation.revision !== void 0 && projections?.values.sessionListMetadata !== void 0) {
++							coldHints.set(header.id, { identity: persistence.identity, revision: observation.revision, header, projections });
++						}
++					} finally {
++						observation[Symbol.dispose]();
++					}
++				}
++			} else coldHints.delete(header.id);
++		} catch (error) {
++			signal?.throwIfAborted();
++			if (error instanceof SessionQueryError && error.code === "SESSION_QUERY_SESSION_NOT_FOUND") return;
++			// Preserve the existing unavailable-row behavior for corrupt/migration-required logs.
++			this.ctx.logger.warn(`api-session.list: cold projection refresh failed for "${header.id}": ${String(error)}`);
++		}
++		const live = this.ctx.sessions.get(header.id);
++		if (live !== void 0) return this.summaryFor(live);
+ 		const metadata = projections?.values.sessionListMetadata;
+ 		return {
+ 			sessionId: header.id,
+--- a/node_modules/@deepseek-ai/dsh-session-projection-cache/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-session-projection-cache/lib/index.js
+@@ -189,6 +189,10 @@
+ 	* @returns the viewed block, or `undefined` when no usable row exists for
+ 	*   this lifecycle at the current Session format.
+ 	*/
++	/** Refresh only the requested checkpoint; alternate backends retain their read contract. */
++	async refresh(id) {
++		await this.requireTable().refresh(id);
++	}
+ 	cachedSnapshot(meta, keys) {
+ 		const expected = lifecycleIdentityOf(meta);
+ 		const record = this.requireTable().get(meta.id);
+--- a/node_modules/@deepseek-ai/dsh-storage-domain/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-storage-domain/lib/index.js
+@@ -154,7 +154,7 @@
+ 				this.emitChanged(change);
+ 			}
+ 		};
+-		for (const [table, tableRecords] of records) this.tables.set(table, new KvTableImpl(host, table, tableRecords));
++		for (const [table, tableRecords] of records) this.tables.set(table, new KvTableImpl(host, table, tableRecords, spec.tables[table].valueSchema));
+ 		if (spec.global !== void 0) {
+ 			this.globalValue = globalValue;
+ 			this.globalHandle = {
+@@ -246,11 +246,31 @@
+ 	host;
+ 	tableName;
+ 	records;
+-	constructor(host, tableName, records) {
++	valueSchema;
++	recordStamps = new Map();
++	constructor(host, tableName, records, valueSchema) {
++		this.valueSchema = valueSchema;
+ 		this.host = host;
+ 		this.tableName = tableName;
+ 		this.records = records;
+ 	}
++	/** Optional per-record refresh, serialized with local writes; never writes to disk. */
++	refresh(key) {
++		return this.host.enqueue(async () => {
++			if (typeof this.host.unit.readRecord !== "function") return this.get(key);
++			const stamp = await this.host.unit.statRecord(this.tableName, key);
++			if (stamp !== void 0 && this.recordStamps.get(key) === stamp) return this.get(key);
++			this.recordStamps.delete(key);
++			const raw = await this.host.unit.readRecord(this.tableName, key);
++			const parsed = raw === void 0 ? void 0 : this.valueSchema.safeParse(raw);
++			// A cache read must not quarantine a file another process may have replaced.
++			if (parsed?.success) this.records.set(key, parsed.data);
++			else this.records.delete(key);
++			// The stamp predates the read, so a file replaced meanwhile gets a new stamp and is read again.
++			if (parsed?.success && stamp !== void 0) this.recordStamps.set(key, stamp);
++			return this.records.get(key);
++		});
++	}
+ 	get(key) {
+ 		this.host.assertReadable();
+ 		return this.records.get(key);
+@@ -269,6 +289,7 @@
+ 	}
+ 	put(key, value) {
+ 		return this.host.enqueue(async () => {
++			this.recordStamps.delete(key);
+ 			await this.host.unit.putRecord(this.tableName, key, value);
+ 			this.records.set(key, value);
+ 			this.emitPut(key, value);
+@@ -277,6 +298,7 @@
+ 	delete(key) {
+ 		return this.host.enqueue(async () => {
+ 			if (!this.records.has(key)) return false;
++			this.recordStamps.delete(key);
+ 			await this.host.unit.deleteRecord(this.tableName, key);
+ 			this.records.delete(key);
+ 			this.emitDeleted(key);
+@@ -288,7 +310,10 @@
+ 			const present = [...new Set(keys)].filter((key) => this.records.has(key));
+ 			if (present.length === 0) return 0;
+ 			await this.host.unit.deleteRecords(this.tableName, present);
+-			for (const key of present) this.records.delete(key);
++			for (const key of present) {
++				this.recordStamps.delete(key);
++				this.records.delete(key);
++			}
+ 			for (const key of present) this.emitDeleted(key);
+ 			return present.length;
+ 		});
+@@ -297,6 +322,7 @@
+ 		return this.host.enqueue(async () => {
+ 			if (!this.records.has(key)) throw new DomainError("missing-key", `domain '${this.host.domainName}' table '${this.tableName}' has no record '${key}' to update`);
+ 			const next = fn(this.records.get(key));
++			this.recordStamps.delete(key);
+ 			await this.host.unit.putRecord(this.tableName, key, next);
+ 			this.records.set(key, next);
+ 			this.emitPut(key, next);
+--- a/node_modules/@deepseek-ai/dsh-storage-json/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-storage-json/lib/index.js
+@@ -1,4 +1,4 @@
+-import { mkdir, open, readFile, readdir, rename, rm } from "node:fs/promises";
++import { mkdir, open, readFile, readdir, rename, rm, stat } from "node:fs/promises";
+ import z from "@deepseek-ai/schemastery";
+ import { StorageError, UNIT_NAME_RE, storageBackendServiceKey } from "@deepseek-ai/dsh-storage";
+ import { dirname, join } from "node:path";
+@@ -472,6 +472,24 @@
+ 			tables,
+ 			global: state.global
+ 		};
++	}
++	/** File replacement and in-place edits both invalidate a remembered read. */
++	async statRecord(table, key) {
++		this.assertOpen();
++		assertSafeKey(this.descriptor.name, key);
++		const path = join(this.tableDir(table), `${key}.json`);
++		try {
++			const info = await stat(path, { bigint: true });
++			return `${info.dev}:${info.ino}:${info.size}:${info.mtimeNs}:${info.ctimeNs}`;
++		} catch {
++			return;
++		}
++	}
++	/** Read one current document without rewriting another process's checkpoint. */
++	async readRecord(table, key) {
++		this.assertOpen();
++		assertSafeKey(this.descriptor.name, key);
++		return readRecord(join(this.tableDir(table), `${key}.json`), [this.descriptor.version, ...this.descriptor.compatibleVersions ?? []]);
+ 	}
+ 	/** Durably replace one record: its own document, atomically. */
+ 	async putRecord(table, key, value) {

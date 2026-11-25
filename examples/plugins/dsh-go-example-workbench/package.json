@@ -1,0 +1,21 @@
+{
+  "name": "dsh-go-example-workbench",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Native view-v2 settings, bounded inputs, local formulas and structured content.",
+  "author": "DSH-TUI (ccch1mneyyy)",
+  "license": "MIT",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": { ".": "./lib/index.js", "./package.json": "./package.json", "./cordis.patch.yml": "./cordis.patch.yml" },
+  "files": ["lib", "cordis.patch.yml", "README.md", "README.en.md", "LICENSE"],
+  "scripts": { "test": "node --test test/*.test.js", "check": "node ../../../sdk/plugin-kit/bin/check.mjs . --load" },
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } },
+  "dshGo": {
+    "v": 1,
+    "title": { "zh": "工作台", "en": "Workbench" },
+    "icon": "palette",
+    "contributes": { "panels": [{ "id": "workbench", "title": { "zh": "工作台", "en": "Workbench" }, "icon": "palette", "placement": ["session.tab", "features", "chat.panel"] }] }
+  },
+  "engines": { "node": ">=22.19", "dsh": ">=0.2.1-rc.2 <0.3.0-0" }
+}

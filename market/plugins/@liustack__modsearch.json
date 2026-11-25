@@ -1,0 +1,14 @@
+{
+  "name": "@liustack/modsearch",
+  "version": "5.10.11",
+  "title": {
+    "zh": "联网搜索",
+    "en": "Web search"
+  },
+  "summary": {
+    "zh": "免费的联网搜索",
+    "en": "Free web search"
+  },
+  "category": "tools",
+  "screenshots": []
+}

@@ -1,0 +1,157 @@
+# Remember the last model or retain a fixed default; separate Session success from persistence.
+--- a/node_modules/@deepseek-ai/dsh-agent-default-model/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-agent-default-model/lib/index.js
+@@ -21,7 +21,8 @@
+ 	static Config = z.object({
+ 		provider: z.string().required().volatile(),
+ 		model: z.string().required().volatile(),
+-		reasoningEffort: z.string().volatile()
++		reasoningEffort: z.string().volatile(),
++		rememberLastSelection: z.boolean().default(true).volatile()
+ 	});
+ 	constructor(ownerContext, config) {
+ 		super(ownerContext, "agentDefaultModel");
+@@ -43,26 +44,51 @@
+ 			...reasoningEffort === void 0 ? {} : { reasoningEffort }
+ 		});
+ 	}
++	/** Whether Session selections should become the next conversation's default. */
++	remembersLastSelection() {
++		return this.config.rememberLastSelection.get() !== false;
++	}
+ 	/**
+-	* Save the complete default model selection. A deployment without a configuration
+-	* editor keeps its composition entry. Saves commit in submission order; a failed
+-	* save rejects its caller without blocking later saves.
++	* Save an automatic default in submission order without overwriting fixed mode.
++	* Recheck the raw mode under ConfigEditor's profile lock, not just when queued.
+ 	* @param next - resolved selection accepted by an entry point.
+-	* @returns fulfillment after the optional profile write settles.
++	* @param options - optional startup snapshot that must still be current.
++	* @returns a safe persistence receipt after the write and reload settle.
+ 	*/
+-	async saveSelection(next) {
+-		const entry = this.ownerContext.fiber.entry;
+-		if (entry === void 0) return;
+-		const editor = this.ctx.get("configEditor");
+-		if (editor === void 0) return;
+-		const config = {
+-			provider: next.provider,
+-			model: next.model,
+-			...next.reasoningEffort === void 0 ? {} : { reasoningEffort: String(next.reasoningEffort) }
+-		};
+-		const saved = this.saves.then(() => editor.edit(entry, () => config));
++	async saveSelection(next, options = {}) {
++		const fixed = { status: "skipped", code: "settings/fixed-default" };
++		if (!this.remembersLastSelection()) return fixed;
++		const skipped = {};
++		const saved = this.saves.then(async () => {
++			if (!this.remembersLastSelection()) return fixed;
++			const entry = this.ownerContext.fiber.entry;
++			const editor = this.ctx.get("configEditor");
++			if (entry === void 0 || editor === void 0) throw new Error("Default model configuration is not writable");
++			let receipt;
++			try {
++				await editor.edit(entry, (current) => {
++					if (current.rememberLastSelection === false) {
++						receipt = fixed;
++						throw skipped;
++					}
++					const previous = options.ifCurrent;
++					if (previous !== void 0 && (current.provider !== previous.provider || current.model !== previous.model || current.reasoningEffort !== previous.reasoningEffort)) {
++						receipt = { status: "skipped", code: "settings/default-changed" };
++						throw skipped;
++					}
++					const config = { ...current, provider: next.provider, model: next.model };
++					if (next.reasoningEffort === void 0) Reflect.deleteProperty(config, "reasoningEffort");
++					else config.reasoningEffort = String(next.reasoningEffort);
++					return config;
++				});
++			} catch (error) {
++				if (error === skipped) return receipt;
++				throw error;
++			}
++			return { status: "saved" };
++		});
+ 		this.saves = saved.catch(() => {});
+-		await saved;
++		return await saved;
+ 	}
+ };
+ //#endregion
+--- a/node_modules/@deepseek-ai/dsh-api-session-controller/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-api-session-controller/lib/index.js
+@@ -698,9 +698,9 @@
+ 		};
+ 	}
+ 	/**
+-	* Validate and record one Session model selection; save the default in the background.
++	* Validate and record one Session model selection, then report default persistence.
+ 	* @param request - Session identity and requested model selection.
+-	* @returns the normalized selection recorded for the Session, without waiting for default persistence.
++	* @returns the recorded Session selection and a separate default-save receipt.
+ 	*/
+ 	async selectModel(request) {
+ 		const agent = await this.resolveAgent(request.sessionId);
+@@ -714,10 +714,14 @@
+ 				};
+ 				await this.ctx.llm.resolveCallConfig(selected);
+ 				agent.model.select(selected);
+-				this.ctx.agentDefaultModel.saveSelection(selected).catch((error) => {
+-					this.ctx.logger.warn(`session-controller: model selection changed for the Session but the default was not saved: ${String(error)}`);
+-				});
+-				return { selected: { ...selected } };
++				let defaultSave;
++				try {
++					defaultSave = await this.ctx.agentDefaultModel.saveSelection(selected);
++				} catch {
++					// Persistence must neither roll back this Session nor expose profile errors.
++					defaultSave = { status: "failed", code: "settings/default-save-failed" };
++				}
++				return { selected: { ...selected }, defaultSave };
+ 			} catch (error) {
+ 				if (remoteErrorOf(error) !== void 0) throw error;
+ 				throw new RemoteError("session/model-unavailable", error instanceof Error ? error.message : String(error), {
+@@ -3965,9 +3969,9 @@
+ 			return this.commands.create(request);
+ 		}
+ 		/**
+-		* Select one Session-local model after explicitly resuming the Session; save the default in the background.
++		* Select one Session-local model after explicitly resuming the Session; report default persistence.
+ 		* @param request - Session identity and requested model selection.
+-		* @returns the normalized selection installed for the Session, without waiting for default persistence.
++		* @returns the installed Session selection and a separate default-save receipt.
+ 		*/
+ 		selectModel(request) {
+ 			return this.commands.selectModel(request);
+@@ -3977,16 +3981,28 @@
+ 		* @returns after saving the first available model or retaining the existing default.
+ 		*/
+ 		async initializeDefaultModel() {
++			const defaults = this.ctx.agentDefaultModel;
++			if (!defaults.remembersLastSelection()) return;
+ 			const provider = "deepseek-account";
+ 			if (await hasProviderApiKey(this.ctx)) return;
+-			const model = (await buildModelCatalog(this.ctx)).groups.find((group) => group.id === provider)?.models[0];
++			const current = defaults.currentSelection();
++			const catalog = await buildModelCatalog(this.ctx, current);
++			const existing = catalog.groups.find((group) => group.id === current.provider)?.models.find((model) => model.id === current.model);
++			if (existing !== void 0 && (current.reasoningEffort === void 0 || existing.reasoning?.efforts.some((effort) => effort.id === current.reasoningEffort))) return;
++			// A transient provider failure is not evidence that its default is obsolete.
++			if (catalog.failures.some((failure) => failure.id === current.provider)) return;
++			const model = catalog.groups.find((group) => group.id === provider)?.models[0];
+ 			if (model === void 0) throw new RemoteError("session/provider-models-unavailable", `provider "${provider}" has no available models`, { provider });
+ 			const selection = {
+ 				provider,
+ 				model: model.id,
+ 				...model.reasoning?.defaultEffort === void 0 ? {} : { reasoningEffort: ReasoningEffortId(model.reasoning.defaultEffort) }
+ 			};
+-			await this.ctx.agentDefaultModel.saveSelection(selection);
++			try {
++				await defaults.saveSelection(selection, { ifCurrent: current });
++			} catch {
++				throw new RemoteError("settings/default-save-failed", "Default model could not be saved", {});
++			}
+ 		}
+ 		/**
+ 		* Describe every currently routable model for Host-generation selectors.

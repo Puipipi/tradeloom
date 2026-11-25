@@ -1,0 +1,27 @@
+{
+  "name": "dsh-go-example-album",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A sticker album on the chat page's Plugins sheet: a gallery, its empty state, a ring and a trend, in the person's own palette.",
+  "author": "DSH-TUI (ccch1mneyyy)",
+  "license": "MIT",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": { ".": "./lib/index.js", "./cordis.patch.yml": "./cordis.patch.yml", "./package.json": "./package.json" },
+  "files": ["lib", "assets", "cordis.patch.yml", "README.md", "README.en.md", "LICENSE"],
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "check": "node ../../../sdk/plugin-kit/bin/check.mjs . --load"
+  },
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } },
+  "dshGo": {
+    "v": 1,
+    "title": { "zh": "贴纸相册", "en": "Sticker album" },
+    "icon": "gallery",
+    "assets": "assets",
+    "contributes": {
+      "panels": [{ "id": "album", "title": { "zh": "贴纸", "en": "Stickers" }, "icon": "gallery", "placement": ["chat.panel", "features"] }]
+    }
+  },
+  "engines": { "node": ">=22.19", "dsh": ">=0.2.1-rc.2 <0.3.0-0" }
+}

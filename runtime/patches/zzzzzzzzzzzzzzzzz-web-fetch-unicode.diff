@@ -1,0 +1,26 @@
+--- a/node_modules/@deepseek-ai/dsh-web-fetch-http/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-web-fetch-http/lib/index.js
+@@ -278,5 +278,6 @@
+ 		}
+ 		const truncatedByChars = decoded.length > this.limits.maxBodyChars;
+-		const content = truncatedByChars ? decoded.slice(0, this.limits.maxBodyChars) : decoded;
++		let content = truncatedByChars ? decoded.slice(0, this.limits.maxBodyChars) : decoded;
++		if (truncatedByChars && /[\uD800-\uDBFF]$/.test(content) && /[\uDC00-\uDFFF]/.test(decoded.charAt(content.length))) content = content.slice(0, -1);
+ 		const body = kind === "html" ? {
+ 			kind: "html",
+--- a/node_modules/@deepseek-ai/dsh-tool-web/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-tool-web/lib/index.js
+@@ -566,5 +566,5 @@
+ */
+ function renderBody(body, maxInputChars) {
+-	const content = body.content.slice(0, maxInputChars);
++	const content = truncateWithoutSplittingSurrogatePair(body.content, maxInputChars);
+ 	const sourceTruncated = content.length !== body.content.length;
+ 	switch (body.kind) {
+@@ -656,5 +656,5 @@
+ 	};
+ 	return {
+-		text: `${prefix.slice(0, maxOutputChars - 78)}${TRUNCATION_FOOTER}`,
++		text: `${truncateWithoutSplittingSurrogatePair(prefix, maxOutputChars - 78)}${TRUNCATION_FOOTER}`,
+ 		truncated
+ 	};

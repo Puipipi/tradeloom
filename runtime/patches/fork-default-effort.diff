@@ -1,0 +1,9 @@
+--- a/node_modules/@deepseek-ai/dsh-api-session-controller/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-api-session-controller/lib/index.js
+@@ -796 +796 @@
+-				const { provider, model } = this.ctx.agentDefaultModel.currentSelection();
++				const { provider, model, reasoningEffort } = this.ctx.agentDefaultModel.currentSelection();
+@@ -808 +808,2 @@
+-						model
++						model,
++						reasoningEffort

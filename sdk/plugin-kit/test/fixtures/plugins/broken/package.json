@@ -1,0 +1,29 @@
+{
+  "name": "broken-demo",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "dsh": { "bundle": { "patch": "./missing.yml" } },
+  "dshGo": {
+    "v": 1,
+    "title": "一个名字特别特别特别特别长的插件演示名称啊",
+    "icon": "loudspeaker",
+    "wants": ["draft", "telepathy"],
+    "extra": true,
+    "contributes": {
+      "composer.actions": [
+        { "id": "a", "label": { "zh": "好", "en": "A label that is long" } },
+        { "id": "a", "label": "重复" },
+        { "id": "b", "label": "第三个" },
+        { "id": "c", "label": "第四个" }
+      ],
+      "message.actions": [
+        { "id": "m", "label": "刷新", "effect": { "type": "refresh" } }
+      ],
+      "composer.strip": [{ "id": "s", "panel": "nope" }],
+      "panels": [{ "id": "p", "title": "面板", "view": "./views/p.json", "placement": ["session.tab", "sidebar"] }],
+      "pets": []
+    }
+  }
+}

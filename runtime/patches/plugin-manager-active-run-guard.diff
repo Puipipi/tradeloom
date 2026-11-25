@@ -1,0 +1,33 @@
+--- a/node_modules/@deepseek-ai/dsh-plugin-manager/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-plugin-manager/lib/index.js
+@@ -2865,7 +2865,7 @@
+ 				stage: "install",
+ 				target: spec,
+ 				enabled: options?.enabled !== false
+-			}, "install");
++			}, "install", void 0, stopped);
+ 			control.result = result;
+ 			return result.finally(() => {
+ 				if (requestId !== void 0) this.installs.delete(requestId);
+@@ -3141,7 +3141,7 @@
+ 				restartReason: restart
+ 			};
+ 		}
+-		async change(operation, request, reason, identity) {
++		async change(operation, request, reason, identity, isCancelled) {
+ 			const id = randomUUID();
+ 			const target = identity === void 0 ? this.operationTarget(reason, request.target) : identity.target;
+ 			const version = identity === void 0 ? this.operationVersion(reason, reason === "plugin" ? request.target : target) : identity.version;
+@@ -3172,6 +3172,12 @@
+ 						}
+ 					};
+ 					try {
++						if (isCancelled?.()) throw new InstallCancelledError();
++						// An earlier package tree may outlive its Host and the profile lock.
++						const active = await activeRecordedRun(this.profile.dir);
++						if (isCancelled?.()) throw new InstallCancelledError();
++						this.abort.signal.throwIfAborted();
++						if (active !== void 0) throw new Error(active);
+ 						const outcome = await operation(result);
+ 						if (outcome !== void 0) result.application = outcome;
+ 						else if (result.application === "applied" && result.restartReason !== void 0) result.application = "restart-required";

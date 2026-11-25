@@ -1,0 +1,64 @@
+{
+  "name": "dsh-go-example-toolbox",
+  "version": "0.1.0",
+  "description": "dsh-go example: the newer native places: plus panel tools, chat actions, turn notes, a panel on the plugin page, a panel as a sheet.",
+  "engines": {
+    "dsh": ">=0.2.1-rc.2 <0.3.0-0"
+  },
+  "author": "DSH-TUI (ccch1mneyyy)",
+  "license": "MIT",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "README.en.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "check": "node ../../../sdk/plugin-kit/bin/check.mjs ."
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dshGo": {
+    "v": 1,
+    "title": { "zh": "工具箱", "en": "Toolbox" },
+    "icon": "wrench",
+    "wants": ["draft"],
+    "contributes": {
+      "composer.tools": [
+        { "id": "pick", "label": { "zh": "选模板", "en": "Template" }, "icon": "list", "panel": "picker" },
+        { "id": "count", "label": { "zh": "数字数", "en": "Count" }, "icon": "text" }
+      ],
+      "session.actions": [
+        { "id": "mark", "label": { "zh": "标记这段对话", "en": "Mark chat" }, "icon": "bookmark" }
+      ],
+      "turn.note": [{ "id": "turn" }],
+      "panels": [
+        {
+          "id": "picker",
+          "title": { "zh": "选模板", "en": "Templates" },
+          "icon": "list",
+          "placement": ["chat.panel"],
+          "presentation": "sheet"
+        },
+        {
+          "id": "about",
+          "title": { "zh": "状态", "en": "Status" },
+          "icon": "info",
+          "placement": ["plugin"]
+        }
+      ]
+    }
+  }
+}

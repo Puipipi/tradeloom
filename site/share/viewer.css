@@ -1,0 +1,226 @@
+/* dsh-go conversation viewer (viewer.js). Shared by the landing page and the
+   self-contained page the app exports (app/tool/make_replay_viewer.py inlines
+   it). Colours follow the app's default theme (雾蓝), light and dark. */
+
+.dv {
+  --dv-bg-top: #ebf1fe;
+  --dv-bg-bottom: #f6f7fc;
+  --dv-ink: #1e232e;
+  --dv-ink-2: #4f5562;
+  --dv-ink-3: #646974;
+  --dv-ink-4: #a1a5ac;
+  --dv-line: rgba(11, 21, 45, 0.08);
+  --dv-glass: rgba(255, 255, 255, 0.78);
+  --dv-card: rgba(255, 255, 255, 0.62);
+  --dv-solid: #fbfcff;
+  --dv-bubble: #d9e4fd;
+  --dv-primary: #4b67b4;
+  --dv-on-primary: #ffffff;
+  --dv-tint: rgba(30, 35, 46, 0.06);
+  --dv-code-bg: #edf0f6;
+  --dv-code-head: #e7ebf3;
+  --dv-code-line: #dbdee5;
+  --dv-danger: #a54743;
+  --dv-success: #337250;
+  --dv-warning: #936123;
+  --dv-shadow: 0 8px 24px rgba(11, 21, 45, 0.08), 0 1px 3px rgba(11, 21, 45, 0.05);
+  --dv-hl-k: #8e3e9e; --dv-hl-s: #2f7a4b; --dv-hl-c: #8a8f9a; --dv-hl-n: #9a5b13; --dv-hl-t: #2f5fb3; --dv-hl-f: #315aa8;
+  /* Tool tones: terminal, read, edit, search, web, agent, plan, neutral. */
+  --dv-t0: #e6eaf2; --dv-o0: #343d51;
+  --dv-t1: #daecff; --dv-o1: #173f65;
+  --dv-t2: #fae6cd; --dv-o2: #543600;
+  --dv-t3: #ede5fe; --dv-o3: #443261;
+  --dv-t4: #d7f1e2; --dv-o4: #034a2e;
+  --dv-t5: #f9e2f0; --dv-o5: #582b4a;
+  --dv-t6: #d0f1f0; --dv-o6: #004747;
+  --dv-t7: #e7e9ef; --dv-o7: #363d4c;
+  color: var(--dv-ink);
+  font: 16px/1.6 -apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+@media (prefers-color-scheme: dark) {
+  .dv {
+    --dv-bg-top: #1d222c;
+    --dv-bg-bottom: #1b1c23;
+    --dv-ink: #e6e9f0;
+    --dv-ink-2: #b6bbc5;
+    --dv-ink-3: #9a9ea9;
+    --dv-ink-4: #656971;
+    --dv-line: rgba(255, 255, 255, 0.09);
+    --dv-glass: rgba(43, 48, 60, 0.82);
+    --dv-card: rgba(255, 255, 255, 0.05);
+    --dv-solid: #232730;
+    --dv-bubble: #293144;
+    --dv-primary: #97b1f0;
+    --dv-on-primary: #121c34;
+    --dv-tint: rgba(255, 255, 255, 0.08);
+    --dv-code-bg: #14171e;
+    --dv-code-head: #1a1e26;
+    --dv-code-line: #2f333a;
+    --dv-danger: #e69089;
+    --dv-success: #8bcca6;
+    --dv-warning: #e6bd7c;
+    --dv-shadow: 0 8px 24px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.25);
+    --dv-hl-k: #deb2e9; --dv-hl-s: #9ad5a5; --dv-hl-c: #7c8089; --dv-hl-n: #e3be80; --dv-hl-t: #a0c6ff; --dv-hl-f: #87ade4;
+    --dv-t0: #303540; --dv-o0: #d1d8e5;
+    --dv-t1: #21374e; --dv-o1: #c0dbf8;
+    --dv-t2: #443116; --dv-o2: #ebd3b4;
+    --dv-t3: #39304b; --dv-o3: #dcd1f3;
+    --dv-t4: #1d3d2d; --dv-o4: #bde2cd;
+    --dv-t5: #452c3d; --dv-o5: #edcce1;
+    --dv-t6: #0f3d3d; --dv-o6: #b3e2e1;
+    --dv-t7: #32353d; --dv-o7: #d3d7e1;
+  }
+}
+
+.dv-page { margin: 0; min-height: 100vh; background: linear-gradient(180deg, var(--dv-bg-top), var(--dv-bg-bottom)) fixed; }
+.dv *, .dv *::before, .dv *::after { box-sizing: border-box; }
+.dv { min-height: 100vh; display: flex; flex-direction: column; background: linear-gradient(180deg, var(--dv-bg-top), var(--dv-bg-bottom)); }
+/* Reset at zero specificity, so the component classes below win. */
+.dv :where(button) { font: inherit; color: inherit; border: 0; background: none; padding: 0; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.dv button:focus-visible, .dv a:focus-visible, .dv input:focus-visible { outline: 2px solid var(--dv-primary); outline-offset: 2px; }
+.dv [hidden] { display: none !important; }
+
+/* ── Top bar: title, then the transport capsule ─────────────────────────── */
+.dv-bar {
+  position: sticky; top: 0; z-index: 5;
+  padding: max(12px, env(safe-area-inset-top)) 12px 10px;
+  background: linear-gradient(180deg, var(--dv-bg-top) 70%, transparent);
+}
+.dv-bar-inner { max-width: 744px; margin: 0 auto; display: grid; gap: 10px; }
+.dv-head { display: flex; align-items: center; gap: 12px; padding: 0 4px; min-width: 0; }
+.dv-head-text { min-width: 0; flex: 1; }
+.dv-title { margin: 0; font-size: 17px; line-height: 1.35; font-weight: 600; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+.dv-sub { font-size: 12px; line-height: 1.4; color: var(--dv-ink-3); margin-top: 2px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dv-pill {
+  flex: none; height: 36px; padding: 0 14px; border-radius: 999px; font-size: 14px; font-weight: 500;
+  background: var(--dv-glass); box-shadow: var(--dv-shadow); border: 0.5px solid var(--dv-line);
+  -webkit-backdrop-filter: blur(18px) saturate(1.3); backdrop-filter: blur(18px) saturate(1.3);
+}
+.dv-transport {
+  display: flex; align-items: center; gap: 8px; height: 44px; padding: 4px; border-radius: 999px;
+  background: var(--dv-glass); box-shadow: var(--dv-shadow); border: 0.5px solid var(--dv-line);
+  -webkit-backdrop-filter: blur(18px) saturate(1.3); backdrop-filter: blur(18px) saturate(1.3);
+}
+.dv-key { flex: none; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--dv-tint); transition: transform 0.12s ease; }
+.dv-key:active { transform: scale(0.94); }
+.dv-key svg { width: 20px; height: 20px; fill: currentColor; }
+.dv-speed { flex: none; min-width: 44px; height: 36px; padding: 0 10px; border-radius: 999px; background: var(--dv-tint); font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.dv-time { flex: none; font-size: 12px; color: var(--dv-ink-3); font-variant-numeric: tabular-nums; min-width: 72px; text-align: center; }
+.dv-seek { flex: 1; min-width: 40px; height: 36px; margin: 0; background: transparent; -webkit-appearance: none; appearance: none; cursor: pointer; --dv-p: 0%; }
+.dv-seek::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(90deg, var(--dv-primary) var(--dv-p), var(--dv-tint) var(--dv-p)); }
+.dv-seek::-moz-range-track { height: 4px; border-radius: 2px; background: var(--dv-tint); }
+.dv-seek::-moz-range-progress { height: 4px; border-radius: 2px; background: var(--dv-primary); }
+.dv-seek::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; margin-top: -6px; border-radius: 50%; background: var(--dv-primary); border: 2px solid var(--dv-solid); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2); }
+.dv-seek::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--dv-primary); border: 2px solid var(--dv-solid); }
+
+/* ── The conversation ───────────────────────────────────────────────────── */
+.dv-list { flex: 1; width: 100%; max-width: 752px; margin: 0 auto; padding: 8px 16px 24px; }
+.dv-row { margin-top: 8px; animation: dv-in 0.24s ease-out both; }
+.dv-row.dv-quiet { animation: none; }
+.dv-row.dv-user { margin-top: 24px; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.dv-row.dv-user:first-child { margin-top: 4px; }
+.dv-row.dv-proc + .dv-row.dv-proc { margin-top: 0; }
+@keyframes dv-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .dv-row { animation: none; } .dv-caret { animation: none !important; } }
+
+.dv-bubble { max-width: min(85%, 560px); padding: 10px 14px; border-radius: 20px; background: var(--dv-bubble); white-space: pre-wrap; overflow-wrap: anywhere; }
+.dv-shots { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; max-width: 85%; }
+.dv-shot { display: block; border-radius: 14px; overflow: hidden; background: var(--dv-tint); border: 0.5px solid var(--dv-line); }
+.dv-shot img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.dv-shot.dv-one { max-width: 208px; max-height: 208px; }
+.dv-shot.dv-one img { object-fit: contain; height: auto; max-height: 208px; }
+.dv-shot.dv-many { width: 88px; height: 88px; }
+.dv-shot.dv-missing { width: 88px; height: 88px; display: grid; place-items: center; color: var(--dv-ink-4); font-size: 12px; }
+.dv-file { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 14px; background: var(--dv-card); border: 0.5px solid var(--dv-line); font-size: 13px; }
+.dv-file span:last-child { color: var(--dv-ink-3); }
+.dv-source { font-size: 12px; color: var(--dv-ink-3); }
+
+/* Replies: full-width Markdown, no frame. */
+.dv-md { overflow-wrap: anywhere; }
+.dv-md > :first-child { margin-top: 0; }
+.dv-md > :last-child { margin-bottom: 0; }
+.dv-md p { margin: 0 0 12px; }
+.dv-md h1, .dv-md h2, .dv-md h3, .dv-md h4, .dv-md h5, .dv-md h6 { margin: 20px 0 8px; line-height: 1.35; font-weight: 600; }
+.dv-md h1 { font-size: 22px; } .dv-md h2 { font-size: 19px; } .dv-md h3 { font-size: 17px; } .dv-md h4, .dv-md h5, .dv-md h6 { font-size: 16px; }
+.dv-md ul, .dv-md ol { margin: 0 0 12px; padding-left: 24px; }
+.dv-md li { margin: 2px 0; }
+.dv-md li > ul, .dv-md li > ol { margin: 2px 0 0; }
+.dv-md blockquote { margin: 0 0 12px; padding: 0 0 0 12px; border-left: 3px solid var(--dv-line); color: var(--dv-ink-2); }
+.dv-md hr { border: 0; border-top: 1px solid var(--dv-line); margin: 16px 0; }
+.dv-md a { color: var(--dv-primary); text-decoration: none; }
+.dv-md a:hover { text-decoration: underline; }
+.dv-md code { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.86em; padding: 1px 5px; border-radius: 6px; background: var(--dv-code-bg); }
+.dv-md table { border-collapse: collapse; margin: 0 0 12px; display: block; overflow-x: auto; max-width: 100%; font-size: 14px; }
+.dv-md th, .dv-md td { border: 1px solid var(--dv-line); padding: 6px 10px; text-align: left; vertical-align: top; }
+.dv-md th { font-weight: 600; background: var(--dv-tint); }
+.dv-md .dv-math { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 14px; color: var(--dv-ink-2); }
+.dv-code { margin: 0 0 12px; border-radius: 14px; overflow: hidden; background: var(--dv-code-bg); border: 0.5px solid var(--dv-code-line); }
+.dv-code-head { display: flex; align-items: center; justify-content: space-between; height: 36px; padding: 0 8px 0 14px; background: var(--dv-code-head); font-size: 12px; color: var(--dv-ink-3); }
+.dv-code-head button { height: 28px; padding: 0 8px; border-radius: 8px; font-size: 12px; color: var(--dv-ink-3); }
+.dv-code pre { margin: 0; padding: 12px 14px; overflow-x: auto; font: 13px/1.55 "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.dv-code pre code { padding: 0; background: none; font-size: inherit; border-radius: 0; }
+.dv-k { color: var(--dv-hl-k); } .dv-s { color: var(--dv-hl-s); } .dv-c { color: var(--dv-hl-c); font-style: italic; }
+.dv-n { color: var(--dv-hl-n); } .dv-t { color: var(--dv-hl-t); } .dv-f { color: var(--dv-hl-f); }
+.dv-add { color: var(--dv-success); } .dv-del { color: var(--dv-danger); }
+.dv-caret { display: inline-block; width: 8px; height: 1.05em; margin-left: 2px; vertical-align: -0.15em; border-radius: 2px; background: var(--dv-primary); animation: dv-blink 1s steps(2, start) infinite; }
+@keyframes dv-blink { to { visibility: hidden; } }
+.dv-cut { margin-top: 8px; font-size: 13px; color: var(--dv-danger); }
+.dv-foot-note { margin-top: 4px; font-size: 12px; color: var(--dv-ink-3); font-variant-numeric: tabular-nums; }
+
+/* Process lines: thinking, tools, the folded turn. */
+.dv-line { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 4px 0; font-size: 14px; color: var(--dv-ink-2); cursor: pointer; user-select: none; }
+.dv-line .dv-label { flex: none; }
+.dv-line .dv-detail { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dv-ink-3); }
+.dv-line .dv-detail.dv-mono { font: 13px "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace; }
+.dv-line .dv-state { flex: none; font-size: 12px; color: var(--dv-ink-3); }
+.dv-line .dv-state.dv-bad { color: var(--dv-danger); }
+.dv-chev { flex: none; width: 16px; height: 16px; fill: var(--dv-ink-3); transition: transform 0.2s ease; }
+.dv-open > .dv-line .dv-chev { transform: rotate(180deg); }
+.dv-glyph { flex: none; width: 22px; height: 22px; border-radius: 7px; display: grid; place-items: center; }
+.dv-glyph svg { width: 13px; height: 13px; fill: currentColor; }
+.dv-spin { flex: none; width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--dv-tint); border-top-color: var(--dv-primary); animation: dv-rot 0.8s linear infinite; }
+@keyframes dv-rot { to { transform: rotate(360deg); } }
+.dv-body { margin: 0 0 4px 10px; padding: 4px 0 4px 18px; border-left: 1.5px solid var(--dv-line); }
+.dv-think { font-size: 14px; color: var(--dv-ink-3); white-space: pre-wrap; overflow-wrap: anywhere; }
+.dv-out { margin: 4px 0; padding: 10px 12px; border-radius: 12px; background: var(--dv-code-bg); font: 12px/1.5 "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 320px; overflow: auto; color: var(--dv-ink-2); }
+.dv-out-label { font-size: 12px; color: var(--dv-ink-3); margin-top: 6px; }
+.dv-notice { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--dv-ink-3); padding: 4px 0; }
+.dv-notice.dv-bad { color: var(--dv-danger); }
+.dv-cmd { font: 13px "JetBrains Mono", ui-monospace, Menlo, monospace; color: var(--dv-ink-2); padding: 4px 0; }
+.dv-cmd span { color: var(--dv-ink-3); font-family: inherit; }
+.dv-fold-ok { flex: none; width: 16px; height: 16px; fill: var(--dv-success); }
+
+/* ── Dock: todo list and goal, above the bottom actions ─────────────────── */
+.dv-bottom { position: sticky; bottom: 0; z-index: 4; padding: 12px 12px max(12px, env(safe-area-inset-bottom)); background: linear-gradient(0deg, var(--dv-bg-bottom) 70%, transparent); }
+.dv-bottom-inner { max-width: 744px; margin: 0 auto; display: grid; gap: 8px; }
+.dv-dock { border-radius: 20px; background: var(--dv-glass); box-shadow: var(--dv-shadow); border: 0.5px solid var(--dv-line); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); overflow: hidden; }
+.dv-dock-row { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 6px 14px; font-size: 13px; cursor: pointer; }
+.dv-dock-row + .dv-dock-row { border-top: 0.5px solid var(--dv-line); }
+.dv-dock-row b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.dv-dock-row .dv-detail { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dv-ink-2); }
+.dv-todos { list-style: none; margin: 0; padding: 0 14px 10px 36px; font-size: 13px; max-height: 30vh; overflow: auto; }
+.dv-todos li { padding: 3px 0; }
+.dv-todos li.dv-done { color: var(--dv-ink-3); text-decoration: line-through; }
+.dv-todos li.dv-now { font-weight: 600; }
+.dv-actions { display: flex; gap: 12px; }
+.dv-btn { flex: 1; display: flex; align-items: center; justify-content: center; height: 48px; border-radius: 999px; font-size: 16px; font-weight: 600; text-decoration: none; }
+.dv-btn.dv-primary { background: var(--dv-primary); color: var(--dv-on-primary); }
+.dv-btn.dv-secondary { color: var(--dv-ink); background: var(--dv-glass); border: 0.5px solid var(--dv-line); box-shadow: var(--dv-shadow); }
+
+/* Picture viewer. */
+.dv-lightbox { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; background: rgba(0, 0, 0, 0.86); padding: 16px; cursor: zoom-out; }
+.dv-lightbox img { max-width: 100%; max-height: 100%; border-radius: 8px; }
+
+/* Opener (landing page without a link): pick or drop a file. */
+.dv-open-card { width: calc(100% - 32px); max-width: 440px; margin: 15vh auto 0; padding: 32px 20px 24px; border-radius: 28px; background: var(--dv-solid); box-shadow: var(--dv-shadow); border: 0.5px solid var(--dv-line); text-align: center; }
+.dv-open-card h1 { font-size: 21px; margin: 0 0 6px; font-weight: 600; }
+.dv-open-card p { margin: 0 0 20px; color: var(--dv-ink-3); font-size: 14px; }
+.dv-open-card .dv-btn { width: 100%; }
+.dv-open-card .dv-error { color: var(--dv-danger); font-size: 13px; margin: 12px 0 0; }
+.dv-drop { position: fixed; inset: 12px; z-index: 30; border-radius: 28px; border: 2px dashed var(--dv-primary); background: color-mix(in srgb, var(--dv-bg-top) 85%, transparent); display: grid; place-items: center; font-size: 17px; font-weight: 600; color: var(--dv-primary); pointer-events: none; }
+
+@media (max-width: 380px) {
+  .dv-time { min-width: 0; font-size: 11px; }
+  .dv-transport { gap: 6px; }
+}

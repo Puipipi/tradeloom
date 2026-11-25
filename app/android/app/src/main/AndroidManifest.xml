@@ -1,0 +1,452 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
+    <!-- Only the optional background protection uses approximate location. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <uses-feature android:name="android.hardware.location" android:required="false" />
+    <uses-feature android:name="android.hardware.location.network" android:required="false" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- The live activity (notify/LiveActivity.kt): Android 16 QPR1+ promotes it to a Live Update.
+         Normal, granted at install; older systems skip a permission they don't define. -->
+    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Composer voice input (voice/VoicePlugin.kt), asked for on the first tap of the mic. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <!-- Remote 扫码配对电脑 (ui/remote/pairing_page.dart, mobile_scanner), asked for when the
+         scanner opens; the photo and paste paths work without it. Never required. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <!-- TODO(targetSdk >= 30): package visibility hides recognition services from
+         SpeechRecognizer.isRecognitionAvailable unless declared; add to <queries>:
+         <intent><action android:name="android.speech.RecognitionService" /></intent> -->
+    <!-- Phone control `intent kind=alarm/timer` (normal permission; some clock apps require it). -->
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
+    <!-- Optional "访问手机文件" mode: shared storage is bind-mounted at /sdcard in the Linux env. -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <uses-permission
+        android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
+
+    <!-- 不打扰模式 (optional, default off): Shizuku provides the shell-uid channel. -->
+    <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
+
+    <!-- App 外悬浮窗 (pet/PetOverlay.kt): the floating pet over other apps, off until the person turns it on. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <!-- In-app update: installs the downloaded APK through a PackageInstaller session (update/). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <!-- libadb-android declares no targetSdk, so the merger implies READ_PHONE_STATE ("读取手机状态");
+         nothing here reads it. -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" tools:node="remove" />
+    <!-- flutter_webrtc's AudioSwitch asks for these; DSH Remote is data only and must not
+         manage system audio routing. Its native audio module uses media attributes (webrtc_peer.dart). -->
+    <uses-permission android:name="android.permission.BLUETOOTH" tools:node="remove" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" tools:node="remove" />
+
+    <!-- The rootfs contains plaintext credentials; exclude it from Android backup.
+         TODO(targetSdk >= 31): also configure dataExtractionRules. -->
+    <application
+        android:allowBackup="false"
+        android:label="${appLabel}"
+        android:name="${applicationName}"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:extractNativeLibs="true"
+        android:requestLegacyExternalStorage="true"
+        android:networkSecurityConfig="@xml/network_security_config">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:taskAffinity=""
+            android:theme="@style/LaunchTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize">
+            <!-- Specifies an Android theme to apply to this Activity as soon as
+                 the Android process has started. This theme is visible to the user
+                 while the Flutter UI initializes. After that, this theme continues
+                 to determine the Window background behind the Flutter UI. -->
+            <meta-data
+              android:name="io.flutter.embedding.android.NormalTheme"
+              android:resource="@style/NormalTheme"
+              />
+            <!-- Links are handled exclusively by LinksPlugin. -->
+            <meta-data android:name="flutter_deeplinking_enabled" android:value="false" />
+            <!-- No launcher intent-filter here: the launcher entries are the aliases below.
+                 (MainActivity.getMetaData reads the meta-data above whichever alias opened it.) -->
+        </activity>
+
+        <!-- 桌面图标 (icons/LauncherIcons.kt): one launcher entry per icon, all opening MainActivity;
+             exactly one is enabled. Each carries the long-press shortcuts (新对话, 语音输入;
+             recent conversations are moved over by shortcuts/ShortcutsPlugin.rebind).
+             LauncherMist is every install's entry; the others start disabled, and switching one
+             off puts it back to that default rather than disabling it, which would close a task
+             opened through it. LauncherMistAlt is 雾蓝 again once LauncherMist has been switched
+             off. Keep names: a launcher's home-screen icon points at one of them. -->
+        <activity-alias
+            android:name=".LauncherMist"
+            android:targetActivity=".MainActivity"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:roundIcon="@mipmap/ic_launcher_round">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
+        </activity-alias>
+        <activity-alias
+            android:name=".LauncherMistAlt"
+            android:targetActivity=".MainActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:roundIcon="@mipmap/ic_launcher_round">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
+        </activity-alias>
+        <activity-alias
+            android:name=".LauncherNight"
+            android:targetActivity=".MainActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_night"
+            android:roundIcon="@mipmap/ic_launcher_night_round">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
+        </activity-alias>
+        <activity-alias
+            android:name=".LauncherFrost"
+            android:targetActivity=".MainActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_frost"
+            android:roundIcon="@mipmap/ic_launcher_frost_round">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
+        </activity-alias>
+        <activity-alias
+            android:name=".LauncherInk"
+            android:targetActivity=".MainActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_ink"
+            android:roundIcon="@mipmap/ic_launcher_ink_round">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
+        </activity-alias>
+
+        <!-- 分享码: dshgo:// links and .dshgo files, handed to MainActivity's own task
+             (links/LinkTrampolineActivity.kt → links/LinksPlugin.kt). https App Links need an
+             assetlinks.json on the landing domain first (docs/design/share-codes.md §6). -->
+        <activity
+            android:name=".links.LinkTrampolineActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.NoDisplay">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="dshgo" />
+            </intent-filter>
+            <!-- Opened from a file manager / chat app. (Shared ones come through ShareActivity:
+                 one share target, not two.) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/vnd.dshgo+json" />
+                <data android:mimeType="application/octet-stream" />
+            </intent-filter>
+        </activity>
+
+        <!-- The share sheet's target: text, photos, files (a lone .dshgo goes on to the share-code
+             importer, the rest into a new conversation). share/ShareActivity.kt → SharePlugin.kt. -->
+        <activity
+            android:name=".share.ShareActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.NoDisplay">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity>
+
+        <!-- Launcher shortcuts and the Quick Settings tile land here (shortcuts/EntryActivity.kt).
+             Not exported: launchers start shortcuts as this app, the tile's PendingIntent is ours. -->
+        <activity
+            android:name=".shortcuts.EntryActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.NoDisplay" />
+
+        <activity
+            android:name=".companion.CompanionAssistantUnlockActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Material.NoActionBar" />
+
+        <service
+            android:name=".companion.CompanionAssistantService"
+            android:exported="true"
+            android:label="@string/companion_assistant_label"
+            android:permission="android.permission.BIND_VOICE_INTERACTION">
+            <intent-filter>
+                <action android:name="android.service.voice.VoiceInteractionService" />
+            </intent-filter>
+            <meta-data android:name="android.voice_interaction" android:resource="@xml/companion_assistant" />
+        </service>
+        <service
+            android:name=".companion.CompanionAssistantSessionService"
+            android:exported="true"
+            android:permission="android.permission.BIND_VOICE_INTERACTION" />
+        <service
+            android:name=".companion.CompanionAssistantRecognitionService"
+            android:exported="true"
+            android:permission="android.permission.RECORD_AUDIO">
+            <intent-filter>
+                <action android:name="android.speech.RecognitionService" />
+            </intent-filter>
+            <meta-data android:name="android.speech" android:resource="@xml/companion_assistant_recognition" />
+        </service>
+
+        <!-- The privileged gate starts only this inert receiver. Ordinary apps cannot launch it. -->
+        <activity
+            android:name=".phone.background.BackgroundProbeActivity"
+            android:exported="true"
+            android:permission="android.permission.INJECT_EVENTS"
+            android:process=":input_probe"
+            android:launchMode="standard"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|uiMode"
+            android:theme="@android:style/Theme.Material.NoActionBar" />
+
+        <!-- Local self-check only: App UID starts this fixed inert target on its leased display. -->
+        <activity
+            android:name=".phone.selfcheck.PhoneSelfCheckTargetActivity"
+            android:exported="false"
+            android:launchMode="standard"
+            android:taskAffinity="${applicationId}.phone.selfcheck"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+
+        <!-- The explicit companion switch enables this component. No separate process or FGS. -->
+        <service android:name=".companion.NoticeListener"
+            android:enabled="false"
+            android:exported="false"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+        <!-- Quick Settings tile 「新对话」 (tile/NewChatTileService.kt). -->
+        <!-- Same cached Flutter engine; explicit default-off companion residency. -->
+        <service
+            android:name=".companion.CompanionAlwaysOnService"
+            android:exported="false"
+            android:stopWithTask="false"
+            android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="User-enabled companion conversation and inline replies" />
+        </service>
+        <receiver android:name=".phone.CompanionScreenPauseReceiver" android:exported="false" />
+        <activity android:name=".phone.CompanionScreenProjectionActivity" android:exported="false"
+            android:excludeFromRecents="true" android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+        <service android:name=".phone.CompanionScreenProjectionService" android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
+        <service
+            android:name=".tile.NewChatTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_tile_new_chat"
+            android:label="@string/tile_new_chat"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data android:name="android.service.quicksettings.TOGGLEABLE_TILE" android:value="false" />
+        </service>
+
+        <!-- Keeps the local DSH process alive while the app is in the background. -->
+        <service
+            android:name=".runtime.DshService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse|location">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Runs the user's local DeepSeek Harness agent server" />
+        </service>
+
+        <!-- Keeps the floating pet's process up when only remote hosts are used (pet/PetOverlayService.kt). -->
+        <service
+            android:name=".pet.PetOverlayService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Shows the user's floating assistant pet while their remote agent session runs" />
+        </service>
+
+        <!-- 手机操控: reads and drives the main screen, owns the status bar / confirm overlay (phone/a11y). -->
+        <service
+            android:name=".phone.a11y.PhoneA11yService"
+            android:label="@string/phone_a11y_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/phone_accessibility_service" />
+        </service>
+
+        <!-- 不打扰模式: Shizuku binder provider (shell-uid channel). -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:multiprocess="false"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+
+        <!-- 不打扰模式: self-ADB wireless-debugging pairing code, typed in the notification. -->
+        <receiver
+            android:name=".phone.background.AdbPairingNotification$Receiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="io.github.ccch1mneyyy.dsh_app.PHONE_ADB_PAIR_CODE" />
+            </intent-filter>
+        </receiver>
+
+        <!-- 伙伴小屋 on the home screen (companion/CompanionWidget.kt). -->
+        <receiver
+            android:name=".companion.CompanionWidgetProvider"
+            android:exported="false"
+            android:label="@string/companion_widget_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/companion_widget_info" />
+        </receiver>
+
+        <receiver android:name=".notify.NotifyActionReceiver" android:exported="false" />
+        <!-- Only this private native process opens Android SQLite for the existing
+             companion database. The Flutter process keeps its bundled SQLite. -->
+        <receiver android:name=".companion.CompanionReminderReceiver"
+            android:exported="false" android:process=":companion_reminder" />
+        <service android:name=".companion.CompanionReminderJob"
+            android:permission="android.permission.BIND_JOB_SERVICE"
+            android:exported="true" android:process=":companion_reminder" />
+        <receiver android:name=".companion.CompanionReminderJob$Receiver"
+            android:exported="false" android:process=":companion_reminder">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
+            </intent-filter>
+        </receiver>
+        <receiver android:name=".phone.a11y.A11yKeeper$Receiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Explicit per-channel keep only; no periodic job or foreground service. -->
+        <receiver android:name=".phone.background.PrivilegedKeepJob$Receiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+        <service android:name=".phone.background.PrivilegedKeepJob" android:permission="android.permission.BIND_JOB_SERVICE" android:exported="false" />
+
+        <!-- Chat artifacts: hands one file at a time to the app that opens it (files/FilesPlugin.kt). -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/dsh_file_paths" />
+        </provider>
+
+        <!-- Don't delete the meta-data below.
+             This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2" />
+        <!-- Initialized on demand by Remote pairing or an admitted local OCR call, never at app startup. -->
+        <provider
+            android:name="com.google.mlkit.common.internal.MlKitInitProvider"
+            android:authorities="${applicationId}.mlkitinitprovider"
+            tools:node="remove" />
+    </application>
+    <!-- Required to query activities that can process text, see:
+         https://developer.android.com/training/package-visibility and
+         https://developer.android.com/reference/android/content/Intent#ACTION_PROCESS_TEXT.
+
+         In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
+    <queries>
+        <!-- Only map handlers for this explicit geo handoff; never the full app list. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="geo"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.PROCESS_TEXT"/>
+            <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- 伙伴小屋's voice (CompanionVoicePlugin): finding the system's speech engine once the
+             target SDK reaches 30. Harmless at 28. -->
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE"/>
+        </intent>
+    </queries>
+</manifest>

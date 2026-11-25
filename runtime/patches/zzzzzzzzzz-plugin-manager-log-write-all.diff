@@ -1,0 +1,162 @@
+--- a/node_modules/@deepseek-ai/dsh-plugin-manager/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-plugin-manager/lib/index.js
+@@ -727,7 +727,7 @@
+ 		const logPath = join(await mkdtemp(join(logRoot, "operation-")), "pnpm.log");
+ 		const log = __addDisposableResource(env_1, await open(logPath, "wx", 384), true);
+ 		if (active !== void 0) {
+-			await log.write(active);
++			await log.writeFile(active);
+ 			await log.close();
+ 			options.onOutput?.(active, "stderr");
+ 			const bytes = Buffer.from(active);
+@@ -766,7 +766,7 @@
+ 		const incompatible = [];
+ 		const rejected = async (warnings, restoration) => {
+ 			const diagnostic = `\ndsh: installation rejected: ${warnings.join("\n")}\ndsh: ${restoration}.\n`;
+-			await log.write(diagnostic);
++			await log.writeFile(diagnostic);
+ 			options.onOutput?.(diagnostic, "stderr");
+ 			append(Buffer.from(diagnostic));
+ 			await log.close();
+@@ -850,7 +850,7 @@
+ 					armIdle();
+ 					const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+ 					writes = writes.then(async () => {
+-						await log.write(bytes);
++						await log.writeFile(bytes);
+ 					});
+ 					await writes;
+ 					options.onOutput?.(decoder.write(bytes), kind);
+@@ -893,7 +893,7 @@
+ 				child.stdout?.destroy();
+ 				child.stderr?.destroy();
+ 				const notice = "dsh: pnpm output was cut short after its process exited\n";
+-				await log.write(notice);
++				await log.writeFile(notice);
+ 				if (failure !== void 0) throw failure;
+ 				options.onOutput?.(notice, "stderr");
+ 				append(Buffer.from(notice));
+@@ -905,13 +905,13 @@
+ 			exitCode = result.exitCode ?? (result.code === "ENOENT" ? 127 : 1);
+ 			if (control.stalled) {
+ 				const notice = `dsh: pnpm printed nothing for ${String(options.idleTimeoutMs)}ms and was terminated\n`;
+-				await log.write(notice);
++				await log.writeFile(notice);
+ 				options.onOutput?.(notice, "stderr");
+ 				append(Buffer.from(notice));
+ 			}
+ 			if (result.failed && output.length === 0) {
+ 				const diagnostic = result.shortMessage ?? "pnpm failed";
+-				await log.write(diagnostic);
++				await log.writeFile(diagnostic);
+ 				options.onOutput?.(diagnostic, "stderr");
+ 				truncated = Buffer.byteLength(diagnostic) > options.outputBytes;
+ 				output = Buffer.from(diagnostic).subarray(0, options.outputBytes);
+@@ -944,7 +944,7 @@
+ 						incompatible.push(...issues);
+ 					} else {
+ 						const notice = `\ndsh: warning: ${found.join("\n")}\ndsh: it stays installed but profile startup denies it until you grant an exemption for those exact versions.\n`;
+-						await log.write(notice);
++						await log.writeFile(notice);
+ 						options.onOutput?.(notice, "stderr");
+ 					}
+ 				}
+@@ -979,7 +979,7 @@
+ 					exitCode = 1;
+ 					const restoration = repaired.exitCode === 0 ? "restored package.json, pnpm-lock.yaml, and node_modules" : "restored package.json and pnpm-lock.yaml, but node_modules could not be reinstalled; run 'dsh plugin install'";
+ 					const diagnostic = `\ndsh: installation rejected: ${warnings.join("\n")}\ndsh: ${restoration}.\n`;
+-					await log.write(diagnostic);
++					await log.writeFile(diagnostic);
+ 					options.onOutput?.(diagnostic, "stderr");
+ 					append(Buffer.from(diagnostic));
+ 				} else if (options.activateNewBundles !== false) {
+@@ -987,7 +987,7 @@
+ 					if (unsupported.length > 0) {
+ 						exitCode = 1;
+ 						const diagnostic = `\ndsh: bundle activation rejected: ${unsupported.join("\n")}\ndsh: installed dependencies remain; bundle selection is unchanged. Use a supported Host or remove the unwanted dependencies with 'dsh plugin remove <package>'.\n`;
+-						await log.write(diagnostic);
++						await log.writeFile(diagnostic);
+ 						options.onOutput?.(diagnostic, "stderr");
+ 						append(Buffer.from(diagnostic));
+ 					}
+--- a/node_modules/@deepseek-ai/dsh-plugin-manager/lib/types/operations.js
++++ b/node_modules/@deepseek-ai/dsh-plugin-manager/lib/types/operations.js
+@@ -324,7 +324,7 @@
+         const logPath = join(logDir, 'pnpm.log');
+         const log = __addDisposableResource(env_1, await open(logPath, 'wx', 0o600), true);
+         if (active !== undefined) {
+-            await log.write(active);
++            await log.writeFile(active);
+             await log.close();
+             options.onOutput?.(active, 'stderr');
+             const bytes = Buffer.from(active);
+@@ -356,7 +356,7 @@
+         const incompatible = [];
+         const rejected = async (warnings, restoration) => {
+             const diagnostic = `\ndsh: installation rejected: ${warnings.join('\n')}\ndsh: ${restoration}.\n`;
+-            await log.write(diagnostic);
++            await log.writeFile(diagnostic);
+             options.onOutput?.(diagnostic, 'stderr');
+             append(Buffer.from(diagnostic));
+             await log.close();
+@@ -427,7 +427,7 @@
+                 for await (const chunk of stream) {
+                     armIdle();
+                     const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+-                    writes = writes.then(async () => { await log.write(bytes); });
++                    writes = writes.then(async () => { await log.writeFile(bytes); });
+                     await writes;
+                     options.onOutput?.(bytes.toString('utf8'), kind);
+                     append(bytes);
+@@ -485,7 +485,7 @@
+                 child.stdout?.destroy();
+                 child.stderr?.destroy();
+                 const notice = 'dsh: pnpm output was cut short after its process exited\n';
+-                await log.write(notice);
++                await log.writeFile(notice);
+                 // A failure from before the cut is the run's own and replaces the notice a
+                 // caller would otherwise read; a rejection the cut itself causes is its end.
+                 if (failure !== undefined)
+@@ -500,13 +500,13 @@
+             exitCode = result.exitCode ?? (result.code === 'ENOENT' ? 127 : 1);
+             if (control.stalled) {
+                 const notice = `dsh: pnpm printed nothing for ${String(options.idleTimeoutMs)}ms and was terminated\n`;
+-                await log.write(notice);
++                await log.writeFile(notice);
+                 options.onOutput?.(notice, 'stderr');
+                 append(Buffer.from(notice));
+             }
+             if (result.failed && output.length === 0) {
+                 const diagnostic = result.shortMessage ?? 'pnpm failed';
+-                await log.write(diagnostic);
++                await log.writeFile(diagnostic);
+                 // The run printed nothing, so this diagnostic is the whole of its captured output; stream it as such.
+                 options.onOutput?.(diagnostic, 'stderr');
+                 truncated = Buffer.byteLength(diagnostic) > options.outputBytes;
+@@ -546,7 +546,7 @@
+                     }
+                     else {
+                         const notice = `\ndsh: warning: ${found.join('\n')}\ndsh: it stays installed but profile startup denies it until you grant an exemption for those exact versions.\n`;
+-                        await log.write(notice);
++                        await log.writeFile(notice);
+                         options.onOutput?.(notice, 'stderr');
+                     }
+                 }
+@@ -569,7 +569,7 @@
+                         ? 'restored package.json, pnpm-lock.yaml, and node_modules'
+                         : "restored package.json and pnpm-lock.yaml, but node_modules could not be reinstalled; run 'dsh plugin install'";
+                     const diagnostic = `\ndsh: installation rejected: ${warnings.join('\n')}\ndsh: ${restoration}.\n`;
+-                    await log.write(diagnostic);
++                    await log.writeFile(diagnostic);
+                     options.onOutput?.(diagnostic, 'stderr');
+                     append(Buffer.from(diagnostic));
+                 }
+@@ -578,7 +578,7 @@
+                     if (unsupported.length > 0) {
+                         exitCode = 1;
+                         const diagnostic = `\ndsh: bundle activation rejected: ${unsupported.join('\n')}\ndsh: installed dependencies remain; bundle selection is unchanged. Use a supported Host or remove the unwanted dependencies with 'dsh plugin remove <package>'.\n`;
+-                        await log.write(diagnostic);
++                        await log.writeFile(diagnostic);
+                         options.onOutput?.(diagnostic, 'stderr');
+                         append(Buffer.from(diagnostic));
+                     }

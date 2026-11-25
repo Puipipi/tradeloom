@@ -1,0 +1,4 @@
+# dsh plugin --profile web add /path/to/dsh-go-example-files
+- insert:
+    - id: dsh-go-example-files
+      name: dsh-go-example-files

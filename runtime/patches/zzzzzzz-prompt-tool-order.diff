@@ -1,0 +1,27 @@
+--- a/node_modules/@deepseek-ai/dsh-system-prompt/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-system-prompt/lib/index.js
+@@ -92,8 +92,22 @@
+ 	const unknown = toolOrder.filter((name) => name !== "<unlisted-tools>" && !knownNames.has(name));
+ 	if (unknown.length > 0) throw new Error(`toolOrder lists unregistered tool${unknown.length > 1 ? "s" : ""} ${unknown.map((name) => `"${name}"`).join(", ")}; known tools: ${[...knownNames].sort().join(", ") || "(none)"}`);
+ 	const listed = new Set(toolOrder);
+-	const rest = tools.filter((tool) => !listed.has(tool.name)).sort(compareToolNames);
+-	return toolOrder.flatMap((name) => name === "<unlisted-tools>" ? rest : tools.filter((tool) => tool.name === name));
++	if (toolOrder.length <= 2) {
++		const rest = tools.filter((tool) => !listed.has(tool.name)).sort(compareToolNames);
++		return toolOrder.flatMap((name) => name === "<unlisted-tools>" ? rest : tools.filter((tool) => tool.name === name));
++	}
++	const groups = new Map();
++	const rest = [];
++	for (const tool of tools) {
++		if (!listed.has(tool.name)) rest.push(tool);
++		else {
++			const group = groups.get(tool.name);
++			if (group === void 0) groups.set(tool.name, [tool]);
++			else group.push(tool);
++		}
++	}
++	rest.sort(compareToolNames);
++	return toolOrder.flatMap((name) => name === "<unlisted-tools>" ? rest : groups.get(name) ?? []);
+ }
+ /** Code-unit name comparison — locale-independent, so the order is identical on every machine. */
+ function compareNames(a, b) {

@@ -1,0 +1,18 @@
+en:
+  install: "Install with dsh-go"
+  download: "Get dsh-go"
+  badge: "dsh-go share code"
+  kind_plugin: "Plugin"
+  kind_profile: "Profile"
+  untitled_profile: "Untitled profile"
+  gist_profile: "Profile (stored in a Gist)"
+  broken: "This share code is incomplete"
+  count_plugins: "%{count} plugins"
+  count_skills: "%{count} skills"
+  count_presets: "%{count} presets"
+  theme_metadata:
+    description: "Turns dsh-go share links in posts into one-tap install cards."
+    settings:
+      download_url: "Link for the “Get dsh-go” button (https). Leave empty to hide it."
+      landing_urls: "Share landing page URL(s); keep in sync with shareLandingUrl in the app."
+      decorate_plain_text: "Also detect dshgo://share/… written as plain text."

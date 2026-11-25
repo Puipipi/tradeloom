@@ -1,0 +1,54 @@
+--- a/node_modules/@deepseek-ai/dsh-agent-preset/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-agent-preset/lib/index.js
+@@ -1,7 +1,42 @@
++import { isDeepStrictEqual } from "node:util";
+ import { Service } from "@deepseek-ai/cordis";
+ import { EntryGroup } from "@deepseek-ai/cordis-plugin-loader";
+ import z from "@deepseek-ai/schemastery";
+ //#region lib/types/index.js
++// Only the unchanged rc4 delegation composition is compatible automatically.
++// User declarations outside this exact subtree are retained without modification.
++const legacyDelegation = {
++ id: "delegation", name: "cordis:group", group: true,
++ isolate: { workflowEngine: true },
++ config: [
++  { id: "tool-subagent-control", name: "@deepseek-ai/dsh-tool-subagent-control" },
++  { id: "tool-subagent-list-agents", name: "@deepseek-ai/dsh-tool-subagent-control/list-agents" },
++  { id: "tool-subagent", name: "@deepseek-ai/dsh-tool-subagent", config: {
++   provider: "spawn", toolName: "subagent", modelSelectionSettings: true
++  } },
++  { id: "tool-subagent-fork", name: "@deepseek-ai/dsh-tool-subagent", config: {
++   provider: "fork", toolName: "subagent_fork"
++  } },
++  { id: "workflow-ptc", name: "@deepseek-ai/dsh-workflow-ptc", config: { provider: "spawn" } },
++  { id: "tool-workflow", name: "@deepseek-ai/dsh-tool-workflow" }
++ ]
++};
++const legacyPtcDelegation = {
++ ...legacyDelegation,
++ config: legacyDelegation.config.map(row => row.id === "workflow-ptc" || row.id === "tool-workflow"
++  ? { ...row, disabled: true } : row)
++};
++function compatiblePlugins(plugins) {
++ return plugins.map(entry => {
++  if (!isDeepStrictEqual(entry, legacyDelegation) && !isDeepStrictEqual(entry, legacyPtcDelegation)) return entry;
++  const config = entry.config.filter(row => row.id !== "tool-subagent-list-agents").map(row => {
++   if (row.id !== "tool-subagent") return row;
++   const { modelSelectionSettings, ...config } = row.config;
++   return { ...row, config: { ...config, modelSelection: true, modelDiscovery: true } };
++  });
++  return { ...entry, config };
++ });
++}
+ /** A declarative preset row in an ordinary Cordis composition. */
+ /** Registers child plugin configuration without owning Agents using older revisions. */
+ var AgentPreset = class {
+@@ -22,7 +57,7 @@
+ 		this.config = config;
+ 	}
+ 	async *[Service.init]() {
+-		yield await this.ctx.agentPresets.register(this.config);
++		yield await this.ctx.agentPresets.register({ ...this.config, plugins: compatiblePlugins(this.config.plugins) });
+ 	}
+ };
+ //#endregion

@@ -1,0 +1,7 @@
+--- a/node_modules/@deepseek-ai/dsh-api-session-controller/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-api-session-controller/lib/index.js
+@@ -215,1 +215,3 @@
+-			return { error: new RemoteError("gateway/internal", `resume failed for session "${sessionId}": ${String(error)}`, {}) };
++			const presetError = remoteErrorOf(error);
++			if (presetError?.code === "agent-preset/not-found" || presetError?.code === "agent-preset/invalid") return { error: presetError };
++			return { error: new RemoteError("gateway/internal", `resume failed for session "${sessionId}": ${String(error)}`, {}) };

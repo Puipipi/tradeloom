@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://go.dshtui.com/schema/market/plugin.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "version", "title", "summary", "category"],
+  "properties": {
+    "name": { "type": "string", "maxLength": 214, "pattern": "^(?:@[a-z0-9][a-z0-9._~-]*/)?[a-z0-9][a-z0-9._~-]*$" },
+    "version": { "type": "string", "maxLength": 128 },
+    "title": { "$ref": "#/definitions/text" },
+    "summary": { "$ref": "#/definitions/text" },
+    "category": { "enum": ["tools", "media", "productivity", "communication", "other"] },
+    "screenshots": { "type": "array", "maxItems": 4, "uniqueItems": true, "items": { "$ref": "#/definitions/https" } },
+    "homepage": { "$ref": "#/definitions/https" }
+  },
+  "definitions": {
+    "text": {
+      "type": "object",
+      "required": ["en"],
+      "minProperties": 1,
+      "propertyNames": { "pattern": "^[a-z]{2,8}(?:-[a-z0-9]{1,8})*$" },
+      "additionalProperties": { "type": "string", "minLength": 1, "maxLength": 1000, "pattern": "\\S" }
+    },
+    "https": { "type": "string", "maxLength": 2048, "pattern": "^https://[^\\s]+$" }
+  }
+}

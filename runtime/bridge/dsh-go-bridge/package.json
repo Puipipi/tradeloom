@@ -1,0 +1,45 @@
+{
+  "name": "dsh-go-bridge",
+  "version": "0.4.0",
+  "description": "dsh-go host bridge: plugin inventory for the dsh-go app, the native plugin protocol v1 (dshGo service, contributions, views, stream, invoke; v1.2 capabilities: media, micro, capability events), and a route guard on hosts whose webserver is not patched.",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json",
+    "./companion/full-context": "./lib/companion/full-context.js"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/plugin-config.js",
+    "lib/web-promise.js",
+    "lib/session-deletion.js",
+    "lib/speech.js",
+    "lib/usage.js",
+    "lib/config-source.js",
+    "lib/client.js",
+    "lib/companion/*.js",
+    "lib/native/*.js",
+    "cordis.patch.yml",
+    "PRESET-NOTICE.txt",
+    "PDF-DEPENDENCY.md",
+    "lib/vendor/receipt-sheet"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true
+    }
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "pdfjs-dist": "6.5.438"
+  }
+}

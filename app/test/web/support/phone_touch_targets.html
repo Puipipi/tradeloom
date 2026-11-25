@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en" data-dsh-app-layout="drawer">
+<meta charset="utf-8">
+<title>Phone main-slot touch targets</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 16px/20px sans-serif; color: #1b1b1b; background: #fff; }
+  h1 { margin: 16px; font-size: 18px; }
+  #main { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 12px; }
+  .cell { min-height: 76px; padding: 8px; border: 1px solid #aaa; }
+  .label { display: block; font-size: 12px; line-height: 16px; margin-bottom: 4px; }
+  .small { width: 20px; height: 20px; padding: 0; margin: 0; font: inherit; }
+  .author-flex { display: flex; align-items: center; }
+  .author-grid { display: grid; grid-template-columns: 1fr 1fr; }
+  :where(.author-low-flex) { display: flex; }
+  :where(.author-low-grid) { display: grid; }
+  :where(.author-none) { display: none; }
+  .wide { width: 80px; height: 60px; }
+  .wrap { display: flex; flex-wrap: wrap; gap: 8px; width: 120px; }
+  @layer plugin {
+    .layered { display: flex; }
+    .layered-none { display: none; }
+  }
+</style>
+<h1>Main slot: real browser geometry</h1>
+<div id="outside"><button id="outside-button" class="small" data-measure data-unchanged>O</button></div>
+<div id="frame"><div id="main" data-slot="main">
+  <div class="cell"><span class="label">Native button</span><button id="button" class="small" data-measure data-floor>B</button></div>
+  <div class="cell"><span class="label">Icon only</span><button id="icon" class="small" aria-label="Action" data-measure data-floor>+</button></div>
+  <div class="cell"><span class="label">Text input</span><input id="text" class="small" value="t" data-measure data-floor></div>
+  <div class="cell"><span class="label">Password input</span><input id="password" class="small" type="password" value="x" data-measure data-floor></div>
+  <div class="cell"><span class="label">Checkbox</span><input id="checkbox" class="small" type="checkbox" data-measure data-floor></div>
+  <div class="cell"><span class="label">Radio</span><input id="radio" class="small" type="radio" data-measure data-floor></div>
+  <div class="cell"><span class="label">Number input</span><input id="number" class="small" type="number" value="1" data-measure data-floor></div>
+  <div class="cell"><span class="label">Input button</span><input id="input-button" class="small" type="button" value="B" data-measure data-floor></div>
+  <div class="cell"><span class="label">Select</span><select id="select" class="small" data-measure data-floor><option>A</option><option>B</option></select></div>
+  <div class="cell"><span class="label">Inline span role</span><span id="inline-span" role="button" tabindex="0" class="small" data-measure data-floor>+</span></div>
+  <div class="cell"><span class="label">Inline anchor role</span><a id="inline-anchor" role="button" tabindex="0" class="small" data-measure data-floor>+</a></div>
+  <div class="cell"><span class="label">Natural block role</span><div id="block-role" role="button" class="small" data-measure data-floor data-display="block">B</div></div>
+  <div class="cell"><span class="label">Author flex</span><span id="flex" role="button" class="small author-flex" data-measure data-floor data-display="flex">F</span></div>
+  <div class="cell"><span class="label">Author grid</span><span id="grid" role="button" class="small author-grid" data-measure data-floor data-display="grid"><i>G</i><i>G</i></span></div>
+  <div class="cell"><span class="label">Zero-specificity flex</span><span id="low-flex" role="button" class="small author-low-flex" data-measure data-floor data-display="flex">F</span></div>
+  <div class="cell"><span class="label">Zero-specificity grid</span><a id="low-grid" role="button" class="small author-low-grid" data-measure data-floor data-display="grid">G</a></div>
+  <div class="cell"><span class="label">Inline style flex</span><a id="inline-flex" role="button" class="small" style="display:inline-flex" data-measure data-floor data-display="inline-flex">F</a></div>
+  <div class="cell" data-slot="conversation.session.header"><span class="label">Official header caller</span><button id="official" aria-label="Action" class="small" data-measure data-floor>+</button></div>
+  <div class="cell"><span class="label">Larger authored control</span><button id="wide" class="wide" data-measure data-unchanged>Large</button></div>
+  <div class="cell"><span class="label">Switch exception</span><button id="switch" role="switch" class="small" data-measure data-unchanged>S</button></div>
+  <div class="cell"><span class="label">Slider exception</span><button id="slider" role="slider" class="small" data-measure data-unchanged>S</button></div>
+  <div class="cell"><span class="label">Native range exception</span><input id="range" type="range" class="small" data-measure data-unchanged></div>
+  <div class="cell"><span class="label">Hidden attribute</span><span id="hidden" role="button" hidden class="small" data-measure data-hidden>H</span></div>
+  <div class="cell"><span class="label">Hidden ancestor</span><div hidden><button id="hidden-parent" class="small" data-measure data-hidden>H</button></div></div>
+  <div class="cell"><span class="label">Hidden input</span><input id="hidden-input" type="hidden" data-measure data-hidden></div>
+  <div class="cell"><span class="label">Author display none</span><span id="display-none" role="button" class="small author-none" data-measure data-hidden>H</span></div>
+  <div class="cell"><span class="label">Inline display none</span><span id="inline-none" role="button" class="small" style="display:none" data-measure data-hidden>H</span></div>
+  <div class="cell"><span class="label">Target opt-out</span><span id="target-off" role="button" class="small" data-dsh-adapt="off" data-measure data-unchanged>O</span></div>
+  <div class="cell" data-dsh-adapt="off"><span class="label">Direct-child opt-out</span><button id="direct-off" class="small" data-measure data-unchanged>O</button></div>
+  <div class="cell"><span class="label">Nested ancestor opt-out</span><section data-dsh-adapt="off"><div><span id="nested-off" role="button" class="small" data-measure data-unchanged>O</span></div></section></div>
+  <div class="cell" data-dsh-adapt="off"><span class="label">Layered layout owns sizing</span><span id="layered-off" role="button" class="small layered" data-measure data-unchanged data-display="flex">O</span></div>
+  <div class="cell" data-dsh-adapt="off"><span class="label">Explicit inline owns sizing</span><span id="explicit-inline-off" role="button" class="small" style="display:inline" data-measure data-unchanged data-display="inline">O</span></div>
+  <div class="cell"><span class="label">Wrapping row reserves space</span><div id="wrap" class="wrap"><button id="wrap-a" class="small" data-measure data-floor>A</button><button id="wrap-b" class="small" data-measure data-floor>B</button><button id="wrap-c" class="small" data-measure data-floor>C</button></div></div>
+  <div class="cell"><span class="label">Layered hidden, no opt-out</span><span id="layered-none" role="button" class="small layered-none" data-measure data-hidden>H</span></div>
+  <div class="cell"><span class="label">Layered flex, no opt-out</span><span id="layered-flex" role="button" class="small layered" data-measure data-floor data-display="flex">F</span></div>
+  <div class="cell"><span class="label">Lazy layer hidden</span><span id="late-none" role="button" class="small late-none" data-measure data-hidden>H</span></div>
+  <div class="cell"><span class="label">Lazy layer flex</span><span id="late-flex" role="button" class="small late-flex" data-measure data-floor data-display="flex">F</span></div>
+</div></div>
+<script>
+  window.clicked = [];
+  for (const el of document.querySelectorAll('[data-measure]')) {
+    el.addEventListener('click', () => window.clicked.push(el.id));
+  }
+</script>
+</html>

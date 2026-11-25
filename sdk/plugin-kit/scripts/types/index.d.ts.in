@@ -1,0 +1,261 @@
+// Source template for gen-types.mjs. Edit this file, never types/index.d.ts.
+// @dsh-go/plugin-kit — public types. The protocol and view shapes are
+// generated from schema/*.schema.json into ./schema.d.ts; this file adds the
+// friendly names, the builders, the `ctx.dshGo` service and the helpers.
+
+import type {
+  View, ViewNode, ViewChild, ViewChildren, ViewBinding, ViewAction, ViewIcon, ViewTone,
+  ViewStackComponent, ViewRowComponent, ViewTextComponent, ViewMetricComponent, ViewChartComponent,
+  ViewCompareComponent, ViewStepsComponent, ViewCalloutComponent, ViewOptionsComponent, ViewConfirmComponent,
+  ViewListComponent, ViewKeyValueComponent, ViewProgressComponent, ViewTableComponent, ViewActionsComponent,
+  ViewImageComponent, ViewNodeBase,
+  Manifest, ManifestAction, ManifestStrip, ManifestPanel, ManifestText,
+  InvokeEffect, InvokeStaticEffect, InvokeScope, InvokeInsert, InvokeCommand, InvokeOpen, InvokeLink,
+  InvokeToast, InvokeCopy, InvokeRefresh, InvokePatch, InvokePickFile, InvokePickImage, InvokeFileSelection,
+  ContributionsIssue, ContributionsPlugin, StreamStripData,
+} from './schema.js'
+
+export * from './schema.js'
+
+// ── JSON ──────────────────────────────────────────────────────────────────
+
+export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue }
+
+// ── friendly names ────────────────────────────────────────────────────────
+
+export type { View, ViewNode, ViewBinding as Binding, Manifest, ContributionsIssue as Issue }
+export type Effect = InvokeEffect
+export type StaticEffect = InvokeStaticEffect
+export type Surface = 'composer.actions' | 'message.actions' | 'composer.strip' | 'panels' | 'composer.tools' | 'session.actions' | 'turn.note'
+export type Component = ViewNode['type']
+export type Tone = Exclude<ViewTone, ViewBinding>
+export type Icon = Exclude<ViewIcon, ViewBinding>
+
+/** `{ sessionId?, turnId?, messageId?, callId? }` — where the tap or the panel is. */
+export type Scope = InvokeScope
+
+/** What an invoke handler receives: the scope plus the content the manifest's `wants` asked for. */
+export interface InvokeScopeWithContext extends Scope {
+  /** composer.actions or composer.tools, with `wants: ["draft"]`: the composer text. */
+  draft?: string
+  /** composer.actions or composer.tools, with `wants: ["clipboard"]`: the clipboard text. */
+  clipboard?: string
+  /** message.actions, with `wants: ["message"]`: the long-pressed reply's text. */
+  message?: string
+}
+
+/** What the app can draw (protocol §2.2). */
+export type Capability = NonNullable<Manifest['capabilities']>[number]
+export interface MicroData { text?: string; progress?: number | null }
+/** signal follows the lease. After final terminal dispatch it is aborted, including in async continuations; record the event before awaiting and do not use it to extend ownership. */
+export interface CapabilityEvent { instance: string; event: 'audio.ended' | 'audio.stopped' | 'audio.error' | 'voice.speechStart' | 'voice.speechEnd' | 'voice.stopped' | 'voice.error' | 'overlay.closed'; reason?: string; seq: number; signal: AbortSignal }
+export interface Caps {
+  features?: Capability[]
+  protocol: number
+  /** App version, "x.y.z". */
+  app: string
+  /** BCP 47, e.g. "zh-CN". */
+  locale: string
+  surfaces: string[]
+  components: string[]
+}
+
+export type FileSelection = InvokeFileSelection
+
+export interface InvokeEvent {
+  surface: 'composer.actions' | 'message.actions' | 'composer.strip' | 'panel' | 'composer.tools' | 'session.actions'
+  /** Contribution id (the panel id for taps inside a panel). */
+  id: string
+  /** Panel taps: the view's action id (button, list row, options, confirm). */
+  action?: string
+  /** Panel taps: the action's args; options → { value } / { values }, confirm → { confirmed }. */
+  value?: unknown
+  locale: string
+  signal?: AbortSignal
+}
+
+/** Shorthand results (protocol §2.2); several keys expand in key order. */
+export interface EffectShorthand {
+  insert?: string
+  toast?: string
+  copy?: string
+  link?: string
+  open?: string
+  command?: string | { name: string; args?: string }
+  refresh?: true | string
+  patch?: Record<string, unknown>
+}
+
+export type ImmediateResult = void | undefined | null | Effect | EffectShorthand | Array<Effect | EffectShorthand>
+
+/** What a deferred result may finally carry: insert, copy, toast, patch only. */
+export type DeferredEffect = InvokeInsert | InvokeCopy | InvokeToast | InvokePatch
+export type DeferredValue =
+  | void | undefined | null | DeferredEffect | Pick<EffectShorthand, 'insert' | 'copy' | 'toast' | 'patch'>
+  | Array<DeferredEffect | Pick<EffectShorthand, 'insert' | 'copy' | 'toast' | 'patch'>>
+
+/**
+ * A deferred result (protocol §4.7): the tap answers at once with a pending state, the
+ * value arrives within `timeoutMs` (1–60 s, default 30 s). `result` gets an AbortSignal that
+ * fires on cancel, timeout or disconnect. At most 2 pending results per plugin.
+ */
+export interface Deferred {
+  pending: true | { label?: string; timeoutMs?: number }
+  result: Promise<DeferredValue> | ((signal: AbortSignal) => DeferredValue | Promise<DeferredValue>)
+}
+
+export type HandlerResult = ImmediateResult | Deferred
+
+export type InvokeHandler = (scope: InvokeScopeWithContext, event: InvokeEvent) => HandlerResult | Promise<HandlerResult>
+
+/** Push the whole data model (an object or null); the bridge diffs, throttles to 4 Hz and caps at 32 KiB. */
+export type Emit<D = Record<string, unknown>> = (data: D | null) => void
+export type Cancel = () => void
+export type DataFunction<D = Record<string, unknown>> = (
+  scope: Scope,
+  emit: Emit<D>,
+  /** `{ protocol, locale }` of the app that subscribed: localize pushed text with it. */
+  caps: Pick<Caps, 'protocol' | 'locale'>,
+) => Cancel | void | Promise<Cancel | void>
+
+export interface PanelDefinition<D = Record<string, unknown>> {
+  view: View | ((scope: Scope, caps: Caps) => View | Promise<View>)
+  data?: DataFunction<D>
+  actions?: Record<string, InvokeHandler>
+}
+
+/** The `dshGo` service the bridge provides; only inside `ctx.inject(['dshGo'], …)`. */
+export interface DshGoService {
+  readonly v: 1
+  readonly bridge: string
+  media(id: string, handler: (scope: Scope, event: { key?: string; locale: string; signal: AbortSignal }) => { body: Uint8Array; contentType: 'audio/mpeg' | 'audio/wav' | 'audio/ogg' | 'audio/mp4' | 'audio/aac' } | Promise<{ body: Uint8Array; contentType: 'audio/mpeg' | 'audio/wav' | 'audio/ogg' | 'audio/mp4' | 'audio/aac' }>): Cancel
+  micro(id: string, def: { data: DataFunction<MicroData> }): Cancel
+  onCapability(handler: (scope: Scope, event: CapabilityEvent) => void | Promise<void>): Cancel
+  panel<D = Record<string, unknown>>(id: string, def: PanelDefinition<D>): Cancel
+  strip(id: string, data: DataFunction<StreamStripData & {}> | { data: DataFunction<StreamStripData & {}> }): Cancel
+  /**
+   * Per-turn footnotes for a conversation: emit `{ [turnId]: { text, tone? } }` (≤ 16 characters each).
+   * Older bridges don't have this; to run on them, check `typeof ctx.dshGo.turnNote === 'function'` first.
+   */
+  turnNote(id: string, data: DataFunction<Record<string, { text: string; tone?: 'good' | 'warn' | 'bad' | 'info' | 'muted' }>>): Cancel
+  on(id: string, handler: InvokeHandler): Cancel
+  /** A panel's view changed: the app reads it again. Strips and turn notes have no view. */
+  refresh(id: string, scope?: Scope): void
+  /** Read a copy of selected bytes during the awaited selection callback. Throws after completion/revocation. */
+  readPickedFile(handle: string): Uint8Array
+}
+
+// ── builders (lib/view.js) ────────────────────────────────────────────────
+
+type Props<T> = Omit<T, 'type'>
+type ListProps<T, K extends keyof T> = Omit<T, 'type' | K>
+
+export function bind(path: string): ViewBinding
+export function isBinding(value: unknown): value is ViewBinding
+export function action(id: string, args?: Record<string, unknown>): ViewAction
+
+export function stack(children: ViewChildren, props?: ListProps<ViewStackComponent, 'children'>): ViewStackComponent
+export function stack(props: Props<ViewStackComponent>): ViewStackComponent
+export function row(children: ViewChildren, props?: ListProps<ViewRowComponent, 'children'>): ViewRowComponent
+export function row(props: Props<ViewRowComponent>): ViewRowComponent
+export function text(text: ViewTextComponent['text'], props?: ListProps<ViewTextComponent, 'text'>): ViewTextComponent
+export function text(props: Props<ViewTextComponent>): ViewTextComponent
+export function metric(props: Props<ViewMetricComponent>): ViewMetricComponent
+export function chart(props: Props<ViewChartComponent>): ViewChartComponent
+export function compare(items: ViewCompareComponent['items'], props?: ViewNodeBase): ViewCompareComponent
+export function compare(props: Props<ViewCompareComponent>): ViewCompareComponent
+export function steps(items: ViewStepsComponent['items'], props?: ViewNodeBase): ViewStepsComponent
+export function steps(props: Props<ViewStepsComponent>): ViewStepsComponent
+export function callout(text: ViewCalloutComponent['text'], props?: ListProps<ViewCalloutComponent, 'text'>): ViewCalloutComponent
+export function callout(props: Props<ViewCalloutComponent>): ViewCalloutComponent
+export function options(props: Props<ViewOptionsComponent>): ViewOptionsComponent
+export function confirm(id: string, props?: ListProps<ViewConfirmComponent, 'id'>): ViewConfirmComponent
+export function confirm(props: Props<ViewConfirmComponent>): ViewConfirmComponent
+export function list(items: ViewListComponent['items'], props?: ViewNodeBase): ViewListComponent
+export function list(props: Props<ViewListComponent>): ViewListComponent
+export function keyValue(items: ViewKeyValueComponent['items'], props?: ViewNodeBase): ViewKeyValueComponent
+export function keyValue(props: Props<ViewKeyValueComponent>): ViewKeyValueComponent
+export function progress(value: ViewProgressComponent['value'], props?: ListProps<ViewProgressComponent, 'value'>): ViewProgressComponent
+export function progress(props: Props<ViewProgressComponent>): ViewProgressComponent
+export function table(props: Props<ViewTableComponent>): ViewTableComponent
+export function actions(items: ViewActionsComponent['items'], props?: ViewNodeBase): ViewActionsComponent
+export function actions(props: Props<ViewActionsComponent>): ViewActionsComponent
+export function image(src: ViewImageComponent['src'], props?: ListProps<ViewImageComponent, 'src'>): ViewImageComponent
+export function image(props: Props<ViewImageComponent>): ViewImageComponent
+
+/** The 16 component names of view format v1. */
+export const COMPONENTS: readonly Component[]
+/** Every component node of a view, depth first. */
+export function walkView(view: unknown): Generator<ViewNode>
+
+// ── tool cards (lib/card.js) ──────────────────────────────────────────────
+
+export const VIEW_KEY: 'dsh-go/view'
+export const CARD_MAX_BYTES: 8192
+export function toLosslessJson(value: unknown): JsonValue | undefined
+export function jsonBytes(value: unknown): number
+export function viewOfMeta(meta: unknown): unknown
+
+/**
+ * Wrap a view builder for `defineTool({ output: { presentationMeta } })`. Never throws: a
+ * builder error, a view over `maxBytes` (8 KiB) or null gives `{}` (no card).
+ */
+export function toolCard<A, V>(
+  build: (args: A, value: V) => View | null | undefined,
+  options?: { maxBytes?: number; meta?: (args: A, value: V) => Record<string, unknown>; onError?: (error: unknown) => void },
+): (args: A, value: V) => Record<string, JsonValue>
+
+// ── caps (lib/caps.js) ────────────────────────────────────────────────────
+
+export const SURFACES: readonly Surface[]
+export function hasComponent(caps: Partial<Caps> | undefined, type: string): boolean
+export function hasSurface(caps: Partial<Caps> | undefined, surface: string): boolean
+export function protocolAtLeast(caps: Partial<Caps> | undefined, v: number): boolean
+export function appAtLeast(caps: Partial<Caps> | undefined, min: string): boolean
+/** `{ zh, en }` → the string for the app's locale (exact, language, en, zh, first). */
+export function localize(capsOrLocale: Partial<Caps> | string | undefined, text: ManifestText): string
+export type Fallback = (node: any, caps: Partial<Caps> | undefined) => ViewNode | null
+export const DEFAULT_FALLBACKS: Readonly<Record<'list' | 'keyValue' | 'progress' | 'table' | 'actions' | 'image', Fallback>>
+/** Replace components the app does not draw with stand-ins; null removes the node. */
+export function adaptView<T extends ViewNode>(view: T, caps: Partial<Caps> | undefined, fallbacks?: Record<string, Fallback>): ViewNode | null
+
+// ── effects (lib/effects.js) ──────────────────────────────────────────────
+
+export namespace effects {
+  function insert(text: string): InvokeInsert
+  function command(name: string, args?: string): InvokeCommand
+  function open(page: string): InvokeOpen
+  function openPanel(id: string): InvokeOpen
+  function link(url: string): InvokeLink
+  function toast(text: string): InvokeToast
+  function copy(text: string): InvokeCopy
+  function refresh(id?: string): InvokeRefresh
+  function patch(data: Record<string, unknown>, id?: string): InvokePatch
+  function pickFile(action: string, options?: { maxFiles?: number }): InvokePickFile
+  function pickImage(action: string, options?: { maxFiles?: number }): InvokePickImage
+  /** Wrap slow work as a deferred result: `effects.deferred(async (signal) => ({ insert }), { label: '正在翻译' })`. */
+  function deferred(work: Deferred['result'], options?: { label?: string; timeoutMs?: number }): Deferred
+}
+
+// ── checking handler results (lib/effect-check.js, the bridge's own code) ──
+
+/** The shorthand expanded and every effect checked, as the bridge does before answering the app. */
+export function checkEffects(result: unknown, options?: { panels?: Iterable<string>; source?: string; deferred?: boolean; userGesture?: boolean; fileResult?: boolean; capabilities?: { declared: Capability[]; features: Capability[]; media?: string[]; overlays?: string[] } }): {
+  effects: Effect[]
+  issues: ContributionsIssue[]
+  /** Counts toward the 5-in-a-row that degrades the plugin. */
+  violation: boolean
+}
+/** The deferred request in a handler result as the bridge reads it, or undefined for an immediate result. */
+export function checkPending(result: unknown): undefined | {
+  ok: boolean
+  label?: string
+  timeoutMs?: number
+  work?: Deferred['result']
+  issues: ContributionsIssue[]
+  violation: boolean
+}
+
+export type { ManifestAction, ManifestStrip, ManifestPanel, ContributionsPlugin, StreamStripData }
+
+// generated control builders

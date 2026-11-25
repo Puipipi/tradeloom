@@ -1,0 +1,13 @@
+--- a/node_modules/@deepseek-ai/dsh-plugin-manager/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-plugin-manager/lib/index.js
+@@ -2971,7 +2971,9 @@
+ 		/** Run one pnpm command in the profile, streaming its output as install-log chunks. */
+ 		async runPnpm(args, signal, requestId) {
+ 			const jobId = randomUUID();
+-			const argv = ["pnpm", ...args];
++			// Log arguments are separate from execution arguments. Restrict userinfo
++			// matching to URL authority; support aliases and --registry=URL too.
++			const argv = ["pnpm", ...args.map((arg) => arg.replace(/((?:git\+)?https?:\/\/)[^/?#\s]*@/gi, "$1"))];
+ 			const cwd = this.profile.dir;
+ 			const identity = requestId === void 0 ? {} : { requestId };
+ 			const task = runProfilePnpm({

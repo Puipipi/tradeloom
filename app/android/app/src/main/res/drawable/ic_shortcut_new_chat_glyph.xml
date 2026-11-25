@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-FileCopyrightText: Google -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!-- See THIRD_PARTY_NOTICES.md. -->
+<!-- Foreground of the 「新对话」 shortcut icon: Material `add_comment_outlined` (the glyph the app
+     shows for it), its 24-unit box scaled to 40dp and centred on the 108dp adaptive canvas
+     (the launcher shows the middle 72dp; geometry checked in test/system_entry). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:translateX="34"
+        android:translateY="34"
+        android:scaleX="1.6666667"
+        android:scaleY="1.6666667">
+        <path
+            android:fillColor="@color/shortcut_icon_glyph"
+            android:pathData="M21.984,3.984C21.984,2.906 21.094,2.016 20.016,2.016H3.984C2.906,2.016 2.016,2.906 2.016,3.984V15.984C2.016,17.109 2.906,18 3.984,18H18L21.984,21.984V3.984ZM20.016,17.156L18.844,15.984H3.984V3.984H20.016V17.156ZM12.984,5.016H11.016V9H6.984V11.016H11.016V15H12.984V11.016H17.016V9H12.984V5.016Z" />
+    </group>
+</vector>

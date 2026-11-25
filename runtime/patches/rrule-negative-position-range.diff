@@ -1,0 +1,10 @@
+--- a/node_modules/rrule/dist/es5/rrule.js
++++ b/node_modules/rrule/dist/es5/rrule.js
+@@ -2947,6 +2947,7 @@
+                 continue;
+             tmp.push(val);
+         }
++        if (daypos < -tmp.length || daypos >= tmp.length) continue;
+         var i = void 0;
+         if (daypos < 0) {
+             i = tmp.slice(daypos)[0];

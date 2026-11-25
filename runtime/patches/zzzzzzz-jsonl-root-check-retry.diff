@@ -1,0 +1,15 @@
+--- a/node_modules/@deepseek-ai/dsh-session-persistence-jsonl/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-session-persistence-jsonl/lib/index.js
+@@ -3549,7 +3549,11 @@
+ 	}
+ 	/** Reject a root that already belongs to the other physical encoding. */
+ 	ensureRootEncoding() {
+-		this.rootEncodingCheck ??= this.checkRootEncoding();
++		this.rootEncodingCheck ??= this.checkRootEncoding().catch((error) => {
++			// A later explicit operation must recheck after a failed scan.
++			this.rootEncodingCheck = void 0;
++			throw error;
++		});
+ 		return this.rootEncodingCheck;
+ 	}
+ 	async checkRootEncoding() {

@@ -1,0 +1,6 @@
+# downloads, staging trees and generated bundles (rebuild with ./build-runtime.sh)
+.cache/
+.work/
+out/
+*.log
+__pycache__/

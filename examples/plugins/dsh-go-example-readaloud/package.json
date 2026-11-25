@@ -1,0 +1,50 @@
+{
+  "name": "dsh-go-example-readaloud",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DSH plugin example for the dsh-go app: read a reply aloud, stop when the person speaks, with a live floating caption (native plugin capabilities v1.2).",
+  "author": "DSH-TUI (ccch1mneyyy)",
+  "license": "MIT",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "README.en.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "check": "node ../../../sdk/plugin-kit/bin/check.mjs ."
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dshGo": {
+    "v": 1,
+    "title": { "zh": "朗读", "en": "Read aloud" },
+    "icon": "play",
+    "wants": ["message"],
+    "capabilities": ["audio", "voice", "micro", "overlay"],
+    "contributes": {
+      "message.actions": [
+        { "id": "read", "label": { "zh": "朗读", "en": "Read aloud" }, "icon": "play", "requires": ["audio"] }
+      ],
+      "media": [{ "id": "speech" }],
+      "micro": [{ "id": "caption" }],
+      "overlays": [{ "id": "subtitle", "channel": "caption" }]
+    }
+  },
+  "engines": {
+    "node": ">=22.19",
+    "dsh": ">=0.2.1-rc.2 <0.3.0-0"
+  }
+}

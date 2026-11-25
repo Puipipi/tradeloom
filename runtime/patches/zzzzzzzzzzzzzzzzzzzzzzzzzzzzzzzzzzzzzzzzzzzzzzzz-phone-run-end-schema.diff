@@ -1,0 +1,11 @@
+--- a/node_modules/@deepseek-ai/dsh-mcp-client/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-mcp-client/lib/index.js
+@@ -538,7 +538,7 @@
+ 		}
+ 		try {
+ 			await generation.request({ method: "dsh-go/phone-run-end", params: { v: 1, sessionId, runId, completion } },
+-				specTypeSchemas.EmptyResultSchema, { timeout: config.toolCallTimeoutMs });
++				specTypeSchemas.EmptyResult, { timeout: config.toolCallTimeoutMs });
+ 		} catch {
+ 			// No caller AbortSignal: cancelled turns still need to retire native work.
+ 			ctx.logger.warn(`${label}: phone run end unacknowledged; launch retirement is required for cleanup`);

@@ -1,0 +1,13 @@
+--- a/node_modules/@deepseek-ai/dsh-session-stats/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-session-stats/lib/index.js
+@@ -94,8 +94,9 @@
+ 			case "assistant/attempt": {
+ 				const open = state.openStep;
+ 				if (open === null || open.turn !== event.data.turn || open.step !== event.data.step) return state;
++				if (open.firstTokenTime !== null) return state;
+ 				const first = assistantStreamFirstTokenTime(event.data.stream) ?? null;
+-				if (open.firstTokenTime !== null || first === null) return state;
++				if (first === null) return state;
+ 				return {
+ 					...state,
+ 					openStep: {

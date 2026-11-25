@@ -1,0 +1,14 @@
+diff --git a/node_modules/@deepseek-ai/dsh-client-ui-agent-preset/lib/client.js b/node_modules/@deepseek-ai/dsh-client-ui-agent-preset/lib/client.js
+--- a/node_modules/@deepseek-ai/dsh-client-ui-agent-preset/lib/client.js
++++ b/node_modules/@deepseek-ai/dsh-client-ui-agent-preset/lib/client.js
+@@ -2804,4 +2804,6 @@
+-					const error = await write();
+-					await this.load();
+-					if (error !== void 0) throw new Error(error);
+-					const selected = this.store.getSnapshot().rows.find((row) => row.isDefault);
++					const error = await write();
++					await this.loading;
++					await this.load();
++					if (error !== void 0) throw new Error(error);
++					if (this.store.getSnapshot().status !== "ready") return;
++					const selected = this.store.getSnapshot().rows.find((row) => row.isDefault);

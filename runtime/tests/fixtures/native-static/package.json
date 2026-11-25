@@ -1,0 +1,30 @@
+{
+  "name": "@dsh-go-fixture/static",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "description": "Test-only native plugin (never shipped): manifest only (static effects, static view, assets) plus deliberate manifest mistakes.",
+  "dshGo": {
+    "v": 1,
+    "title": { "en": "Static", "zh": "静态插件名字特别特别特别特别特别特别特别特别特别长" },
+    "assets": "./assets",
+    "wants": ["draft", "camera"],
+    "future": true,
+    "contributes": {
+      "composer.actions": [
+        { "id": "hello", "label": "你好", "effect": [{ "type": "insert", "text": "你好" }, { "type": "toast", "text": "x" }] },
+        { "id": "hello", "label": "dup" },
+        { "id": "bad effect", "label": "x" },
+        { "id": "weird", "label": "weird", "effect": { "type": "refresh" } }
+      ],
+      "message.actions": [{ "id": "nolabel" }],
+      "composer.strip": [{ "id": "note", "text": "静态状态条", "panel": "missing" }],
+      "panels": [
+        { "id": "about", "title": "关于", "view": "./views/about.json", "placement": ["features", "moon"] },
+        { "id": "escape", "title": "Escape", "view": "../native-usage/package.json" }
+      ],
+      "pets": [{ "id": "mochi" }]
+    }
+  }
+}

@@ -1,0 +1,14 @@
+--- a/node_modules/@deepseek-ai/dsh-tool-terminal/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-tool-terminal/lib/index.js
+@@ -5,10 +5,9 @@
+ import { TextRetainer } from "@deepseek-ai/dsh-output-retention";
+ //#region lib/types/render.js
+ /** Model and UI rendering for persistent terminal tool results. */
+-const encoder = new TextEncoder();
+ const TRUNCATED = "\n[output truncated]";
+ function byteLength(text) {
+-	return encoder.encode(text).byteLength;
++	return Buffer.byteLength(text, "utf8");
+ }
+ function retain(text, maxBytes, kind) {
+ 	const retainer = new TextRetainer({

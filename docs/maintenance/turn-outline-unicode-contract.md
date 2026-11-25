@@ -1,0 +1,11 @@
+# 回合导航预览的UTF-16边界与旧缓存重放（677）
+
+基底63e255fab5cb9d817af30b631c3643ccce8e9231，官方0.2.2-rc.1。Refs W17-B：本轮公开服务实测发现，无对应公开issue编号。
+
+turnOutline仅从已提交的Session事件生成导航用摘要。prompt保留50个UTF-16代码单元预算，response保留120，继续原有空白折叠、文本块空格连接、省略号和有界预读取规则。内部预读取及最终截断如正好落在一个完整surrogate pair中间，将截断点退一代码单元；不输出半个emoji，不扩大预算，不扫描或转换整个输入，也不重写本来就不完整的用户原文。ASCII、BMP、完整落在预算内的字符保持既有行为。
+
+response仍只在turn/end从draft提交；draft更新仍保留turns数组身份，不增加事件推送频次。wire字段/服务接口/原Session事件均不变，不修改官方或App界面。
+
+已有stateVersion2 checkpoint的schema允许字符串中存在旧坏预览，仅修算法会继续命中同版本旧值。本补丁将本投影单元的stateVersion升至3：现有registry的viewCheckpoint跳过错版、restoreFloor要求从seq0读取，restore按已有事件重新折叠；不新增缓存格式、不删除会话日志。其他投影单元版本不变。完整实际缓存落盘/重启或设备验证只按最终测试记录声明，不将纯registry重放称全Host磁盘恢复。
+
+会改runtimeVersion；pins/版本由所有者按现行流程录制。Android 未编译，PRoot/ARM和真实手机未验证。

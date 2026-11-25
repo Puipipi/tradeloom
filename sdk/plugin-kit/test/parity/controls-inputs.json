@@ -1,0 +1,2346 @@
+[
+ {
+  "name": "v2 text input binding",
+  "budget": "panel",
+  "view": {
+   "v": 2,
+   "type": "textField",
+   "label": "textField",
+   "bind": "data.a",
+   "value": "fallback"
+  },
+  "data": {
+   "a": "actual"
+  }
+ },
+ {
+  "name": "v1 input remains unknown",
+  "budget": "panel",
+  "view": {
+   "type": "textField",
+   "label": "textField",
+   "bind": "data.a"
+  }
+ },
+ {
+  "name": "strip rejects v2 controls",
+  "budget": "strip",
+  "view": {
+   "v": 2,
+   "type": "toggle",
+   "label": "toggle",
+   "bind": "data.a"
+  }
+ },
+ {
+  "name": "tool card form is read only",
+  "budget": "toolCard",
+  "view": {
+   "v": 2,
+   "type": "form",
+   "submit": "save",
+   "children": [
+    {
+     "type": "textField",
+     "label": "textField",
+     "bind": "data.a"
+    }
+   ]
+  }
+ },
+ {
+  "name": "every input kind",
+  "budget": "panel",
+  "view": {
+   "v": 2,
+   "type": "stack",
+   "children": [
+    {
+     "type": "textField",
+     "label": "textField",
+     "bind": "data.textField"
+    },
+    {
+     "type": "number",
+     "label": "number",
+     "bind": "data.number"
+    },
+    {
+     "type": "stepper",
+     "label": "stepper",
+     "bind": "data.stepper"
+    },
+    {
+     "type": "toggle",
+     "label": "toggle",
+     "bind": "data.toggle"
+    },
+    {
+     "type": "slider",
+     "label": "slider",
+     "bind": "data.slider"
+    },
+    {
+     "type": "select",
+     "label": "select",
+     "bind": "data.select",
+     "options": [
+      "a",
+      "b"
+     ]
+    },
+    {
+     "type": "segmented",
+     "label": "segmented",
+     "bind": "data.segmented",
+     "options": [
+      "a",
+      "b"
+     ]
+    },
+    {
+     "type": "chips",
+     "label": "chips",
+     "bind": "data.chips",
+     "options": [
+      "a",
+      "b"
+     ]
+    },
+    {
+     "type": "date",
+     "label": "date",
+     "bind": "data.date"
+    },
+    {
+     "type": "time",
+     "label": "time",
+     "bind": "data.time"
+    },
+    {
+     "type": "rating",
+     "label": "rating",
+     "bind": "data.rating"
+    }
+   ]
+  }
+ },
+ {
+  "name": "blocked obscureText True",
+  "budget": "panel",
+  "view": {
+   "v": 2,
+   "type": "textField",
+   "label": "textField",
+   "bind": "data.a",
+   "obscureText": true
+  }
+ },
+ {
+  "name": "blocked password True",
+  "budget": "panel",
+  "view": {
+   "v": 2,
+   "type": "textField",
+   "label": "textField",
+   "bind": "data.a",
+   "password": true
+  }
+ },
+ {
+  "name": "blocked keyboardType password",
+  "budget": "panel",
+  "view": {
+   "v": 2,
+   "type": "textField",
+   "label": "textField",
+   "bind": "data.a",
+   "keyboardType": "password"
+  }
+ },
+ {
+  "name": "blocked pattern (a+)+$",
+  "budget": "panel",
+  "view": {
+   "v": 2,
+   "type": "textField",
+   "label": "textField",
+   "bind": "data.a",
+   "pattern": "(a+)+$"
+  }
+ },
+ {
+  "name": "blocked bind data.__proto__.x",
+  "budget": "panel",
+  "view": {
+   "v": 2,
+   "type": "textField",
+   "label": "textField",
+   "bind": "data.__proto__.x"
+  }
+ },
+ {
+  "name": "blocked bind data.rows[99999]",
+  "budget": "panel",
+  "view": {
+   "v": 2,
+   "type": "textField",
+   "label": "textField",
+   "bind": "data.rows[99999]"
+  }
+ },
+ {
+  "name": "conflicting binding data.a",
+  "budget": "panel",
+  "view": {
+   "v": 2,
+   "type": "stack",
+   "children": [
+    {
+     "type": "textField",
+     "label": "textField",
+     "bind": "data.a"
+    },
+    {
+     "type": "textField",
+     "label": "textField",
+     "bind": "data.a"
+    }
+   ]
+  }
+ },
+ {
+  "name": "conflicting binding data.a.b",
+  "budget": "panel",
+  "view": {
+   "v": 2,
+   "type": "stack",
+   "children": [
+    {
+     "type": "textField",
+     "label": "textField",
+     "bind": "data.a"
+    },
+    {
+     "type": "textField",
+     "label": "textField",
+     "bind": "data.a.b"
+    }
+   ]
+  }
+ },
+ {
+  "name": "field budget includes folded descendants",
+  "budget": "panel",
+  "view": {
+   "v": 2,
+   "type": "stack",
+   "children": [
+    {
+     "type": "collapsible",
+     "children": [
+      {
+       "type": "textField",
+       "label": "textField",
+       "bind": "data.f0_0"
+      },
+      {
+       "type": "textField",
+       "label": "textField",
+       "bind": "data.f0_1"
+      },
+      {
+       "type": "textField",
+       "label": "textField",
+       "bind": "data.f0_2"
+      },
+      {
+       "type": "textField",
+       "label": "textField",
+       "bind": "data.f0_3"
+      },
+      {
+       "type": "textField",
+       "label": "textField",
+       "bind": "data.f0_4"
+      },
+      {
+       "type": "textField",
+       "label": "textField",
+       "bind": "data.f0_5"
+      },
+      {
+       "type": "textField",
+       "label": "textField",
+       "bind": "data.f0_6"
+      },
+      {
+       "type": "textField",
+       "label": "textField",
+       "bind": "data.f0_7"
+      },
+      {
+       "type": "textField",
+       "label": "textField",
+       "bind": "data.f0_8"
+      },
+      {
+       "type": "textField",
+       "label": "textField",
+       "bind": "data.f0_9"
+      },
+      {
+       "type": "textField",
+       "label": "textField",
+       "bind": "data.f0_10"
+      },
+      {
+       "type": "textField",
+       "label": "textField",
+       "bind": "data.f0_11"
+      },
+      {
+       "type": "textField",
+       "label": "textField",
+       "bind": "data.f0_12"
+      },
+      {
+       "type": "textField",
+       "label": "textField",
+       "bind": "data.f0_13"
+      },
+      {
+       "type": "textField",
+       "label": "textField",
+       "bind": "data.f0_14"
+      },
+      {
+       "type": "textField",
+       "label": "textField",
+       "bind": "data.f0_15"
+      },
+      {
+       "type": "textField",
+       "label": "textField",
+       "bind": "data.f0_16"
+      },
+      {
+       "type": "textField",
+       "label": "textField",
+       "bind": "data.f0_17"
+      },
+      {
+       "type": "textField",
+       "label": "textField",
+       "bind": "data.f0_18"
+      },
+      {
+       "type": "textField",
+       "label": "textField",
+       "bind": "data.f0_19"
+      }
+     ]
+    },
+    {
+     "type": "collapsible",
+     "children": [
+      {
+       "type": "textField",
+       "label": "textField",
+       "bind": "data.f1_0"
+      },
+      {
+       "type": "textField",
+       "label": "textField",
+       "bind": "data.f1_1"
+      },
+      {
+       "type": "textField",
+       "label": "textField",
+       "bind": "data.f1_2"
+      },
+      {
+       "type": "textField",
+       "label": "textField",
+       "bind": "data.f1_3"
+      },
+      {
+       "type": "textField",
+       "label": "textField",
+       "bind": "data.f1_4"
+      },
+      {
+       "type": "textField",
+       "label": "textField",
+       "bind": "data.f1_5"
+      },
+      {
+       "type": "textField",
+       "label": "textField",
+       "bind": "data.f1_6"
+      },
+      {
+       "type": "textField",
+       "label": "textField",
+       "bind": "data.f1_7"
+      },
+      {
+       "type": "textField",
+       "label": "textField",
+       "bind": "data.f1_8"
+      },
+      {
+       "type": "textField",
+       "label": "textField",
+       "bind": "data.f1_9"
+      },
+      {
+       "type": "textField",
+       "label": "textField",
+       "bind": "data.f1_10"
+      },
+      {
+       "type": "textField",
+       "label": "textField",
+       "bind": "data.f1_11"
+      },
+      {
+       "type": "textField",
+       "label": "textField",
+       "bind": "data.f1_12"
+      },
+      {
+       "type": "textField",
+       "label": "textField",
+       "bind": "data.f1_13"
+      },
+      {
+       "type": "textField",
+       "label": "textField",
+       "bind": "data.f1_14"
+      },
+      {
+       "type": "textField",
+       "label": "textField",
+       "bind": "data.f1_15"
+      },
+      {
+       "type": "textField",
+       "label": "textField",
+       "bind": "data.f1_16"
+      },
+      {
+       "type": "textField",
+       "label": "textField",
+       "bind": "data.f1_17"
+      },
+      {
+       "type": "textField",
+       "label": "textField",
+       "bind": "data.f1_18"
+      },
+      {
+       "type": "textField",
+       "label": "textField",
+       "bind": "data.f1_19"
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "option budget",
+  "budget": "panel",
+  "view": {
+   "v": 2,
+   "type": "select",
+   "label": "select",
+   "bind": "data.a",
+   "options": [
+    "0",
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8",
+    "9",
+    "10",
+    "11",
+    "12",
+    "13",
+    "14",
+    "15",
+    "16",
+    "17",
+    "18",
+    "19",
+    "20",
+    "21",
+    "22",
+    "23",
+    "24",
+    "25",
+    "26",
+    "27",
+    "28",
+    "29"
+   ]
+  }
+ },
+ {
+  "name": "malformed options",
+  "budget": "panel",
+  "view": {
+   "v": 2,
+   "type": "chips",
+   "label": "chips",
+   "bind": "data.a",
+   "options": [
+    "a",
+    "a",
+    {},
+    null,
+    {
+     "label": "B",
+     "value": "b"
+    }
+   ]
+  }
+ },
+ {
+  "name": "bounded numbers and lines",
+  "budget": "panel",
+  "view": {
+   "v": 2,
+   "type": "number",
+   "label": "number",
+   "bind": "data.a",
+   "min": -10000000000000.0,
+   "maxLength": 100000,
+   "maxLines": 999,
+   "minLength": -5
+  }
+ },
+ {
+  "name": "bad numeric interval",
+  "budget": "panel",
+  "view": {
+   "v": 2,
+   "type": "slider",
+   "label": "slider",
+   "bind": "data.a",
+   "min": 10,
+   "max": 0
+  }
+ },
+ {
+  "name": "bad numeric step",
+  "budget": "panel",
+  "view": {
+   "v": 2,
+   "type": "stepper",
+   "label": "stepper",
+   "bind": "data.a",
+   "step": 0
+  }
+ },
+ {
+  "name": "rating min normalized",
+  "budget": "panel",
+  "view": {
+   "v": 2,
+   "type": "rating",
+   "label": "rating",
+   "bind": "data.a",
+   "min": -2,
+   "max": 200
+  }
+ },
+ {
+  "name": "bad date bounds",
+  "budget": "panel",
+  "view": {
+   "v": 2,
+   "type": "date",
+   "label": "date",
+   "bind": "data.a",
+   "minDate": "2025-01-01",
+   "maxDate": "2024-01-01"
+  }
+ },
+ {
+  "name": "bad calendar date",
+  "budget": "panel",
+  "view": {
+   "v": 2,
+   "type": "date",
+   "label": "date",
+   "bind": "data.a",
+   "minDate": "2023-02-29"
+  }
+ },
+ {
+  "name": "nested form",
+  "budget": "panel",
+  "view": {
+   "v": 2,
+   "type": "form",
+   "submit": "save",
+   "children": [
+    {
+     "type": "text",
+     "text": "content"
+    },
+    {
+     "type": "form",
+     "submit": "save",
+     "children": []
+    }
+   ]
+  }
+ },
+ {
+  "name": "missing form submit",
+  "budget": "panel",
+  "view": {
+   "v": 2,
+   "type": "form",
+   "children": []
+  }
+ },
+ {
+  "name": "all broken children",
+  "budget": "panel",
+  "view": {
+   "v": 2,
+   "type": "grid",
+   "children": [
+    {
+     "type": "bogus"
+    }
+   ]
+  }
+ },
+ {
+  "name": "sections budget",
+  "budget": "panel",
+  "view": {
+   "v": 2,
+   "type": "tabs",
+   "items": [
+    {
+     "label": "0",
+     "children": []
+    },
+    {
+     "label": "1",
+     "children": []
+    },
+    {
+     "label": "2",
+     "children": []
+    },
+    {
+     "label": "3",
+     "children": []
+    },
+    {
+     "label": "4",
+     "children": []
+    },
+    {
+     "label": "5",
+     "children": []
+    },
+    {
+     "label": "6",
+     "children": []
+    },
+    {
+     "label": "7",
+     "children": []
+    },
+    {
+     "label": "8",
+     "children": []
+    },
+    {
+     "label": "9",
+     "children": []
+    },
+    {
+     "label": "10",
+     "children": []
+    },
+    {
+     "label": "11",
+     "children": []
+    }
+   ]
+  }
+ },
+ {
+  "name": "timeline node budget",
+  "budget": "panel",
+  "view": {
+   "v": 2,
+   "type": "timeline",
+   "items": [
+    {
+     "label": "0",
+     "children": [
+      {
+       "type": "text",
+       "text": "0"
+      },
+      {
+       "type": "text",
+       "text": "1"
+      },
+      {
+       "type": "text",
+       "text": "2"
+      },
+      {
+       "type": "text",
+       "text": "3"
+      },
+      {
+       "type": "text",
+       "text": "4"
+      },
+      {
+       "type": "text",
+       "text": "5"
+      },
+      {
+       "type": "text",
+       "text": "6"
+      },
+      {
+       "type": "text",
+       "text": "7"
+      },
+      {
+       "type": "text",
+       "text": "8"
+      },
+      {
+       "type": "text",
+       "text": "9"
+      }
+     ]
+    },
+    {
+     "label": "1",
+     "children": [
+      {
+       "type": "text",
+       "text": "0"
+      },
+      {
+       "type": "text",
+       "text": "1"
+      },
+      {
+       "type": "text",
+       "text": "2"
+      },
+      {
+       "type": "text",
+       "text": "3"
+      },
+      {
+       "type": "text",
+       "text": "4"
+      },
+      {
+       "type": "text",
+       "text": "5"
+      },
+      {
+       "type": "text",
+       "text": "6"
+      },
+      {
+       "type": "text",
+       "text": "7"
+      },
+      {
+       "type": "text",
+       "text": "8"
+      },
+      {
+       "type": "text",
+       "text": "9"
+      }
+     ]
+    },
+    {
+     "label": "2",
+     "children": [
+      {
+       "type": "text",
+       "text": "0"
+      },
+      {
+       "type": "text",
+       "text": "1"
+      },
+      {
+       "type": "text",
+       "text": "2"
+      },
+      {
+       "type": "text",
+       "text": "3"
+      },
+      {
+       "type": "text",
+       "text": "4"
+      },
+      {
+       "type": "text",
+       "text": "5"
+      },
+      {
+       "type": "text",
+       "text": "6"
+      },
+      {
+       "type": "text",
+       "text": "7"
+      },
+      {
+       "type": "text",
+       "text": "8"
+      },
+      {
+       "type": "text",
+       "text": "9"
+      }
+     ]
+    },
+    {
+     "label": "3",
+     "children": [
+      {
+       "type": "text",
+       "text": "0"
+      },
+      {
+       "type": "text",
+       "text": "1"
+      },
+      {
+       "type": "text",
+       "text": "2"
+      },
+      {
+       "type": "text",
+       "text": "3"
+      },
+      {
+       "type": "text",
+       "text": "4"
+      },
+      {
+       "type": "text",
+       "text": "5"
+      },
+      {
+       "type": "text",
+       "text": "6"
+      },
+      {
+       "type": "text",
+       "text": "7"
+      },
+      {
+       "type": "text",
+       "text": "8"
+      },
+      {
+       "type": "text",
+       "text": "9"
+      }
+     ]
+    },
+    {
+     "label": "4",
+     "children": [
+      {
+       "type": "text",
+       "text": "0"
+      },
+      {
+       "type": "text",
+       "text": "1"
+      },
+      {
+       "type": "text",
+       "text": "2"
+      },
+      {
+       "type": "text",
+       "text": "3"
+      },
+      {
+       "type": "text",
+       "text": "4"
+      },
+      {
+       "type": "text",
+       "text": "5"
+      },
+      {
+       "type": "text",
+       "text": "6"
+      },
+      {
+       "type": "text",
+       "text": "7"
+      },
+      {
+       "type": "text",
+       "text": "8"
+      },
+      {
+       "type": "text",
+       "text": "9"
+      }
+     ]
+    },
+    {
+     "label": "5",
+     "children": [
+      {
+       "type": "text",
+       "text": "0"
+      },
+      {
+       "type": "text",
+       "text": "1"
+      },
+      {
+       "type": "text",
+       "text": "2"
+      },
+      {
+       "type": "text",
+       "text": "3"
+      },
+      {
+       "type": "text",
+       "text": "4"
+      },
+      {
+       "type": "text",
+       "text": "5"
+      },
+      {
+       "type": "text",
+       "text": "6"
+      },
+      {
+       "type": "text",
+       "text": "7"
+      },
+      {
+       "type": "text",
+       "text": "8"
+      },
+      {
+       "type": "text",
+       "text": "9"
+      }
+     ]
+    },
+    {
+     "label": "6",
+     "children": [
+      {
+       "type": "text",
+       "text": "0"
+      },
+      {
+       "type": "text",
+       "text": "1"
+      },
+      {
+       "type": "text",
+       "text": "2"
+      },
+      {
+       "type": "text",
+       "text": "3"
+      },
+      {
+       "type": "text",
+       "text": "4"
+      },
+      {
+       "type": "text",
+       "text": "5"
+      },
+      {
+       "type": "text",
+       "text": "6"
+      },
+      {
+       "type": "text",
+       "text": "7"
+      },
+      {
+       "type": "text",
+       "text": "8"
+      },
+      {
+       "type": "text",
+       "text": "9"
+      }
+     ]
+    },
+    {
+     "label": "7",
+     "children": [
+      {
+       "type": "text",
+       "text": "0"
+      },
+      {
+       "type": "text",
+       "text": "1"
+      },
+      {
+       "type": "text",
+       "text": "2"
+      },
+      {
+       "type": "text",
+       "text": "3"
+      },
+      {
+       "type": "text",
+       "text": "4"
+      },
+      {
+       "type": "text",
+       "text": "5"
+      },
+      {
+       "type": "text",
+       "text": "6"
+      },
+      {
+       "type": "text",
+       "text": "7"
+      },
+      {
+       "type": "text",
+       "text": "8"
+      },
+      {
+       "type": "text",
+       "text": "9"
+      }
+     ]
+    },
+    {
+     "label": "8",
+     "children": [
+      {
+       "type": "text",
+       "text": "0"
+      },
+      {
+       "type": "text",
+       "text": "1"
+      },
+      {
+       "type": "text",
+       "text": "2"
+      },
+      {
+       "type": "text",
+       "text": "3"
+      },
+      {
+       "type": "text",
+       "text": "4"
+      },
+      {
+       "type": "text",
+       "text": "5"
+      },
+      {
+       "type": "text",
+       "text": "6"
+      },
+      {
+       "type": "text",
+       "text": "7"
+      },
+      {
+       "type": "text",
+       "text": "8"
+      },
+      {
+       "type": "text",
+       "text": "9"
+      }
+     ]
+    },
+    {
+     "label": "9",
+     "children": [
+      {
+       "type": "text",
+       "text": "0"
+      },
+      {
+       "type": "text",
+       "text": "1"
+      },
+      {
+       "type": "text",
+       "text": "2"
+      },
+      {
+       "type": "text",
+       "text": "3"
+      },
+      {
+       "type": "text",
+       "text": "4"
+      },
+      {
+       "type": "text",
+       "text": "5"
+      },
+      {
+       "type": "text",
+       "text": "6"
+      },
+      {
+       "type": "text",
+       "text": "7"
+      },
+      {
+       "type": "text",
+       "text": "8"
+      },
+      {
+       "type": "text",
+       "text": "9"
+      }
+     ]
+    },
+    {
+     "label": "10",
+     "children": [
+      {
+       "type": "text",
+       "text": "0"
+      },
+      {
+       "type": "text",
+       "text": "1"
+      },
+      {
+       "type": "text",
+       "text": "2"
+      },
+      {
+       "type": "text",
+       "text": "3"
+      },
+      {
+       "type": "text",
+       "text": "4"
+      },
+      {
+       "type": "text",
+       "text": "5"
+      },
+      {
+       "type": "text",
+       "text": "6"
+      },
+      {
+       "type": "text",
+       "text": "7"
+      },
+      {
+       "type": "text",
+       "text": "8"
+      },
+      {
+       "type": "text",
+       "text": "9"
+      }
+     ]
+    },
+    {
+     "label": "11",
+     "children": [
+      {
+       "type": "text",
+       "text": "0"
+      },
+      {
+       "type": "text",
+       "text": "1"
+      },
+      {
+       "type": "text",
+       "text": "2"
+      },
+      {
+       "type": "text",
+       "text": "3"
+      },
+      {
+       "type": "text",
+       "text": "4"
+      },
+      {
+       "type": "text",
+       "text": "5"
+      },
+      {
+       "type": "text",
+       "text": "6"
+      },
+      {
+       "type": "text",
+       "text": "7"
+      },
+      {
+       "type": "text",
+       "text": "8"
+      },
+      {
+       "type": "text",
+       "text": "9"
+      }
+     ]
+    },
+    {
+     "label": "12",
+     "children": [
+      {
+       "type": "text",
+       "text": "0"
+      },
+      {
+       "type": "text",
+       "text": "1"
+      },
+      {
+       "type": "text",
+       "text": "2"
+      },
+      {
+       "type": "text",
+       "text": "3"
+      },
+      {
+       "type": "text",
+       "text": "4"
+      },
+      {
+       "type": "text",
+       "text": "5"
+      },
+      {
+       "type": "text",
+       "text": "6"
+      },
+      {
+       "type": "text",
+       "text": "7"
+      },
+      {
+       "type": "text",
+       "text": "8"
+      },
+      {
+       "type": "text",
+       "text": "9"
+      }
+     ]
+    },
+    {
+     "label": "13",
+     "children": [
+      {
+       "type": "text",
+       "text": "0"
+      },
+      {
+       "type": "text",
+       "text": "1"
+      },
+      {
+       "type": "text",
+       "text": "2"
+      },
+      {
+       "type": "text",
+       "text": "3"
+      },
+      {
+       "type": "text",
+       "text": "4"
+      },
+      {
+       "type": "text",
+       "text": "5"
+      },
+      {
+       "type": "text",
+       "text": "6"
+      },
+      {
+       "type": "text",
+       "text": "7"
+      },
+      {
+       "type": "text",
+       "text": "8"
+      },
+      {
+       "type": "text",
+       "text": "9"
+      }
+     ]
+    },
+    {
+     "label": "14",
+     "children": [
+      {
+       "type": "text",
+       "text": "0"
+      },
+      {
+       "type": "text",
+       "text": "1"
+      },
+      {
+       "type": "text",
+       "text": "2"
+      },
+      {
+       "type": "text",
+       "text": "3"
+      },
+      {
+       "type": "text",
+       "text": "4"
+      },
+      {
+       "type": "text",
+       "text": "5"
+      },
+      {
+       "type": "text",
+       "text": "6"
+      },
+      {
+       "type": "text",
+       "text": "7"
+      },
+      {
+       "type": "text",
+       "text": "8"
+      },
+      {
+       "type": "text",
+       "text": "9"
+      }
+     ]
+    },
+    {
+     "label": "15",
+     "children": [
+      {
+       "type": "text",
+       "text": "0"
+      },
+      {
+       "type": "text",
+       "text": "1"
+      },
+      {
+       "type": "text",
+       "text": "2"
+      },
+      {
+       "type": "text",
+       "text": "3"
+      },
+      {
+       "type": "text",
+       "text": "4"
+      },
+      {
+       "type": "text",
+       "text": "5"
+      },
+      {
+       "type": "text",
+       "text": "6"
+      },
+      {
+       "type": "text",
+       "text": "7"
+      },
+      {
+       "type": "text",
+       "text": "8"
+      },
+      {
+       "type": "text",
+       "text": "9"
+      }
+     ]
+    },
+    {
+     "label": "16",
+     "children": [
+      {
+       "type": "text",
+       "text": "0"
+      },
+      {
+       "type": "text",
+       "text": "1"
+      },
+      {
+       "type": "text",
+       "text": "2"
+      },
+      {
+       "type": "text",
+       "text": "3"
+      },
+      {
+       "type": "text",
+       "text": "4"
+      },
+      {
+       "type": "text",
+       "text": "5"
+      },
+      {
+       "type": "text",
+       "text": "6"
+      },
+      {
+       "type": "text",
+       "text": "7"
+      },
+      {
+       "type": "text",
+       "text": "8"
+      },
+      {
+       "type": "text",
+       "text": "9"
+      }
+     ]
+    },
+    {
+     "label": "17",
+     "children": [
+      {
+       "type": "text",
+       "text": "0"
+      },
+      {
+       "type": "text",
+       "text": "1"
+      },
+      {
+       "type": "text",
+       "text": "2"
+      },
+      {
+       "type": "text",
+       "text": "3"
+      },
+      {
+       "type": "text",
+       "text": "4"
+      },
+      {
+       "type": "text",
+       "text": "5"
+      },
+      {
+       "type": "text",
+       "text": "6"
+      },
+      {
+       "type": "text",
+       "text": "7"
+      },
+      {
+       "type": "text",
+       "text": "8"
+      },
+      {
+       "type": "text",
+       "text": "9"
+      }
+     ]
+    },
+    {
+     "label": "18",
+     "children": [
+      {
+       "type": "text",
+       "text": "0"
+      },
+      {
+       "type": "text",
+       "text": "1"
+      },
+      {
+       "type": "text",
+       "text": "2"
+      },
+      {
+       "type": "text",
+       "text": "3"
+      },
+      {
+       "type": "text",
+       "text": "4"
+      },
+      {
+       "type": "text",
+       "text": "5"
+      },
+      {
+       "type": "text",
+       "text": "6"
+      },
+      {
+       "type": "text",
+       "text": "7"
+      },
+      {
+       "type": "text",
+       "text": "8"
+      },
+      {
+       "type": "text",
+       "text": "9"
+      }
+     ]
+    },
+    {
+     "label": "19",
+     "children": [
+      {
+       "type": "text",
+       "text": "0"
+      },
+      {
+       "type": "text",
+       "text": "1"
+      },
+      {
+       "type": "text",
+       "text": "2"
+      },
+      {
+       "type": "text",
+       "text": "3"
+      },
+      {
+       "type": "text",
+       "text": "4"
+      },
+      {
+       "type": "text",
+       "text": "5"
+      },
+      {
+       "type": "text",
+       "text": "6"
+      },
+      {
+       "type": "text",
+       "text": "7"
+      },
+      {
+       "type": "text",
+       "text": "8"
+      },
+      {
+       "type": "text",
+       "text": "9"
+      }
+     ]
+    },
+    {
+     "label": "20",
+     "children": [
+      {
+       "type": "text",
+       "text": "0"
+      },
+      {
+       "type": "text",
+       "text": "1"
+      },
+      {
+       "type": "text",
+       "text": "2"
+      },
+      {
+       "type": "text",
+       "text": "3"
+      },
+      {
+       "type": "text",
+       "text": "4"
+      },
+      {
+       "type": "text",
+       "text": "5"
+      },
+      {
+       "type": "text",
+       "text": "6"
+      },
+      {
+       "type": "text",
+       "text": "7"
+      },
+      {
+       "type": "text",
+       "text": "8"
+      },
+      {
+       "type": "text",
+       "text": "9"
+      }
+     ]
+    },
+    {
+     "label": "21",
+     "children": [
+      {
+       "type": "text",
+       "text": "0"
+      },
+      {
+       "type": "text",
+       "text": "1"
+      },
+      {
+       "type": "text",
+       "text": "2"
+      },
+      {
+       "type": "text",
+       "text": "3"
+      },
+      {
+       "type": "text",
+       "text": "4"
+      },
+      {
+       "type": "text",
+       "text": "5"
+      },
+      {
+       "type": "text",
+       "text": "6"
+      },
+      {
+       "type": "text",
+       "text": "7"
+      },
+      {
+       "type": "text",
+       "text": "8"
+      },
+      {
+       "type": "text",
+       "text": "9"
+      }
+     ]
+    },
+    {
+     "label": "22",
+     "children": [
+      {
+       "type": "text",
+       "text": "0"
+      },
+      {
+       "type": "text",
+       "text": "1"
+      },
+      {
+       "type": "text",
+       "text": "2"
+      },
+      {
+       "type": "text",
+       "text": "3"
+      },
+      {
+       "type": "text",
+       "text": "4"
+      },
+      {
+       "type": "text",
+       "text": "5"
+      },
+      {
+       "type": "text",
+       "text": "6"
+      },
+      {
+       "type": "text",
+       "text": "7"
+      },
+      {
+       "type": "text",
+       "text": "8"
+      },
+      {
+       "type": "text",
+       "text": "9"
+      }
+     ]
+    },
+    {
+     "label": "23",
+     "children": [
+      {
+       "type": "text",
+       "text": "0"
+      },
+      {
+       "type": "text",
+       "text": "1"
+      },
+      {
+       "type": "text",
+       "text": "2"
+      },
+      {
+       "type": "text",
+       "text": "3"
+      },
+      {
+       "type": "text",
+       "text": "4"
+      },
+      {
+       "type": "text",
+       "text": "5"
+      },
+      {
+       "type": "text",
+       "text": "6"
+      },
+      {
+       "type": "text",
+       "text": "7"
+      },
+      {
+       "type": "text",
+       "text": "8"
+      },
+      {
+       "type": "text",
+       "text": "9"
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "containers and displays",
+  "budget": "panel",
+  "view": {
+   "v": 2,
+   "type": "stack",
+   "children": [
+    {
+     "type": "form",
+     "submit": "save",
+     "children": [
+      {
+       "type": "textField",
+       "label": "textField",
+       "bind": "data.a"
+      }
+     ]
+    },
+    {
+     "type": "tabs",
+     "items": [
+      {
+       "label": "one",
+       "children": []
+      }
+     ]
+    },
+    {
+     "type": "accordion",
+     "items": [
+      {
+       "label": "one",
+       "children": []
+      }
+     ]
+    },
+    {
+     "type": "carousel",
+     "items": [
+      {
+       "label": "one",
+       "children": []
+      }
+     ]
+    },
+    {
+     "type": "collapsible",
+     "label": "Open",
+     "children": []
+    },
+    {
+     "type": "grid",
+     "columns": 2,
+     "children": [
+      {
+       "type": "badge",
+       "text": "Good"
+      },
+      {
+       "type": "tag",
+       "text": "Tag"
+      }
+     ]
+    },
+    {
+     "type": "timeline",
+     "items": [
+      {
+       "label": "one",
+       "children": [
+        {
+         "type": "codeBlock",
+         "language": "js",
+         "code": "const a=1"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "avatar",
+     "src": "asset:a.png",
+     "alt": "A"
+    },
+    {
+     "type": "divider"
+    },
+    {
+     "type": "spacer",
+     "size": "S"
+    }
+   ]
+  }
+ },
+ {
+  "name": "bad image source",
+  "budget": "panel",
+  "view": {
+   "v": 2,
+   "type": "avatar",
+   "src": "https://tracker.example/a.png"
+  }
+ },
+ {
+  "name": "long code",
+  "budget": "panel",
+  "view": {
+   "v": 2,
+   "type": "codeBlock",
+   "code": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  }
+ },
+ {
+  "name": "long bound input",
+  "budget": "panel",
+  "view": {
+   "v": 2,
+   "type": "textField",
+   "label": "textField",
+   "bind": "data.a"
+  },
+  "data": {
+   "a": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  }
+ },
+ {
+  "name": "formula arithmetic",
+  "budget": "panel",
+  "view": {
+   "v": 2,
+   "type": "metric",
+   "label": "total",
+   "value": {
+    "=": "data.a + 2*3"
+   }
+  },
+  "data": {
+   "a": 2
+  }
+ },
+ {
+  "name": "formula division zero",
+  "budget": "panel",
+  "view": {
+   "v": 2,
+   "type": "metric",
+   "label": "total",
+   "value": {
+    "=": "1/0"
+   }
+  }
+ },
+ {
+  "name": "formula cannot call host",
+  "budget": "panel",
+  "view": {
+   "v": 2,
+   "type": "text",
+   "text": {
+    "=": "window.alert(1)"
+   }
+  }
+ },
+ {
+  "name": "formula cannot supply type",
+  "budget": "panel",
+  "view": {
+   "v": 2,
+   "type": {
+    "=": "1+2"
+   },
+   "text": "x"
+  }
+ },
+ {
+  "name": "data formula is never executed",
+  "budget": "panel",
+  "view": {
+   "v": 2,
+   "type": "text",
+   "text": {
+    "$": "data.a"
+   }
+  },
+  "data": {
+   "a": {
+    "=": "2+3"
+   }
+  }
+ },
+ {
+  "name": "oversize onChange args",
+  "budget": "panel",
+  "view": {
+   "v": 2,
+   "type": "textField",
+   "label": "textField",
+   "bind": "data.a",
+   "onChange": {
+    "id": "change",
+    "args": {
+     "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+   }
+  }
+ },
+ {
+  "name": "slider needs whole bounded intervals",
+  "budget": "panel",
+  "view": {
+   "v": 2,
+   "type": "slider",
+   "label": "Slider",
+   "bind": "data.slider",
+   "max": 5,
+   "step": 2
+  }
+ },
+ {
+  "name": "slider intervals cap",
+  "budget": "panel",
+  "view": {
+   "v": 2,
+   "type": "slider",
+   "label": "Slider",
+   "bind": "data.slider",
+   "max": 10000,
+   "step": 1
+  }
+ },
+ {
+  "name": "v2 gallery, empty state, ring and trend draw clean",
+  "budget": "panel",
+  "view": {
+   "v": 2,
+   "type": "stack",
+   "children": [
+    {
+     "type": "row",
+     "children": [
+      {
+       "type": "progress",
+       "shape": "ring",
+       "value": 72,
+       "label": "本月额度"
+      },
+      {
+       "type": "metric",
+       "label": "今日",
+       "value": "¥3.1",
+       "tone": "good",
+       "trend": [
+        1.2,
+        2.0,
+        null,
+        2.6,
+        3.1
+       ]
+      }
+     ]
+    },
+    {
+     "type": "gallery",
+     "columns": 3,
+     "aspect": 1.5,
+     "items": [
+      {
+       "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOI6tkCRAwQCgArfgZpaDia1QAAAABJRU5ErkJggg==",
+       "alt": "海",
+       "caption": "海边"
+      },
+      {
+       "src": "asset:stickers/cat.webp",
+       "alt": "猫",
+       "action": {
+        "id": "pick",
+        "args": {
+         "id": "cat"
+        }
+       }
+      }
+     ]
+    },
+    {
+     "type": "emptyState",
+     "icon": "gallery",
+     "title": "还没有贴纸",
+     "message": "从相册导入，或让 AI 画一张",
+     "action": {
+      "label": "导入",
+      "action": "import",
+      "icon": "add"
+     }
+    }
+   ]
+  }
+ },
+ {
+  "name": "v2 gallery and figure notes",
+  "budget": "panel",
+  "view": {
+   "v": 2,
+   "type": "stack",
+   "children": [
+    {
+     "type": "progress",
+     "shape": "donut",
+     "value": 1
+    },
+    {
+     "type": "metric",
+     "label": "a",
+     "value": 1,
+     "trend": [
+      1
+     ]
+    },
+    {
+     "type": "metric",
+     "label": "b",
+     "value": 2,
+     "trend": [
+      1,
+      "2",
+      3
+     ]
+    },
+    {
+     "type": "metric",
+     "label": "c",
+     "value": 3,
+     "trend": [
+      null,
+      1,
+      null
+     ]
+    },
+    {
+     "type": "gallery",
+     "columns": 7,
+     "aspect": 9,
+     "items": [
+      "x",
+      {
+       "src": "https://example.com/a.png",
+       "alt": "web"
+      },
+      {
+       "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOI6tkCRAwQCgArfgZpaDia1QAAAABJRU5ErkJggg==",
+       "action": "bad id"
+      }
+     ]
+    },
+    {
+     "type": "emptyState",
+     "icon": "lock",
+     "title": "标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标标",
+     "message": "说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说说",
+     "action": {
+      "label": "去",
+      "icon": "nope"
+     }
+    },
+    {
+     "type": "emptyState",
+     "title": "t",
+     "action": {
+      "label": "",
+      "action": "go"
+     }
+    },
+    {
+     "type": "emptyState",
+     "title": "t",
+     "action": "go"
+    }
+   ]
+  }
+ },
+ {
+  "name": "v2 broken gallery and empty state",
+  "budget": "panel",
+  "view": {
+   "v": 2,
+   "type": "stack",
+   "children": [
+    {
+     "type": "emptyState",
+     "message": "没有标题"
+    },
+    {
+     "type": "gallery",
+     "items": [
+      "a",
+      1
+     ]
+    },
+    {
+     "type": "gallery",
+     "items": {
+      "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOI6tkCRAwQCgArfgZpaDia1QAAAABJRU5ErkJggg=="
+     }
+    },
+    {
+     "type": "gallery",
+     "items": []
+    }
+   ]
+  }
+ },
+ {
+  "name": "tool card gallery keeps 8",
+  "budget": "toolCard",
+  "view": {
+   "v": 2,
+   "type": "gallery",
+   "items": [
+    {
+     "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOI6tkCRAwQCgArfgZpaDia1QAAAABJRU5ErkJggg=="
+    },
+    {
+     "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOI6tkCRAwQCgArfgZpaDia1QAAAABJRU5ErkJggg=="
+    },
+    {
+     "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOI6tkCRAwQCgArfgZpaDia1QAAAABJRU5ErkJggg=="
+    },
+    {
+     "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOI6tkCRAwQCgArfgZpaDia1QAAAABJRU5ErkJggg=="
+    },
+    {
+     "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOI6tkCRAwQCgArfgZpaDia1QAAAABJRU5ErkJggg=="
+    },
+    {
+     "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOI6tkCRAwQCgArfgZpaDia1QAAAABJRU5ErkJggg=="
+    },
+    {
+     "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOI6tkCRAwQCgArfgZpaDia1QAAAABJRU5ErkJggg=="
+    },
+    {
+     "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOI6tkCRAwQCgArfgZpaDia1QAAAABJRU5ErkJggg=="
+    },
+    {
+     "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOI6tkCRAwQCgArfgZpaDia1QAAAABJRU5ErkJggg=="
+    },
+    {
+     "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOI6tkCRAwQCgArfgZpaDia1QAAAABJRU5ErkJggg=="
+    }
+   ]
+  }
+ },
+ {
+  "name": "panel gallery keeps 24",
+  "budget": "panel",
+  "view": {
+   "v": 2,
+   "type": "gallery",
+   "items": [
+    {
+     "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOI6tkCRAwQCgArfgZpaDia1QAAAABJRU5ErkJggg=="
+    },
+    {
+     "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOI6tkCRAwQCgArfgZpaDia1QAAAABJRU5ErkJggg=="
+    },
+    {
+     "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOI6tkCRAwQCgArfgZpaDia1QAAAABJRU5ErkJggg=="
+    },
+    {
+     "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOI6tkCRAwQCgArfgZpaDia1QAAAABJRU5ErkJggg=="
+    },
+    {
+     "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOI6tkCRAwQCgArfgZpaDia1QAAAABJRU5ErkJggg=="
+    },
+    {
+     "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOI6tkCRAwQCgArfgZpaDia1QAAAABJRU5ErkJggg=="
+    },
+    {
+     "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOI6tkCRAwQCgArfgZpaDia1QAAAABJRU5ErkJggg=="
+    },
+    {
+     "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOI6tkCRAwQCgArfgZpaDia1QAAAABJRU5ErkJggg=="
+    },
+    {
+     "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOI6tkCRAwQCgArfgZpaDia1QAAAABJRU5ErkJggg=="
+    },
+    {
+     "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOI6tkCRAwQCgArfgZpaDia1QAAAABJRU5ErkJggg=="
+    },
+    {
+     "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOI6tkCRAwQCgArfgZpaDia1QAAAABJRU5ErkJggg=="
+    },
+    {
+     "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOI6tkCRAwQCgArfgZpaDia1QAAAABJRU5ErkJggg=="
+    },
+    {
+     "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOI6tkCRAwQCgArfgZpaDia1QAAAABJRU5ErkJggg=="
+    },
+    {
+     "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOI6tkCRAwQCgArfgZpaDia1QAAAABJRU5ErkJggg=="
+    },
+    {
+     "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOI6tkCRAwQCgArfgZpaDia1QAAAABJRU5ErkJggg=="
+    },
+    {
+     "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOI6tkCRAwQCgArfgZpaDia1QAAAABJRU5ErkJggg=="
+    },
+    {
+     "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOI6tkCRAwQCgArfgZpaDia1QAAAABJRU5ErkJggg=="
+    },
+    {
+     "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOI6tkCRAwQCgArfgZpaDia1QAAAABJRU5ErkJggg=="
+    },
+    {
+     "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOI6tkCRAwQCgArfgZpaDia1QAAAABJRU5ErkJggg=="
+    },
+    {
+     "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOI6tkCRAwQCgArfgZpaDia1QAAAABJRU5ErkJggg=="
+    },
+    {
+     "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOI6tkCRAwQCgArfgZpaDia1QAAAABJRU5ErkJggg=="
+    },
+    {
+     "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOI6tkCRAwQCgArfgZpaDia1QAAAABJRU5ErkJggg=="
+    },
+    {
+     "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOI6tkCRAwQCgArfgZpaDia1QAAAABJRU5ErkJggg=="
+    },
+    {
+     "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOI6tkCRAwQCgArfgZpaDia1QAAAABJRU5ErkJggg=="
+    },
+    {
+     "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOI6tkCRAwQCgArfgZpaDia1QAAAABJRU5ErkJggg=="
+    },
+    {
+     "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOI6tkCRAwQCgArfgZpaDia1QAAAABJRU5ErkJggg=="
+    }
+   ]
+  }
+ },
+ {
+  "name": "v1 ignores ring and trend",
+  "budget": "panel",
+  "view": {
+   "type": "stack",
+   "children": [
+    {
+     "type": "progress",
+     "shape": "donut",
+     "value": 1
+    },
+    {
+     "type": "metric",
+     "label": "a",
+     "value": 1,
+     "trend": "x"
+    }
+   ]
+  }
+ },
+ {
+  "name": "v1 has no gallery",
+  "budget": "panel",
+  "view": {
+   "type": "gallery",
+   "items": [
+    {
+     "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOI6tkCRAwQCgArfgZpaDia1QAAAABJRU5ErkJggg=="
+    }
+   ]
+  }
+ }
+]

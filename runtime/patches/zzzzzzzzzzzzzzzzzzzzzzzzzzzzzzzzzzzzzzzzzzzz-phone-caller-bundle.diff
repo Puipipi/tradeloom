@@ -1,0 +1,65 @@
+--- a/node_modules/@deepseek-ai/dsh-tools/lib/pipeline.js
++++ b/node_modules/@deepseek-ai/dsh-tools/lib/pipeline.js
+@@ -2,6 +2,8 @@
+ import { scopeTarget } from "@deepseek-ai/dsh-scope";
+ import { HarnessError, createToolResultMessage } from "@deepseek-ai/dsh-llm";
+ import { assertNever, deepFreeze, snapshotJsonValue } from "@deepseek-ai/dsh-util-values";
++import { randomUUID } from "node:crypto";
++import { emitAgentEvent } from "@deepseek-ai/dsh-agent";
+ //#region lib/types/batch.js
+ /**
+ * Schedules one assistant step's tool calls. Exclusive calls form barriers;
+@@ -25,8 +27,29 @@
+ * @returns model-ordered outcomes after every started body has settled.
+ * @throws RangeError when the explicit concurrency override is not a positive integer.
+ */
++// Host-owned Agent incarnations; session ids can be restored on a new Agent.
++const phoneAgentEpochs = new WeakMap();
+ async function executeToolBatch(input, pipeline, maxParallel) {
+ 	const { calls: toolCalls, signal, agent, toolSet, maxParallelToolCalls } = input;
++	let phoneCaller;
++	if (agent !== void 0 && input.log !== void 0) {
++		let epoch = phoneAgentEpochs.get(agent);
++		if (epoch === void 0) {
++			phoneAgentEpochs.set(agent, epoch = randomUUID());
++			const session = agent.session;
++			const sessionId = session.id;
++			const capturedEpoch = epoch;
++			agent.ctx.on("session/event", (subject, event) => {
++				if (subject !== session || event.type !== "turn/end") return;
++				emitAgentEvent(agent.ctx, agent, "dsh-go/phone-run-end", {
++					sessionId, runId: `${capturedEpoch}:${event.data.turn}`,
++					completion: event.data.reason?.kind === "completed" ? "completed"
++						: ["aborted", "error", "blocked", "max-tokens"].includes(event.data.reason?.kind) ? "other" : "unknown"
++				});
++			});
++		}
++		phoneCaller = Object.freeze({ sessionId: agent.session.id, runId: `${epoch}:${input.log.turn}` });
++	}
+ 	if (maxParallelToolCalls !== void 0 && (!Number.isInteger(maxParallelToolCalls) || maxParallelToolCalls < 1)) throw new RangeError("maxParallelToolCalls must be a positive integer");
+ 	const settlement = new BatchSettlement(input);
+ 	try {
+@@ -37,6 +60,7 @@
+ 				name: block.name,
+ 				arguments: parseArguments(block.arguments),
+ 				...agent === void 0 ? {} : { agent },
++				...phoneCaller === void 0 ? {} : { phoneCaller },
+ 				...toolSet === void 0 ? {} : { toolSet },
+ 				signal
+ 			}
+@@ -297,6 +321,7 @@
+ 		const rootCallId = exec.rootCallId ?? callId;
+ 		const name = exec.name;
+ 		const agent = exec.agent;
++		const phoneCaller = exec.phoneCaller;
+ 		const parent = exec.parent;
+ 		const signal = exec.signal;
+ 		const visible = this.get(name, agent, exec.toolSet);
+@@ -310,6 +335,7 @@
+ 			name,
+ 			signal,
+ 			...agent !== void 0 ? { agent } : {},
++			...phoneCaller !== void 0 ? { phoneCaller } : {},
+ 			...exec.toolSet !== void 0 ? { toolSet: exec.toolSet } : {},
+ 			...parent !== void 0 ? { parent } : {},
+ 			...exec.schema !== void 0 ? { schema: exec.schema } : {},

@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings of the phone-control accessibility service (phone/a11y). Own file so other
+     modules' string edits never collide with it. English here, Chinese in values-zh/. -->
+<resources>
+    <string name="phone_a11y_label">DSH Phone Control</string>
+    <string name="phone_a11y_description">Works only when you ask DSH to do something on your phone: it reads the text on the current screen (and takes a screenshot when needed), then taps, types and swipes as you ask. Screen content is sent to the DeepSeek model you chose in DSH. While it works, a bar at the top of the screen lets you pause, stop or steer at any time; actions like sending, paying or deleting ask you first. DSH never fills in passwords or verification codes, never pays for you, and never changes system settings or permissions.</string>
+    <!-- The control: ball, capsule and card (phone/a11y/OverlayBall.kt, OverlayCapsule.kt); docs/design/phone-overlay.md. -->
+    <string name="overlay_ball_running">DSH is using your phone. Tap to expand, hold to stop</string>
+    <string name="overlay_ball_paused">Paused. Tap to expand, hold to stop</string>
+    <string name="overlay_ball_waiting">DSH is waiting for you. Tap to expand</string>
+    <string name="overlay_ball_stopped">Stopped</string>
+    <string name="overlay_collapse">Hide details</string>
+    <string name="overlay_expand">Show details</string>
+    <string name="overlay_fold">Shrink to a ball</string>
+    <string name="overlay_fold_row">Shrink to a ball</string>
+    <string name="overlay_hold_hint">Hold pause or the ball for a second to stop</string>
+    <string name="overlay_thought">What DSH is thinking</string>
+    <string name="overlay_stop_description">Stop DSH’s actions</string>
+    <string name="overlay_back_description">Back to DSH Go</string>
+    <string name="overlay_stop_row">Stop</string>
+    <string name="overlay_step">Step %1$d</string>
+    <string name="overlay_dsh_working">DSH at work</string>
+    <string name="overlay_screen_view">Background screen, view only. Tap to resize</string>
+    <string name="overlay_screen_minimize">Minimize the background screen</string>
+    <string name="overlay_screen_restore">Background screen minimized. Tap to expand</string>
+    <string name="overlay_paused_short">Paused</string>
+    <string name="overlay_waiting">Waiting for you below</string>
+    <string name="overlay_waived">No approval needed</string>
+    <string name="overlay_meta_separator">" · "</string>
+    <string name="overlay_unlocks_review">Review</string>
+    <string name="overlay_unlock_system">system settings</string>
+    <string name="overlay_unlock_secrets">passwords and codes</string>
+    <string name="overlay_unlock_own_app">DSH Go itself</string>
+    <string name="overlay_list_separator">", "</string>
+    <!-- The ball's screen-reader action that stops the task. -->
+    <item type="id" name="overlay_action_stop" />
+    <!-- The capsule's screen-reader actions: where it rests (it can't be dragged by touch exploration), and folding. -->
+    <item type="id" name="overlay_action_left" />
+    <item type="id" name="overlay_action_centre" />
+    <item type="id" name="overlay_action_right" />
+    <item type="id" name="overlay_action_fold" />
+    <string name="overlay_move_left">Move to the left</string>
+    <string name="overlay_move_centre">Move to the middle</string>
+    <string name="overlay_move_right">Move to the right</string>
+    <string name="overlay_preview_waiting">Waiting for the background screen…</string>
+    <string name="overlay_preview_protected">Protected screen. Preview is hidden.</string>
+    <string name="overlay_preview_unavailable">Background preview is unavailable.</string>
+    <string name="overlay_control_rejected">The task did not accept this control.</string>
+    <string name="overlay_steer_rejected">Not sent. The task no longer accepts this message; your text is kept.</string>
+    <string name="overlay_preview_in_use">Another task is being previewed</string>
+    <string name="background_parallel_limit_invalid">Choose 1, 2, or 3 background tasks.</string>
+    <string name="background_parallel_limit_save_failed">Could not save the background task limit. Please try again.</string>
+</resources>

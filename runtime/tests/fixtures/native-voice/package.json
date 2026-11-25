@@ -1,0 +1,24 @@
+{
+  "name": "dsh-go-fixture-voice",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "description": "Test-only native plugin (never shipped): the v1.2 capabilities (audio, voice, micro, overlay) for runtime/tests/native-capabilities-live.mjs.",
+  "dshGo": {
+    "v": 1,
+    "title": "朗读",
+    "icon": "speaker",
+    "capabilities": ["audio", "voice", "micro", "overlay"],
+    "contributes": {
+      "message.actions": [
+        { "id": "read", "label": "朗读", "icon": "speaker", "requires": ["audio"] },
+        { "id": "events", "label": "事件" }
+      ],
+      "panels": [{ "id": "captions", "title": "字幕", "micro": "caption" }],
+      "media": [{ "id": "speech" }],
+      "micro": [{ "id": "caption" }],
+      "overlays": [{ "id": "line", "channel": "caption", "text": "朗读中" }]
+    }
+  }
+}

@@ -1,0 +1,16 @@
+--- a/node_modules/@deepseek-ai/dsh-skill-filesystem/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-skill-filesystem/lib/index.js
+@@ -344,7 +344,12 @@
+ 			const mode = await resolveRootWatchMode(state.root.path, this.config.followSymlinks);
+ 			const watcher = mode.kind === "ancestor" ? this.openAncestorWatcher(state, mode) : await this.openRootWatcher(state, mode);
+ 			/* v8 ignore else -- A host path transition between the two probes is timing-dependent. */
+-			if (sameWatchMode(mode, await resolveRootWatchMode(state.root.path, this.config.followSymlinks))) return watcher;
++			try {
++				if (sameWatchMode(mode, await resolveRootWatchMode(state.root.path, this.config.followSymlinks))) return watcher;
++			} catch (error) {
++				await this.closeWatcher(watcher);
++				throw error;
++			}
+ 			/* v8 ignore next -- Covered by the same host path transition guard. */
+ 			await this.closeWatcher(watcher);
+ 		}

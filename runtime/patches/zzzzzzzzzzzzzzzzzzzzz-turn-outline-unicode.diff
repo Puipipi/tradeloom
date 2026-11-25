@@ -1,0 +1,43 @@
+--- a/node_modules/@deepseek-ai/dsh-session-turn-outline/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-session-turn-outline/lib/index.js
+@@ -25,6 +25,13 @@
+ const PROMPT_PREVIEW_LIMIT = 50;
+ /** Response budget: three rail-card lines (12px over ~276px). */
+ const RESPONSE_PREVIEW_LIMIT = 120;
++/** Keep the existing UTF-16 budget without splitting a complete code point. */
++function previewPrefix(text, end) {
++	const high = text.charCodeAt(end - 1);
++	const low = text.charCodeAt(end);
++	if (high >= 0xD800 && high <= 0xDBFF && low >= 0xDC00 && low <= 0xDFFF) end--;
++	return text.slice(0, end);
++}
+ /** Space-join text blocks, collapse whitespace, and cap at `limit` with a trailing ellipsis when clipped. */
+ function preview(content, limit) {
+ 	let text = "";
+@@ -36,7 +43,7 @@
+ 			break;
+ 		}
+ 		const clipped = block.text.length > limit * 2;
+-		const chunk = clipped ? block.text.slice(0, limit * 2) : block.text;
++		const chunk = clipped ? previewPrefix(block.text, limit * 2) : block.text;
+ 		text += text === "" ? chunk : ` ${chunk}`;
+ 		if (clipped) {
+ 			unread = true;
+@@ -44,7 +51,7 @@
+ 		}
+ 	}
+ 	const normalized = text.replace(/\s+/g, " ").trim();
+-	if (normalized.length > limit - 1) return `${normalized.slice(0, limit - 1).trimEnd()}…`;
++	if (normalized.length > limit - 1) return `${previewPrefix(normalized, limit - 1).trimEnd()}…`;
+ 	return unread ? `${normalized}…` : normalized;
+ }
+ const turnOutlineEntriesSchema = z.array(z.object({
+@@ -76,7 +83,7 @@
+ /** The `turnOutline` unit registered on `ctx.sessionProjections` (exported for the unit spec). */
+ const turnOutlineProjectionDefinition = {
+ 	key: "turnOutline",
+-	stateVersion: 2,
++	stateVersion: 3,
+ 	stateSchema: turnOutlineStateSchema,
+ 	init: () => EMPTY_OUTLINE,
+ 	apply: (state, event) => {

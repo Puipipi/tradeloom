@@ -1,0 +1,35 @@
+{
+  "frameWidth": 120,
+  "frameHeight": 96,
+  "columns": 6,
+  "levels": [
+    {
+      "level": 1,
+      "image": "whale_1.png",
+      "frames": 1,
+      "frameMs": 0,
+      "source": "1.webp"
+    },
+    {
+      "level": 2,
+      "image": "whale_2.png",
+      "frames": 24,
+      "frameMs": 30,
+      "source": "2.gif"
+    },
+    {
+      "level": 3,
+      "image": "whale_3.png",
+      "frames": 24,
+      "frameMs": 20,
+      "source": "3.gif"
+    },
+    {
+      "level": 4,
+      "image": "whale_4.png",
+      "frames": 36,
+      "frameMs": 20,
+      "source": "4.gif"
+    }
+  ]
+}

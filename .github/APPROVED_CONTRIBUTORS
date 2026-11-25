@@ -1,0 +1,5 @@
+# GitHub usernames that may submit implementation PRs, one per line.
+# dsh-Go currently does not accept any external pull requests; the list is kept
+# empty on purpose. Collaborators with write/admin/maintain pass the gate even
+# if omitted, so the maintainer needs no entry here.
+# Maintainers add names; do not open an issue or discussion asking to join.

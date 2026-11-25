@@ -1,0 +1,118 @@
+{
+  "archive": [
+    {
+      "name": "complete",
+      "zip": "UEsDBBQAAAAIAAAAAADCQSQ1CAAAAAMAAAAFAAAAYS50eHQBAwD8/2FiY1BLAQIUAxQAAAAIAAAAAADCQSQ1CAAAAAMAAAAFAAAAAAAAAAAAAACkgQAAAABhLnR4dFBLBQYAAAAAAQABADMAAAArAAAAAAA=",
+      "readValid": true
+    },
+    {
+      "name": "missing-bfinal",
+      "zip": "UEsDBBQAAAAIAAAAAADCQSQ1CAAAAAMAAAAFAAAAYS50eHQAAwD8/2FiY1BLAQIUAxQAAAAIAAAAAADCQSQ1CAAAAAMAAAAFAAAAAAAAAAAAAACkgQAAAABhLnR4dFBLBQYAAAAAAQABADMAAAArAAAAAAA=",
+      "readValid": false
+    },
+    {
+      "name": "trailing-bytes",
+      "zip": "UEsDBBQAAAAIAAAAAADCQSQ1DAAAAAMAAAAFAAAAYS50eHQBAwD8/2FiY2p1bmtQSwECFAMUAAAACAAAAAAAwkEkNQwAAAADAAAABQAAAAAAAAAAAAAApIEAAAAAYS50eHRQSwUGAAAAAAEAAQAzAAAALwAAAAAA",
+      "readValid": false
+    },
+    {
+      "name": "bad-symlink-before-callback",
+      "zip": "UEsDBBQAAAAIAAAAAACDFtyMAQAAAAEAAAAGAAAAdW51c2VkB1BLAQIUAxQAAAAIAAAAAACDFtyMAQAAAAEAAAAGAAAAAAAAAAAAAAD/oQAAAAB1bnVzZWRQSwUGAAAAAAEAAQA0AAAAJQAAAAAA",
+      "readValid": false
+    },
+    {
+      "name": "duplicate-last-wins",
+      "zip": "UEsDBBQAAAAAAAAAAACLntnTAQAAAAEAAAAEAAAAc2FtZUFQSwMEFAAAAAAAAAAAADHP0EoBAAAAAQAAAAQAAABzYW1lQlBLAQIUAxQAAAAAAAAAAACLntnTAQAAAAEAAAAEAAAAAAAAAAAAAACkgQAAAABzYW1lUEsBAhQDFAAAAAAAAAAAADHP0EoBAAAAAQAAAAQAAAAAAAAAAAAAAKSBIwAAAHNhbWVQSwUGAAAAAAIAAgBkAAAARgAAAAAA",
+      "readValid": false
+    },
+    {
+      "name": "crc-mismatch",
+      "zip": "UEsDBBQAAAAAAAAAAADDQSQ1AwAAAAMAAAAFAAAAYS50eHRhYmNQSwECFAMUAAAAAAAAAAAAw0EkNQMAAAADAAAABQAAAAAAAAAAAAAApIEAAAAAYS50eHRQSwUGAAAAAAEAAQAzAAAAJgAAAAAA",
+      "readValid": false
+    },
+    {
+      "name": "utf8-bom-name",
+      "zip": "UEsDBBQAAAgIAAAAIQBDv6ajBAAAAAIAAAAMAAAA77u/cGFjay5qc29uq64FAFBLAQIUAxQAAAgIAAAAIQBDv6ajBAAAAAIAAAAMAAAAAAAAAAAAAACkgQAAAADvu79wYWNrLmpzb25QSwUGAAAAAAEAAQA6AAAALgAAAAAA",
+      "readValid": true
+    },
+    {
+      "name": "cp437-name",
+      "zip": "UEsDBBQAAAAIAAAAIQDCQSQ1BQAAAAMAAAAFAAAAgi50eHRLTEoGAFBLAQIUAxQAAAAIAAAAIQDCQSQ1BQAAAAMAAAAFAAAAAAAAAAAAAACkgQAAAACCLnR4dFBLBQYAAAAAAQABADMAAAAoAAAAAAA=",
+      "readValid": true
+    },
+    {
+      "name": "actual-inflate-budget",
+      "zip": "UEsDBBQAAAAIAAAAIQAK6pscFAAAAAMAAAAFAAAAYS50eHTtwQENAAAAwqDaj28PBxQAAADwblBLAQIUAxQAAAAIAAAAIQAK6pscFAAAAAMAAAAFAAAAAAAAAAAAAACkgQAAAABhLnR4dFBLBQYAAAAAAQABADMAAAA3AAAAAAA=",
+      "readValid": false
+    }
+  ],
+  "json": [
+    {
+      "name": "duplicate-escaped-key",
+      "raw": "{\"id\":1,\"\\u0069d\":2}",
+      "ciAccepted": false,
+      "ciError": "json-duplicate"
+    },
+    {
+      "name": "same-key-nested",
+      "raw": "{\"id\":1,\"child\":{\"id\":2}}",
+      "ciAccepted": true,
+      "ciError": null
+    },
+    {
+      "name": "lone-high-surrogate",
+      "raw": "{\"x\":\"\\ud800\"}",
+      "ciAccepted": false,
+      "ciError": "json-unicode"
+    },
+    {
+      "name": "paired-surrogate",
+      "raw": "{\"x\":\"\\ud83d\\ude00\"}",
+      "ciAccepted": true,
+      "ciError": null
+    },
+    {
+      "name": "infinite-number",
+      "raw": "{\"x\":1e400}",
+      "ciAccepted": false,
+      "ciError": "json-nonfinite"
+    },
+    {
+      "name": "empty-array-depth64",
+      "raw": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]",
+      "ciAccepted": true,
+      "ciError": null
+    },
+    {
+      "name": "empty-array-depth65",
+      "raw": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]",
+      "ciAccepted": false,
+      "ciError": "json-depth"
+    },
+    {
+      "name": "bom-json",
+      "raw": "\ufeff{\"x\":1}",
+      "ciAccepted": false
+    }
+  ],
+  "png": [
+    {
+      "name": "valid",
+      "bytes": 73,
+      "png": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAEElEQVR4AQEFAPr/AP8AAP8FAAH/+lyI0QAAAABJRU5ErkJggg==",
+      "valid": true
+    },
+    {
+      "name": "missing-bfinal",
+      "bytes": 73,
+      "png": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAEElEQVR4AQAFAPr/AP8AAP8FAAH/Z1NppwAAAABJRU5ErkJggg==",
+      "valid": false
+    },
+    {
+      "name": "idat-trailing",
+      "bytes": 77,
+      "png": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAFElEQVR4AQEFAPr/AP8AAP8FAAH/anVuazxTAacAAAAASUVORK5CYII=",
+      "valid": false
+    }
+  ]
+}

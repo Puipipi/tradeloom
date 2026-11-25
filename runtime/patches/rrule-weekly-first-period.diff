@@ -1,0 +1,14 @@
+--- a/node_modules/rrule/dist/es5/rrule.js
++++ b/node_modules/rrule/dist/es5/rrule.js
+@@ -2983,6 +2983,11 @@
+         return emitResult(iterResult);
+     }
+     var counterDate = DateTime.fromDate(dtstart);
++    if (freq === Frequency.WEEKLY && notEmpty(bysetpos)) {
++        // Rank the complete week; the existing DTSTART cutoff still filters results.
++        var daysBefore = pymod(counterDate.getWeekday() - options.wkst, 7);
++        counterDate = DateTime.fromDate(new Date(dtstart.getTime() - daysBefore * ONE_DAY));
++    }
+     var ii = new iterinfo(options);
+     ii.rebuild(counterDate.year, counterDate.month);
+     var timeset = makeTimeset(ii, counterDate, options);

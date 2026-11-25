@@ -1,0 +1,56 @@
+diff --git a/packages/llm/llm-pi-ai/src/discovery.ts b/packages/llm/llm-pi-ai/src/discovery.ts
+index d171b302..24f96c83 100644
+--- a/packages/llm/llm-pi-ai/src/discovery.ts
++++ b/packages/llm/llm-pi-ai/src/discovery.ts
+@@ -315,7 +315,9 @@ export async function discoverModels(
+   const apiKey = supplied === undefined ? undefined : usableProbeKey(supplied)
+   let response: Response
+   try {
+-    const headers = new Headers(stored?.headers === undefined ? undefined : Object.entries(stored.headers))
++    const configuredHeaders = request.headers?.map(({ name, value }): [string, string] => [name, value])
++      ?? (stored?.headers === undefined ? undefined : Object.entries(stored.headers))
++    const headers = new Headers(configuredHeaders)
+     headers.set('accept', 'application/json')
+     if (api === 'anthropic-messages') {
+       headers.set('anthropic-version', ANTHROPIC_VERSION)
+diff --git a/packages/llm/llm/src/index.ts b/packages/llm/llm/src/index.ts
+index 14be9c87..898c3d1f 100644
+--- a/packages/llm/llm/src/index.ts
++++ b/packages/llm/llm/src/index.ts
+@@ -660,6 +660,23 @@ export class LlmRuntime extends TypertRemoteService {
+     }
+   }
+ 
++  /**
++   * Interrogate a draft with explicit request headers. A separate Remote entry
++   * lets older Hosts reject this capability instead of stripping the field.
++   * @param settingsNs - namespace whose registered discovery serves this draft.
++   * @param request - endpoint, protocol, one-shot credential and request headers.
++   * @param signal - caller cancellation supplied by the Remote carrier.
++   * @returns advertised models in endpoint order.
++   */
++  @Remote('discoverModelsWithHeaders')
++  remoteDiscoverModelsWithHeaders(
++    settingsNs: string,
++    request: LlmModelDiscoveryRequest,
++    signal: AbortSignal,
++  ): Promise<LlmDiscoveredModel[]> {
++    return this.remoteDiscoverModels(settingsNs, request, signal)
++  }
++
+   /**
+    * Resolve the retry policy captured when one provider route was registered.
+    * @param provider - registered provider route to inspect.
+diff --git a/packages/llm/llm/src/types.ts b/packages/llm/llm/src/types.ts
+index 8a48b898..0a5c7fe5 100644
+--- a/packages/llm/llm/src/types.ts
++++ b/packages/llm/llm/src/types.ts
+@@ -315,6 +315,8 @@ export interface LlmModelDiscoveryRequest {
+   api?: string
+   /** Credential for this interrogation alone; the harness never stores it. */
+   apiKey?: string
++  /** Request headers for this interrogation only; omission uses the stored profile, and an empty list clears it. */
++  headers?: Array<{ name: string; value: string }>
+ }
+ 
+ /** Provider-side discovery request with operation-local cancellation attached. */

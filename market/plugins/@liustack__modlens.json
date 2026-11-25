@@ -1,0 +1,14 @@
+{
+  "name": "@liustack/modlens",
+  "version": "3.27.2",
+  "title": {
+    "zh": "图片理解",
+    "en": "Vision"
+  },
+  "summary": {
+    "zh": "让纯文本模型看懂图片",
+    "en": "Vision for text-only models"
+  },
+  "category": "tools",
+  "screenshots": []
+}

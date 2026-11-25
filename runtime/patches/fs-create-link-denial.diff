@@ -1,0 +1,6 @@
+# dsh-go: SELinux may deny hard links with EACCES while exclusive creation is allowed.
+--- a/node_modules/@deepseek-ai/dsh-fs-local/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-fs-local/lib/index.js
+@@ -591 +591 @@
+-			if (!(error instanceof Error && "code" in error && typeof error.code === "string" && ["EPERM", "EXDEV", "ENOTSUP", "EMLINK"].includes(error.code))) {
++			if (!(error instanceof Error && "code" in error && typeof error.code === "string" && ["EACCES", "EPERM", "EXDEV", "ENOTSUP", "EMLINK"].includes(error.code))) {

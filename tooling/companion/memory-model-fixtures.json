@@ -1,0 +1,226 @@
+{
+  "fixture_version": 1,
+  "kind": "compiled-product-fixtures",
+  "sources": [
+    {
+      "path": "app/test/companion/companion_host_memory_transport_test.dart",
+      "sha256": "5657ec64cbe02af4566032734ac6a77fee18d50f228dc88ec7008576bdf031a9"
+    },
+    {
+      "path": "app/test/companion/companion_host_usage_owner_test.dart",
+      "sha256": "cb9c35c7b763e41fca883abb27030ba01ef90ad200ed145392bcce3ff6d78022"
+    },
+    {
+      "path": "app/test/companion/companion_initiative_owner_test.dart",
+      "sha256": "606c8ae2776ea815ccce4dbfbfdbca08d5f52305b9f9b38a44233b6ea52ff506"
+    },
+    {
+      "path": "app/test/companion/companion_initiative_test.dart",
+      "sha256": "26008dabc9a91b9651dc9e888db7930207ae6fd5739947125da8d47802433f7e"
+    },
+    {
+      "path": "app/test/companion/companion_invite_test.dart",
+      "sha256": "53d395e076664e5213f785a32f843c195fa6c5e2afd083ea0e1ce79eb7a512fc"
+    },
+    {
+      "path": "app/test/companion/companion_light_test.dart",
+      "sha256": "271c7aced1bbcdcb0eafc9f17d81057fa3e57bfd65cdf92be8e900d49fe806a5"
+    },
+    {
+      "path": "app/test/companion/companion_memory_control_replay_test.dart",
+      "sha256": "9a44d95eddc4b8c2468a0909753b3d74ce0b294d98a6c6cf33e29b9d07742485"
+    },
+    {
+      "path": "app/test/companion/companion_memory_dates_replay_test.dart",
+      "sha256": "ed1149ccfe2353a8f07978f4e833eca13c7a9dcc5a25c3e4268643310a931d4c"
+    },
+    {
+      "path": "app/test/companion/companion_memory_idle_replay_test.dart",
+      "sha256": "fcc5d4dbb76ba1a3c0603c91c1a7b46f523784a8e6d830af6a9faa08ac835d0b"
+    },
+    {
+      "path": "app/test/companion/companion_memory_input_test.dart",
+      "sha256": "7f6bf62e316a108305a74d02a943d2a4a83f88c656e478aa894f74ab3e209ea3"
+    },
+    {
+      "path": "app/test/companion/companion_memory_lifecycle_test.dart",
+      "sha256": "542155f1516fd08f8d8639e4be4590f727c9020f5ff2111197bbc98299edbe51"
+    },
+    {
+      "path": "app/test/companion/companion_memory_owner_test.dart",
+      "sha256": "6a92fe283d595ce9586929126ec18c22d9a181c2b7848f9bad08bd6a7eeef9d3"
+    },
+    {
+      "path": "app/test/companion/companion_memory_worker_test.dart",
+      "sha256": "bd7c6b95387df856f128b81c02d4290b15b00891f471f5a647f8b47fbe7944d4"
+    },
+    {
+      "path": "app/test/companion/companion_page_test.dart",
+      "sha256": "50ba33e060061a45f1410b3b36c74c00e6382ffb4325e39cc331d38fce2d6633"
+    },
+    {
+      "path": "app/test/companion/companion_recall_room_test.dart",
+      "sha256": "2a2a8a20eb9ac58f3d4535340f6af13bbdfd259f1f0fe70bf8c4b88889ef146c"
+    },
+    {
+      "path": "app/test/companion/companion_signal_initiative_test.dart",
+      "sha256": "e906885b774049c7d27ca737b7190c2ff30d60bd472a9b066a603b7509873737"
+    },
+    {
+      "path": "app/test/companion/companion_signal_owner_test.dart",
+      "sha256": "8cb4630a0bd530c00c5557b33d076b7d9b3f3918c97b9a16b7a5e439271102ac"
+    },
+    {
+      "path": "app/test/companion/companion_stream_state_test.dart",
+      "sha256": "c528059d7022a797c6509467a601dd1bf6318f5eea341eeecfdc5d10daf67383"
+    },
+    {
+      "path": "app/test/companion/companion_test_settle.dart",
+      "sha256": "387df443d245f8eeea9ec536a119996904a4a44183558306ef11e3dd0e7b4c66"
+    },
+    {
+      "path": "app/test/companion/companion_widget_memory_test.dart",
+      "sha256": "8aef435838c2090b23739ddf41a881b6d5d71c487fedbeb94b72ebd5334edf8b"
+    },
+    {
+      "path": "app/test/companion/initiative_memory.dart",
+      "sha256": "404713a68ac510745fccc9253c98d1d9aa368eed80da6ee37c3ca8ec6a422555"
+    },
+    {
+      "path": "app/test/companion/phone_keeper_fake.dart",
+      "sha256": "c0417b092b685f837831d5679d6a7da164abc4a30b6ca4d52ee82496bd5a8bc2"
+    },
+    {
+      "path": "app/test/flutter_test_config.dart",
+      "sha256": "16b5eeafdad695f862a923ddcae1d46c750f81bf8ba03a7bb2752d09def3faa9"
+    },
+    {
+      "path": "app/test/support/bundle.dart",
+      "sha256": "d18cc5eefcd1ca038ab3f54e7ef66652a8ec92a948345368aaa3ad77af0c296f"
+    },
+    {
+      "path": "app/test/support/bundle_widgets.dart",
+      "sha256": "f05642e65cc15318c82fa1410fc6a3a0326c98baa1a3be4db73375a8bac720fe"
+    },
+    {
+      "path": "app/test/support/companion_notes_peer.dart",
+      "sha256": "869963b1411be28b7b8fe0298b42ab910247a60d164e198d2c6d5cc94b6179b5"
+    },
+    {
+      "path": "app/test/support/companion_session_peer.dart",
+      "sha256": "3b5f939ffe4691677d043d1c0a2af5e96998c37209d9104840efc4ed55fef69f"
+    },
+    {
+      "path": "app/test/support/test_defaults.dart",
+      "sha256": "5ee71d775f7e4ed373ea6b3b90bc9c6b191a53ebbcc08ec04f4c9d3299ae1753"
+    },
+    {
+      "path": "app/test/support/test_fonts.dart",
+      "sha256": "48b8cb6c3a43109b96d140021cc15fe6ae89481ceca534cf7d082a211239732c"
+    },
+    {
+      "path": "app/tool/companion_memory_replay_test.dart",
+      "sha256": "526f410633a243ccc51d2f0dd5fa1f8999240e9fcb2e672d6765ed3cbc6bad2d"
+    },
+    {
+      "path": "packages/dsh_client/test/companion_auxiliary_api_test.dart",
+      "sha256": "e8a0602c074dd1532442a527f9976323d722a4d09f8041445fee9beab64071b9"
+    },
+    {
+      "path": "packages/dsh_client/test/companion_followup_store_test.dart",
+      "sha256": "531e4c9868ba9b32783f04de908aa0c51cb1f0dd3637751d338d79230367bf4e"
+    },
+    {
+      "path": "packages/dsh_client/test/companion_memory_chat_replay_test.dart",
+      "sha256": "977ee1385771ba417bcb6eb3c978d439fee552914f61005c8e6456c007e69377"
+    },
+    {
+      "path": "packages/dsh_client/test/companion_memory_control_anchor_test.dart",
+      "sha256": "82d4c73cfdbc85165a0b8d1db56c2a96bd3a943243fd289682dd4b2ec5382f8b"
+    },
+    {
+      "path": "packages/dsh_client/test/companion_memory_delete_lineage_test.dart",
+      "sha256": "bb37a75f47d01484c9f637008c4aecfaca160b7c7047ff6d552736bdad5db882"
+    },
+    {
+      "path": "packages/dsh_client/test/companion_memory_flow_test.dart",
+      "sha256": "feec91dfc7ec7b14e6954045091f23840a29436eb9456b35963946e9944fae2d"
+    },
+    {
+      "path": "packages/dsh_client/test/companion_memory_merge_rules_test.dart",
+      "sha256": "8beb6c2b260909fc404e3843e34776c3e9eae3590f8a62fb0aaa08f655074fd1"
+    },
+    {
+      "path": "packages/dsh_client/test/companion_memory_merge_test.dart",
+      "sha256": "d31d2406c986fe89d5d4385f050518bcbd7abc6739083c9c009af7c4a710546c"
+    },
+    {
+      "path": "packages/dsh_client/test/companion_memory_rules_test.dart",
+      "sha256": "3870de055e3b4308ebf94816b5b958e14e9e6679125ba9dedf6d1f8d3a73f232"
+    },
+    {
+      "path": "packages/dsh_client/test/companion_memory_store_test.dart",
+      "sha256": "012bf37a12b2b110f377d4b81dd75ec7f1feb8d44473aaba0ae79801a2b52fa0"
+    },
+    {
+      "path": "packages/dsh_client/test/companion_migration_recovery_test.dart",
+      "sha256": "9086077918b958e9a991eb227d0bd11c9e80a6f054659aaab8b523f5187ecac4"
+    },
+    {
+      "path": "packages/dsh_client/test/companion_prompt_commit_test.dart",
+      "sha256": "9fa4cd92fad518777466d39f6021c242d29107a3c14bc64af23dbda9f1aae350"
+    },
+    {
+      "path": "packages/dsh_client/test/companion_prompt_context_test.dart",
+      "sha256": "703123e82775430ce295b115723dba195165d57d9bc0dda9af985c6279a3cbb5"
+    },
+    {
+      "path": "packages/dsh_client/test/support/fake_dsh.dart",
+      "sha256": "d6f8509eb65feb2a94294f8947c2687b916e801ae041e04fac93584a2d9d223d"
+    },
+    {
+      "path": "packages/dsh_client/test/support/old_memory_schema.dart",
+      "sha256": "0401da32cb81c9f9e5040322146aefa974d834a3113b8f844a6ae97af99cd761"
+    },
+    {
+      "path": "packages/dsh_client/tool/companion_memory_replay_test.dart",
+      "sha256": "a7ba23210a4dfd744dc7b6a7becce473f6984e754759a6f9516c6636d32f1d68"
+    },
+    {
+      "path": "runtime/tests/companion-chat-usage-integration.test.mjs",
+      "sha256": "05f20ae7ad6fa3e974deb19ec72c5b2c0c2874daf826a845c15ef4064579b764"
+    },
+    {
+      "path": "runtime/tests/companion-phone-memory-integration.test.mjs",
+      "sha256": "f553bf4e40884a5eab2cda981e1cf7b266b8943726f4fa1c02636aa9ea54dc7c"
+    },
+    {
+      "path": "runtime/tests/companion-phone-memory-replay.test.mjs",
+      "sha256": "67a5b8785f3fc18a15fcbe02308e80b536da94a51e5f17a0ec88c9ae28b85c81"
+    },
+    {
+      "path": "runtime/tests/fixtures/companion-phone-replay.mjs",
+      "sha256": "4607d806d09ffda6d9a4a2c7ea9b7dedc884db7321ee001bb464f553f05183ca"
+    },
+    {
+      "path": "runtime/tests/fixtures/companion-phone-restart.mjs",
+      "sha256": "cb7076d70c72936fac7cdff4d2bd647492403893df10da417484fef0dd373d08"
+    },
+    {
+      "path": "runtime/tests/fixtures/companion-recall-engine.mjs",
+      "sha256": "53fcfa6da31001c7cb3a59cc1eb83a9ab35281ebe7121fc28c5636037a0fcc92"
+    },
+    {
+      "path": "tooling/companion/fixtures/phone-context.json",
+      "sha256": "85e6e0f616af060dba29534960ae90f3bb83b91e4a46b123bae965aa3b168366"
+    },
+    {
+      "path": "tooling/companion/offline_http.dart",
+      "sha256": "b4b78e51ab9f88a083be5bd409ab5d1787f18faf65a9de48e910790113745f0e"
+    },
+    {
+      "path": "tooling/companion/fixtures/page-phone-context-v3.json",
+      "sha256": "842dd3f35617789bb63e2df69c690d5e48d0fc34238bd03a35527a7acf762e82"
+    }
+  ]
+}

@@ -1,0 +1,278 @@
+#!/usr/bin/env bash
+# Builds dsh-go APKs. Every APK that goes onto a phone or emulator comes from
+# here, dev and release alike: each build gets a fresh versionCode (the build
+# minute, see tooling/build_number.py), so it installs over the previous one and
+# the system refreshes what it cached for the old build (icons included).
+#
+#   tooling/build-apk.sh                       release, arm64 (phone)
+#   tooling/build-apk.sh -f x64                release, x64 (emulator)
+#   tooling/build-apk.sh -f all                both flavors with one build number (local testing only)
+#   tooling/build-apk.sh --debug -f x64 -t lib/dev/runtime_probe_main.dart
+#   tooling/build-apk.sh --dry-run -f all      print the commands, build nothing
+#   tooling/build-apk.sh -- --dart-define=K=V  extra flags for `flutter build apk`
+#
+#   -f, --flavor arm64|x64|all       default arm64
+#   --release | --debug | --profile  default --release
+#   -t, --target FILE                Dart entry point, relative to app/
+#   -n, --build-number N             use 2..2100000000 instead of the build minute (never lower than installed)
+#   --build-name X.Y.Z               version name instead of app/pubspec.yaml's
+#   --keep-daemon                    leave the Gradle daemon running afterwards
+#   --no-companion                   release without the licensed companion pack
+#   --beta                           embed the beta channel token (internal builds only)
+#   --side                           test build that installs next to the released app
+#                                    (package ...dsh_app.test, named DSH Go 测试, own data)
+#   --tradeloom                      TradeLoom build with package suffix .tradeloom; optional updates use TRADELOOM_UPDATE_FEED
+#   --no-star                        release without the star prompt
+#   --dry-run                        print what would run
+#
+# The version name comes from app/pubspec.yaml; its `+N` is only a placeholder.
+# Public release builds ask GitHub only, and ask for a star (DSH_STAR_PROMPT,
+# docs/design/star-prompt.md); --beta, --side and --no-star builds don't. `--beta` embeds the beta channel token
+# (lib/update/update_config.dart) for internal builds; the token file is
+# ~/keys/dshgo-beta-channel.token (mode 600), DSH_BETA_TOKEN_FILE points
+# elsewhere. Never printed, never part of a public release.
+# Release builds carry the companion pack, which stays out of the repository:
+# app/assets/companion/whale-girl.zip, else ~/keys/dsh-go/companion-pack-whale-girl.zip
+# (DSH_COMPANION_PACK points elsewhere), credited by tooling/companion_pack.py.
+# This script takes no machine locks; callers add their own.
+set -euo pipefail
+
+ROOT=$(CDPATH= cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+APP="$ROOT/app"
+OUT="$APP/build/app/outputs/flutter-apk"
+
+usage() { sed -n '2,27p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+die() { echo "build-apk: $*" >&2; exit 1; }
+
+flavor=arm64 mode=release target='' code='' name='' dry=0 keep_daemon=0 want_beta=0 side=0 tradeloom=0 companion=1 no_companion=0 star=1
+extra=()
+no_pub=0
+while (($#)); do
+  case "$1" in
+    -f | --flavor) flavor=${2:?--flavor needs a value}; shift 2 ;;
+    --flavor=*) flavor=${1#*=}; shift ;;
+    --release | --debug | --profile) mode=${1#--}; shift ;;
+    -t | --target) target=${2:?--target needs a file}; shift 2 ;;
+    --target=*) target=${1#*=}; shift ;;
+    -n | --build-number) code=${2:?--build-number needs a number}; shift 2 ;;
+    --build-number=*) code=${1#*=}; shift ;;
+    --build-name) name=${2:?--build-name needs a version}; shift 2 ;;
+    --build-name=*) name=${1#*=}; shift ;;
+    --keep-daemon) keep_daemon=1; shift ;;
+    --beta) want_beta=1; shift ;;
+    --side) side=1; shift ;;
+    --tradeloom) tradeloom=1; shift ;;
+    --no-star) star=0; shift ;;
+    --no-companion) companion=0 no_companion=1; shift ;;
+    --dry-run) dry=1; shift ;;
+    -h | --help) usage; exit 0 ;;
+    --) shift; extra=("$@"); break ;;
+    *) usage >&2; die "unknown option: $1" ;;
+  esac
+done
+
+case "$flavor" in
+  arm64 | x64) flavors=("$flavor") ;;
+  all) flavors=(arm64 x64) ;;
+  *) die "flavor is arm64, x64 or all: $flavor" ;;
+esac
+((side && tradeloom)) && die "--side and --tradeloom use different package identities"
+((tradeloom && want_beta)) && die "--tradeloom cannot use the DSH Go beta update channel"
+for arg in "${extra[@]}"; do
+  case "$arg" in
+    # The selected mode also controls the runtime preflight below.
+    --build-number* | --build-name* | --flavor* | --target-platform* | \
+    --release | --debug | --profile | --release=* | --debug=* | --profile=* | \
+    --no-release | --no-debug | --no-profile)
+      die "$arg is set by this script; use its own options" ;;
+    --no-pub) no_pub=1 ;;
+    --split-per-abi) die "--split-per-abi adds an ABI offset to versionCode; flavors already split by ABI" ;;
+  esac
+done
+
+# Version name: pubspec's `version:` without the `+N` placeholder.
+if [[ -z $name ]]; then
+  name=$(sed -n 's/^version:[[:space:]]*\([^+[:space:]]*\).*/\1/p' "$APP/pubspec.yaml")
+fi
+[[ $name =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || die "not a version name: '$name'"
+
+# Build number: the build minute unless given.
+if [[ -z $code ]]; then
+  code=$(python3 "$ROOT/tooling/build_number.py")
+else
+  [[ $code =~ ^[0-9]+$ ]] || die "build number is a positive integer: $code"
+  python3 "$ROOT/tooling/build_number.py" --check "$code" || exit 1
+  code=$((10#$code))
+  # Gradle treats 1 as pubspec's placeholder and replaces it with the build minute.
+  ((code != 1)) || die "build number 1 is reserved for the pubspec placeholder; omit --build-number for automatic numbering"
+fi
+when=$(python3 "$ROOT/tooling/build_number.py" --decode "$code" 2>/dev/null || echo "custom")
+
+platform_of() { case "$1" in arm64) echo android-arm64 ;; x64) echo android-x64 ;; esac; }
+
+# Beta channel token: handed to flutter in a JSON file (600, shredded on exit),
+# so it never shows up in the commands printed here.
+beta_file=${DSH_BETA_TOKEN_FILE-$HOME/keys/dshgo-beta-channel.token}
+beta_json="$APP/build/.beta-channel.json"
+beta=0
+# Public builds never carry the channel token: a stale beta feed would outrank
+# the GitHub release in the update checker (that is how 1.0.4 stayed "latest").
+if ((want_beta)) && [[ ! -s $beta_file ]]; then
+  die "--beta needs a token file ($beta_file)"
+fi
+if ((want_beta)) && [[ $mode == release && -n $beta_file && -s $beta_file ]]; then
+  # Same rule as beta-keys.sh: Git Bash (MSYS) makes the mode up, so it is only checked elsewhere.
+  case "$(uname -s)" in
+    MINGW*|MSYS*) ;;
+    *) bits=$(stat -c %a "$beta_file")
+       [[ $bits == 600 || $bits == 400 ]] || die "$beta_file is mode $bits; chmod 600 it" ;;
+  esac
+  beta=1
+fi
+
+# The star prompt: on in every public release build. Handed to flutter as a file
+# ahead of the extra flags, so a DSH_STAR_PROMPT among them (inline, or in a later
+# file) still wins: flutter merges files in order, then inline defines over them.
+star_on=0
+((star && !want_beta && !side && !tradeloom)) && [[ $mode == release ]] && star_on=1
+
+commands=()
+for f in "${flavors[@]}"; do
+  cmd=(flutter build apk "--$mode" --flavor "$f" --target-platform "$(platform_of "$f")"
+    --build-name "$name" --build-number "$code" "--dart-define=DSH_APP_VERSION=$name+$code")
+  if ((tradeloom)); then
+    cmd+=("--dart-define=TRADELOOM_BRAND=true")
+    [[ -z ${TRADELOOM_UPDATE_FEED:-} ]] || cmd+=("--dart-define=TRADELOOM_UPDATE_FEED=$TRADELOOM_UPDATE_FEED")
+  fi
+  [[ -n $target ]] && cmd+=(-t "$target")
+  ((beta)) && cmd+=("--dart-define-from-file=$beta_json")
+  ((star_on)) && cmd+=("--dart-define-from-file=../tooling/star-prompt-on.json")
+  cmd+=("${extra[@]}")
+  commands+=("$(printf '%q ' "${cmd[@]}")")
+done
+
+# Side builds: own package (app/android/app/build.gradle.kts). Their in-app updater still
+# fetches the released APK, which installs as the released app, not over this one.
+if ((side)); then
+  [[ $mode == release ]] || die "--side is for release builds"
+  export DSH_SIDE_BUILD=1
+else
+  unset DSH_SIDE_BUILD
+fi
+if ((tradeloom)); then
+  export TRADELOOM_BUILD=1
+else
+  unset TRADELOOM_BUILD
+fi
+echo "$( ((tradeloom)) && echo tradeloom || echo dsh-go ) $name ($code, $when) · $mode · ${flavors[*]}$( ((beta)) && echo ' · beta channel')$( ((side)) && echo ' · side (dsh_app.test)')$( ((tradeloom)) && echo ' · isolated package (.tradeloom)')$( ((star_on)) && echo ' · star prompt')"
+if ((dry)); then
+  for c in "${commands[@]}"; do
+    if ((tradeloom)); then echo "(cd app && TRADELOOM_BUILD=1 ${c% })"; else echo "(cd app && ${c% })"; fi
+  done
+  ((keep_daemon)) || echo "(cd app/android && ./gradlew --stop)"
+  exit 0
+fi
+
+if ((no_pub)); then
+  python3 -I "$ROOT/tooling/check_flutter_plugin_roots.py" "$APP"
+fi
+
+# Check every selected flavor before starting any build or writing build config.
+# Debug/profile may intentionally exercise UI without a bundled runtime.
+if [[ $mode == release ]]; then
+  mesh_runtime=()
+  if ((tradeloom)) && [[ "${TRADELOOM_RUNTIME_MESH:-0}" == 1 ]]; then
+    mesh_runtime=(--tradeloom-mesh)
+  fi
+  python3 -I "$ROOT/tooling/check_runtime_bundle.py" "${mesh_runtime[@]}" "${flavors[@]}"
+fi
+
+# Toolchain: use what's on PATH; the gitignored tooling/env.sh is the fallback.
+if ! command -v flutter >/dev/null 2>&1; then
+  [[ -f $ROOT/tooling/env.sh ]] && source "$ROOT/tooling/env.sh"
+  command -v flutter >/dev/null 2>&1 || die "flutter is not on PATH"
+fi
+# The companion pack (docs/design/companion.md); a fresh checkout has none.
+((companion)) && [[ $mode == release ]] || companion=0
+if ((companion)) && [[ ! -f $APP/assets/companion/whale-girl.zip ]]; then
+  pack=${DSH_COMPANION_PACK-$HOME/keys/dsh-go/companion-pack-whale-girl.zip}
+  # A killed --no-companion build may have left the only copy here.
+  if [[ ! -f $pack && -f $APP/build/.whale-girl.zip.held ]]; then
+    pack="$APP/build/.whale-girl.zip.held"
+  fi
+  [[ -f $pack ]] || die "no companion pack at $pack; set DSH_COMPANION_PACK, or pass --no-companion"
+  python3 -I "$ROOT/tooling/companion_pack.py" place "$pack"
+fi
+# A HarmonyOS build's plugin overrides must never reach an APK.
+[[ ! -e "$ROOT/app/pubspec_overrides.yaml" ]] || die "app/pubspec_overrides.yaml is left over from a HarmonyOS build; remove it"
+
+stop_daemon() {
+  ((keep_daemon)) && return 0
+  (cd "$APP/android" && ./gradlew --stop -q >/dev/null 2>&1) || true
+}
+drop_beta() { [[ -f $beta_json ]] && shred -u "$beta_json" 2>/dev/null || rm -f "$beta_json"; }
+# --no-companion: a pack an earlier build placed waits outside the assets meanwhile.
+pack_asset="$APP/assets/companion/whale-girl.zip" pack_held="$APP/build/.whale-girl.zip.held"
+pack_moved=0 # only this build's own move is put back, never one a killed build left
+put_back_pack() { ((!pack_moved)) || mv -f "$pack_held" "$pack_asset"; }
+trap 'drop_beta; stop_daemon; put_back_pack' EXIT
+if ((no_companion)) && [[ -f $pack_asset ]]; then
+  mkdir -p "$APP/build"
+  mv -f "$pack_asset" "$pack_held"
+  pack_moved=1
+fi
+if ((beta)); then
+  mkdir -p "$APP/build"
+  (umask 077; python3 -c 'import json, sys; print(json.dumps({"DSH_BETA_CHANNEL_TOKEN": open(sys.argv[1]).read().strip()}))' \
+    "$beta_file" >"$beta_json")
+fi
+
+# libtawcroot.so for the tawcroot launch method (the default where available), from the pinned tawc commit.
+# Release builds must carry it; other builds go on without it (the option shows unavailable).
+if ! python3 -I "$ROOT/runtime/tawcroot/build.py"; then
+  [[ $mode == release ]] && die "tawcroot: libtawcroot.so did not build"
+  rm -rf "$ROOT/runtime/out-tawcroot" # never package an older build's library
+  echo "build-apk: building without libtawcroot.so; the tawcroot launch option will be unavailable" >&2
+fi
+
+# aapt2 to read back what was built (optional).
+aapt2=$(command -v aapt2 || true)
+if [[ -z $aapt2 ]]; then
+  sdk=${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}
+  [[ -n $sdk ]] || sdk=$(sed -n 's/^sdk\.dir=//p' "$APP/android/local.properties" 2>/dev/null || true)
+  aapt2=$(ls -1d "$sdk"/build-tools/*/aapt2{,.exe} 2>/dev/null | sort -V | tail -n 1 || true)
+fi
+[[ -n $aapt2 ]] || echo "build-apk: aapt2 not found; the APKs' versionCode won't be read back" >&2
+
+built=()
+for i in "${!flavors[@]}"; do
+  f=${flavors[$i]}
+  echo "→ ${commands[$i]% }"
+  (cd "$APP" && eval "${commands[$i]}")
+  apk="$OUT/app-$f-$mode.apk"
+  if ((tradeloom)); then
+    branded_apk="$OUT/tradeloom-app-$f-$mode.apk"
+    mv -f "$apk" "$branded_apk"
+    apk="$branded_apk"
+  fi
+  [[ -f $apk ]] || die "$f: no APK at $apk"
+  # R8 renaming what ONNX Runtime's JNI looks up by name aborts the app when a call starts.
+  if [[ $mode == release ]]; then
+    python3 -I "$ROOT/tooling/check_apk_jni.py" "$apk" || die "$f: see proguard-rules.pro"
+    ((companion)) && { python3 -I "$ROOT/tooling/companion_pack.py" check "$apk" || die "$f: companion pack"; }
+  fi
+  if [[ -n $aapt2 ]]; then
+    badge=$("$aapt2" dump badging "$apk" 2>/dev/null | sed -n '/^package:/p' || true)
+    [[ $badge == *"versionCode='$code'"* && $badge == *"versionName='$name'"* ]] ||
+      die "$f: APK says ${badge:-nothing}; expected versionName '$name' versionCode '$code'"
+    expected_id=io.github.ccch1mneyyy.dsh_app
+    ((side)) && expected_id+=.test
+    ((tradeloom)) && expected_id+=.tradeloom
+    [[ $badge == *"name='$expected_id'"* ]] || die "$f: APK package id does not match $expected_id"
+  fi
+  built+=("$apk")
+done
+
+echo
+echo "$( ((tradeloom)) && echo tradeloom || echo dsh-go ) $name ($code, $when)"
+for apk in "${built[@]}"; do echo "  ${apk#"$ROOT/"}"; done

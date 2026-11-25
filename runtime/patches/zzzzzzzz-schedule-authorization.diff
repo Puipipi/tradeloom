@@ -1,0 +1,210 @@
+--- a/node_modules/@deepseek-ai/dsh-schedule/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-schedule/lib/index.js
+@@ -2109,6 +2109,7 @@
+ 		runtime;
+ 		resolveWebAgent;
+ 		stopping = false;
++		dshGoAuthorizationAbort = new AbortController();
+ 		/**
+ 		* @param ctx - Host services owning storage, dispatch, and Session restoration.
+ 		* @param config - Validated delivery-history retention and new-Session admission configuration.
+@@ -2154,6 +2155,7 @@
+ 				try {
+ 					cleanup = ctx.effect(() => async () => {
+ 						this.stopping = true;
++						this.dshGoAuthorizationAbort.abort();
+ 						await this.runtime?.dispose();
+ 						await this.chain;
+ 						await this.notifications;
+@@ -2232,30 +2234,33 @@
+ 		* @returns The stored task. Cancellation does not roll back an in-flight write.
+ 		*/
+ 		async create(request, actorSessionId, signal) {
++			request = structuredClone(request);
+ 			const id = ScheduleId(`schedule-${randomUUID()}`);
+ 			const now = Date.now();
+ 			const record = createScheduleRecord(id, request.title, request.prompt, request.timing, now);
+ 			const target = await this.resolveTarget(request.target ?? { kind: "new_once" }, signal);
++			const createdAt = new Date(now).toISOString();
++			const task = scheduleTaskSchema.parse({
++				record,
++				target,
++				involvedSessionIds: involved(actorSessionId, target, []),
++				status: "active",
++				createdAt,
++				updatedAt: createdAt,
++				deliveryHistory: {
++					records: [],
++					earlierRecordsUnavailable: false,
++					earlierRecordsPruned: false
++				}
++			});
++			await this.dshGoAuthorize(task, actorSessionId, "create", signal);
+ 			return this.serialize(async () => {
+ 				const domain = await this.getDomain();
+ 				signal?.throwIfAborted();
+ 				await this.validateTarget(target, signal);
+ 				signal?.throwIfAborted();
+-				const createdAt = new Date(now).toISOString();
+-				const task = scheduleTaskSchema.parse({
+-					record,
+-					target,
+-					involvedSessionIds: involved(actorSessionId, target, []),
+-					status: "active",
+-					createdAt,
+-					updatedAt: createdAt,
+-					deliveryHistory: {
+-						records: [],
+-						earlierRecordsUnavailable: false,
+-						earlierRecordsPruned: false
+-					}
+-				});
+ 				for (const sessionId of task.involvedSessionIds) this.ctx.sessionPersistence.dshGoDeletion?.assertAdmit(sessionId);
++				this.dshGoAssertFuture(task);
+ 				await domain.table("tasks").put(id, task);
+ 				this.emitChanged();
+ 				this.runtime?.requestDrive();
+@@ -2404,37 +2409,41 @@
+ 		* @returns The updated task, the deletion outcome, or a non-mutating miss or conflict.
+ 		*/
+ 		async edit(request, actorSessionId, signal) {
++			request = structuredClone(request);
+ 			if (request.action === "update" && Object.keys(request.patch).length === 0) throw new ScheduleInputError("invalid_rule", "An update patch requires at least one field.");
+ 			const target = request.action === "update" && request.patch.target !== void 0 ? await this.resolveTarget(request.patch.target, signal) : void 0;
+-			return this.serialize(async () => {
++			const prepared = await this.serialize(async () => {
+ 				const tasks = (await this.getDomain()).table("tasks");
+ 				signal?.throwIfAborted();
+ 				const current = tasks.get(request.id);
+-				if (current === void 0) return {
+-					id: request.id,
+-					code: "schedule_not_found"
+-				};
+-				if (request.expectedUpdatedAt !== void 0 && request.expectedUpdatedAt !== (current.updatedAt ?? null)) return {
+-					id: request.id,
+-					code: "schedule_conflict"
+-				};
++				if (current === void 0) return { result: { id: request.id, code: "schedule_not_found" } };
++				if (request.expectedUpdatedAt !== void 0 && request.expectedUpdatedAt !== (current.updatedAt ?? null)) return { result: { id: request.id, code: "schedule_conflict" } };
+ 				if (request.action === "delete") {
+ 					await tasks.delete(request.id);
+ 					this.emitChanged();
+ 					this.runtime?.requestDrive();
+ 					this.queueNotification(current, actorSessionId, "deleted");
+-					return {
++					return { result: {
+ 						id: request.id,
+ 						deleted: true
+-					};
+-				}
+-				const effectiveTarget = target ?? current.target;
+-				if (target !== void 0 || request.patch.timing !== void 0 || request.patch.active === true) {
+-					await this.validateTarget(effectiveTarget, signal);
+-					signal?.throwIfAborted();
++					} };
+ 				}
+ 				const task = revisedTask(current, request.patch, target, actorSessionId, Date.now());
++				return { task, expected: structuredClone(current) };
++			});
++			if (prepared.result !== void 0) return prepared.result;
++			const { task, expected } = prepared;
++			await this.dshGoAuthorize(task, actorSessionId, "update", signal);
++			return this.serialize(async () => {
++				const tasks = (await this.getDomain()).table("tasks");
++				signal?.throwIfAborted();
++				const current = tasks.get(request.id);
++				if (current === void 0) return { id: request.id, code: "schedule_not_found" };
++				if (!isDeepStrictEqual(current, expected)) return { id: request.id, code: "schedule_conflict" };
++				if (target !== void 0 || request.patch.timing !== void 0 || request.patch.active === true) await this.validateTarget(task.target, signal);
++				signal?.throwIfAborted();
+ 				for (const sessionId of task.involvedSessionIds) this.ctx.sessionPersistence.dshGoDeletion?.assertAdmit(sessionId);
++				this.dshGoAssertFuture(task);
+ 				await tasks.put(request.id, task);
+ 				this.emitChanged();
+ 				this.runtime?.requestDrive();
+@@ -2442,6 +2451,67 @@
+ 				return this.entry(task);
+ 			});
+ 		}
++		dshGoAssertFuture(task) {
++			if (this.stopping || this.dshGoAuthorizationAbort.signal.aborted) throw new RemoteError("schedule-authorization-required", "The schedule service stopped. Authorize the task again after reconnecting.");
++			if (task.status === "active" && Date.parse(task.record.scheduledAt) <= Date.now()) throw new RemoteError("schedule-authorization-required", "The reviewed task time has passed. Propose a future time and confirm again.");
++		}
++		async dshGoAuthorize(task, actorSessionId, operation, signal) {
++			const denied = () => new RemoteError("schedule-authorization-required", "This task requires a separate, explicit user authorization. Rejection, cancellation, timeout, or an unavailable confirmation interface does not authorize it.");
++			if (this.stopping || signal?.aborted) throw denied();
++			// The Remote form: a person acting on a page, as upstream has it. Whoever can call it as
++			// the owner can answer this question too, so asking would only fail the page.
++			if (actorSessionId === void 0) return;
++			const questions = this.ctx.get("userQuestions");
++			if (questions === void 0) throw denied();
++			const sessionId = actorSessionId;
++			this.ctx.sessionPersistence.dshGoDeletion?.assertAdmit(sessionId);
++			let agent = this.ctx.agents.get(sessionId);
++			if (agent === void 0) {
++				if (this.resolveWebAgent === void 0) throw denied();
++				agent = await this.resolveWebAgent(sessionId);
++			}
++			if (delegationDepthOf(agent) > 0) throw denied();
++			const deadline = new AbortController();
++			const combined = AbortSignal.any([deadline.signal, this.dshGoAuthorizationAbort.signal, ...signal === void 0 ? [] : [signal]]);
++			if (combined.aborted) throw denied();
++			const timer = setTimeout(() => deadline.abort(), 120000);
++			let onAbort;
++			const cancelled = new Promise((_, reject) => {
++				onAbort = () => reject(denied());
++				combined.addEventListener("abort", onAbort, { once: true });
++			});
++			const id = `dsh-go-schedule-authorization-${randomUUID()}`;
++			const approve = "授权 / Authorize";
++			// Plain text, not Markdown; escape invisible formatting controls in untrusted fields.
++			const details = JSON.stringify({ operation, sessionId, task }, null, 2).replace(/[\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff]/g, (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`);
++			try {
++				// Questions have no auto-approve path, including on older clients. Do not use
++				// approval/request: full-access sessions and allow-all clients bypass that gate.
++				const answer = await Promise.race([questions.ask({
++					agent,
++					signal: combined,
++					purpose: "schedule-authorization",
++					questions: [{
++						id,
++						header: "定时任务授权 / Schedule authorization",
++						question: "是否授权以下完整任务？到点会唤醒助手并按会话权限执行，不只是通知。仅本次创建或修改有效。\nAuthorize this complete task? It will wake an agent and run with the session's permissions, not just display a notification. This confirmation covers only this creation or edit.\n\n" + details,
++						options: [{ label: approve }, { label: "拒绝 / Reject" }],
++						multiSelect: false
++					}]
++				}), cancelled]);
++				const accepted = answer?.answers;
++				if (combined.aborted || this.stopping || !Array.isArray(accepted) || accepted.length !== 1 || accepted[0].id !== id || !Array.isArray(accepted[0].selected) || accepted[0].selected.length !== 1 || accepted[0].selected[0] !== approve || accepted[0].custom !== void 0) throw denied();
++				this.dshGoAssertFuture(task);
++			} catch (error) {
++				if (error instanceof RemoteError) throw error;
++				throw denied();
++			} finally {
++				clearTimeout(timer);
++				combined.removeEventListener("abort", onAbort);
++				deadline.abort();
++			}
++		}
++
+ 		/**
+ 		* Dispatch one post-commit `schedule/changed` notification, containing
+ 		* synchronous listener failures: every call site emits only after its durable
+--- a/node_modules/@deepseek-ai/dsh-tool-schedule/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-tool-schedule/lib/index.js
+@@ -330,6 +330,7 @@
+ const CALLER_ERRORS = ["subagent_session", "internal_error"];
+ /** Errors of a new title, prompt, or recurrence. */
+ const CREATE_ERRORS = [
++	"authorization_required",
+ 	"invalid_prompt",
+ 	"invalid_rule",
+ 	"invalid_time_zone",
+@@ -458,6 +459,7 @@
+ 	try {
+ 		return await operation(agent);
+ 	} catch (error) {
++		if (error?.code === "schedule-authorization-required") return { code: "authorization_required", message: error.message };
+ 		if (error instanceof ScheduleInputError) {
+ 			const code = codes.find((code) => code === error.code);
+ 			if (code !== void 0) return {

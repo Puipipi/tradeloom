@@ -1,0 +1,26 @@
+{
+  "name": "dsh-go-example-styles",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A bilingual view-v2 style dashboard with readable colours, rich spans and v1 text fallbacks.",
+  "author": "DSH-TUI (ccch1mneyyy)",
+  "license": "MIT",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": { ".": "./lib/index.js", "./cordis.patch.yml": "./cordis.patch.yml", "./package.json": "./package.json" },
+  "files": ["lib", "cordis.patch.yml", "README.md", "README.en.md", "LICENSE"],
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "check": "node ../../../sdk/plugin-kit/bin/check.mjs . --load"
+  },
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } },
+  "dshGo": {
+    "v": 1,
+    "title": { "zh": "专注小看板", "en": "Focus dashboard" },
+    "icon": "palette",
+    "contributes": {
+      "panels": [{ "id": "focus", "title": { "zh": "本周专注", "en": "Weekly focus" }, "icon": "chart", "placement": ["session.tab", "features"] }]
+    }
+  },
+  "engines": { "node": ">=22.19", "dsh": ">=0.2.1-rc.2 <0.3.0-0" }
+}

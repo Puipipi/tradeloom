@@ -1,0 +1,21 @@
+--- a/node_modules/@deepseek-ai/dsh-compaction-tool-result-pruner/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-compaction-tool-result-pruner/lib/index.js
+@@ -23,7 +23,17 @@
+ * @returns the Unicode code-point count.
+ */
+ function codePointLength(text) {
+-	return Array.from(text).length;
++	let count = text.length;
++	for (let index = 0; index + 1 < text.length; index++) {
++		const first = text.charCodeAt(index);
++		if (first < 0xd800 || first > 0xdbff) continue;
++		const second = text.charCodeAt(index + 1);
++		if (second >= 0xdc00 && second <= 0xdfff) {
++			count--;
++			index++;
++		}
++	}
++	return count;
+ }
+ /**
+ * Resolve and validate pruning budgets.

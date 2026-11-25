@@ -1,0 +1,13 @@
+--- a/node_modules/@deepseek-ai/dsh-plugin-manager/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-plugin-manager/lib/index.js
+@@ -2711,3 +2711,3 @@
+ 			announce("removing");
+-			const selection = { enabled };
++			const selection = { enabled, expectedFrom: from };
+ 			const removal = await settled("remove", name, this.removeBundle(name, selection));
+@@ -3087,2 +3087,5 @@
+ 					if (bundle === void 0 || !bundle.removable) throw new ManagementFailure("not-removable");
++					if (selection?.expectedFrom !== void 0 && bundleManifest(name, this.profile.dir, this.profile.installAnchor)?.version !== selection.expectedFrom) {
++						throw new Error(`Bundle ${name} changed while checking the update from ${selection.expectedFrom}. Check its current version before updating again.`);
++					}
+ 					if (this.ownerContext.get("hmr") === void 0 && (this.profile.startedBundles.includes(name) || bundle.error === void 0 && this.bundleRows(name).some((row) => [...this.ctx.loader.entries()].some((entry) => entry.options.id === row.id && entry.fiber !== void 0)))) throw new ManagementFailure("stop-profile");

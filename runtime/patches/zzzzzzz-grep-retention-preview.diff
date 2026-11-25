@@ -1,0 +1,16 @@
+--- a/node_modules/@deepseek-ai/dsh-tool-fs-search/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-tool-fs-search/lib/index.js
+@@ -260,10 +260,11 @@
+ 		kind: "head",
+ 		maxItems: maxMatches
+ 	});
+-	for (const match of matches) retainer.push({
++	let index = 0;
++	for (const match of matches) retainer.push(index++ < maxMatches ? {
+ 		...match,
+ 		line: previewLine(match.line, maxLineBytes)
+-	});
++	} : match);
+ 	return retainer.finish();
+ }
+ /**

@@ -1,0 +1,11 @@
+# Mobile Enter keeps the existing Lexical newline path; desktop and explicit submit are unchanged.
+# Target: @deepseek-ai/dsh-client-ui-conversation 0.2.2-rc.1 (MIT), shipped client bundle.
+--- a/node_modules/@deepseek-ai/dsh-client-ui-conversation/lib/client.js
++++ b/node_modules/@deepseek-ai/dsh-client-ui-conversation/lib/client.js
+@@ -21225,2 +21225,4 @@
+-				event?.preventDefault();
+-				if (event?.repeat === true) return true;
++				// Let Lexical handle mobile newline input; explicit accelerated send stays available.
++				if (!event?.ctrlKey && !event?.metaKey && (0, _deepseek_ai_dsh_client_ui_primitives.isMobileDevice)()) return false;
++				event?.preventDefault();
++				if (event?.repeat === true) return true;

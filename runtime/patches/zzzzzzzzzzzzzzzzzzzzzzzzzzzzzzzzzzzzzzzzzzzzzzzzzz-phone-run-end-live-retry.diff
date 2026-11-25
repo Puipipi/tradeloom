@@ -1,0 +1,54 @@
+--- a/node_modules/@deepseek-ai/dsh-mcp-client/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-mcp-client/lib/index.js
+@@ -490,6 +490,7 @@
+ 	const label = `mcp-client(${config.serverName})`;
+ 	const incompleteDisposalMessage = `${label}: transport closure could not be confirmed during disposal — server shutdown may be incomplete`;
+ 	const phoneRuns = new Map();
++	let phoneEndRetryTimer;
+ 	const phoneKey = ({ sessionId, runId }) => JSON.stringify([sessionId, runId]);
+ 	const opts = {
+ 		registrationFailure: "contain",
+@@ -538,10 +539,20 @@
+ 	}) : void 0;
+ 	/** Failures where the peer may not have seen the end; anything the peer answered is final. */
+ 	const phoneEndUndelivered = new Set([SdkErrorCode.NotConnected, SdkErrorCode.ConnectionClosed, SdkErrorCode.SendFailed, SdkErrorCode.RequestTimeout]);
++	/** One bounded-delay wakeup for retained ends, independent of future phone calls. */
++	function schedulePhoneEndRetry() {
++		if (disposed || phoneEndRetryTimer !== void 0 || client === void 0 || connectedAt === void 0) return;
++		phoneEndRetryTimer = setTimeout(() => {
++			phoneEndRetryTimer = void 0;
++			deliverPhoneEnds();
++		}, 1000);
++		phoneEndRetryTimer.unref();
++	}
+ 	/**
+ 	* Native keys a run by launch, not by connection, and ACKs a repeated end without effect, so a
+ 	* retained end may go out on whichever live connection this plugin has. A retired connection,
+-	* timeout or failed write keeps the end until a later connection, end or phone call retries it.
++	* timeout or failed write keeps the end for a bounded-delay retry on the same live connection;
++	* a later connection, end or phone call can also flush it.
+ 	*/
+ 	function deliverPhoneEnds() {
+ 		const generation = client;
+@@ -563,8 +574,9 @@
+ 					ctx.logger.warn(`${label}: phone run end refused: ${String(error)}`);
+ 					return;
+ 				}
+-				ctx.logger.warn(`${label}: phone run end unacknowledged (${String(error)}); retained for the next live connection`);
++				ctx.logger.warn(`${label}: phone run end unacknowledged (${String(error)}); retained for retry`);
+ 				if (client !== generation) deliverPhoneEnds();
++				else schedulePhoneEndRetry();
+ 			});
+ 		}
+ 	}
+@@ -762,6 +774,10 @@
+ 		async dispose() {
+ 			disposed = true;
+ 			removePhoneEnd?.();
++			if (phoneEndRetryTimer !== void 0) {
++				clearTimeout(phoneEndRetryTimer);
++				phoneEndRetryTimer = void 0;
++			}
+ 			phoneRuns.clear();
+ 			serverInstructions = "";
+ 			if (reconnectTimer !== void 0) {

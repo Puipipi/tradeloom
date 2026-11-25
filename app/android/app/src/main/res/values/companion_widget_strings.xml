@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 伙伴小屋's home-screen widget (companion/CompanionWidget.kt). The app sends what she is
+     doing and saying in its own language; these are for before it has, and for the picker. -->
+<resources>
+    <string name="companion_widget_label">Companion room</string>
+    <string name="companion_widget_description">She\'s on your home screen. Tap to visit.</string>
+    <string name="companion_widget_name">Whale girl</string>
+    <string name="companion_widget_waiting">Waiting for you in the room</string>
+    <string name="companion_widget_asleep">Asleep</string>
+</resources>

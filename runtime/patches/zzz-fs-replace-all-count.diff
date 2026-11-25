@@ -1,0 +1,17 @@
+--- a/node_modules/@deepseek-ai/dsh-fs-local/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-fs-local/lib/index.js
+@@ -767,11 +767,12 @@
+ 	const oldNorm = normalizeLineEndings(oldString);
+ 	if (oldNorm.length === 0) throw new FsError("old_string must be a non-empty string", "FS_EDIT_NOT_FOUND");
+ 	const newNorm = normalizeLineEndings(newString);
+-	const replacements = countOccurrences(content, oldNorm);
++	const parts = replaceAll ? content.split(oldNorm) : void 0;
++	const replacements = parts === void 0 ? countOccurrences(content, oldNorm) : parts.length - 1;
+ 	if (replacements === 0) throw new FsError(`old_string was not found in "${displayPath}"`, "FS_EDIT_NOT_FOUND");
+ 	if (!replaceAll && replacements > 1) throw new FsError(`old_string matched ${replacements} times in "${displayPath}"; provide a more specific old_string or set replace_all to true`, "FS_AMBIGUOUS_EDIT");
+ 	return {
+-		content: content.split(oldNorm).join(newNorm),
++		content: (parts ?? content.split(oldNorm)).join(newNorm),
+ 		replacements
+ 	};
+ }

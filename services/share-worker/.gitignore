@@ -1,0 +1,7 @@
+node_modules/
+.wrangler/
+public/
+src/generated/
+.dev.vars
+# provision.sh / beta-keys.sh: the config copy with our ids (scripts/cloudflare.sh), removed on exit
+.wrangler-*.json

@@ -1,0 +1,681 @@
+{
+ "v2 text input binding": {
+  "fatal": false,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.accent",
+    "message": "dark：#3D6FD6 已校正为 #698FDF，对比度至少 4.5:1"
+   }
+  ]
+ },
+ "v1 input remains unknown": {
+  "fatal": true,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.type",
+    "message": "未知组件 \"textField\"；可用：stack, row, text, metric, chart, compare, steps, callout, options, confirm, list, keyValue, progress, table, actions, image"
+   }
+  ]
+ },
+ "strip rejects v2 controls": {
+  "fatal": true,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.type",
+    "message": "此处不支持这个组件"
+   }
+  ]
+ },
+ "tool card form is read only": {
+  "fatal": false,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.accent",
+    "message": "dark：#3D6FD6 已校正为 #698FDF，对比度至少 4.5:1"
+   }
+  ]
+ },
+ "every input kind": {
+  "fatal": false,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.accent",
+    "message": "dark：#3D6FD6 已校正为 #698FDF，对比度至少 4.5:1"
+   }
+  ]
+ },
+ "blocked obscureText True": {
+  "fatal": true,
+  "title": null,
+  "issues": [
+   {
+    "path": "view",
+    "message": "插件不能使用密码输入框"
+   }
+  ]
+ },
+ "blocked password True": {
+  "fatal": true,
+  "title": null,
+  "issues": [
+   {
+    "path": "view",
+    "message": "插件不能使用密码输入框"
+   }
+  ]
+ },
+ "blocked keyboardType password": {
+  "fatal": true,
+  "title": null,
+  "issues": [
+   {
+    "path": "view",
+    "message": "插件不能使用密码输入框"
+   }
+  ]
+ },
+ "blocked pattern (a+)+$": {
+  "fatal": true,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.pattern",
+    "message": "只支持内置的格式校验"
+   }
+  ]
+ },
+ "blocked bind data.__proto__.x": {
+  "fatal": true,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.bind",
+    "message": "输入绑定必须是 data 下的字段路径"
+   }
+  ]
+ },
+ "blocked bind data.rows[99999]": {
+  "fatal": true,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.bind",
+    "message": "输入绑定必须是 data 下的字段路径"
+   }
+  ]
+ },
+ "conflicting binding data.a": {
+  "fatal": false,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.accent",
+    "message": "dark：#3D6FD6 已校正为 #698FDF，对比度至少 4.5:1"
+   },
+   {
+    "path": "view.children[1].bind",
+    "message": "一个字段只能绑定一个输入组件"
+   }
+  ]
+ },
+ "conflicting binding data.a.b": {
+  "fatal": false,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.accent",
+    "message": "dark：#3D6FD6 已校正为 #698FDF，对比度至少 4.5:1"
+   },
+   {
+    "path": "view.children[1].bind",
+    "message": "一个字段只能绑定一个输入组件"
+   }
+  ]
+ },
+ "field budget includes folded descendants": {
+  "fatal": false,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.accent",
+    "message": "dark：#3D6FD6 已校正为 #698FDF，对比度至少 4.5:1"
+   },
+   {
+    "path": "view.children[1].children[12]",
+    "message": "33 项，超过上限 32"
+   },
+   {
+    "path": "view.children[1].children[13]",
+    "message": "34 项，超过上限 32"
+   },
+   {
+    "path": "view.children[1].children[14]",
+    "message": "35 项，超过上限 32"
+   },
+   {
+    "path": "view.children[1].children[15]",
+    "message": "36 项，超过上限 32"
+   },
+   {
+    "path": "view.children[1].children[16]",
+    "message": "37 项，超过上限 32"
+   },
+   {
+    "path": "view.children[1].children[17]",
+    "message": "38 项，超过上限 32"
+   },
+   {
+    "path": "view.children[1].children[18]",
+    "message": "39 项，超过上限 32"
+   },
+   {
+    "path": "view.children[1].children[19]",
+    "message": "40 项，超过上限 32"
+   }
+  ]
+ },
+ "option budget": {
+  "fatal": false,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.accent",
+    "message": "dark：#3D6FD6 已校正为 #698FDF，对比度至少 4.5:1"
+   },
+   {
+    "path": "view.options",
+    "message": "30 项，超过上限 24"
+   }
+  ]
+ },
+ "malformed options": {
+  "fatal": false,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.accent",
+    "message": "dark：#3D6FD6 已校正为 #698FDF，对比度至少 4.5:1"
+   },
+   {
+    "path": "view.options[1]",
+    "message": "此处的值无效"
+   },
+   {
+    "path": "view.options[2]",
+    "message": "此处的值无效"
+   },
+   {
+    "path": "view.options[3]",
+    "message": "此处的值无效"
+   }
+  ]
+ },
+ "bounded numbers and lines": {
+  "fatal": false,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.accent",
+    "message": "dark：#3D6FD6 已校正为 #698FDF，对比度至少 4.5:1"
+   },
+   {
+    "path": "view.maxLength",
+    "message": "此处的值无效"
+   },
+   {
+    "path": "view.minLength",
+    "message": "此处的值无效"
+   },
+   {
+    "path": "view.maxLines",
+    "message": "此处的值无效"
+   },
+   {
+    "path": "view.min",
+    "message": "应该是有限的数"
+   }
+  ]
+ },
+ "bad numeric interval": {
+  "fatal": true,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.max",
+    "message": "此处的值无效"
+   }
+  ]
+ },
+ "bad numeric step": {
+  "fatal": true,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.step",
+    "message": "此处的值无效"
+   }
+  ]
+ },
+ "rating min normalized": {
+  "fatal": false,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.accent",
+    "message": "dark：#3D6FD6 已校正为 #698FDF，对比度至少 4.5:1"
+   },
+   {
+    "path": "view.min",
+    "message": "此处的值无效"
+   }
+  ]
+ },
+ "bad date bounds": {
+  "fatal": true,
+  "title": null,
+  "issues": [
+   {
+    "path": "view",
+    "message": "请选择有效日期"
+   }
+  ]
+ },
+ "bad calendar date": {
+  "fatal": true,
+  "title": null,
+  "issues": [
+   {
+    "path": "view",
+    "message": "请选择有效日期"
+   }
+  ]
+ },
+ "nested form": {
+  "fatal": false,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.accent",
+    "message": "dark：#3D6FD6 已校正为 #698FDF，对比度至少 4.5:1"
+   },
+   {
+    "path": "view.children[1]",
+    "message": "表单不能嵌套"
+   }
+  ]
+ },
+ "missing form submit": {
+  "fatal": true,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.submit",
+    "message": "表单缺少提交动作"
+   }
+  ]
+ },
+ "all broken children": {
+  "fatal": true,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.children[0].type",
+    "message": "未知组件 \"bogus\"；可用：stack, row, text, metric, chart, compare, steps, callout, options, confirm, list, keyValue, progress, table, actions, image, textField, number, stepper, toggle, slider, select, segmented, chips, date, time, rating, form, tabs, collapsible, accordion, carousel, timeline, grid, badge, tag, avatar, codeBlock, divider, spacer, emptyState, gallery"
+   }
+  ]
+ },
+ "sections budget": {
+  "fatal": false,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.accent",
+    "message": "dark：#3D6FD6 已校正为 #698FDF，对比度至少 4.5:1"
+   },
+   {
+    "path": "view.items",
+    "message": "12 项，超过上限 8"
+   }
+  ]
+ },
+ "timeline node budget": {
+  "fatal": false,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.accent",
+    "message": "dark：#3D6FD6 已校正为 #698FDF，对比度至少 4.5:1"
+   },
+   {
+    "path": "view.items[10].children",
+    "message": "超过 120 个组件，后 2 项已截断"
+   },
+   {
+    "path": "view.items",
+    "message": "24 项，超过上限 24"
+   }
+  ]
+ },
+ "containers and displays": {
+  "fatal": false,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.accent",
+    "message": "dark：#3D6FD6 已校正为 #698FDF，对比度至少 4.5:1"
+   }
+  ]
+ },
+ "bad image source": {
+  "fatal": false,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.accent",
+    "message": "dark：#3D6FD6 已校正为 #698FDF，对比度至少 4.5:1"
+   },
+   {
+    "path": "view.src",
+    "message": "图片只收插件资源 asset:<路径>（png、jpg、webp、gif）或 data:image/…"
+   }
+  ]
+ },
+ "long code": {
+  "fatal": false,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.accent",
+    "message": "dark：#3D6FD6 已校正为 #698FDF，对比度至少 4.5:1"
+   },
+   {
+    "path": "view.code",
+    "message": "9000 个字符，超过上限 8000"
+   }
+  ]
+ },
+ "long bound input": {
+  "fatal": false,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.accent",
+    "message": "dark：#3D6FD6 已校正为 #698FDF，对比度至少 4.5:1"
+   },
+   {
+    "path": "view.value",
+    "message": "5000 个字符，超过上限 2000"
+   }
+  ]
+ },
+ "formula arithmetic": {
+  "fatal": false,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.accent",
+    "message": "dark：#3D6FD6 已校正为 #698FDF，对比度至少 4.5:1"
+   }
+  ]
+ },
+ "formula division zero": {
+  "fatal": false,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.value",
+    "message": "公式无效或超出上限"
+   },
+   {
+    "path": "view.accent",
+    "message": "dark：#3D6FD6 已校正为 #698FDF，对比度至少 4.5:1"
+   }
+  ]
+ },
+ "formula cannot call host": {
+  "fatal": false,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.text",
+    "message": "公式无效或超出上限"
+   },
+   {
+    "path": "view.accent",
+    "message": "dark：#3D6FD6 已校正为 #698FDF，对比度至少 4.5:1"
+   }
+  ]
+ },
+ "formula cannot supply type": {
+  "fatal": true,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.type",
+    "message": "缺少 type；可用：stack, row, text, metric, chart, compare, steps, callout, options, confirm, list, keyValue, progress, table, actions, image, textField, number, stepper, toggle, slider, select, segmented, chips, date, time, rating, form, tabs, collapsible, accordion, carousel, timeline, grid, badge, tag, avatar, codeBlock, divider, spacer, emptyState, gallery"
+   }
+  ]
+ },
+ "data formula is never executed": {
+  "fatal": true,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.text",
+    "message": "应该是字符串"
+   }
+  ]
+ },
+ "oversize onChange args": {
+  "fatal": false,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.accent",
+    "message": "dark：#3D6FD6 已校正为 #698FDF，对比度至少 4.5:1"
+   },
+   {
+    "path": "view.onChange.args",
+    "message": "动作参数超过 1024 字节，已忽略"
+   }
+  ]
+ },
+ "slider needs whole bounded intervals": {
+  "fatal": true,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.step",
+    "message": "此处的值无效"
+   }
+  ]
+ },
+ "slider intervals cap": {
+  "fatal": true,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.step",
+    "message": "此处的值无效"
+   }
+  ]
+ },
+ "v2 gallery, empty state, ring and trend draw clean": {
+  "fatal": false,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.accent",
+    "message": "dark：#3D6FD6 已校正为 #698FDF，对比度至少 4.5:1"
+   },
+   {
+    "path": "view.children[0].children[0].palette.other",
+    "message": "light：#9AA0AA 已校正为 #8C919B，对比度至少 3:1"
+   },
+   {
+    "path": "view.children[0].children[0].palette.other",
+    "message": "dark：#6B707A 已校正为 #6E737C，对比度至少 3:1"
+   },
+   {
+    "path": "view.children[0].children[1].style.color",
+    "message": "dark：#258051 已校正为 #599E7A，对比度至少 4.5:1"
+   }
+  ]
+ },
+ "v2 gallery and figure notes": {
+  "fatal": false,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.accent",
+    "message": "dark：#3D6FD6 已校正为 #698FDF，对比度至少 4.5:1"
+   },
+   {
+    "path": "view.children[0].palette.other",
+    "message": "light：#9AA0AA 已校正为 #8C919B，对比度至少 3:1"
+   },
+   {
+    "path": "view.children[0].palette.other",
+    "message": "dark：#6B707A 已校正为 #6E737C，对比度至少 3:1"
+   },
+   {
+    "path": "view.children[0].shape",
+    "message": "样式无效，支持 bar / ring"
+   },
+   {
+    "path": "view.children[1].trend",
+    "message": "trend 要 2–30 个数字（可以有 null），已忽略"
+   },
+   {
+    "path": "view.children[2].trend",
+    "message": "trend 要 2–30 个数字（可以有 null），已忽略"
+   },
+   {
+    "path": "view.children[3].trend",
+    "message": "trend 要 2–30 个数字（可以有 null），已忽略"
+   },
+   {
+    "path": "view.children[4].items[0]",
+    "message": "应该是 {src, alt?, caption?, action?}，这项已跳过"
+   },
+   {
+    "path": "view.children[4].items[1].src",
+    "message": "图片只收插件资源 asset:<路径>（png、jpg、webp、gif）或 data:image/…"
+   },
+   {
+    "path": "view.children[4].items[2].action",
+    "message": "动作 id \"bad id\" 不合规，这个元素不可点"
+   },
+   {
+    "path": "view.children[4].columns",
+    "message": "样式无效，支持 2–4"
+   },
+   {
+    "path": "view.children[4].aspect",
+    "message": "样式无效，支持 0.5–2"
+   },
+   {
+    "path": "view.children[5].title",
+    "message": "41 个字符，超过上限 40"
+   },
+   {
+    "path": "view.children[5].message",
+    "message": "121 个字符，超过上限 120"
+   },
+   {
+    "path": "view.children[5].action.action",
+    "message": "动作应该是 id 字符串或 {id, args?}，已忽略"
+   },
+   {
+    "path": "view.children[5].icon",
+    "message": "未知图标 \"lock\"，画默认图标"
+   },
+   {
+    "path": "view.children[6].action.label",
+    "message": "应该是非空字符串，这项已跳过"
+   },
+   {
+    "path": "view.children[7].action",
+    "message": "动作应该是 id 字符串或 {label, action}，已忽略"
+   }
+  ]
+ },
+ "v2 broken gallery and empty state": {
+  "fatal": false,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.accent",
+    "message": "dark：#3D6FD6 已校正为 #698FDF，对比度至少 4.5:1"
+   },
+   {
+    "path": "view.children[0].title",
+    "message": "应该是字符串"
+   },
+   {
+    "path": "view.children[1].items[0]",
+    "message": "应该是 {src, alt?, caption?, action?}，这项已跳过"
+   },
+   {
+    "path": "view.children[1].items[1]",
+    "message": "应该是 {src, alt?, caption?, action?}，这项已跳过"
+   },
+   {
+    "path": "view.children[1].items",
+    "message": "没有一项能画"
+   },
+   {
+    "path": "view.children[2].items",
+    "message": "应该是数组，每项是 {src, alt?, caption?, action?}"
+   }
+  ]
+ },
+ "tool card gallery keeps 8": {
+  "fatal": false,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.accent",
+    "message": "dark：#3D6FD6 已校正为 #698FDF，对比度至少 4.5:1"
+   },
+   {
+    "path": "view.items",
+    "message": "10 项，超过上限 8"
+   }
+  ]
+ },
+ "panel gallery keeps 24": {
+  "fatal": false,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.accent",
+    "message": "dark：#3D6FD6 已校正为 #698FDF，对比度至少 4.5:1"
+   },
+   {
+    "path": "view.items",
+    "message": "26 项，超过上限 24"
+   }
+  ]
+ },
+ "v1 ignores ring and trend": {
+  "fatal": false,
+  "title": null,
+  "issues": []
+ },
+ "v1 has no gallery": {
+  "fatal": true,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.type",
+    "message": "未知组件 \"gallery\"；可用：stack, row, text, metric, chart, compare, steps, callout, options, confirm, list, keyValue, progress, table, actions, image"
+   }
+  ]
+ }
+}

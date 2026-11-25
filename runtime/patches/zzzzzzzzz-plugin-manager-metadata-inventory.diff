@@ -1,0 +1,49 @@
+--- a/node_modules/@deepseek-ai/dsh-plugin-manager/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-plugin-manager/lib/index.js
+@@ -2288,6 +2288,19 @@
+ 		}
+ 		/** The bundle inventory before update eligibility, which is derived from each listed bundle. */
+ 		readBundles() {
++			// One synchronous inventory reuses successful display metadata only.
++			// A later inventory and every failed read still consult the provider.
++			const metadata = new Map();
++			const readMeta = (name, base) => {
++				let entries = metadata.get(base);
++				if (entries?.has(name)) return entries.get(name);
++				const value = this.ctx.get("pluginPackages")?.metaOf(name, base);
++				if (value !== void 0 && value.error === void 0) {
++					if (entries === void 0) metadata.set(base, entries = new Map());
++					entries.set(name, value);
++				}
++				return value;
++			};
+ 			const manifest = readProfileManifest("dsh", this.profile.dir);
+ 			const exemptions = readProfileVersionExemptions(this.profile.dir);
+ 			const selected = bundleSelection(manifest);
+@@ -2407,7 +2420,7 @@
+ 						optional,
+ 						removable: removable && readOnlyReason === void 0,
+ 						...readOnlyReason === void 0 ? {} : { readOnlyReason },
+-						...this.declaredRows(name, info),
++						...this.declaredRows(name, info, readMeta),
+ 						...error === void 0 ? {} : { error }
+ 					});
+ 				} catch (error) {
+@@ -3106,7 +3119,7 @@
+ 			}, "remove");
+ 		}
+ 		/** The rows a bundle's patch inserts and the existing rows it changes; an unreadable patch throws. */
+-		declaredRows(name, info) {
++		declaredRows(name, info, readMeta) {
+ 			const bundle = info.dsh?.bundle;
+ 			/* v8 ignore next -- bundleManifest answers only manifests that declare a patch */
+ 			if (bundle === void 0) return {
+@@ -3129,7 +3142,7 @@
+ 				const active = live.get(row.id);
+ 				const entryId = active?.entryId;
+ 				const base = active?.baseUrl ?? pathToFileURL(join(dir, "package.json")).href;
+-				const meta = packages?.metaOf(row.name, base);
++				const meta = readMeta === void 0 ? packages?.metaOf(row.name, base) : readMeta(row.name, base);
+ 				rows.push({
+ 					rowId: row.id,
+ 					moduleName: row.name,

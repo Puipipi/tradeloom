@@ -1,0 +1,9 @@
+# 附件staging目录准备错误归属
+
+基底63e255fab5cb9d817af30b631c3643ccce8e9231、DSH0.2.2-rc.1。公开admitEncodedFile声明存储失败抛AttachmentError，并委托真实AttachmentStore.saveFile。LocalAttachmentStore原stageImmutableObject将目录准备放在已有try/catch之前，普通目录位置被已有文件占用时，挂载仍成功，后续保存却逸出原生EEXIST/ENOTDIR，而后续open/write失败已有ATTACHMENT_WRITE_FAILED分类。
+
+本次仅将ensureDurableHome、ensureDurableDirectory及随机temporary路径生成纳入同一已有catch。temporary尚未生成时不执行removeTemporary，避免对未创建的路径清理掩盖原目录失败。既有句柄关闭、临时清理、AttachmentError原样保留、已取消signal错误保留的优先级不变。cause保留真实文件系统错误，不增加错误码或RPC字段，不更改路径权限策略/发布时机/文件内容。
+
+真实公开测试在service挂载前，于自有home分别创建attachments、attachments/v1、attachments/v1/tmp位置的普通冲突文件；挂载成功后才调用saveFile/admitEncodedFile。失败不得删除或改写冲突文件；正常移走后同实例可恢复存储并精确读回。另核正常binary/stream及预取消原因身份与tmp清理。本测试不模拟IO、不改权限、不用真实用户数据；没有HTTP/完整Agent/UI/设备验收。
+
+654仅修改自有media视频stream-staging的write/sync/close分类，679仅修改此官方模块图片displayName；本包单独不包含它们。会改 runtimeVersion，Android 未编译；Refs W17-B，无对应公开issue编号。不改pins，由本机既有构建流程生成版本。

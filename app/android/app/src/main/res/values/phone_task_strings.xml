@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="phone_background_cleanup_busy">The background screen is finishing. Try again shortly.</string>
+</resources>

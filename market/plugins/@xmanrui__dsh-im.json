@@ -1,0 +1,14 @@
+{
+  "name": "@xmanrui/dsh-im",
+  "version": "5.8.0",
+  "title": {
+    "zh": "消息渠道",
+    "en": "Messaging"
+  },
+  "summary": {
+    "zh": "把飞书、微信、QQ 机器人接进 DSH",
+    "en": "Connect messaging channels to DSH"
+  },
+  "category": "communication",
+  "screenshots": []
+}

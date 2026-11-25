@@ -1,0 +1,675 @@
+# DSH 0.2.2-rc.1: exact-session recall admission, retirement and history quarantine.
+--- a/node_modules/@deepseek-ai/dsh-agent-loop/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-agent-loop/lib/index.js
+@@ -3,7 +3,7 @@
+ import z from "@deepseek-ai/schemastery";
+ import { brandString } from "@deepseek-ai/dsh-brand";
+ import { AgentModel, agentEvents, assembleContextFor, modelSelectionProjectionDefinition } from "@deepseek-ai/dsh-agent";
+-import { AssistantStreamAccumulator, BlockAssembler, LlmAttemptId, LlmError, createAssistantMessage, createDeveloperMessage, createSystemMessage, createUserMessage, errorChain, markAgentLoopRequest } from "@deepseek-ai/dsh-llm";
++import { dshGoRecall, AssistantStreamAccumulator, BlockAssembler, LlmAttemptId, LlmError, createAssistantMessage, createDeveloperMessage, createSystemMessage, createUserMessage, errorChain, markAgentLoopRequest } from "@deepseek-ai/dsh-llm";
+ import { SessionLogOffset, SessionPreparation, ToolCallRecovery, canonicalHeader, headerEquals, interruptedTurnClosers, isReplacementSurfaceEvent } from "@deepseek-ai/dsh-session";
+ import { SessionPersistenceNotFoundError } from "@deepseek-ai/dsh-session-persistence";
+ import { assertNever, deepFreeze } from "@deepseek-ai/dsh-util-values";
+@@ -576,6 +576,7 @@
+ 		};
+ 		this.runtimeContext = new RuntimeContextProjection(this.ctx, session);
+ 		this.systemPrompt = new SystemPromptProjection(session);
++		dshGoRecall.registerDriver(this, loopCtx);
+ 	}
+ 	get status() {
+ 		return this.phase.kind === "idle" || this.phase.kind === "maintenance" ? "idle" : "running";
+@@ -588,6 +589,7 @@
+ 		if (status !== previousStatus) this.dispatch.emit("agent/status", { status });
+ 	}
+ 	send(message, target, wakeup) {
++		dshGoRecall.guardSession(this.loopCtx, { sessionId: this.id, agent: this, operation: "send" });
+ 		if (this.dshGoDeleting) throw new Error("session is being deleted");
+ 		this.loopCtx.get("sessionPersistence")?.dshGoDeletion?.assertAdmit(this.id);
+ 		// Restore older claims before accepting another wake.
+@@ -648,6 +650,7 @@
+ 	*   the inbox insertion so a reentrant cancel cannot reclassify it.
+ 	*/
+ 	wakeDriver(wakeAfterAbort = false) {
++		dshGoRecall.guardSession(this.loopCtx, { sessionId: this.id, agent: this, operation: "wake" });
+ 		if (this.dshGoDeleting) throw new Error("session is being deleted");
+ 		this.loopCtx.get("sessionPersistence")?.dshGoDeletion?.assertAdmit(this.id);
+ 		if (this.phase.kind !== "idle") {
+@@ -716,6 +719,7 @@
+ 		if (this.phase.kind !== "running") throw new Error(`agent "${this.id}": pre-step outside running phase`);
+ 		const signal = this.phase.abort.signal;
+ 		const claimed = this.inbox.claim(target, position.turn);
++		const recall = await dshGoRecall.prepare(this.loopCtx, this, position, claimed, signal);
+ 		const selection = this.model.current();
+ 		if (selection === void 0) throw new Error(`agent "${this.id}" has no provider/model: set AgentOptions.provider and AgentOptions.model or record a model selection`);
+ 		const toolSet = await this.loopCtx.tools.resolve({
+@@ -724,11 +728,12 @@
+ 			signal
+ 		});
+ 		try {
+-			const assembly = await this.loopCtx.systemPrompt.assemble({
++			const assembly = await this.loopCtx.systemPrompt.assemble(dshGoRecall.assemblyContext({
+ 				...assembleContextFor(this, signal),
+ 				modelSelection: selection,
+ 				toolSet
+-			});
++			}, recall));
++			dshGoRecall.verifyAssembly(recall, assembly);
+ 			signal.throwIfAborted();
+ 			const decision = await this.dispatch.waterfall("agent/pre-step", {
+ 				messages: claimed,
+@@ -753,6 +758,7 @@
+ 			}
+ 			return {
+ 				...decision,
++				recall,
+ 				assembly,
+ 				selection,
+ 				toolSet
+@@ -773,6 +779,7 @@
+ 	}
+ 	/** Open one turn before claiming its first proposed step. */
+ 	async turn() {
++		dshGoRecall.guardSession(this.loopCtx, { sessionId: this.id, agent: this, operation: "wake" });
+ 		if (this.phase.kind !== "running") this.throwError(/* @__PURE__ */ new Error(`agent "${this.id}": turn without driver reservation`));
+ 		const phase = this.phase;
+ 		const { signal } = phase.abort;
+@@ -902,7 +909,8 @@
+ 		const renderedPrompt = renderPrompt(assembly);
+ 		let firstAttempt = true;
+ 		while (true) {
+-			const { config, preparedCall } = await this.prepareRequest(turn, step, decision.selection, signal);
++			const recallOrigin = await dshGoRecall.admitLoop(this.loopCtx, this, decision.recall, signal);
++			const { config, preparedCall } = await this.prepareRequest(turn, step, decision.selection, signal, recallOrigin);
+ 			const sections = renderContextSections(this.loopCtx.systemPrompt.refreshContext(assembly, {
+ 				...assembleContextFor(this, signal),
+ 				modelSelection: decision.selection
+@@ -932,6 +940,7 @@
+ 				turn,
+ 				step
+ 			}, startsRequestSeries, signal);
++			dshGoRecall.bindRequest(request, recallOrigin);
+ 			const live = new AssistantStreamAttempt(this.session.id, ++this.assistantAttemptCounter, () => ++this.assistantStreamRevision, turn, step, (frame) => {
+ 				this.dispatch.emit("agent/assistant-stream", { frame });
+ 			});
+@@ -1046,7 +1055,7 @@
+ 		}
+ 	}
+ 	/** Resolve request config for the step's selection and bind its adapter before admitting model-visible input. */
+-	async prepareRequest(turn, step, selection, signal) {
++	async prepareRequest(turn, step, selection, signal, recallOrigin) {
+ 		const { session } = this;
+ 		const maxTokens = this.options.maxTokens;
+ 		const { provider: _provider, model: _model, reasoningEffort: _effort, ...controls } = this.requestHeaderLogged ? requestProposal(session.requestHeader()) : maxTokens === void 0 ? {} : { maxTokens };
+@@ -1065,7 +1074,7 @@
+ 		let config;
+ 		let preparedCall;
+ 		try {
+-			preparedCall = await this.loopCtx.llm.prepareCall(proposedConfig, signal);
++			preparedCall = await this.loopCtx.llm.prepareCall(proposedConfig, signal, void 0, recallOrigin);
+ 			config = preparedCall.config;
+ 		} catch (error) {
+ 			if (!(error instanceof LlmError) || error.code !== "NO_ADAPTER") throw error;
+@@ -1359,6 +1368,7 @@
+ }
+ /** Concrete agent factory and driver service. */
+ var AgentLoop = class extends Service {
++	dshGoRecallVersion = 1;
+ 	static inject = [
+ 		"agents",
+ 		"sessions",
+@@ -1593,6 +1603,7 @@
+ 		};
+ 		const untrack = this.ownership.track(dispose);
+ 		try {
++			dshGoRecall.guardSession(loopCtx, { sessionId: id, operation: source === "resume" ? "resume" : "create", recallHistory: session.dshGoRecallHistory });
+ 			ownerCtx.get("sessionPersistence")?.dshGoDeletion?.assertAdmit(id);
+ 			if (parentAgent !== void 0) ownerCtx.get("sessionPersistence")?.dshGoDeletion?.assertAdmit(parentAgent.id);
+ 			assertAgentOptions(agentOptions);
+@@ -1721,6 +1732,7 @@
+ 	* @returns the owned handle and stored cursor, or `undefined` without a backend.
+ 	*/
+ 	async createStoredSession(session, signal) {
++		dshGoRecall.guardSession(this.runtime.ctx, { sessionId: session.id, operation: "create", recallHistory: session.dshGoRecallHistory });
+ 		const persistence = this.runtime.ctx.get("sessionPersistence");
+ 		if (persistence === void 0) return void 0;
+ 		return {
+@@ -1798,6 +1810,7 @@
+ 	/** Resume through an explicit persistence handle used by the deferred config path. */
+ 	resumeWith(ownerCtx, persistence, options) {
+ 		const id = options.resumeSessionId;
++		dshGoRecall.guardSession(this.runtime.ctx, { sessionId: id, operation: "resume" });
+ 		const published = (async () => {
+ 			const ownerAbort = new AbortController();
+ 			const unfollowOwner = ownerCtx.effect(() => () => {
+@@ -1819,6 +1832,7 @@
+ 					const coldRead = await handle.read(0, void 0, { signal: fused });
+ 					fused.throwIfAborted();
+ 					const persisted = coldRead.events;
++					dshGoRecall.guardSession(this.runtime.ctx, { sessionId: id, operation: "resume", recallHistory: dshGoRecall.hasHistory(persisted) });
+ 					const closers = interruptedTurnClosers(persisted);
+ 					if (closers.length > 0) await handle.append(closers);
+ 					preparation = SessionPreparation.create(this.runtime.ctx.sessions.prepare(id, {
+--- a/node_modules/@deepseek-ai/dsh-compaction-basic/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-compaction-basic/lib/index.js
+@@ -1,3 +1,5 @@
++import { dshGoRecall } from "@deepseek-ai/dsh-llm";
++export const dshGoRecallVersion = 1;
+ import z from "@deepseek-ai/schemastery";
+ import { CompactionEngine, CompactionId, ManualCompactionError, compactCheckpointSource, toolPairingBalancedAfter, toolPairingBalancedBefore } from "@deepseek-ai/dsh-compaction";
+ import { BlockAssembler, CONTEXT_WINDOW_EXCEEDED_CODE, LlmError, contentHasImage, createUserMessage, errorChain } from "@deepseek-ai/dsh-llm";
+@@ -290,6 +292,7 @@
+ * @returns safe text-only summary blocks and the exact call envelope and output.
+ */
+ async function summarizeWithLlm(ctx, config, input, agent, signal) {
++	dshGoRecall.denyAuxiliary(ctx, agent.session);
+ 	const latest = agent.session.requestHeader()?.config;
+ 	const configured = config.summarizationProvider.length === 0 ? void 0 : {
+ 		provider: config.summarizationProvider,
+--- a/node_modules/@deepseek-ai/dsh-llm-deepseek/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-llm-deepseek/lib/index.js
+@@ -1,7 +1,7 @@
+ import z from "@deepseek-ai/schemastery";
+ import { isVolatile } from "@deepseek-ai/cosmokit";
+ import { assertNever, deepEqualJson } from "@deepseek-ai/dsh-util-values";
+-import { APP_IDENTITY, IMAGE_OFFLOAD_REQUIRED_CODE, LlmAdapter, LlmError, ProviderRequestId, ReasoningEffortId, RetryPolicySchema, ToolCallId, attributionHeaders, contentHasImage, errorChain, isContextWindowExceededError, isQuotaExceededError, offloadedImageText, projectOffloadedImages, requestImageHandleText, requiredImageOffload, resolveImageAttachmentAccess, resolveRetryPolicy, textOnlyImageText } from "@deepseek-ai/dsh-llm";
++import { dshGoRecall, APP_IDENTITY, IMAGE_OFFLOAD_REQUIRED_CODE, LlmAdapter, LlmError, ProviderRequestId, ReasoningEffortId, RetryPolicySchema, ToolCallId, attributionHeaders, contentHasImage, errorChain, isContextWindowExceededError, isQuotaExceededError, offloadedImageText, projectOffloadedImages, requestImageHandleText, requiredImageOffload, resolveImageAttachmentAccess, resolveRetryPolicy, textOnlyImageText } from "@deepseek-ai/dsh-llm";
+ import { MAX_TIMER_DELAY_MS, deadline, idleWatchdog, timeoutOf } from "@deepseek-ai/dsh-timeout";
+ import { ImageVariantId, longEdgeDimensions, requestImageDimensions } from "@deepseek-ai/dsh-attachment";
+ import { createHash } from "node:crypto";
+@@ -2094,6 +2094,7 @@
+ });
+ /** DeepSeek provider using Messages content and native thinking replay. */
+ var DeepSeekAdapter = class extends LlmAdapter {
++	dshGoRecallVersion = 1;
+ 	dependencies;
+ 	files;
+ 	imageAccess = (ref) => {
+@@ -2228,6 +2229,10 @@
+ 				});
+ 				signal.throwIfAborted();
+ 				const betas = [...fileIds !== void 0 && fileIds.size > 0 ? [MESSAGES_FILES_BETA] : [], ...body.messages.some((message) => message.content.some((block) => block.type === "tool_addition" || block.type === "tool_removal")) ? [MESSAGES_TOOL_CHANGES_BETA] : []];
++				// Includes every stale-file retry; no SDK hides additional model POSTs.
++				await dshGoRecall.beforeFetch(options);
++				signal.throwIfAborted();
++				dshGoRecall.guardFetch(options);
+ 				const response = await fetch(`${messagesApiRoot(connection.baseURL)}/messages`, {
+ 					method: "POST",
+ 					signal,
+--- a/node_modules/@deepseek-ai/dsh-llm/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-llm/lib/index.js
+@@ -1,3 +1,7 @@
++import { createHash as recallHash } from "node:crypto";
++import { lstatSync as recallLstat } from "node:fs";
++import { homedir as recallHomedir } from "node:os";
++import { join as recallJoin, resolve as recallResolve } from "node:path";
+ import { createRequire } from "node:module";
+ import { Remote, RemoteError, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
+ import { assertNever, deepFreeze, snapshotJsonValue } from "@deepseek-ai/dsh-util-values";
+@@ -5,6 +9,215 @@
+ import { brandString } from "@deepseek-ai/dsh-brand";
+ import z from "@deepseek-ai/schemastery";
+ import { MAX_TIMER_DELAY_MS } from "@deepseek-ai/dsh-timeout";
++//#region dsh-go companion recall admission
++// Process-local identities never travel in model-visible request fields.
++const RECALL_HISTORY_TYPE = "plugin:dsh-go/companion-recall";
++const recallDrivers = new WeakMap();
++const recallRequests = new WeakMap();
++const recallPhysicalRequests = new WeakMap();
++const recallAssemblies = new WeakMap();
++const recallToolExecutions = new WeakMap();
++const recallMessageSources = new WeakMap();
++function recallFailure(code = "COMPANION_RECALL_RETIRED") {
++	return new LlmError("Automatic recall cannot continue in this session", code);
++}
++function recallEvents(events) {
++	return Array.isArray(events) && events.some((event) => event?.type === RECALL_HISTORY_TYPE);
++}
++function recallSessionHistory(session) {
++	// Maintained while Session already validates/replays/appends its log.
++	// No new deprecated synchronous log snapshot reads on ordinary sessions.
++	return session?.dshGoRecallHistory === true;
++}
++function recallMarker(sessionId) {
++	if (typeof sessionId !== "string" || sessionId.length === 0) return false;
++	// Match the bridge store's DSH_HOME spelling, including its trim semantics.
++	const home = process.env.DSH_HOME?.trim() || recallJoin(recallHomedir(), ".dsh");
++	const path = recallResolve(home, "companion", "recall-sessions", `${recallHash("sha256").update(sessionId, "utf8").digest("hex")}.json`);
++	try {
++		recallLstat(path);
++		return true; // An invalid, unreadable, or non-file marker is still protected.
++	} catch (error) {
++		if (error?.code === "ENOENT") return false;
++		throw recallFailure("COMPANION_RECALL_TAG_UNAVAILABLE");
++	}
++}
++function recallProtected(sessionId, session, history = false) {
++	return history || recallSessionHistory(session) || recallMarker(sessionId);
++}
++function recallService(ctx) {
++	return ctx?.get("dshGoCompanionRecall");
++}
++function recallGuardSession(ctx, { sessionId, agent, operation, recallHistory = false }) {
++	const history = recallHistory || recallSessionHistory(agent?.session);
++	const protectedSession = recallProtected(sessionId, agent?.session, history);
++	const coordinator = recallService(ctx);
++	if (typeof coordinator?.guardSession === "function") {
++		const result = coordinator.guardSession({ sessionId, agent, operation, recallHistory: history });
++		if (result?.then !== void 0) throw recallFailure("COMPANION_RECALL_ADAPTER_UNAVAILABLE");
++		return;
++	}
++	if (protectedSession) throw recallFailure();
++}
++function recallOriginCurrent(origin) {
++	if (origin === void 0) return;
++	if (recallService(origin.ctx) !== origin.coordinator) throw recallFailure();
++	recallGuardSession(origin.ctx, { sessionId: origin.agent.id, agent: origin.agent, operation: "attempt" });
++	if (!recallDrivers.has(origin.agent)) throw recallFailure("COMPANION_RECALL_ADAPTER_UNAVAILABLE");
++	origin.signal?.throwIfAborted();
++}
++function recallSources(ctx, options) {
++	const sources = new Map();
++	if (typeof options?.sessionId === "string") sources.set(options.sessionId, void 0);
++	const initiator = ctx?.get("agents")?.currentInitiator();
++	if (initiator !== void 0) sources.set(initiator.id, initiator.session);
++	for (const message of options?.messages ?? []) {
++		const source = recallMessageSources.get(message);
++		if (source !== void 0) sources.set(source.sessionId, source.session);
++	}
++	return sources;
++}
++const dshGoRecall = Object.freeze({
++	version: 1,
++	historyType: RECALL_HISTORY_TYPE,
++	hasHistory: recallEvents,
++	guardSession: recallGuardSession,
++	registerDriver(agent, ctx) {
++		recallDrivers.set(agent, { ctx, turnId: void 0, physicalPermit: void 0 });
++	},
++	isDriver(agent) {
++		return recallDrivers.has(agent);
++	},
++	tagHistory(session, messages) {
++		if (recallSessionHistory(session)) for (const message of messages) recallMessageSources.set(message, { sessionId: session.id, session });
++		return messages;
++	},
++	async prepare(ctx, agent, position, messages, signal) {
++		recallGuardSession(ctx, { sessionId: agent.id, agent, operation: "prepare" });
++		const state = recallDrivers.get(agent);
++		const protectedSession = recallProtected(agent.id, agent.session);
++		const coordinator = recallService(ctx);
++		if (!protectedSession) return void 0;
++		if (state === void 0 || typeof coordinator?.prepare !== "function") throw recallFailure();
++		if (state.turnId !== position.turn && !messages.some((message) => message.role === "user" && message.source?.kind === "user")) {
++			coordinator.retireAgent(agent, "non-user-turn");
++			throw recallFailure("COMPANION_RECALL_INPUT_UNSUPPORTED");
++		}
++		const value = await coordinator.prepare({ agent, scope: agent, turnId: position.turn, stepId: position.step, messages, signal });
++		signal.throwIfAborted();
++		if (value === void 0 || value.stamp === void 0 || recallService(ctx) !== coordinator) throw recallFailure();
++		state.turnId = position.turn;
++		state.physicalPermit = void 0;
++		return Object.freeze({ agent, coordinator, ctx, value, turnId: position.turn, stepId: position.step, signal });
++	},
++	assemblyContext(context, prepared) {
++		if (prepared !== void 0) recallAssemblies.set(context, prepared);
++		return context;
++	},
++	section(context) {
++		const prepared = recallAssemblies.get(context);
++		const section = prepared?.value.section;
++		if (section === void 0) return void 0;
++		if (context.agent !== prepared.agent || context.scope !== prepared.agent || section.name !== "dsh-go:confirmed-memory" || section.interpolate !== false || typeof section.text !== "string") throw recallFailure();
++		return { name: section.name, text: section.text, interpolate: false, order: 100 };
++	},
++	verifyAssembly(prepared, assembly) {
++		if (prepared === void 0) return;
++		const expected = prepared.value.section;
++		const sections = assembly.sections.filter((section) => section.name === "dsh-go:confirmed-memory");
++		if (expected === void 0 ? sections.length !== 0 : sections.length !== 1 || sections[0].text !== expected.text || sections[0].interpolate !== false) {
++			prepared.coordinator.retireAgent(prepared.agent, "adapter-unavailable");
++			throw recallFailure("COMPANION_RECALL_ASSEMBLY_UNAVAILABLE");
++		}
++	},
++	async admitLoop(ctx, agent, prepared, signal) {
++		recallGuardSession(ctx, { sessionId: agent.id, agent, operation: "attempt" });
++		if (prepared === void 0) {
++			if (recallProtected(agent.id, agent.session)) throw recallFailure();
++			return void 0;
++		}
++		if (prepared.agent !== agent || recallService(ctx) !== prepared.coordinator) throw recallFailure();
++		signal.throwIfAborted();
++		const permit = await prepared.coordinator.admit({ agent, scope: agent, stamp: prepared.value.stamp,
++			turnId: prepared.turnId, stepId: prepared.stepId, attemptId: randomUUID() });
++		return Object.freeze({ ...prepared, permit, signal });
++	},
++	guardPreparation(ctx, config, origin) {
++		if (origin !== void 0) {
++			recallOriginCurrent(origin);
++			return;
++		}
++		for (const [id, session] of recallSources(ctx, config)) if (recallProtected(id, session)) throw recallFailure("COMPANION_RECALL_AUXILIARY_BLOCKED");
++	},
++	bindRequest(request, origin) {
++		if (origin !== void 0) recallRequests.set(request, origin);
++		return request;
++	},
++	inheritRequest(from, to) {
++		const origin = recallRequests.get(from);
++		if (origin !== void 0) recallRequests.set(to, origin);
++		return to;
++	},
++	guardLlm(ctx, options, adapter) {
++		const origin = recallRequests.get(options);
++		if (origin !== void 0) {
++			recallOriginCurrent(origin);
++			if (options.sessionId !== origin.agent.id || adapter !== void 0 && adapter.dshGoRecallVersion !== 1) throw recallFailure("COMPANION_RECALL_ADAPTER_UNAVAILABLE");
++			return;
++		}
++		for (const [id, session] of recallSources(ctx, options)) if (recallProtected(id, session)) throw recallFailure("COMPANION_RECALL_AUXILIARY_BLOCKED");
++	},
++	async beforeFetch(options) {
++		recallPhysicalRequests.delete(options);
++		const origin = recallRequests.get(options);
++		if (origin === void 0) {
++			if (recallProtected(options.sessionId)) throw recallFailure("COMPANION_RECALL_AUXILIARY_BLOCKED");
++			return;
++		}
++		recallOriginCurrent(origin);
++		const permit = await origin.coordinator.admit({ agent: origin.agent, scope: origin.agent, stamp: origin.value.stamp,
++			turnId: origin.turnId, stepId: origin.stepId, attemptId: randomUUID() });
++		recallOriginCurrent(origin);
++		recallPhysicalRequests.set(options, { origin, permit });
++		recallDrivers.get(origin.agent).physicalPermit = permit;
++	},
++	guardFetch(options) {
++		const origin = recallRequests.get(options);
++		if (origin === void 0) {
++			if (recallProtected(options.sessionId)) throw recallFailure("COMPANION_RECALL_AUXILIARY_BLOCKED");
++			return;
++		}
++		// This synchronous guard runs in the provider's continuation, with no
++		// await before fetch. Retirement queued during admission may run after
++		// beforeFetch returns but before that continuation resumes.
++		recallOriginCurrent(origin);
++		const admitted = recallPhysicalRequests.get(options);
++		recallPhysicalRequests.delete(options);
++		if (admitted?.origin !== origin || typeof origin.coordinator.guardTool !== "function") throw recallFailure("COMPANION_RECALL_ADAPTER_UNAVAILABLE");
++		const result = origin.coordinator.guardTool({ agent: origin.agent, scope: origin.agent, permit: admitted.permit });
++		if (result?.then !== void 0) throw recallFailure("COMPANION_RECALL_ADAPTER_UNAVAILABLE");
++	},
++	captureTool(exec, agent) {
++		recallToolExecutions.set(exec, { agent, permit: recallDrivers.get(agent)?.physicalPermit });
++	},
++	guardTool(ctx, exec) {
++		const captured = recallToolExecutions.get(exec);
++		const agent = captured?.agent ?? exec.agent;
++		if (agent === void 0) return;
++		if (exec.agent !== agent && (recallProtected(agent.id, agent.session) || recallProtected(exec.agent?.id, exec.agent?.session))) throw recallFailure();
++		recallGuardSession(ctx, { sessionId: agent.id, agent, operation: "tool" });
++		if (!recallProtected(agent.id, agent.session)) return;
++		const coordinator = recallService(ctx);
++		if (typeof coordinator?.guardTool !== "function" || captured === void 0) throw recallFailure();
++		const result = coordinator.guardTool({ agent, scope: agent, permit: captured.permit });
++		if (result?.then !== void 0) throw recallFailure("COMPANION_RECALL_ADAPTER_UNAVAILABLE");
++	},
++	denyAuxiliary(ctx, session) {
++		if (recallProtected(session?.id, session)) throw recallFailure("COMPANION_RECALL_AUXILIARY_BLOCKED");
++	}
++});
++//#endregion
++
+ //#region lib/types/message.js
+ /** Message value types, identity, and immutable construction helpers. */
+ /**
+@@ -1814,6 +2027,7 @@
+ 				value: _metadata
+ 			});
+ 		}
++		dshGoRecallVersion = 1;
+ 		adapters = (__runInitializers(this, _instanceExtraInitializers), /* @__PURE__ */ new Map());
+ 		directory = /* @__PURE__ */ new Map();
+ 		discoveries = /* @__PURE__ */ new Map();
+@@ -2227,7 +2441,8 @@
+ 		* @param configure - pure control selection, called once before defaults and validation.
+ 		* @returns a prepared config and its registration-bound stream entry point.
+ 		*/
+-		async prepareCall(config, signal, configure) {
++		async prepareCall(config, signal, configure, recallOrigin) {
++			dshGoRecall.guardPreparation(this.ctx, config, recallOrigin);
+ 			signal?.throwIfAborted();
+ 			const { provider, model, ...controls } = config;
+ 			const registration = this.registration(provider);
+@@ -2321,6 +2536,7 @@
+ 			try {
+ 				const registration = prepared?.registration ?? this.registration(options.provider);
+ 				const adapter = registration.adapter;
++				dshGoRecall.guardLlm(this.ctx, options, adapter);
+ 				let modelInfo;
+ 				let resolvedConfig;
+ 				let dispatch;
+@@ -2356,7 +2572,7 @@
+ 					};
+ 					if (Object.isFrozen(resolvedOptions)) deepFreeze(projectedOptions);
+ 				}
+-				iterator = dispatch(this.forAdapter(projectedOptions, adapter))[Symbol.asyncIterator]();
++				iterator = dispatch(dshGoRecall.inheritRequest(options, this.forAdapter(projectedOptions, adapter)))[Symbol.asyncIterator]();
+ 			} catch (error) {
+ 				yield adapterFailureChunk(error, options.signal);
+ 				return;
+@@ -2404,6 +2620,7 @@
+ 			return this.streamWithRegistration(options);
+ 		}
+ 		streamWithRegistration(options, prepared) {
++			dshGoRecall.guardLlm(this.ctx, options, prepared?.registration.adapter);
+ 			return this.ctx.waterfall(this, "llm/stream", options, () => this.adapterStream(options, prepared));
+ 		}
+ 	};
+@@ -2436,4 +2653,4 @@
+ 	};
+ }
+ //#endregion
+-export { ACCOUNT_QUOTA_EXCEEDED_CODE, APP_IDENTITY, AssistantStreamAccumulator, BlockAssembler, CONTEXT_SUMMARY_MAX_CHARS, CONTEXT_WINDOW_EXCEEDED_CODE, EMPTY_RESPONSE_CODE, HarnessError, IMAGE_OFFLOAD_REQUIRED_CODE, INVALID_CREDENTIAL_CODE, LlmAdapter, LlmAttemptId, LlmError, LlmRuntime, LlmRuntime as default, MessageId, ProviderRequestId, QUOTA_EXCEEDED_CODE, ReasoningEffortId, RetryPolicySchema, ToolCallId, assembleAssistantStream, assertUsableApiKey, assistantStreamChunks, assistantStreamFirstTokenTime, assistantStreamHasVisibleContent, assistantStreamHasVisibleText, attributionHeaders, boundContextSummary, callConfigEquals, chunkHasVisibleText, contentHasFile, contentHasImage, createAssistantMessage, createDeveloperMessage, createMessage, createSystemMessage, createToolResultMessage, createUserMessage, errorChain, expandAssistantStream, fileHandleText, freezeMessage, isAgentLoopRequest, isContextWindowExceededError, isHarnessError, isQuotaExceededError, isTokenDelta, isVisibleChunk, joinAssistantStreamText, lastAssistantStreamChunk, markAgentLoopRequest, normalizeApiKey, offloadedImageText, projectFilesToText, projectImagesForTextModel, projectOffloadedImages, projectToolUpdates, requestImageHandleText, requiredImageOffload, resolveImageAttachmentAccess, resolveRetryPolicy, runFirstTokenTime, runFirstVisibleTime, textOnlyImageText, userAgent };
++export { dshGoRecall, ACCOUNT_QUOTA_EXCEEDED_CODE, APP_IDENTITY, AssistantStreamAccumulator, BlockAssembler, CONTEXT_SUMMARY_MAX_CHARS, CONTEXT_WINDOW_EXCEEDED_CODE, EMPTY_RESPONSE_CODE, HarnessError, IMAGE_OFFLOAD_REQUIRED_CODE, INVALID_CREDENTIAL_CODE, LlmAdapter, LlmAttemptId, LlmError, LlmRuntime, LlmRuntime as default, MessageId, ProviderRequestId, QUOTA_EXCEEDED_CODE, ReasoningEffortId, RetryPolicySchema, ToolCallId, assembleAssistantStream, assertUsableApiKey, assistantStreamChunks, assistantStreamFirstTokenTime, assistantStreamHasVisibleContent, assistantStreamHasVisibleText, attributionHeaders, boundContextSummary, callConfigEquals, chunkHasVisibleText, contentHasFile, contentHasImage, createAssistantMessage, createDeveloperMessage, createMessage, createSystemMessage, createToolResultMessage, createUserMessage, errorChain, expandAssistantStream, fileHandleText, freezeMessage, isAgentLoopRequest, isContextWindowExceededError, isHarnessError, isQuotaExceededError, isTokenDelta, isVisibleChunk, joinAssistantStreamText, lastAssistantStreamChunk, markAgentLoopRequest, normalizeApiKey, offloadedImageText, projectFilesToText, projectImagesForTextModel, projectOffloadedImages, projectToolUpdates, requestImageHandleText, requiredImageOffload, resolveImageAttachmentAccess, resolveRetryPolicy, runFirstTokenTime, runFirstVisibleTime, textOnlyImageText, userAgent };
+--- a/node_modules/@deepseek-ai/dsh-session-title-llm/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-session-title-llm/lib/index.js
+@@ -1,3 +1,5 @@
++import { dshGoRecall } from "@deepseek-ai/dsh-llm";
++export const dshGoRecallVersion = 1;
+ import z from "@deepseek-ai/schemastery";
+ import { BlockAssembler, createUserMessage } from "@deepseek-ai/dsh-llm";
+ import { MAX_TIMER_DELAY_MS, deadline } from "@deepseek-ai/dsh-timeout";
+@@ -158,6 +160,7 @@
+ * @throws {Error} when input bounds, route preparation, the deadline, cancellation, or an operational finish failure occurs.
+ */
+ async function executeSessionTitleLlm(ctx, config, request, titleProvider, prepared) {
++	dshGoRecall.denyAuxiliary(ctx, request.session);
+ 	const env_1 = {
+ 		stack: [],
+ 		error: void 0,
+--- a/node_modules/@deepseek-ai/dsh-session/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-session/lib/index.js
+@@ -3,7 +3,7 @@
+ import { brandNumber, brandString } from "@deepseek-ai/dsh-brand";
+ import { assertNever, deepFreeze, snapshotJsonValue } from "@deepseek-ai/dsh-util-values";
+ import { scopeOf, scopeTarget } from "@deepseek-ai/dsh-scope";
+-import { callConfigEquals } from "@deepseek-ai/dsh-llm";
++import { dshGoRecall, callConfigEquals } from "@deepseek-ai/dsh-llm";
+ //#region lib/types/types.js
+ /**
+ * Brand a string as a {@link SessionId}.
+@@ -960,6 +960,7 @@
+ *   closers outside the inherited prefix counted by `inheritedEventCount`.
+ */
+ function buildForkSeed(events, boundary) {
++	if (dshGoRecall.hasHistory(events)) throw new SessionForkError("Automatic recall history cannot be forked", "COMPANION_RECALL_HISTORY_PROTECTED");
+ 	const prefix = events.slice(0, boundary + 1);
+ 	prefix.push({
+ 		type: "session/end-seed",
+@@ -1359,6 +1360,9 @@
+ * @typert object
+ */
+ var Session = class Session {
++	#dshGoRecallHistory = false;
++	get dshGoRecallHistory() { return this.#dshGoRecallHistory; }
++	get dshGoRecallVersion() { return 1; }
+ 	log = [];
+ 	/** Single incremental owner of surface acceptance and projection state. */
+ 	surfaceManager;
+@@ -1447,6 +1451,7 @@
+ 				throw new Error(`invalid seed event at index ${index}: ${error instanceof Error ? error.message : "invalid surface metadata"}`);
+ 			}
+ 			this.log.push(mode === "snapshot" ? deepFreeze(snapshot) : snapshot);
++			if (snapshot.type === dshGoRecall.historyType) this.#dshGoRecallHistory = true;
+ 		}
+ 		this.firstLiveSeq = SessionLogOffset(this.log.length);
+ 		this.header = restoredHeader ?? snapshotSessionHeader(id, header);
+@@ -1635,6 +1640,7 @@
+ 				...callbackArgs
+ 			]);
+ 			this.log.push(event);
++			if (event.type === dshGoRecall.historyType) this.#dshGoRecallHistory = true;
+ 			this.eventsSnapshot = void 0;
+ 			if (entry !== void 0 && callbacks !== void 0) invokeContainedSessionObservers(entry.emitCtx, "session/event", entry.id, callbackArgs, callbacks);
+ 		} finally {
+@@ -1730,7 +1736,7 @@
+ 			if (msg) this.derived.push(msg);
+ 		}
+ 		this.derivedNodes = nodes.length;
+-		return [...this.derived];
++		return dshGoRecall.tagHistory(this, [...this.derived]);
+ 	}
+ 	/**
+ 	* Project one event with all committed message projections applied.
+@@ -1818,6 +1824,7 @@
+ 	*/
+ 	create(id, options) {
+ 		const session = this.prepare(id, options);
++		dshGoRecall.guardSession(this.ctx, { sessionId: session.id, operation: "create", recallHistory: session.dshGoRecallHistory });
+ 		this.ctx.effect(function* () {
+ 			yield this.enter(session);
+ 			this.announce(session);
+@@ -2064,6 +2071,7 @@
+ 	fork(source, boundary, childSessionId) {
+ 		if (childSessionId !== void 0 && this.get(childSessionId) !== void 0) throw new SessionForkError(`session "${childSessionId}" already exists`, "SESSION_ALREADY_EXISTS");
+ 		const liveSource = this._resolveForkSource(source);
++		dshGoRecall.guardSession(this.ctx, { sessionId: liveSource.id, agent: this.ctx.get("agents")?.get(liveSource.id), operation: "fork", recallHistory: liveSource.dshGoRecallHistory });
+ 		const events = liveSource.snapshotEvents();
+ 		const resolved = this._forkBoundary(liveSource.id, events, boundary);
+ 		const seed = resolved === void 0 ? [] : buildForkSeed(events, resolved);
+--- a/node_modules/@deepseek-ai/dsh-subagent-fork-in-process/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-subagent-fork-in-process/lib/index.js
+@@ -1,3 +1,5 @@
++import { dshGoRecall } from "@deepseek-ai/dsh-llm";
++export const dshGoRecallVersion = 1;
+ import z from "@deepseek-ai/schemastery";
+ //#region lib/types/index.js
+ /**
+@@ -20,6 +22,7 @@
+ * @returns the seed events, contiguous from seq 0; empty when no turn has completed.
+ */
+ function completedTurnPrefix(parent) {
++	dshGoRecall.guardSession(parent.ctx, { sessionId: parent.id, agent: parent, operation: "fork", recallHistory: parent.session.dshGoRecallHistory });
+ 	const events = parent.session.snapshotEvents();
+ 	const lastEnd = events.findLast((e) => e.type === "turn/end");
+ 	if (lastEnd === void 0) return [];
+--- a/node_modules/@deepseek-ai/dsh-system-prompt/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-system-prompt/lib/index.js
+@@ -1,3 +1,4 @@
++import { dshGoRecall } from "@deepseek-ai/dsh-llm";
+ import { Service } from "@deepseek-ai/cordis";
+ import z from "@deepseek-ai/schemastery";
+ import { AnonymousEntries, NamedEntries, ScopedLayers, scopeTarget } from "@deepseek-ai/dsh-scope";
+@@ -227,6 +228,7 @@
+ };
+ /** Registry service for the prompt inputs assembled before each model step. */
+ var SystemPrompt = class extends Service {
++	dshGoRecallVersion = 1;
+ 	static Config = z.object({
+ 		includeHarnessIdentity: z.boolean().default(true),
+ 		includeRuntimeContext: z.boolean().default(true),
+@@ -377,6 +379,11 @@
+ 		for (const [name, provider] of this.layers.global.variables.entries()) variables[name] = provider(context);
+ 		for (const layer of scopeLayers) for (const [name, provider] of layer.variables.entries()) variables[name] = provider(context);
+ 		const sectionByName = this.layers.merge(scope, (layer) => layer.sections);
++		const recallSection = dshGoRecall.section(context);
++		if (recallSection !== void 0) {
++			if (sectionByName.has(recallSection.name)) throw new Error("Companion recall section is already registered");
++			sectionByName.set(recallSection.name, recallSection);
++		}
+ 		const contextByName = this.layers.merge(scope, (layer) => layer.contexts);
+ 		const providers = [...this.layers.global.toolProviders.values(), ...scopeLayers.flatMap((layer) => [...layer.toolProviders.values()])];
+ 		const collected = [];
+--- a/node_modules/@deepseek-ai/dsh-tool-executor-native/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-tool-executor-native/lib/index.js
+@@ -3,6 +3,7 @@
+ //#region lib/types/index.js
+ /** Executes visible capabilities directly and owns their complete batch settlement. */
+ var NativeToolExecutor = class {
++	dshGoRecallVersion = 1;
+ 	maxParallel;
+ 	pipeline;
+ 	constructor(ctx, maxParallel = () => 10) {
+--- a/node_modules/@deepseek-ai/dsh-tools/lib/pipeline.js
++++ b/node_modules/@deepseek-ai/dsh-tools/lib/pipeline.js
+@@ -1,6 +1,6 @@
+ import { a as ToolNotFoundError, m as ToolBatchExecutionError, n as TOOL_ABORTED, o as ToolOutputError, p as validateJsonSchemaValue, r as TOOL_ABORTED_BEFORE_DISPATCH } from "./shared-DTdn5dXO.js";
+ import { scopeTarget } from "@deepseek-ai/dsh-scope";
+-import { HarnessError, createToolResultMessage } from "@deepseek-ai/dsh-llm";
++import { dshGoRecall, HarnessError, createToolResultMessage } from "@deepseek-ai/dsh-llm";
+ import { assertNever, deepFreeze, snapshotJsonValue } from "@deepseek-ai/dsh-util-values";
+ import { randomUUID } from "node:crypto";
+ import { emitAgentEvent } from "@deepseek-ai/dsh-agent";
+@@ -273,6 +273,7 @@
+ * for complete calls, including a single-call batch.
+ */
+ var ToolExecutionPipeline = class {
++	dshGoRecallVersion = 1;
+ 	ctx;
+ 	source;
+ 	tools;
+@@ -282,6 +283,8 @@
+ 		this.tools = ctx.tools;
+ 	}
+ 	get(name, scope, toolSet) {
++		// Every resolver may run plugin code, including later batch classification.
++		if (scope !== void 0) dshGoRecall.guardSession(this.ctx, { sessionId: scope.id, agent: scope, operation: "tool" });
+ 		return this.source.get === void 0 ? this.tools.executable(name, scope, toolSet) : this.source.get(name, scope, toolSet);
+ 	}
+ 	resolveExecution(name, scope, nested, toolSet) {
+@@ -356,6 +359,7 @@
+ 				...base,
+ 				arguments: deepFreeze(detached)
+ 			};
++			dshGoRecall.captureTool(execution, agent);
+ 			this.deferredContexts.set(execution, deferredContexts);
+ 			this.contentFinalizers.set(execution, finalizerFor());
+ 			if (!rejected) this.contentProjectors.set(execution, capturedProjector);
+@@ -491,8 +495,12 @@
+ 		}
+ 		exec.signal = signal;
+ 		try {
++			// An around-execute await must not reach a plugin-owned tool-set view.
++			dshGoRecall.guardTool(this.ctx, exec);
+ 			const tool = this.resolveExecution(exec.name, exec.agent, exec.parent !== void 0, exec.toolSet);
+ 			if (!tool) throw new ToolNotFoundError(exec.name);
++			// Final synchronous guard: an around-execute wrapper may have awaited.
++			dshGoRecall.guardTool(this.ctx, exec);
+ 			state.bodyInvoked = true;
+ 			const returned = await tool.execute(exec.arguments, exec);
+ 			const result = this.createSuccessResult(exec, tool, returned);
+@@ -711,6 +719,7 @@
+ 		const additionalContexts = [...result.additionalContexts ?? [], ...decisionContexts];
+ 		if (Object.hasOwn(decision, "value")) {
+ 			if (result.isError) throw new TypeError("tools/post-execute cannot replace the value of a failed result");
++			dshGoRecall.guardTool(this.ctx, exec);
+ 			const tool = this.resolveExecution(exec.name, exec.agent, exec.parent !== void 0, exec.toolSet);
+ 			if (tool === void 0) throw new ToolNotFoundError(exec.name);
+ 			const replaced = this.createSuccessResult(exec, tool, decision.value);
+@@ -774,6 +783,7 @@
+ 			...result.meta !== void 0 ? { meta: result.meta } : {},
+ 			...result.additionalContexts !== void 0 ? { additionalContexts: result.additionalContexts } : {}
+ 		});
++		dshGoRecall.guardTool(this.ctx, exec);
+ 		const tool = this.resolveExecution(exec.name, exec.agent, exec.parent !== void 0, exec.toolSet);
+ 		if (tool === void 0) throw new ToolNotFoundError(exec.name);
+ 		const normalized = this.createSuccessResult(exec, tool, result.value);

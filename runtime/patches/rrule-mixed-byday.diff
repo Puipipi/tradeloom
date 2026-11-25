@@ -1,0 +1,15 @@
+diff --git a/node_modules/rrule/dist/es5/rrule.js b/node_modules/rrule/dist/es5/rrule.js
+--- a/node_modules/rrule/dist/es5/rrule.js
++++ b/node_modules/rrule/dist/es5/rrule.js
+@@ -3056,8 +3056,9 @@
+     var bymonth = options.bymonth, byweekno = options.byweekno, byweekday = options.byweekday, byeaster = options.byeaster, bymonthday = options.bymonthday, bynmonthday = options.bynmonthday, byyearday = options.byyearday;
+     return ((notEmpty(bymonth) && !includes(bymonth, ii.mmask[currentDay])) ||
+         (notEmpty(byweekno) && !ii.wnomask[currentDay]) ||
+-        (notEmpty(byweekday) && !includes(byweekday, ii.wdaymask[currentDay])) ||
+-        (notEmpty(ii.nwdaymask) && !ii.nwdaymask[currentDay]) ||
++        ((notEmpty(byweekday) || notEmpty(ii.nwdaymask)) &&
++            !includes(byweekday, ii.wdaymask[currentDay]) &&
++            !ii.nwdaymask[currentDay]) ||
+         (byeaster !== null && !includes(ii.eastermask, currentDay)) ||
+         ((notEmpty(bymonthday) || notEmpty(bynmonthday)) &&
+             !includes(bymonthday, ii.mdaymask[currentDay]) &&

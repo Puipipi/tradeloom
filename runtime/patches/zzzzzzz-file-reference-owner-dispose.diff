@@ -1,0 +1,36 @@
+--- a/node_modules/@deepseek-ai/dsh-file-reference-local/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-file-reference-local/lib/index.js
+@@ -325,6 +325,7 @@
+ 		excludedDirectories: z.array(z.string()).default([...DEFAULT_FILE_SEARCH_EXCLUDED_DIRECTORIES])
+ 	});
+ 	config;
++	disposed = false;
+ 	searches = /* @__PURE__ */ new Map();
+ 	promptFibers = /* @__PURE__ */ new Map();
+ 	promptDisposals = /* @__PURE__ */ new Set();
+@@ -353,7 +354,7 @@
+ 			const fiber = this.promptFibers.get(agent);
+ 			if (fiber === void 0) return;
+ 			this.promptFibers.delete(agent);
+-			const task = fiber.dispose().catch((error) => {
++			const task = Promise.resolve(fiber.dispose()).catch((error) => {
+ 				ctx.logger.warn(`file-reference-local: prompt cleanup failed: ${error instanceof Error ? error.message : String(error)}`);
+ 			});
+ 			this.promptDisposals.add(task);
+@@ -376,6 +377,7 @@
+ 			if (agent !== void 0) this.searches.get(agent)?.search.invalidate();
+ 		});
+ 		ctx.effect(() => async () => {
++			this.disposed = true;
+ 			for (const { search } of this.searches.values()) search.dispose();
+ 			this.searches.clear();
+ 			const promptFibers = [...this.promptFibers.values()];
+@@ -385,6 +387,8 @@
+ 	}
+ 	async list(agent, query, signal) {
+ 		const cwd = await this.ctx.workingDirectory.ensure(agent, signal);
++		// The provider can retire while working-directory inspection is pending.
++		if (this.disposed) return [];
+ 		let cached = this.searches.get(agent);
+ 		if (cached?.cwd !== cwd) {
+ 			cached?.search.dispose();

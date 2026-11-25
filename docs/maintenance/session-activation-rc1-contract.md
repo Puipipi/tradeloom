@@ -1,0 +1,11 @@
+# 已审 rc.1 显式会话交互激活
+
+基底63e255fab5cb9d817af30b631c3643ccce8e9231。SDK原仅承认0.2.2-alpha.2，升级rc.1后明确允许交互仍返回false，冷会话保持无Agent。实际rc.1 WebHost允许普通prepared observation通过follow request.activate=true挂载Agent；相同SDK连接直接公开请求已证agentAvailable false→true。
+
+仅增加精确版本0.2.2-rc.1；保留alpha.2，未知/后续版本继续passive。默认预览不激活、不查询版本；allowed、主epoch、Mux generation、会话address种类及离开时复核全部保留。激活仍用短辅助follow，主数据follow不替换、不转发辅助snapshot。返回true仅代表Host接受开流，后台Agent promotion完成仍由Host事件表示。
+
+普通ChatScreen当前且resumed路由经ChatController.beginInteraction进入此API。缺口阻止这个明确选择的Agent预热/作用域初始化；agentAvailable过滤的宠物当前会话offer可能因此不显示（源码后果，未真机/UI测）。普通prompt自身resolveAgent，不能称为无法发送消息。没有找到将rc.1永久禁止的独立产品约定；原SDK说明未知版本被动，是审计名单未更新。
+
+不扩展RPC、不改变权限、默认观察或subagent策略；不修改UI。不会改runtimeVersion。Android未编译，真实设备/PRoot/ARM未测。
+
+副作用边界：promotion会实例化Agent并发出agent/created，恢复inbox时可能flush日志；不能保证任意插件created监听零副作用。内置inbox恢复不主动唤醒driver、goal创建处为disarmed；本次自有普通cold fixture的模型请求实际为0，不扩大为所有持久任务恢复证明。辅助follow关闭不撤销已经提交的promotion。

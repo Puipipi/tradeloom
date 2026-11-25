@@ -1,0 +1,82 @@
+# DSH 0.2.2-rc.1 after 020: read-only profile ownership probes and plugin-config JSON 503.
+--- a/node_modules/@deepseek-ai/dsh-app-boot/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-app-boot/lib/index.js
+@@ -1789,11 +1789,12 @@
+ * @param binName - the diagnostic prefix on thrown errors.
+ * @param dir - absolute profile package directory.
+ * @param installAnchor - absolute path of the owning dsh app's package.json.
+-* @param options - `userLayer: false` skips reading `cordis.patch.yml`.
++* @param options - `userLayer: false` skips reading `cordis.patch.yml`; `readOnly: true` normalizes retired bundles in memory without rewriting the manifest.
+ * @returns the successfully loaded bundle layers and optional user patch layer.
+ */
+ function loadProfileDirectory(binName, dir, installAnchor, options = {}) {
+-	const bundles = dropRetiredBundles(dir, readProfileManifest(binName, dir)).dsh?.profile?.bundles ?? [];
++	const manifest = readProfileManifest(binName, dir);
++	const bundles = options.readOnly === true ? (manifest.dsh?.profile?.bundles ?? []).filter((bundle) => !RETIRED_BUNDLES.has(bundle)) : dropRetiredBundles(dir, manifest).dsh?.profile?.bundles ?? [];
+ 	const layers = [];
+ 	const skippedBundles = [];
+ 	const exemptions = bundles.length === 0 ? {} : readProfileVersionExemptions(dir);
+--- a/node_modules/@deepseek-ai/dsh-config-editor/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-config-editor/lib/index.js
+@@ -36,7 +36,7 @@
+ 	*/
+ 	configuration() {
+ 		const profile = this.ownerContext.profileContext;
+-		const loaded = loadProfileDirectory("dsh", profile.dir, profile.installAnchor);
++		const loaded = loadProfileDirectory("dsh", profile.dir, profile.installAnchor, { readOnly: true });
+ 		const entries = this.entries();
+ 		const overridden = new Set(loaded.patches.filter((patch) => patch.insert === void 0 && Object.hasOwn(patch, "config")).map((patch) => patch.id));
+ 		const composed = /* @__PURE__ */ new Map();
+@@ -48,6 +48,32 @@
+ 			inherited: overridden.has(entry.options.id) ? this.inherited(entry, loaded) : structuredClone(composed.get(entry.options.id)?.config ?? {}),
+ 			override: structuredClone(loaded.patches.findLast((row) => row.id === entry.options.id && row.config !== void 0)?.config ?? {})
+ 		}));
++	}
++	/** Read-only profile ownership probe; edit() remains the locked authority.
++	* Two distinct complete configs prevent an equal-valued overlay from looking writable.
++	* A later insert is also read-only: the earlier profile patch cannot reach it.
++	*/
++	canWrite(entry) {
++		try {
++			if (!this.entries().includes(entry)) return false;
++			const profile = this.ownerContext.profileContext;
++			const loaded = loadProfileDirectory("dsh", profile.dir, profile.installAnchor, { readOnly: true });
++			if (loaded.skippedBundles.length) return false;
++			const layers = loaded.layers.map((layer) => layer.patches);
++			const higher = readProfilePatches("dsh", profile, loaded).slice(layers.reduce((n, rows) => n + rows.length, 0) + loaded.patches.length);
++			for (const value of [0, 1]) {
++				const config = { __dsh_go_write_probe__: value };
++				const patches = structuredClone(loaded.patches);
++				const index = patches.findLastIndex((row) => row.id === entry.options.id && !Object.hasOwn(row, "insert") && (!Object.hasOwn(row, "name") || row.name === entry.options.name));
++				if (index < 0) patches.push({ id: entry.options.id, name: entry.options.name, config });
++				else patches[index] = { ...patches[index], config };
++				const composed = flatten(composeEntries([...layers, patches, higher])).filter((row) => row.id === entry.options.id);
++				if (composed.length !== 1 || composed[0].name !== entry.options.name || !isDeepStrictEqual(composed[0].config, config)) return false;
++			}
++			return true;
++		} catch {
++			return false;
++		}
+ 	}
+ 	inherited(entry, loaded) {
+ 		const patches = loaded.patches.map((patch) => {
+--- a/node_modules/@deepseek-ai/dsh-host-webserver/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-host-webserver/lib/index.js
+@@ -591,12 +591,15 @@
+ 	async dshGoRejectRequest(route, req, res) {
+ 		const status = await this.dshGoRouteRejection(route.kind, route.path, req);
+ 		if (status === void 0) return false;
++		let pathname;
++		try { pathname = new URL(req.url ?? "/", "http://dsh-go.invalid").pathname; } catch {}
++		const configUnavailable = status === 503 && (pathname === "/dsh-go/v1/plugin-config" || pathname?.startsWith("/dsh-go/v1/plugin-config/"));
+ 		res.writeHead(status, {
+ 			"cache-control": "no-store",
+-			"content-type": "text/plain; charset=utf-8",
++			"content-type": configUnavailable ? "application/json; charset=utf-8" : "text/plain; charset=utf-8",
+ 			"x-dsh-go-guard": "reject"
+ 		});
+-		res.end(req.method === "HEAD" ? void 0 : `${STATUS_CODES[status]}\n`);
++		res.end(req.method === "HEAD" ? void 0 : configUnavailable ? JSON.stringify({ v: 1, code: "host-unavailable", message: "主机配置服务暂不可用，请稍后重试。" }) : `${STATUS_CODES[status]}\n`);
+ 		return true;
+ 	}
+ 	async dshGoGuardUpgrade(route, req, socket, head) {

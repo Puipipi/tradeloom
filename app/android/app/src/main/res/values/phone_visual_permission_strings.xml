@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="phone_prompt_allow_visual">Allow visual taps in this scope for this task</string>
+    <string name="phone_confirm_visual_main">Allow this task to use screenshot taps on clearly identified ordinary targets in the current window of “%1$s”? Unknown or sensitive targets still require individual confirmation.</string>
+    <string name="phone_confirm_visual_background">Allow this task to use screenshot taps on clearly identified ordinary targets in the current background task scope of “%1$s”? Unknown or sensitive targets still require individual confirmation. This card does not include the original screenshot.</string>
+</resources>

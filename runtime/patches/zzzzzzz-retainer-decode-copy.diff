@@ -1,0 +1,11 @@
+--- a/node_modules/@deepseek-ai/dsh-output-retention/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-output-retention/lib/index.js
+@@ -223,7 +223,7 @@
+ 		const suffix = concat(this.suffixChunks).subarray(this.suffixHeld - suffixLen);
+ 		const budgetOmitted = this.omittedAt(this.total);
+ 		const [keptPrefix, keptSuffix] = budgetOmitted > 0 ? [trimTrailingPartialUtf8(prefix), trimLeadingContinuationUtf8(suffix)] : [prefix, suffix];
+-		const text = budgetOmitted > 0 ? decoder.decode(keptPrefix) + decoder.decode(keptSuffix) : decoder.decode(concat([prefix, suffix]));
++		const text = budgetOmitted > 0 ? decoder.decode(keptPrefix) + decoder.decode(keptSuffix) : decoder.decode(prefix.length === 0 ? suffix : suffix.length === 0 ? prefix : concat([prefix, suffix]));
+ 		const omitted = this.total - keptPrefix.length - keptSuffix.length;
+ 		const truncated = omitted > 0;
+ 		return {

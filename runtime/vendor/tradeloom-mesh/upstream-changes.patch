@@ -1,0 +1,1355 @@
+diff --git a/apps/server/src/server.ts b/apps/server/src/server.ts
+index 8711efd..15da330 100644
+--- a/apps/server/src/server.ts
++++ b/apps/server/src/server.ts
+@@ -366,7 +366,7 @@ export function createRemoteServer(config: Config) {
+   }
+   function deviceWithNode(d: ReturnType<Store['get']>) {
+     const node = nodeOf(d)
+-    return { ...descriptor(d), nodeId: d.nodeId, nodeName: node?.name }
++    return { ...descriptor(d), nodeId: d.nodeId, nodeName: node?.name, clientDeviceId: node?.clientDeviceId }
+   }
+   function nodeOf(device: ReturnType<Store['get']>, scope?: string) {
+     return device.nodeId === undefined ? undefined : store.listNodes(scope).find(node => node.id === device.nodeId)
+diff --git a/packages/mesh-plugin/tsdown.tradeloom.config.ts b/packages/mesh-plugin/tsdown.tradeloom.config.ts
+new file mode 100644
+index 0000000..7698da6
+--- /dev/null
++++ b/packages/mesh-plugin/tsdown.tradeloom.config.ts
+@@ -0,0 +1,33 @@
++import { defineConfig } from 'tsdown'
++
++/**
++ * The desktop and phone installs do not run `pnpm install` for this package.
++ * Bundle everything that is not a DSH host service, and leave `@deepseek-ai/*`
++ * to the host's own module tree. Native WebRTC backends stay external because
++ * v0 only uses Relay.
++ */
++export default defineConfig({
++  entry: {
++    index: 'src/index.ts',
++  },
++  format: ['esm'],
++  platform: 'node',
++  target: 'node22',
++  outDir: 'bundle-tradeloom',
++  dts: false,
++  clean: true,
++  sourcemap: false,
++  deps: {
++    neverBundle: [/^@deepseek-ai\//, /^node:/, 'werift', '@roamhq/wrtc'],
++    alwaysBundle: [
++      /^ds-harness-remote/,
++      /^@dsh-remote\//,
++      /^@dsh-mesh\//,
++      /^@xterm\//,
++      /^@noble\//,
++      'ws',
++      'zod',
++      'qrcode',
++    ],
++  },
++})
+\ No newline at end of file
+diff --git a/packages/mesh/src/config.ts b/packages/mesh/src/config.ts
+index da9f3ca..2a8c616 100644
+--- a/packages/mesh/src/config.ts
++++ b/packages/mesh/src/config.ts
+@@ -70,7 +70,7 @@ export function resolveMeshConfig(input: MeshConfig = {}): ResolvedMeshConfig {
+     ...(input.receiveDir?.trim() === undefined || input.receiveDir.trim() === ''
+       ? {}
+       : { receiveDir: input.receiveDir.trim() }),
+-    stateDir: input.stateDir?.trim() || join(homedir(), '.dsh', 'dsh-mesh'),
++    stateDir: input.stateDir?.trim() || join(homedir(), '.dsh', 'tradeloom-readonly-mesh'),
+     mock: input.mock === true,
+     devComputerUse: input.devComputerUse === true,
+     ...(input.serverUrl?.trim() === undefined || input.serverUrl.trim() === ''
+diff --git a/packages/mesh/src/host.ts b/packages/mesh/src/host.ts
+index d9d2207..b62e100 100644
+--- a/packages/mesh/src/host.ts
++++ b/packages/mesh/src/host.ts
+@@ -19,6 +19,7 @@ import {
+ } from 'ds-harness-remote/internal'
+ import { join } from 'node:path'
+ import type { ResolvedMeshConfig } from './config.js'
++import { permitsReadOnlyMeshRpc, permitsReadOnlyMeshPeer } from './read-only-policy.js'
+ import { loadDeviceProfile, serverScopedDirectory, type MeshState } from './state.js'
+ 
+ /**
+@@ -37,7 +38,7 @@ export class MeshHost {
+    * change in the UI takes effect without restarting the tunnel.
+    */
+   private prefsProvider: () => { allowIncoming: boolean; allowedCallers: string[] } =
+-    () => ({ allowIncoming: true, allowedCallers: [] })
++    () => ({ allowIncoming: false, allowedCallers: [] })
+ 
+   setPrefsProvider(provider: () => { allowIncoming: boolean; allowedCallers: string[] }): void {
+     this.prefsProvider = provider
+@@ -60,55 +61,11 @@ export class MeshHost {
+       void fallbackPeer?.dispose?.()
+     }, 'dsh-mesh fallback owner peer')
+     const switchGateway = new TypertGatewaySwitch(native, () => fallbackPeer)
+-    // Remote sessions are dispatched through a per-peer gateway created by
+-    // createPeer(), not through `local`, so both paths need the same wrapper.
+-    const enforceIncomingPreset = (gateway: LocalTypertGateway): LocalTypertGateway => {
+-      const dispatch = gateway.dispatch.bind(gateway)
+-      gateway.dispatch = async (endpoint, payload, signal) => {
+-        const result = await dispatch(endpoint, withIncomingPreset(endpoint, payload, this.config.incomingPreset), signal)
+-        // DSH may ignore `agentPreset` on session/create. Select it explicitly
+-        // before the caller sends the first prompt, so an incoming task always
+-        // runs the configured background preset (desktop in the desktop bundle).
+-        if (endpoint === 'session/create' && result.ok && result.value !== null && typeof result.value === 'object') {
+-          const value = result.value as Record<string, unknown>
+-          const sessionId = value.sessionId
+-          if (typeof sessionId === 'string' && value.agentPreset !== this.config.incomingPreset) {
+-            const selected = await dispatch('agentPresets/select', {
+-              args: { agentId: sessionId, agentPreset: this.config.incomingPreset },
+-            }, signal)
+-            if (!selected.ok) {
+-              this.logger.warn('incoming preset select failed', {
+-                preset: this.config.incomingPreset,
+-                code: selected.error.code,
+-              })
+-            }
+-          }
+-          // An unattended background task cannot answer approval prompts. Pin
+-          // the full-access preset on every remotely created Session so file
+-          // work outside the workspace and desktop actions are not blocked.
+-          if (typeof sessionId === 'string') {
+-            const command = await dispatch('commands/execute', {
+-              args: { agentId: sessionId, line: '/permission danger-full-access', submittedAttachments: [] },
+-            }, signal)
+-            if (!command.ok) {
+-              this.logger.warn('incoming permission switch failed', {
+-                code: command.error.code,
+-              })
+-            }
+-          }
+-        }
+-        return result
+-      }
+-      return gateway
+-    }
+-    const local = enforceIncomingPreset(switchGateway.local())
++    const local = switchGateway.local()
+     local.createPeer = (): LocalTypertGateway => {
+       const peer = createOwnerPeer()
+       if (peer === undefined) return local
+-      return {
+-        ...enforceIncomingPreset(switchGateway.local(peer)),
+-        dispose: async () => { await peer.dispose?.() },
+-      }
++      return { ...switchGateway.local(peer), dispose: async () => { await peer.dispose?.() } }
+     }
+     this.localGateway = local
+   }
+@@ -126,13 +83,14 @@ export class MeshHost {
+       identities,
+       this.logger,
+       this.localGateway,
+-      () => this.ctx.get('fileViewerHost', false) as never,
++      undefined,
+       undefined,
+       undefined,
+       undefined,
+       serverApi,
+       createPinnedWebSocketFactory(state.fingerprint),
+-      peer => this.admit(peer),
++      peer => this.admit(peer.deviceId),
++      (peerId, method, params) => this.admit(peerId) && permitsReadOnlyMeshRpc(method, params),
+     )
+     try {
+       await runtime.start()
+@@ -153,10 +111,14 @@ export class MeshHost {
+     await this.stop()
+   }
+ 
+-  private admit(peer: { deviceId: string; name: string }): boolean {
++  async disconnectPeer(deviceId: string): Promise<void> {
++    await this.runtime?.disconnectPeer(deviceId)
++  }
++
++  private admit(deviceId: string): boolean {
+     let prefs: { allowIncoming: boolean; allowedCallers: string[] }
+     try { prefs = this.prefsProvider() } catch { return false }
+-    return admitPeer(prefs, peer)
++    return permitsReadOnlyMeshPeer(prefs, deviceId)
+   }
+ 
+   private runtimeConfig(state: MeshState): ResolvedConfig {
+@@ -227,37 +189,3 @@ export function resolveHostRuntimeConfig(state: MeshState, config: ResolvedMeshC
+     logLevel: config.logLevel,
+   })
+ }
+-
+-/**
+- * Force every remote-created Session onto the configured incoming preset. The
+- * target user's current UI preset must not decide what an incoming task can do.
+- */
+-export function withIncomingPreset(endpoint: string, payload: unknown, incomingPreset: string): unknown {
+-  if (endpoint !== 'session/create' || incomingPreset === '') return payload
+-  const root = payload !== null && typeof payload === 'object' ? payload as Record<string, unknown> : undefined
+-  const args = root?.args !== null && typeof root?.args === 'object' ? root.args as Record<string, unknown> : undefined
+-  const request = args?.request !== null && typeof args?.request === 'object' ? args.request as Record<string, unknown> : undefined
+-  if (root === undefined || args === undefined || request === undefined) return payload
+-  return { ...root, args: { ...args, request: { ...request, agentPreset: incomingPreset } } }
+-}
+-
+-/**
+- * The owner's answer to "may this machine accept work from that device?".
+- *
+- * `allowIncoming` is the master switch. `allowedCallers` is an allow-list of
+- * device ids: an empty list means "anyone on this account", a non-empty list
+- * restricts inbound work to exactly those devices. Names are accepted too so
+- * the list stays usable when ids change after a re-pair.
+- *
+- * Exported so the rule is unit-testable without standing up a Host runtime.
+- */
+-export function admitPeer(
+-  prefs: { allowIncoming: boolean; allowedCallers: readonly string[] },
+-  peer: { deviceId: string; name: string },
+-): boolean {
+-  if (prefs.allowIncoming !== true) return false
+-  const allowed = prefs.allowedCallers.filter(entry => typeof entry === 'string' && entry.trim() !== '')
+-  if (allowed.length === 0) return true
+-  const wanted = new Set(allowed.map(entry => entry.trim()))
+-  return wanted.has(peer.deviceId) || wanted.has(peer.name)
+-}
+diff --git a/packages/mesh/src/index.ts b/packages/mesh/src/index.ts
+index d32334f..84f598f 100644
+--- a/packages/mesh/src/index.ts
++++ b/packages/mesh/src/index.ts
+@@ -29,11 +29,6 @@ export function apply(ctx: Context, entry: MeshConfig | undefined = undefined):
+     // The Host runtime asks this on every inbound connection: the machine
+     // owner's allowIncoming / allowedCallers preferences are the answer.
+     host.setPrefsProvider(() => service.prefs())
+-    try {
+-      ;(runtimeContext as unknown as { provide(name: string, value: unknown): void }).provide('mesh', service)
+-    } catch (error) {
+-      logger.warn('mesh service is already provided', { code: error instanceof Error ? error.message.slice(0, 120) : 'PROVIDE_CONFLICT' })
+-    }
+     const webServer = runtimeContext.get('webServer', false) as Parameters<typeof registerMeshRoutes>[0]
+     const connection = runtimeContext.get('connection', false) as Parameters<typeof registerMeshRoutes>[1]
+     const disposeRoutes = registerMeshRoutes(webServer, connection, service)
+diff --git a/packages/mesh/src/pair.ts b/packages/mesh/src/pair.ts
+index 99a3199..1df5800 100644
+--- a/packages/mesh/src/pair.ts
++++ b/packages/mesh/src/pair.ts
+@@ -45,17 +45,6 @@ function validFingerprint(value: string): boolean {
+   return value === '' || FINGERPRINT_PATTERN.test(value)
+ }
+ 
+-/**
+- * The pairing scheme is scheme-less (`dshmesh://host/pair`), so the transport is
+- * derived from the host. Loopback hosts are assumed to be a local development
+- * server on plain HTTP; everything else is HTTPS.
+- */
+-function originFor(host: string): string {
+-  const hostname = host.replace(/:\d+$/, '').toLowerCase()
+-  const isLoopback = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]' || hostname === '::1'
+-  return `${isLoopback ? 'http' : 'https'}://${host}`
+-}
+-
+ export function parsePairing(raw: string): PairingInput {
+   let url: URL
+   try {
+@@ -63,7 +52,7 @@ export function parsePairing(raw: string): PairingInput {
+   } catch {
+     throw new MeshPairError('bad_pairing', 'The pairing string is not a URL.')
+   }
+-  if (url.protocol !== 'dshmesh:' || url.pathname !== '/pair') {
++  if (url.protocol !== 'dshmesh:' || !url.hostname || url.username || url.password || url.hash || url.pathname !== '/pair') {
+     throw new MeshPairError('bad_pairing', 'The pairing string must start with dshmesh://<host>/pair?.')
+   }
+   if ((url.searchParams.get('v') ?? '1') !== '1') throw new MeshPairError('bad_pairing', 'Unsupported pairing string version.')
+@@ -71,7 +60,7 @@ export function parsePairing(raw: string): PairingInput {
+   const fingerprint = (url.searchParams.get('fp') ?? '').trim()
+   if (!CODE_PATTERN.test(code)) throw new MeshPairError('bad_pairing', 'The pairing code is missing or malformed.')
+   if (!validFingerprint(fingerprint)) throw new MeshPairError('bad_pairing', 'The certificate fingerprint is malformed.')
+-  return { serverUrl: originFor(url.host), code, fingerprint }
++  return { serverUrl: `https://${url.host}`, code, fingerprint }
+ }
+ 
+ function pairError(error: unknown): MeshPairError {
+@@ -103,6 +92,10 @@ async function verifyServer(serverUrl: string, fingerprint: string): Promise<voi
+     if (error instanceof Error && /fingerprint/i.test(error.message)) {
+       throw new MeshPairError('fingerprint_mismatch', 'The server certificate does not match the pairing string.')
+     }
++    const cause = error instanceof Error && error.cause instanceof Error ? error.cause : error
++    if (cause instanceof Error && /certificate|SSL|TLS/i.test(cause.message)) {
++      throw new MeshPairError('tls_untrusted', 'The relay certificate could not be verified.')
++    }
+     throw new MeshPairError('unreachable', error instanceof Error ? error.message : 'The server is unreachable.')
+   }
+   if (!response.ok) throw new MeshPairError('unreachable', `The server returned HTTP ${response.status}.`)
+diff --git a/packages/mesh/src/peers.ts b/packages/mesh/src/peers.ts
+index 2a9405c..3aff5b6 100644
+--- a/packages/mesh/src/peers.ts
++++ b/packages/mesh/src/peers.ts
+@@ -26,17 +26,8 @@ export interface PeerEntry {
+    * kept separately.
+    */
+   serverOnline?: boolean
+-  retryTimer?: ReturnType<typeof setTimeout>
+ }
+ 
+-const RECONNECT_DELAY_MS = 15_000
+-/**
+- * Retry cadence while the Server says the target is online but our socket is
+- * not up. The 15s default exists to avoid hammering a Host that is genuinely
+- * down; it is the wrong delay when the peer is reachable and we simply lost the
+- * race to (re)establish the tunnel.
+- */
+-const OFFLINE_RETRY_MS = 4_000
+ const PRESENCE_POLL_MS = 10_000
+ 
+ /**
+@@ -76,7 +67,6 @@ export class MeshPeers {
+     this.closed = true
+     if (this.timer !== undefined) clearInterval(this.timer)
+     for (const entry of this.entries.values()) {
+-      if (entry.retryTimer !== undefined) clearTimeout(entry.retryTimer)
+       await entry.remote?.client.close().catch(() => undefined)
+     }
+     this.entries.clear()
+@@ -93,7 +83,7 @@ export class MeshPeers {
+   nodes(): MeshNode[] {
+     return [...this.entries.values()].map(entry => ({
+       ...entry.node,
+-      online: entry.status === 'online',
++      online: entry.serverOnline !== false,
+     }))
+   }
+ 
+@@ -101,6 +91,23 @@ export class MeshPeers {
+     return this.entries.get(nodeId)
+   }
+ 
++  async connectTo(nodeId: string): Promise<PeerEntry | undefined> {
++    const entry = this.entries.get(nodeId)
++    if (entry && entry.serverOnline !== false) await this.connect(entry)
++    return entry
++  }
++
++  invalidateConnection(nodeId: string, gateway: RemoteTypertGateway): void {
++    const entry = this.entries.get(nodeId)
++    if (entry?.gateway !== gateway) return
++    const remote = entry.remote
++    entry.status = 'offline'
++    entry.remote = undefined
++    entry.gateway = undefined
++    entry.connection = undefined
++    void remote?.client.close().catch(() => undefined)
++  }
++
+   async refresh(): Promise<void> {
+     if (this.closed) return
+     if (this.refreshPromise !== undefined) return this.refreshPromise
+@@ -121,18 +128,13 @@ export class MeshPeers {
+       if (existing === undefined) {
+         const entry: PeerEntry = { node, status: 'offline', serverOnline: device.online }
+         this.entries.set(nodeId, entry)
+-        // Do not open a control socket for a Host the Server already reports
+-        // offline: the client would only fail one RTT later and add retry load.
+-        if (device.online !== false) void this.connect(entry)
+       } else {
+         existing.node = { ...existing.node, ...node, online: existing.status === 'online' }
+         existing.serverOnline = device.online
+-        if (device.online === true && existing.status === 'offline') void this.connect(existing)
+       }
+     }
+     for (const [nodeId, entry] of this.entries) {
+       if (seen.has(nodeId)) continue
+-      if (entry.retryTimer !== undefined) clearTimeout(entry.retryTimer)
+       void entry.remote?.client.close().catch(() => undefined)
+       this.entries.delete(nodeId)
+     }
+@@ -167,7 +169,7 @@ export class MeshPeers {
+         return
+       }
+       entry.remote = remote
+-      entry.gateway = new RemoteTypertGateway(remote.client)
++      entry.gateway = RemoteTypertGateway.liveOnly(remote.client)
+       entry.status = 'online'
+       entry.node = { ...entry.node, online: true }
+       remote.client.onClose(() => {
+@@ -175,7 +177,6 @@ export class MeshPeers {
+         entry.status = 'offline'
+         entry.remote = undefined
+         entry.gateway = undefined
+-        this.scheduleReconnect(entry)
+       })
+       this.logger.info('mesh peer connected', { nodeId: entry.node.nodeId, deviceId: entry.node.hostDeviceId })
+     } catch (error) {
+@@ -190,22 +191,8 @@ export class MeshPeers {
+         code: entry.errorCode ?? entry.error.slice(0, 120),
+         serverReportsOnline: entry.serverOnline,
+       })
+-      this.scheduleReconnect(entry)
+     }
+   }
+-
+-  private scheduleReconnect(entry: PeerEntry): void {
+-    if (this.closed || entry.retryTimer !== undefined) return
+-    // A peer the Server still reports as online gets the short cadence: the
+-    // failure is our tunnel, not the peer. A genuinely offline peer keeps the
+-    // slow cadence so a powered-down machine is not polled every few seconds.
+-    const delayMs = entry.serverOnline === true ? OFFLINE_RETRY_MS : RECONNECT_DELAY_MS
+-    entry.retryTimer = setTimeout(() => {
+-      entry.retryTimer = undefined
+-      void this.connect(entry)
+-    }, delayMs)
+-    entry.retryTimer.unref?.()
+-  }
+ }
+ 
+ /** Pull a protocol error code off an unknown throw without trusting its shape. */
+@@ -223,6 +210,7 @@ function nodeFromDevice(device: ServerHostDevice, nodeId: string): MeshNode {
+     online: device.online !== false,
+     ...(device.lastSeenAt === undefined ? {} : { lastSeenAt: device.lastSeenAt }),
+     hostDeviceId: device.deviceId,
++    ...(device.clientDeviceId === undefined ? {} : { clientDeviceId: device.clientDeviceId }),
+     ...(device.harnessVersion === undefined ? {} : { harnessVersion: device.harnessVersion }),
+     ...(device.clientVersion === undefined ? {} : { appVersion: device.clientVersion }),
+   }
+diff --git a/packages/mesh/src/read-only-policy.ts b/packages/mesh/src/read-only-policy.ts
+new file mode 100644
+index 0000000..c078a65
+--- /dev/null
++++ b/packages/mesh/src/read-only-policy.ts
+@@ -0,0 +1,27 @@
++const readCalls = new Set(['session/list'])
++const readStreams = new Set(['workspace/follow', 'session/follow'])
++
++export function permitsReadOnlyMeshRpc(method: string, params: unknown): boolean {
++  switch (method) {
++    case 'harness.transport.describe':
++    case 'harness.remote.stream.close':
++    case 'harness.remote.stream.event':
++      return true
++    case 'harness.remote.call':
++    case 'harness.remote.stream.open': {
++      if (params === null || typeof params !== 'object') return false
++      const endpoint = (params as { endpoint?: unknown }).endpoint
++      return typeof endpoint === 'string' &&
++        (method === 'harness.remote.call' ? readCalls : readStreams).has(endpoint)
++    }
++    default:
++      return false
++  }
++}
++
++export function permitsReadOnlyMeshPeer(
++  prefs: { allowIncoming: boolean; allowedCallers: readonly string[] },
++  deviceId: string,
++): boolean {
++  return prefs.allowIncoming === true && prefs.allowedCallers.includes(deviceId)
++}
+diff --git a/packages/mesh/src/routes.ts b/packages/mesh/src/routes.ts
+index e4d7bce..879afaf 100644
+--- a/packages/mesh/src/routes.ts
++++ b/packages/mesh/src/routes.ts
+@@ -1,5 +1,5 @@
+ import type { IncomingMessage, ServerResponse } from 'node:http'
+-import { parsePairing, type PairingInput } from './pair.js'
++import { parsePairing, MeshPairError } from './pair.js'
+ import { MeshError, type MeshService } from './service.js'
+ 
+ export const MESH_ROUTE_PREFIX = '/.dsh-mesh/v1'
+@@ -113,7 +113,7 @@ export function registerMeshRoutes(
+           /*
+            * Fail closed on <=0.2.2 and the phone runtime, where `webServer`
+            * invokes `handler(req, res)` without a `peer`. These routes expose
+-           * pairing, prefs, session prompts and a Computer Use test hook; each
++           * pairing, sharing consent and session reads; each
+            * one is a privileged local action. A missing service or missing
+            * method means the guard cannot run — never treat that as allowed.
+            */
+@@ -131,111 +131,45 @@ export function registerMeshRoutes(
+         const url = new URL(req.url ?? '/', 'http://dsh.internal')
+         const path = url.pathname.slice(MESH_ROUTE_PREFIX.length) || '/'
+         const method = req.method ?? 'GET'
+-        if (method === 'GET' && path === '/status') { json(res, 200, service.status()); return }
++        if (method === 'GET' && path === '/status') { json(res, 200, { ...service.status(), tradeLoomReadOnly: 1, liveReadAuthorization: 1 }); return }
+         if (method === 'POST' && path === '/pair') {
+           const input = record(await body(req))
+-          const parsed: PairingInput = typeof input.pairing === 'string'
+-            ? parsePairing(input.pairing)
+-            : {
+-                serverUrl: String(input.serverUrl ?? '').trim(),
+-                code: String(input.code ?? '').trim(),
+-                fingerprint: String(input.fingerprint ?? '').trim(),
+-              }
+-          if (parsed.serverUrl === '' || parsed.code === '' || parsed.fingerprint === '') {
+-            throw new MeshError('bad_pairing', 'serverUrl, code and fingerprint are required.')
+-          }
+-          const pairing: PairingInput = typeof input.name === 'string'
+-            ? { ...parsed, name: input.name }
+-            : parsed
+-          json(res, 200, await service.pair(pairing)); return
+-        }
+-        if (method === 'POST' && path === '/unpair') { await service.unpair(); json(res, 200, service.status()); return }
+-        if (method === 'POST' && path === '/link') {
+-          // Step 1: create the pending link and return the approval URL at once.
+-          // It must not wait for approval: the caller needs this URL to open the
+-          // browser, so blocking here would deadlock the UI.
+-          const input = record(await body(req))
+-          json(res, 200, await service.startLink(
+-            String(input.serverUrl ?? '').trim(),
+-            typeof input.name === 'string' ? input.name.trim() : undefined,
+-          ))
+-          return
+-        }
+-        if (method === 'POST' && path === '/link/finish') {
+-          // Step 2: wait for the browser approval and adopt the credentials.
+-          // The UI calls this after opening the browser and shows a spinner.
+-          json(res, 200, await service.finishLink())
+-          return
++          if (input.confirmed !== true) throw new MeshError('consent_required', 'Confirm this pairing first.', 403)
++          if (typeof input.pairing !== 'string') throw new MeshError('bad_pairing', 'Enter a Mesh invitation.')
++          json(res, 200, await service.pair(parsePairing(input.pairing))); return
+         }
+-        if (method === 'POST' && path === '/link/poll') {
+-          // Step 2 for a mobile client: one collect attempt. A phone must not
+-          // hold a request open for the whole approval, because the app is
+-          // suspended in the background and its HTTP client has a deadline.
+-          const status = await service.pollLink()
+-          json(res, 200, status === undefined ? { pending: true } : { pending: false, status })
+-          return
+-        }
+-        if (method === 'POST' && path === '/link/cancel') {
+-          json(res, 200, service.cancelLink()); return
+-        }
+-        if (method === 'GET' && path === '/link/status') {
+-          json(res, 200, service.pendingLinkStatus()); return
+-        }
+-        if (method === 'POST' && path === '/name') {
++        if (method === 'POST' && path === '/unpair') { await service.unpair(); json(res, 200, { ...service.status(), tradeLoomReadOnly: 1, liveReadAuthorization: 1 }); return }
++        if (method === 'GET' && path === '/prefs') { json(res, 200, service.prefs()); return }
++        if (method === 'POST' && path === '/consent') {
+           const input = record(await body(req))
+-          json(res, 200, await service.rename(String(input.name ?? ''))); return
++          if (typeof input.deviceId !== 'string' || typeof input.allow !== 'boolean') {
++            throw new MeshError('bad_consent', 'An explicit device and consent decision are required.')
++          }
++          json(res, 200, await service.setReadOnlyConsent(input.deviceId, input.allow)); return
+         }
+-        if (method === 'GET' && path === '/prefs') { json(res, 200, service.prefs()); return }
+-        if (method === 'PUT' && path === '/prefs') { json(res, 200, service.updatePrefs(record(await body(req)) as never)); return }
+-        if (method === 'GET' && path === '/nodes') { json(res, 200, { items: service.nodes() }); return }
+-        if (method === 'GET' && path === '/tree') { json(res, 200, await service.tree()); return }
+-        if (method === 'GET' && path === '/events') {
+-          json(res, 200, { items: [], cursor: Number(url.searchParams.get('since') ?? 0) }); return
++        if (method === 'GET' && path === '/nodes') { json(res, 200, { items: await service.deviceDirectory() }); return }
++        if (method === 'GET' && path === '/access') {
++          const nodeId = url.searchParams.get('nodeId')
++          if (!nodeId) throw new MeshError('node_required', 'Select a paired device first.')
++          await service.checkReadAccess(nodeId)
++          json(res, 200, { allowed: true }); return
+         }
+-        if (method === 'GET' && path === '/interactions') { json(res, 200, { items: service.interactions() }); return }
+-        if (method === 'GET' && path === '/tasks') { json(res, 200, { items: service.tasks() }); return }
+-        if (method === 'POST' && path === '/dev/computer-use') {
+-          const input = record(await body(req))
+-          json(res, 200, await service.createLocalComputerUseSession(
+-            typeof input.workspaceId === 'string' ? input.workspaceId : undefined,
+-            String(input.text ?? ''),
+-          )); return
++        if (method === 'GET' && path === '/tree') {
++          const nodeId = url.searchParams.get('nodeId')
++          if (!nodeId) throw new MeshError('node_required', 'Select a paired device first.')
++          json(res, 200, await service.readDeviceCatalog(nodeId)); return
+         }
+-        const createSession = /^\/sessions\/([^/]+)\/create$/.exec(path)
+-        if (method === 'POST' && createSession !== null) {
+-          const input = record(await body(req))
+-          json(res, 200, await service.createSession(
+-            decodeURIComponent(createSession[1]!),
+-            String(input.workspaceId ?? ''),
+-          ))
++        const page = /^\/sessions\/([^/]+)\/([^/]+)\/page$/.exec(path)
++        if (method === 'GET' && page !== null) {
++          json(res, 200, await service.page(decodeURIComponent(page[1]!), decodeURIComponent(page[2]!)))
+           return
+         }
+-        const session = /^\/sessions\/([^/]+)\/([^/]+)\/(page|stream|prompt|cancel)$/.exec(path)
+-        if (session !== null) {
+-          const [, nodeId, sessionId, action] = session
+-          if (method === 'GET' && action === 'page') {
+-            json(res, 200, await service.page(decodeURIComponent(nodeId!), decodeURIComponent(sessionId!)))
+-            return
+-          }
+-          if (method === 'GET' && action === 'stream') {
+-            const since = Number(url.searchParams.get('since') ?? 0)
+-            json(res, 200, await service.stream(decodeURIComponent(nodeId!), decodeURIComponent(sessionId!), since))
+-            return
+-          }
+-          if (method === 'POST' && action === 'prompt') {
+-            const input = record(await body(req))
+-            await service.prompt(decodeURIComponent(nodeId!), decodeURIComponent(sessionId!), String(input.text ?? ''))
+-            json(res, 200, { ok: true }); return
+-          }
+-          if (method === 'POST' && action === 'cancel') {
+-            await service.cancel(decodeURIComponent(nodeId!), decodeURIComponent(sessionId!))
+-            json(res, 200, { ok: true }); return
+-          }
+-        }
+         throw new MeshError('not_found', 'Unknown mesh route.', 404)
+       } catch (error) {
+         const mesh = error instanceof MeshError
+           ? error
++          : error instanceof MeshPairError
++            ? new MeshError(error.code, error.message, 400)
+           : new MeshError('internal_error', error instanceof Error ? error.message : 'Unexpected error.', 500)
+         json(res, mesh.status, { error: mesh.code, message: mesh.message })
+       }
+diff --git a/packages/mesh/src/service.ts b/packages/mesh/src/service.ts
+index 76a610e..a7c823b 100644
+--- a/packages/mesh/src/service.ts
++++ b/packages/mesh/src/service.ts
+@@ -57,6 +57,14 @@ import type {
+ const record = (value: unknown): Record<string, unknown> =>
+   value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+ 
++function readAccessFailure(error: unknown): MeshError {
++  const code = record(error).code
++  if (code === 'METHOD_NOT_ALLOWED' || code === 'DEVICE_REVOKED') {
++    return new MeshError('not_connected', 'The selected device no longer allows access.', 403)
++  }
++  return new MeshError('offline', 'The selected device could not verify access.', 503)
++}
++
+ const SESSION_TIMEOUT_MS = 5 * 60_000
+ /** How often persisted running tasks are checked against their remote Session. */
+ const TASK_RECONCILE_MS = 15_000
+@@ -114,6 +122,7 @@ export interface MeshHostController {
+   /** Host control-connection health; absent on controllers without a Host side. */
+   hostStatus?(): { online: boolean; reconnecting: boolean; error?: string }
+   reconnectHost?(): boolean
++  disconnectPeer?(deviceId: string): Promise<void>
+ }
+ 
+ export class MeshService {
+@@ -176,7 +185,6 @@ export class MeshService {
+   }
+ 
+   async start(): Promise<void> {
+-    void this.ensureAndroidDefaultWorkspace()
+     const state = this.state
+     if (state === undefined || state.pending === true) return
+     try {
+@@ -186,7 +194,6 @@ export class MeshService {
+       this.logger.warn('mesh host startup failed', { code: this.startError.slice(0, 160) })
+     }
+     await this.startClient(state)
+-    this.startTaskReconcile()
+   }
+ 
+   async stop(): Promise<void> {
+@@ -294,7 +301,6 @@ export class MeshService {
+       this.logger.warn('mesh host startup failed', { code: this.startError.slice(0, 160) })
+     }
+     await this.startClient(result.state)
+-    this.startTaskReconcile()
+     return this.status()
+   }
+ 
+@@ -492,7 +498,6 @@ export class MeshService {
+       this.logger.warn('mesh host startup failed', { code: this.startError.slice(0, 160) })
+     }
+     await this.startClient(next)
+-    this.startTaskReconcile()
+     return this.status()
+   }
+ 
+@@ -523,8 +528,29 @@ export class MeshService {
+     return [self, ...(this.peers?.nodes() ?? [])]
+   }
+ 
++  async deviceDirectory(): Promise<MeshNode[]> {
++    if (this.state !== undefined) {
++      if (this.peers === undefined) throw new MeshError('relay_unavailable', 'The Mesh relay is unavailable.', 503)
++      try { await this.peers.refresh() }
++      catch { throw new MeshError('relay_unavailable', 'The Mesh relay is unavailable.', 503) }
++    }
++    return this.nodes()
++  }
++
+   prefs(): MeshPrefs {
+-    return this.state?.prefs ?? { allowIncoming: true, allowedCallers: [], allowGuardedTools: false }
++    return this.state?.prefs ?? { allowIncoming: false, allowedCallers: [], allowGuardedTools: false }
++  }
++
++  async setReadOnlyConsent(deviceId: string, allow: boolean): Promise<MeshPrefs> {
++    const previous = this.prefs().allowedCallers
++    if (allow && !this.nodes().some(node => !node.self && node.clientDeviceId === deviceId)) {
++      throw new MeshError('unknown_device', 'Select a paired peer before granting access.', 404)
++    }
++    const allowedCallers = allow ? [...new Set([...previous, deviceId])]
++      : previous.filter(id => id !== deviceId)
++    const saved = this.updatePrefs({ allowedCallers, allowIncoming: allowedCallers.length > 0 })
++    if (!allow) await this.host?.disconnectPeer?.(deviceId)
++    return saved
+   }
+ 
+   updatePrefs(patch: Partial<MeshPrefs>): MeshPrefs {
+@@ -590,9 +616,6 @@ export class MeshService {
+   }
+ 
+   async tree(): Promise<MeshTree> {
+-    if (this.config.platform === 'android' && !this.defaultWorkspaceEnsured) {
+-      await this.ensureAndroidDefaultWorkspace()
+-    }
+     const nodes: MeshTree['nodes'] = []
+     const localCatalog = await readRemoteCatalog(this.localGateway, AbortSignal.timeout(10_000)).catch(() => undefined)
+     nodes.push({
+@@ -660,25 +683,66 @@ export class MeshService {
+     }))
+   }
+ 
++  async checkReadAccess(nodeId: string): Promise<void> {
++    const peer = this.peers?.peer(nodeId)
++    if (peer?.gateway === undefined || peer.status !== 'online') {
++      throw new MeshError('not_connected', 'The selected device is offline or has not allowed access.', 403)
++    }
++    const gateway = peer.gateway
++    try {
++      await gateway.checkAccess(AbortSignal.timeout(4_000))
++    } catch (error) {
++      this.peers?.invalidateConnection(nodeId, gateway)
++      throw readAccessFailure(error)
++    }
++  }
++
++  async readDeviceCatalog(nodeId: string): Promise<MeshTree> {
++    const peer = await this.peers?.connectTo(nodeId)
++    if (peer?.gateway === undefined || peer.status !== 'online') {
++      throw new MeshError('not_connected', 'The selected device is offline or has not allowed access.', 403)
++    }
++    const gateway = peer.gateway
++    const catalog = await readRemoteCatalog(gateway, AbortSignal.timeout(8_000)).catch(error => {
++      this.peers?.invalidateConnection(nodeId, gateway)
++      throw readAccessFailure(error)
++    })
++    const workspaces = catalog.workspaces.map(({ path: _path, ...workspace }) => ({
++      ...workspace, path: '', sessions: workspace.sessions.map(session => ({ ...session, controllable: false })),
++    }))
++    this.treeCursor += 1
++    return { nodes: [{ ...peer.node, workspaces }], cursor: this.treeCursor }
++  }
++
+   async page(nodeId: string, sessionId: string, maxMessages = 50): Promise<unknown> {
+-    const gateway = this.readGatewayFor(nodeId)
+-    // DSH 0.1.7 requires `throughSeq` on session/page while 0.2.2 makes it
+-    // optional. A follow snapshot carries the same records and is accepted by
+-    // both, so the Mesh view uses it as the cold-read primitive.
++    if (nodeId === this.localNode.nodeId || nodeId === 'local') {
++      throw new MeshError('local_not_remote', 'Open local sessions in the main app.', 400)
++    }
++    const gateway = this.gatewayFor(nodeId)
++    // A compatible, live follow opens only after the Host authorizes this
++    // reader. Never return a prior snapshot when the channel has gone away.
+     const lifetime = new AbortController()
+-    const source = await gateway.open('session/follow', {
+-      args: { request: { address: { kind: 'session', sessionId }, maxMessages } },
+-    }, lifetime.signal)
+-    const iterator = source[Symbol.asyncIterator]()
++    const signal = AbortSignal.any([lifetime.signal, AbortSignal.timeout(8_000)])
+     try {
+-      const first = await iterator.next()
+-      const value = record(first.done ? undefined : first.value)
+-      return value.type === 'snapshot'
+-        ? { records: value.records, cursor: value.cursor, hasMore: value.hasMore, projections: value.projections }
+-        : { records: [], cursor: 0, hasMore: false }
++      const source = await gateway.open('session/follow', {
++        args: { request: { address: { kind: 'session', sessionId }, maxMessages } },
++      }, signal)
++      const iterator = source[Symbol.asyncIterator]()
++      try {
++        const first = await iterator.next()
++        const value = record(first.done ? undefined : first.value)
++        return value.type === 'snapshot'
++          ? { records: value.records, cursor: value.cursor, hasMore: value.hasMore, projections: value.projections }
++          : { records: [], cursor: 0, hasMore: false }
++      } finally {
++        lifetime.abort('snapshot-read')
++        await iterator.return?.()
++      }
++    } catch (error) {
++      this.peers?.invalidateConnection(nodeId, gateway)
++      throw readAccessFailure(error)
+     } finally {
+-      lifetime.abort('snapshot-read')
+-      await iterator.return?.()
++      lifetime.abort()
+     }
+   }
+ 
+diff --git a/packages/mesh/src/state.ts b/packages/mesh/src/state.ts
+index c529146..8cfe046 100644
+--- a/packages/mesh/src/state.ts
++++ b/packages/mesh/src/state.ts
+@@ -22,7 +22,7 @@ export interface MeshDeviceProfile {
+ }
+ 
+ export const defaultPrefs = (): MeshPrefs => ({
+-  allowIncoming: true,
++  allowIncoming: false,
+   allowedCallers: [],
+   allowGuardedTools: false,
+ })
+diff --git a/packages/mesh/tests/admit-peer.test.ts b/packages/mesh/tests/admit-peer.test.ts
+index 6a30f6b..26fa75b 100644
+--- a/packages/mesh/tests/admit-peer.test.ts
++++ b/packages/mesh/tests/admit-peer.test.ts
+@@ -1,29 +1,12 @@
+ import { describe, expect, it } from 'vitest'
+-import { admitPeer } from '../src/host.js'
++import { permitsReadOnlyMeshPeer } from '../src/read-only-policy.js'
+ 
+-describe('admitPeer', () => {
+-  it('refuses everything when allowIncoming is off', () => {
+-    expect(admitPeer({ allowIncoming: false, allowedCallers: [] }, { deviceId: 'a', name: 'Mac' })).toBe(false)
+-    // An allow list must not override the master switch.
+-    expect(admitPeer({ allowIncoming: false, allowedCallers: ['a'] }, { deviceId: 'a', name: 'Mac' })).toBe(false)
+-  })
+-
+-  it('admits any device on the account when the allow list is empty', () => {
+-    expect(admitPeer({ allowIncoming: true, allowedCallers: [] }, { deviceId: 'other', name: 'Phone' })).toBe(true)
+-  })
+-
+-  it('admits only listed devices once the allow list is non-empty', () => {
+-    const prefs = { allowIncoming: true, allowedCallers: ['trusted-id'] }
+-    expect(admitPeer(prefs, { deviceId: 'trusted-id', name: 'Mac' })).toBe(true)
+-    expect(admitPeer(prefs, { deviceId: 'stranger', name: 'Phone' })).toBe(false)
+-  })
+-
+-  it('accepts a display name as well as an id', () => {
+-    expect(admitPeer({ allowIncoming: true, allowedCallers: ['书房 Mac'] }, { deviceId: 'x', name: '书房 Mac' })).toBe(true)
+-  })
+-
+-  it('ignores blank entries rather than locking everyone out', () => {
+-    expect(admitPeer({ allowIncoming: true, allowedCallers: ['', '   '] }, { deviceId: 'x', name: 'Mac' })).toBe(true)
++describe('read-only peer consent', () => {
++  it('requires an explicit matching stable identity and an enabled grant', () => {
++    expect(permitsReadOnlyMeshPeer({ allowIncoming: false, allowedCallers: ['id'] }, 'id')).toBe(false)
++    expect(permitsReadOnlyMeshPeer({ allowIncoming: true, allowedCallers: [] }, 'id')).toBe(false)
++    expect(permitsReadOnlyMeshPeer({ allowIncoming: true, allowedCallers: ['Phone'] }, 'id')).toBe(false)
++    expect(permitsReadOnlyMeshPeer({ allowIncoming: true, allowedCallers: ['id'] }, 'id')).toBe(true)
+   })
+ })
+ 
+diff --git a/packages/mesh/tests/host-preset.test.ts b/packages/mesh/tests/host-preset.test.ts
+index b823a14..e2ac26b 100644
+--- a/packages/mesh/tests/host-preset.test.ts
++++ b/packages/mesh/tests/host-preset.test.ts
+@@ -1,26 +1,21 @@
+ import { describe, expect, it } from 'vitest'
+-import { withIncomingPreset } from '../src/host.js'
++import { permitsReadOnlyMeshRpc } from '../src/read-only-policy.js'
+ 
+-describe('incoming preset injection', () => {
+-  it('adds agentPreset to a remote session/create request', () => {
+-    const payload = { args: { request: { workspaceId: 'ws-1' } } }
+-    expect(withIncomingPreset('session/create', payload, 'standard')).toEqual({
+-      args: { request: { workspaceId: 'ws-1', agentPreset: 'standard' } },
+-    })
++describe('read-only Host policy', () => {
++  it('permits only the read endpoints required by catalog and session snapshots', () => {
++    expect(permitsReadOnlyMeshRpc('harness.remote.call', { endpoint: 'session/list' })).toBe(true)
++    expect(permitsReadOnlyMeshRpc('harness.remote.stream.open', { endpoint: 'session/follow' })).toBe(true)
++    expect(permitsReadOnlyMeshRpc('harness.remote.stream.open', { endpoint: 'workspace/follow' })).toBe(true)
+   })
+ 
+-  it('overrides a caller-supplied preset', () => {
+-    const payload = { args: { request: { workspaceId: 'ws-1', agentPreset: 'computer-use' } } }
+-    expect(withIncomingPreset('session/create', payload, 'standard')).toEqual({
+-      args: { request: { workspaceId: 'ws-1', agentPreset: 'standard' } },
+-    })
++  it('blocks mutating, control, transfer and unrecognized endpoints', () => {
++    for (const endpoint of ['session/create', 'session/prompt', 'workspace/create', 'commands/execute', 'session/follow']) {
++      expect(permitsReadOnlyMeshRpc('harness.remote.call', { endpoint })).toBe(false)
++    }
++    for (const method of ['loopback.call', 'workspace.upload.open', 'plugin.route.call', 'harness.remote.transfer.open']) {
++      expect(permitsReadOnlyMeshRpc(method, {})).toBe(false)
++    }
++    expect(permitsReadOnlyMeshRpc('harness.remote.stream.open', { endpoint: 'terminal/follow' })).toBe(false)
++    expect(permitsReadOnlyMeshRpc('harness.remote.call', null)).toBe(false)
+   })
+-
+-  it('leaves other endpoints and malformed payloads untouched', () => {
+-    const payload = { args: { request: { sessionId: 's-1' } } }
+-    expect(withIncomingPreset('session/prompt', payload, 'standard')).toBe(payload)
+-    expect(withIncomingPreset('session/create', undefined, 'standard')).toBeUndefined()
+-    expect(withIncomingPreset('session/create', { args: {} }, 'standard')).toEqual({ args: {} })
+-    expect(withIncomingPreset('session/create', payload, '')).toBe(payload)
+-  })
+-})
+\ No newline at end of file
++})
+diff --git a/packages/mesh/tests/pairing.test.ts b/packages/mesh/tests/pairing.test.ts
+index dc0d126..ec0374b 100644
+--- a/packages/mesh/tests/pairing.test.ts
++++ b/packages/mesh/tests/pairing.test.ts
+@@ -7,8 +7,7 @@
+  *     store;
+  *   - self-hosted / self-signed    -> `fp` pins a 43-character SPKI digest.
+  *
+- * Loopback hosts resolve to plain HTTP so a local development server can be
+- * paired without provisioning a certificate.
++ * Loopback relays also use TLS.
+  */
+ import { describe, expect, it } from 'vitest'
+ import { parsePairing } from '../src/pair.js'
+@@ -47,11 +46,11 @@ describe('parsePairing', () => {
+       .toBe('https://mesh.example.com:8443')
+   })
+ 
+-  it('uses http for loopback hosts so local development works without TLS', () => {
++  it('requires TLS for loopback hosts', () => {
+     expect(parsePairing('dshmesh://localhost:8899/pair?v=1&code=KJRM2H69').serverUrl)
+-      .toBe('http://localhost:8899')
++      .toBe('https://localhost:8899')
+     expect(parsePairing('dshmesh://127.0.0.1:8080/pair?v=1&code=KJRM2H69').serverUrl)
+-      .toBe('http://127.0.0.1:8080')
++      .toBe('https://127.0.0.1:8080')
+   })
+ 
+   it('normalizes the code to upper case', () => {
+diff --git a/packages/mesh/tests/peers-reconnect.test.ts b/packages/mesh/tests/peers-reconnect.test.ts
+new file mode 100644
+index 0000000..f7243a4
+--- /dev/null
++++ b/packages/mesh/tests/peers-reconnect.test.ts
+@@ -0,0 +1,42 @@
++import { describe, expect, it, vi } from 'vitest'
++import { MeshPeers } from '../src/peers.js'
++
++const { connect } = vi.hoisted(() => ({ connect: vi.fn() }))
++vi.mock('ds-harness-remote/internal', async importOriginal => ({
++  ...await importOriginal<typeof import('ds-harness-remote/internal')>(),
++  ClientConnection: class {
++    connect = connect
++  },
++}))
++
++describe('read-only Mesh peer reconnection', () => {
++  it('drops a stale connection and dials fresh after the next explicit read', async () => {
++    const previous = { close: vi.fn(async () => undefined), onClose: vi.fn() }
++    const next = { close: vi.fn(async () => undefined), onClose: vi.fn() }
++    connect.mockResolvedValueOnce({ client: previous }).mockResolvedValueOnce({ client: next })
++
++    type Inputs = ConstructorParameters<typeof MeshPeers>
++    const server = {
++      listDevices: async () => [{ deviceId: 'host', nodeId: 'selected', name: 'Desktop', platform: 'win32', online: true }],
++    } as unknown as Inputs[2]
++    const peers = new MeshPeers(
++      {} as Inputs[0], {} as Inputs[1], server, {} as Inputs[3], {} as Inputs[4],
++      { info: vi.fn(), warn: vi.fn() } as unknown as Inputs[5],
++      vi.fn(),
++    )
++    await peers.refresh()
++    const gateway = (await peers.connectTo('selected'))!.gateway!
++    peers.invalidateConnection('selected', gateway)
++    expect(peers.peer('selected')).toMatchObject({ status: 'offline', gateway: undefined })
++    expect(previous.close).toHaveBeenCalledOnce()
++    expect(connect).toHaveBeenCalledOnce()
++
++    const reopened = (await peers.connectTo('selected'))!.gateway!
++    expect(reopened).not.toBe(gateway)
++    expect(connect).toHaveBeenCalledTimes(2)
++    peers.invalidateConnection('selected', gateway)
++    expect(peers.peer('selected')?.gateway).toBe(reopened)
++    expect(next.close).not.toHaveBeenCalled()
++    await peers.close()
++  })
++})
+diff --git a/packages/plugin/src/pinned-tls.ts b/packages/plugin/src/pinned-tls.ts
+index abde09e..24ce18b 100644
+--- a/packages/plugin/src/pinned-tls.ts
++++ b/packages/plugin/src/pinned-tls.ts
+@@ -1,6 +1,6 @@
+ import { createHash, timingSafeEqual, X509Certificate } from 'node:crypto'
+ import { Agent as HttpsAgent, request as httpsRequest } from 'node:https'
+-import { checkServerIdentity, type PeerCertificate } from 'node:tls'
++import { checkServerIdentity, connect, type ConnectionOptions, type PeerCertificate } from 'node:tls'
+ import { WebSocket as WsWebSocket } from 'ws'
+ import type { FetchImplementation } from './server-api.js'
+ import type { WebSocketFactory } from './server-connection.js'
+@@ -32,6 +32,31 @@ function verifyPinned(certificate: PeerCertificate, expected: Buffer): Error | u
+     : new Error('Server certificate public key does not match the pinned fingerprint.')
+ }
+ 
++function pinnedAgent(expected: Buffer): HttpsAgent {
++  const agent = new HttpsAgent({ keepAlive: true })
++  // With private/public-key pinning the verification decision must complete
++  // before the HTTP or WebSocket client receives the connected socket.
++  agent.createConnection = (options, complete) => {
++    const tls = options as ConnectionOptions & { hostname?: string }
++    const socket = connect({ ...tls, rejectUnauthorized: false })
++    const handshakeError = (error: Error) => complete?.(error, socket)
++    socket.once('error', handshakeError)
++    socket.once('secureConnect', () => {
++      socket.removeListener('error', handshakeError)
++      const cert = socket.getPeerCertificate()
++      const host = tls.servername || tls.hostname || tls.host || ''
++      const failure = !cert.raw ? new Error('Server certificate was missing.')
++        : checkServerIdentity(host, cert) ?? verifyPinned(cert, expected)
++      if (failure) {
++        socket.destroy()
++        complete?.(failure, socket)
++      } else complete?.(null, socket)
++    })
++    return undefined
++  }
++  return agent
++}
++
+ /**
+  * A `fetch` replacement for the device control plane. It is intentionally
+  * small: the control plane only exchanges JSON, while file payloads use the
+@@ -47,17 +72,7 @@ function verifyPinned(certificate: PeerCertificate, expected: Buffer): Error | u
+ export function createPinnedFetch(fingerprint: string): FetchImplementation {
+   if (fingerprint.trim() === '') return (input, init) => fetch(input, init)
+   const expected = fingerprintBytes(fingerprint)
+-  const agent = new HttpsAgent({
+-    keepAlive: true,
+-    // Pinning replaces CA verification: the check below is the authentication
+-    // decision, so a private CA or the system store is not consulted.
+-    rejectUnauthorized: false,
+-    checkServerIdentity: (host, certificate) => {
+-      const identity = checkServerIdentity(host, certificate)
+-      if (identity !== undefined) return identity
+-      return verifyPinned(certificate, expected)
+-    },
+-  })
++  const agent = pinnedAgent(expected)
+   const pinned: FetchImplementation = async (input, init = {}) => {
+     const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url)
+     if (url.protocol !== 'https:') return fetch(input, init)
+@@ -105,15 +120,7 @@ export function createPinnedWebSocketFactory(fingerprint: string): WebSocketFact
+     return (url: string) => new WsWebSocket(url) as unknown as ReturnType<WebSocketFactory>
+   }
+   const expected = fingerprintBytes(fingerprint)
+-  const agent = new HttpsAgent({
+-    keepAlive: true,
+-    rejectUnauthorized: false,
+-    checkServerIdentity: (host, certificate) => {
+-      const identity = checkServerIdentity(host, certificate)
+-      if (identity !== undefined) return identity
+-      return verifyPinned(certificate, expected)
+-    },
+-  })
++  const agent = pinnedAgent(expected)
+   return (url: string) => new WsWebSocket(url, { agent }) as unknown as ReturnType<WebSocketFactory>
+ }
+ 
+diff --git a/packages/plugin/src/remote-typert-gateway.ts b/packages/plugin/src/remote-typert-gateway.ts
+index 022741f..5cfe153 100644
+--- a/packages/plugin/src/remote-typert-gateway.ts
++++ b/packages/plugin/src/remote-typert-gateway.ts
+@@ -41,9 +41,18 @@ export class RemoteTypertGateway implements RemoteTypertGatewayTarget {
+     // Native snapshot consumers treat wire errors as terminal. Their local
+     // carrier is reset by subscribeRemoteRecovery only after reauthentication.
+     private readonly deferStreamDisconnect = false,
+-    private readonly historyCache: RemoteSessionHistoryCache = new RemoteSessionHistoryCache(),
++    private readonly historyCache: RemoteSessionHistoryCache | null = new RemoteSessionHistoryCache(),
+   ) {}
+ 
++  /** For clients that must ask the Host for current authorization on every read. */
++  static liveOnly(client: RemoteClientCore): RemoteTypertGateway {
++    return new RemoteTypertGateway(client, undefined, undefined, false, null)
++  }
++
++  async checkAccess(signal: AbortSignal): Promise<void> {
++    await this.client.rpc('harness.transport.describe', {}, signal)
++  }
++
+   async invoke(request: TypertGatewayRequest): Promise<unknown> {
+     const result = await this.dispatch(
+       `${request.namespace}/${request.method}`,
+@@ -59,35 +68,37 @@ export class RemoteTypertGateway implements RemoteTypertGatewayTarget {
+     payload: unknown,
+     signal: AbortSignal,
+   ): Promise<TypertRpcResult> {
++    const historyCache = this.historyCache
++    if (historyCache === null) return this.dispatchRemote(endpoint, payload, signal)
+     if (endpoint === 'workspace/delete') {
+-      this.historyCache.clear()
++      historyCache.clear()
+     } else if (isSessionMutationEndpoint(endpoint)) {
+       const mutatedSessionId = extractSessionIdFromGatewayPayload(payload)
+-      if (mutatedSessionId !== undefined) this.historyCache.invalidateSession(mutatedSessionId)
++      if (mutatedSessionId !== undefined) historyCache.invalidateSession(mutatedSessionId)
+     }
+     if (endpoint === 'session/page' || endpoint === 'session/history' || endpoint === 'session/projections') {
+       const sessionId = extractSessionIdFromGatewayPayload(payload)
+       if (sessionId !== undefined) {
+         const key = canonicalUnaryHistoryKey(endpoint, payload)
+-        const cached = this.historyCache.getUnary(this.client, sessionId, key)
+-          ?? (endpoint === 'session/page' ? this.historyCache.slicePageFromSnapshot(this.client, sessionId, payload) : undefined)
++        const cached = historyCache.getUnary(this.client, sessionId, key)
++          ?? (endpoint === 'session/page' ? historyCache.slicePageFromSnapshot(this.client, sessionId, payload) : undefined)
+         if (cached !== undefined) return { ok: true, value: cached }
+-        return await this.historyCache.runSingleFlightUnary<TypertRpcResult>(
++        return await historyCache.runSingleFlightUnary<TypertRpcResult>(
+           this.client,
+           sessionId,
+           key,
+           signal,
+           async sharedSignal => {
+-            const readEpoch = this.historyCache.beginReadEpoch()
++            const readEpoch = historyCache.beginReadEpoch()
+             try {
+               const result = await this.dispatchRemote(endpoint, payload, sharedSignal)
+               if (result.ok) {
+-                this.historyCache.setUnary(this.client, sessionId, key, result.value, readEpoch)
++                historyCache.setUnary(this.client, sessionId, key, result.value, readEpoch)
+               }
+               return result
+             } catch (error) {
+               if (!sharedSignal.aborted && !(isRecord(error) && error.isDSHRemoteError === true)) {
+-                const fallback = this.historyCache.getFallbackUnary(sessionId, endpoint, key, payload)
++                const fallback = historyCache.getFallbackUnary(sessionId, endpoint, key, payload)
+                 if (fallback !== undefined) return { ok: true, value: fallback }
+               }
+               throw error
+@@ -99,7 +110,7 @@ export class RemoteTypertGateway implements RemoteTypertGatewayTarget {
+     const result = await this.dispatchRemote(endpoint, payload, signal)
+     if (isSessionMutationEndpoint(endpoint)) {
+       const mutatedSessionId = extractSessionIdFromGatewayPayload(payload)
+-      if (mutatedSessionId !== undefined) this.historyCache.invalidateSession(mutatedSessionId)
++      if (mutatedSessionId !== undefined) historyCache.invalidateSession(mutatedSessionId)
+     }
+     return result
+   }
+@@ -160,7 +171,7 @@ export class RemoteTypertGateway implements RemoteTypertGatewayTarget {
+ 
+   async open(endpoint: string, payload: unknown, signal: AbortSignal): Promise<AsyncIterable<unknown>> {
+     signal.throwIfAborted()
+-    if (endpoint === 'session/follow') {
++    if (endpoint === 'session/follow' && this.historyCache !== null) {
+       const sessionId = extractSessionIdFromGatewayPayload(payload)
+       const cached = sessionId === undefined
+         ? undefined
+@@ -302,7 +313,7 @@ export class RemoteTypertGateway implements RemoteTypertGatewayTarget {
+         if (isRecord(item) && item.type === 'snapshot') {
+           const upstreamCursor = typeof item.cursor === 'number' ? item.cursor : lastCursor
+           if (upstreamCursor < lastCursor) {
+-            this.historyCache.recordFollowSnapshot(this.client, sessionId, item)
++            this.historyCache?.recordFollowSnapshot(this.client, sessionId, item)
+             resyncRequired = true
+             throw new RemoteClientError('TRANSPORT_CLOSED', 'Remote session history cursor was reset; reopen to resync.')
+           }
+@@ -316,11 +327,11 @@ export class RemoteTypertGateway implements RemoteTypertGatewayTarget {
+               if (record.event.seq > lastCursor + 1) {
+                 const recovered = await backfillRange(lastCursor, record.event.seq - 1)
+                 if (recovered === undefined) {
+-                  this.historyCache.recordFollowSnapshot(this.client, sessionId, item)
++                  this.historyCache?.recordFollowSnapshot(this.client, sessionId, item)
+                   resyncRequired = true
+                   throw new RemoteClientError('TRANSPORT_CLOSED', 'Remote session history gap requires resync.')
+                 }
+-                this.historyCache.prependBackfilledRecords(this.client, sessionId, recovered)
++                this.historyCache?.prependBackfilledRecords(this.client, sessionId, recovered)
+                 for (const missing of recovered) {
+                   lastCursor = missing.event.seq
+                   yield missing
+@@ -333,11 +344,11 @@ export class RemoteTypertGateway implements RemoteTypertGatewayTarget {
+           if (upstreamCursor > lastCursor) {
+             const recovered = await backfillRange(lastCursor, upstreamCursor)
+             if (recovered === undefined) {
+-              this.historyCache.recordFollowSnapshot(this.client, sessionId, item)
++              this.historyCache?.recordFollowSnapshot(this.client, sessionId, item)
+               resyncRequired = true
+               throw new RemoteClientError('TRANSPORT_CLOSED', 'Remote session history cursor gap requires resync.')
+             }
+-            this.historyCache.prependBackfilledRecords(this.client, sessionId, recovered)
++            this.historyCache?.prependBackfilledRecords(this.client, sessionId, recovered)
+             for (const missing of recovered) {
+               lastCursor = missing.event.seq
+               yield missing
+@@ -381,11 +392,11 @@ export class RemoteTypertGateway implements RemoteTypertGatewayTarget {
+           if (item.event.seq > lastCursor + 1) {
+             const recovered = await backfillRange(lastCursor, item.event.seq - 1)
+             if (recovered === undefined) {
+-              this.historyCache.invalidateSession(sessionId)
++              this.historyCache?.invalidateSession(sessionId)
+               resyncRequired = true
+               throw new RemoteClientError('TRANSPORT_CLOSED', 'Remote session live event gap requires resync.')
+             }
+-            this.historyCache.prependBackfilledRecords(this.client, sessionId, [...recovered, item])
++            this.historyCache?.prependBackfilledRecords(this.client, sessionId, [...recovered, item])
+             for (const missing of recovered) {
+               lastCursor = missing.event.seq
+               yield missing
+@@ -476,9 +487,9 @@ export class RemoteTypertGateway implements RemoteTypertGatewayTarget {
+             if (resolvedSessionId.length === 0 && isRecord(normalized.header) && typeof normalized.header.id === 'string') {
+               resolvedSessionId = normalized.header.id
+             }
+-            this.historyCache.recordFollowSnapshot(this.client, resolvedSessionId, normalized)
++            this.historyCache?.recordFollowSnapshot(this.client, resolvedSessionId, normalized)
+           } else {
+-            this.historyCache.recordFollowFrame(this.client, resolvedSessionId, normalized)
++            this.historyCache?.recordFollowFrame(this.client, resolvedSessionId, normalized)
+           }
+         }
+         yield normalized
+diff --git a/packages/plugin/src/rpc-router.ts b/packages/plugin/src/rpc-router.ts
+index ada7ff1..4579c8b 100644
+--- a/packages/plugin/src/rpc-router.ts
++++ b/packages/plugin/src/rpc-router.ts
+@@ -87,6 +87,7 @@ export class RpcRouter {
+     private readonly workspaceTypes?: () => readonly RemoteWorkspaceTypeDescription[],
+     private readonly pluginRoute?: PluginRouteBridge,
+     private readonly workspaceUpload?: WorkspaceUploadHost,
++    private readonly authorize?: (method: string, params: unknown) => boolean,
+   ) {}
+ 
+   async closePeerStreams(): Promise<void> {
+@@ -109,6 +110,9 @@ export class RpcRouter {
+       return createRpcError(message.id, 'METHOD_NOT_FOUND', 'The requested method does not exist.')
+     }
+     const request = message as RemoteMessage<RpcRequestPayload>
++    if (this.authorize?.(request.payload.method, request.payload.params) === false) {
++      return createRpcError(request.id, 'METHOD_NOT_ALLOWED', 'The peer is not authorized for this Host operation.')
++    }
+     if (this.active >= this.maxPending) {
+       return createRpcError(request.id, 'RATE_LIMITED', 'Too many Host requests are already pending.', undefined, true)
+     }
+@@ -116,6 +120,9 @@ export class RpcRouter {
+     const startedAt = performance.now()
+     try {
+       const result = await this.invoke(request.payload.method, request.payload.params)
++      if (this.authorize?.(request.payload.method, request.payload.params) === false) {
++        return createRpcError(request.id, 'METHOD_NOT_ALLOWED', 'The peer authorization has changed.')
++      }
+       const subMethod = typeof (request.payload.params as Record<string, unknown> | undefined)?.method === 'string'
+         ? String((request.payload.params as Record<string, unknown>).method)
+         : undefined
+diff --git a/packages/plugin/src/server-api.ts b/packages/plugin/src/server-api.ts
+index 7990393..0011a95 100644
+--- a/packages/plugin/src/server-api.ts
++++ b/packages/plugin/src/server-api.ts
+@@ -60,6 +60,7 @@ export interface ServerHostDevice {
+   /** v0 node identity; optional for upstream Server compatibility. */
+   nodeId?: string
+   nodeName?: string
++  clientDeviceId?: string
+   online?: boolean
+   lastSeenAt?: number
+   clientVersion?: string
+@@ -760,6 +761,7 @@ function parseHostDevice(value: unknown): ServerHostDevice {
+     ...(typeof item.harnessVersion === 'string' ? { harnessVersion: item.harnessVersion } : {}),
+     ...(typeof item.nodeId === 'string' ? { nodeId: item.nodeId } : {}),
+     ...(typeof item.nodeName === 'string' ? { nodeName: item.nodeName } : {}),
++    ...(typeof item.clientDeviceId === 'string' ? { clientDeviceId: item.clientDeviceId } : {}),
+   }
+ }
+ 
+diff --git a/packages/plugin/src/service.ts b/packages/plugin/src/service.ts
+index ebe0590..fd65110 100644
+--- a/packages/plugin/src/service.ts
++++ b/packages/plugin/src/service.ts
+@@ -110,17 +110,24 @@ export class HostPluginRuntime {
+       platform: string
+       membershipId: string
+     }) => boolean,
++    private readonly authorizePeerRpc?: (peerId: string, method: string, params: unknown) => boolean,
+   ) {
+     this.terminalEnabled = config.terminal.enabled
+     this.loopbackPorts = [...config.loopback.ports]
+     this.codex = new CodexRemoteDomain(config.codex, logger)
+     this.acp = new AcpRemoteGateway(config.acp ?? { enabled: false, backends: [] }, logger, undefined, undefined, () => this.terminalEnabled, this.terminalSpawner)
+     this.connections = new ConnectionController(this.identities, (context, send) => {
++      const authorize = this.authorizePeerRpc === undefined ? undefined
++        : (method: string, params: unknown) => this.authorizePeerRpc!(context.peerDeviceId, method, params)
+       const peerGateway = this.localGateway?.createPeer?.() ?? this.localGateway
+       const harnessRemote = peerGateway?.supportsCarrier === true
+         ? new HarnessRemoteBridge(
+             peerGateway,
+-            (event, data) => send(createEvent(event, data)),
++            async (event, data) => {
++              if (authorize?.('harness.remote.stream.event', undefined) !== false) {
++                return send(createEvent(event, data))
++              }
++            },
+             this.logger,
+             this.harnessVersion,
+             new TerminalPolicy(() => this.terminalEnabled, context.peerDeviceId, this.terminalOwners),
+@@ -174,6 +181,7 @@ export class HostPluginRuntime {
+           threadId => this.codex.resolveThreadWorkspace(context.connectionId, threadId),
+           sessionId => this.acp.resolveUploadWorkspace(context.connectionId, sessionId),
+         ), undefined, context.transportMode),
++        authorize,
+       )
+     }, this.logger)
+     if (config.serverUrl !== undefined) {
+@@ -419,6 +427,10 @@ export class HostPluginRuntime {
+     return result
+   }
+ 
++  disconnectPeer(deviceId: string): Promise<void> {
++    return this.connections.revoke(deviceId)
++  }
++
+   async revokePeer(deviceId: string): Promise<boolean> {
+     const revoked = await this.identities.revokePeer(deviceId)
+     if (revoked) await this.connections.revoke(deviceId)
+@@ -536,6 +548,7 @@ export class HostPluginRuntime {
+   }
+ 
+   private hostCapabilities(): string[] {
++    if (this.authorizePeerRpc !== undefined) return ['harness.remote.v1']
+     const capabilities: string[] = ['workspace.upload.v1']
+     if (this.loopbackPorts.length > 0) capabilities.push('loopback.http-ws.v1')
+     if (this.localGateway?.supportsCarrier === true) {
+diff --git a/packages/plugin/tests/remote-typert-gateway.test.ts b/packages/plugin/tests/remote-typert-gateway.test.ts
+index bab61ac..3f8422e 100644
+--- a/packages/plugin/tests/remote-typert-gateway.test.ts
++++ b/packages/plugin/tests/remote-typert-gateway.test.ts
+@@ -600,6 +600,44 @@ describe('RemoteTypertGateway', () => {
+     })
+   })
+ 
++  it('requires a live Host read after session access was revoked', async () => {
++    let publish: ((event: EventPayload) => void) | undefined
++    let revoked = false
++    const rpc = vi.fn(async (method: string, params: { streamId: string }) => {
++      if (method === 'harness.transport.describe') return { capabilities: [] }
++      if (method === 'harness.remote.stream.open') {
++        if (revoked) throw new RemoteClientError('RPC_TIMEOUT', 'revoked channel closed')
++        publish?.({
++          event: 'harness.remote.frame',
++          data: {
++            streamId: params.streamId,
++            hasValue: true,
++            value: { type: 'snapshot', header: { id: 'session-a' }, cursor: 0, records: [], hasMore: false },
++          },
++        } as EventPayload)
++      }
++      return { ok: true }
++    })
++    const gateway = RemoteTypertGateway.liveOnly({
++      rpc,
++      onEvent(handler: (event: EventPayload) => void) {
++        publish = handler
++        return () => { publish = undefined }
++      },
++      onClose: () => () => undefined,
++    } as unknown as RemoteClientCore)
++    const signal = new AbortController().signal
++    const payload = { args: { request: { address: { kind: 'session', sessionId: 'session-a' } } } }
++    const stream = await gateway.open('session/follow', payload, signal)
++    const iterator = stream[Symbol.asyncIterator]()
++    await expect(iterator.next()).resolves.toMatchObject({ value: { type: 'snapshot' } })
++    await iterator.return?.()
++
++    revoked = true
++    await expect(gateway.open('session/follow', payload, signal)).rejects.toMatchObject({ code: 'RPC_TIMEOUT' })
++    expect(rpc.mock.calls.filter(([method]) => method === 'harness.remote.stream.open')).toHaveLength(2)
++  })
++
+   it('reuses cached session follow snapshots, delta events, and unary pages across project switches and transient failures', async () => {
+     const handlers = new Set<(event: EventPayload) => void>()
+     const openedStreams: string[] = []

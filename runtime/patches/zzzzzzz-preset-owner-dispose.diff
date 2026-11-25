@@ -1,0 +1,10 @@
+--- a/node_modules/@deepseek-ai/dsh-agent-preset-registry/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-agent-preset-registry/lib/index.js
+@@ -668,6 +668,7 @@
+ 			}
+ 		}
+ 		async bind(ctx, generation) {
++			ctx.fiber.assertActive();
+ 			const key = scopeOf(ctx);
+ 			if (key === void 0) throw new Error("Agent preset binding requires a scoped context");
+ 			const binding = this.bindings.get(key);

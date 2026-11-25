@@ -1,0 +1,48 @@
+--- a/node_modules/@deepseek-ai/dsh-plugin-manager/lib/types/operations.js
++++ b/node_modules/@deepseek-ai/dsh-plugin-manager/lib/types/operations.js
+@@ -52,6 +52,7 @@
+ });
+ /** Shared profile package operations used by dsh plugin and the running manager. */
+ import { once } from 'node:events';
++import { StringDecoder } from 'node:string_decoder';
+ import { existsSync, readFileSync } from 'node:fs';
+ import { mkdir, mkdtemp, open, rm } from 'node:fs/promises';
+ import { join, resolve } from 'node:path';
+@@ -423,15 +424,29 @@
+             }, options.idleTimeoutMs);
+         };
+         const collect = async (stream, kind) => {
++            const decoder = new StringDecoder('utf8');
+             try {
+-                for await (const chunk of stream) {
+-                    armIdle();
+-                    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+-                    writes = writes.then(async () => { await log.writeFile(bytes); });
+-                    await writes;
+-                    options.onOutput?.(bytes.toString('utf8'), kind);
+-                    append(bytes);
+-                }
++                try {
++                    for await (const chunk of stream) {
++                        armIdle();
++                        const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
++                        writes = writes.then(async () => { await log.writeFile(bytes); });
++                        await writes;
++                        options.onOutput?.(decoder.write(bytes), kind);
++                        append(bytes);
++                    }
++                }
++                catch (error) {
++                    // Finish the consumed prefix, but keep the failure that ended the read.
++                    try {
++                        const remaining = decoder.end();
++                        if (remaining) options.onOutput?.(remaining, kind);
++                    }
++                    catch { }
++                    throw error;
++                }
++                const remaining = decoder.end();
++                if (remaining) options.onOutput?.(remaining, kind);
+             }
+             catch (error) {
+                 // A reading this call cut short is not a failure the run hit, and the run has

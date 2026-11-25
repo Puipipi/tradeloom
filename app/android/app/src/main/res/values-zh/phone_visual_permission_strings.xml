@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="phone_prompt_allow_visual">允许本任务在此范围使用截图点击</string>
+    <string name="phone_confirm_visual_main">允许本任务在「%1$s」当前窗口内，对明确识别的普通目标使用截图点击？未知或敏感目标仍逐次确认。</string>
+    <string name="phone_confirm_visual_background">允许本任务在「%1$s」当前后台任务范围内，对明确识别的普通目标使用截图点击？未知或敏感目标仍逐次确认；本卡不含原截图。</string>
+</resources>

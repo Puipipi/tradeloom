@@ -1,0 +1,22 @@
+--- a/node_modules/@deepseek-ai/dsh-plugin-manager/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-plugin-manager/lib/index.js
+@@ -2280,6 +2280,7 @@
+ 			const manifest = readProfileManifest("dsh", this.profile.dir);
+ 			const exemptions = readProfileVersionExemptions(this.profile.dir);
+ 			const selected = bundleSelection(manifest);
++			const selectedNames = Array.isArray(selected) && selected.length > 1 ? new Set(selected) : void 0;
+ 			const recorded = manifest.dependencies ?? {};
+ 			const dependencies = Object.keys(recorded);
+ 			const installation = JSON.parse(readFileSync(this.profile.installAnchor, "utf8"));
+@@ -2293,9 +2294,9 @@
+ 			const bundles = [];
+ 			const runtimeVersion = getDshRuntimeVersion();
+ 			for (const name of names) {
+-				const installed = dependencies.includes(name);
++				const installed = typeof name === "string" && Object.prototype.propertyIsEnumerable.call(recorded, name);
+ 				const optional = OPTIONAL_BUNDLES.includes(name);
+-				const enabled = selected.includes(name);
++				const enabled = selectedNames?.has(name) ?? selected.includes(name);
+ 				const shipped = Object.hasOwn(installation.dependencies ?? {}, name);
+ 				const offered = catalog.get(name);
+ 				const official = optional || offered !== void 0;

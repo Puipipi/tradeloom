@@ -1,0 +1,233 @@
+--- a/node_modules/@deepseek-ai/dsh-session-persistence-jsonl/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-session-persistence-jsonl/lib/index.js
+@@ -802,7 +802,7 @@
+ */
+ function assertNoRetiredHeaderFields(value) {
+ 	if (typeof value !== "object" || value === null) return;
+-	if (Object.hasOwn(value, "sandboxMode") || Object.hasOwn(value, "approvalPolicy")) throw new Error("session header uses retired policy baseline fields");
++	if (Object.hasOwn(value, "sandboxMode") || Object.hasOwn(value, "approvalPolicy")) throw new SessionPersistenceCorruptionError("session header uses retired policy baseline fields");
+ }
+ /**
+ * Build the header line object from a {@link SessionHeader}.
+@@ -2621,8 +2621,8 @@
+ 		const snapshots = [];
+ 		const listed = /* @__PURE__ */ new Set();
+ 		const pending = [...this.tracker.pendingEntries()];
+-		const artifacts = await this.listArtifacts(signal);
+-		const corpusRevision = artifacts.some((artifact) => artifact.sourceVersion < SESSION_FORMAT_VERSION) ? await this.historicalCorpusRevision(signal) : void 0;
++		const artifacts = await this.listArtifacts(signal, true);
++		const corpusRevision = artifacts.some((artifact) => artifact.sourceVersion < SESSION_FORMAT_VERSION) ? await this.historicalCorpusRevision(signal, true) : void 0;
+ 		const statted = settledValues(await settleLimited(this.listLimit, artifacts, async (artifact) => {
+ 			signal?.throwIfAborted();
+ 			try {
+@@ -2634,7 +2634,7 @@
+ 				};
+ 			} catch (error) {
+ 				signal?.throwIfAborted();
+-				if (!isENOENT(error)) throw error;
++				if (!isENOENT(error) && !this.dshGoSkipListingEntry(artifact.path, error, signal)) throw error;
+ 				return;
+ 			}
+ 		}));
+@@ -3065,11 +3065,11 @@
+ 		}
+ 	}
+ 	/** Enumerate selected physical generations without interpreting their headers or bodies. */
+-	async listGenerations(signal) {
++	async listGenerations(signal, tolerateUnreadable = false) {
+ 		return (await this.mapSessionDirectories((dir) => {
+ 			signal?.throwIfAborted();
+ 			return this.resolveGenerationInDirectory(dir, signal);
+-		}, signal)).filter((source) => source !== void 0);
++		}, signal, tolerateUnreadable)).filter((source) => source !== void 0);
+ 	}
+ 	/**
+ 	* Apply `task` to every Session directory through the shared listing
+@@ -3080,9 +3080,16 @@
+ 	* @param signal - optional cancellation for directory listings.
+ 	* @returns per-directory results in traversal order.
+ 	*/
+-	async mapSessionDirectories(task, signal) {
++	async mapSessionDirectories(task, signal, tolerateUnreadable = false) {
+ 		const limit = this.listLimit;
+-		const projects = await settleLimited(limit, await limit(() => this.listProjectDirs(signal)), (project) => this.listSessionDirs(project, signal));
++		const projects = await settleLimited(limit, await limit(() => this.listProjectDirs(signal)), async (project) => {
++			try {
++				return await this.listSessionDirs(project, signal, tolerateUnreadable);
++			} catch (error) {
++				if (!tolerateUnreadable || !this.dshGoSkipListingEntry(project, error, signal)) throw error;
++				return [];
++			}
++		});
+ 		const dirs = [];
+ 		let projectFailure;
+ 		for (const outcome of projects) {
+@@ -3092,13 +3099,19 @@
+ 			}
+ 			for (const dir of outcome.value) dirs.push(dir);
+ 		}
+-		const results = settledValues(await settleLimited(limit, dirs, task));
++		const results = settledValues(await settleLimited(limit, dirs, async (dir) => {
++			try {
++				return await task(dir);
++			} catch (error) {
++				if (!tolerateUnreadable || !this.dshGoSkipListingEntry(dir, error, signal)) throw error;
++			}
++		}));
+ 		if (projectFailure !== void 0) throw projectFailure.reason;
+ 		return results;
+ 	}
+ 	/** Historical logical events depend on the corpus, including members with unreadable headers. */
+-	async historicalCorpusRevision(signal) {
+-		const paths = (await this.listGenerations(signal)).map((source) => source.sourcePath).sort();
++	async historicalCorpusRevision(signal, tolerateUnreadable = false) {
++		const paths = (await this.listGenerations(signal, tolerateUnreadable)).map((source) => source.sourcePath).sort();
+ 		const entries = settledValues(await settleLimited(this.listLimit, paths, async (path) => {
+ 			signal?.throwIfAborted();
+ 			try {
+@@ -3107,7 +3120,10 @@
+ 					revision: fileRevision(await stat(path, { bigint: true }))
+ 				};
+ 			} catch (error) {
+-				if (!isENOENT(error)) throw error;
++				if (!isENOENT(error)) {
++					if (!tolerateUnreadable || !this.dshGoSkipListingEntry(path, error, signal)) throw error;
++					return { path, revision: `unreadable:${error.code}` };
++				}
+ 				return {
+ 					path,
+ 					revision: "missing"
+@@ -3119,34 +3135,48 @@
+ 		signal?.throwIfAborted();
+ 		return hash.digest("hex");
+ 	}
+-	async listArtifacts(signal) {
++	/** Warn only for a known single-entry failure; root and programming failures remain fatal. */
++	dshGoSkipListingEntry(path, error, signal) {
+ 		signal?.throwIfAborted();
+-		await this.ensureRootEncoding();
++		if (!(error instanceof SessionFormatUnsupportedError || error instanceof SessionPersistenceCorruptionError ||
++			["EACCES", "EPERM", "ENOENT", "ENOTDIR", "EISDIR", "ELOOP", "ESTALE", "EIO"].includes(error?.code))) return false;
++		this.ctx.logger.warn(`${this.name}: skipped unreadable session entry ${JSON.stringify(path)}: ${String(error)}`);
++		return true;
++	}
++	async listArtifacts(signal, tolerateUnreadable = false) {
+ 		signal?.throwIfAborted();
+-		const generations = await this.listGenerations(signal);
++		// A tolerant list must not prime the strict root-encoding check used by explicit operations.
++		if (!tolerateUnreadable) await this.ensureRootEncoding();
++		signal?.throwIfAborted();
++		const generations = await this.listGenerations(signal, tolerateUnreadable);
+ 		const headers = await settleLimited(this.listLimit, generations, async (selected) => {
+ 			signal?.throwIfAborted();
+ 			try {
+-				return {
+-					selected,
+-					metadata: await this.readGenerationHeader(selected, void 0, signal)
+-				};
++				const metadata = await this.readGenerationHeader(selected, void 0, signal);
++				if (tolerateUnreadable && metadata === void 0) this.ctx.logger.warn(`${this.name}: skipped session entry ${JSON.stringify(selected.sourcePath)}: no readable compatible header`);
++				return { selected, metadata };
+ 			} catch (error) {
+-				if (error instanceof SessionFormatUnsupportedError || error instanceof SessionPersistenceCorruptionError) return {
+-					selected,
+-					metadata: void 0
+-				};
+-				throw error;
++				if (tolerateUnreadable) {
++					if (!this.dshGoSkipListingEntry(selected.sourcePath, error, signal)) throw error;
++				} else if (!(error instanceof SessionFormatUnsupportedError || error instanceof SessionPersistenceCorruptionError)) throw error;
++				return { selected, metadata: void 0 };
+ 			}
+ 		});
+ 		const artifacts = [];
+-		const ids = /* @__PURE__ */ new Set();
++		const ids = /* @__PURE__ */ new Map();
++		const duplicates = /* @__PURE__ */ new Set();
+ 		for (const outcome of headers) {
+ 			if (outcome.status === "rejected") throw outcome.reason;
+ 			const { selected, metadata } = outcome.value;
+ 			if (metadata === void 0 || this.dshGoDeletion.deleted(metadata.header.id)) continue;
+-			if (ids.has(metadata.header.id)) throw new Error(`duplicate JSONL session id "${metadata.header.id}" appears in multiple project directories`);
+-			ids.add(metadata.header.id);
++			if (ids.has(metadata.header.id)) {
++				const error = new SessionPersistenceCorruptionError(`duplicate JSONL session id "${metadata.header.id}" appears in ${JSON.stringify(ids.get(metadata.header.id))} and ${JSON.stringify(selected.sourcePath)}`);
++				if (!tolerateUnreadable) throw error;
++				this.dshGoSkipListingEntry(selected.sourcePath, error, signal);
++				duplicates.add(metadata.header.id);
++				continue;
++			}
++			ids.set(metadata.header.id, selected.sourcePath);
+ 			artifacts.push({
+ 				...metadata,
+ 				path: selected.sourcePath,
+@@ -3154,7 +3184,7 @@
+ 			});
+ 		}
+ 		signal?.throwIfAborted();
+-		return artifacts;
++		return artifacts.filter((artifact) => !duplicates.has(artifact.header.id));
+ 	}
+ 	/** Read and translate one selected generation header without inspecting its body. */
+ 	async readGenerationHeader(selected, expectedId, signal) {
+@@ -3176,7 +3206,7 @@
+ 		}
+ 		assertNoRetiredHeaderFields(value);
+ 		const result = sessionFormatCatalog.readHeader(value);
+-		if ("storedVersion" in result && result.storedVersion !== selected.sourceVersion) throw new Error(`session generation filename identifies v${selected.sourceVersion}, but its header identifies v${result.storedVersion}`);
++		if ("storedVersion" in result && result.storedVersion !== selected.sourceVersion) throw new SessionPersistenceCorruptionError(`session generation filename identifies v${selected.sourceVersion}, but its header identifies v${result.storedVersion}`);
+ 		if (result.status === "unsupported") {
+ 			const physicalId = String(value.id);
+ 			let reason = result.reason;
+@@ -3500,14 +3530,14 @@
+ 	/** Reject metadata that does not identify the selected physical log. */
+ 	async assertStoredIdentity(path, storedVersion, meta, expectedId, signal) {
+ 		signal?.throwIfAborted();
+-		if (expectedId !== void 0 && meta.id !== expectedId) throw new Error(`corrupt session log "${path}": requested id "${expectedId}" does not match header id "${meta.id}"`);
++		if (expectedId !== void 0 && meta.id !== expectedId) throw new SessionPersistenceCorruptionError(`corrupt session log "${path}": requested id "${expectedId}" does not match header id "${meta.id}"`);
+ 		let expectedPath;
+ 		try {
+ 			expectedPath = generationLogPath(this.root, meta.cwd, meta.id, storedVersion, this.compression);
+ 		} catch (error) {
+-			throw new Error(`corrupt session log "${path}": header id cannot name a storage path`, { cause: error });
+-		}
+-		if (path !== expectedPath && !await this.sameFile(path, expectedPath, signal)) throw new Error(`corrupt session log "${path}": header id "${meta.id}" and cwd identify "${expectedPath}"`);
++			throw new SessionPersistenceCorruptionError(`corrupt session log "${path}": header id cannot name a storage path`, { cause: error });
++		}
++		if (path !== expectedPath && !await this.sameFile(path, expectedPath, signal)) throw new SessionPersistenceCorruptionError(`corrupt session log "${path}": header id "${meta.id}" and cwd identify "${expectedPath}"`);
+ 		signal?.throwIfAborted();
+ 	}
+ 	/** Validate a supported historical header against the selected source path. */
+@@ -3548,12 +3578,16 @@
+ 		}
+ 	}
+ 	/** List session-owned directories and reject the obsolete flat-file layout. */
+-	async listSessionDirs(project, signal) {
++	async listSessionDirs(project, signal, tolerateUnreadable = false) {
+ 		signal?.throwIfAborted();
+ 		const entries = await readdir(project, { withFileTypes: true });
+ 		signal?.throwIfAborted();
+-		const legacy = entries.find((entry) => entry.isFile() && (entry.name.endsWith(".jsonl") || entry.name.endsWith(".jsonl.zstd")));
+-		if (legacy !== void 0) throw this.legacyLayout(join(project, legacy.name));
++		for (const entry of entries) if (entry.isFile() && (entry.name.endsWith(".jsonl") || entry.name.endsWith(".jsonl.zstd"))) {
++			const path = join(project, entry.name);
++			const error = this.legacyLayout(path);
++			if (!tolerateUnreadable) throw error;
++			this.dshGoSkipListingEntry(path, error, signal);
++		}
+ 		return entries.filter((entry) => entry.isDirectory()).map((entry) => join(project, entry.name));
+ 	}
+ 	/** Reject a root that already belongs to the other physical encoding. */
+@@ -3609,10 +3643,10 @@
+ 		return this.compression === "zstd" ? "none" : "zstd";
+ 	}
+ 	encodingMismatch(path) {
+-		return /* @__PURE__ */ new Error(`session artifact ${JSON.stringify(path)} uses ${logSuffix(this.oppositeCompression())}, but this backend is configured for compression ${JSON.stringify(this.compression)}; use a separate root or select the matching compression mode`);
++		return new SessionFormatUnsupportedError(`session artifact ${JSON.stringify(path)} uses ${logSuffix(this.oppositeCompression())}, but this backend is configured for compression ${JSON.stringify(this.compression)}; use a separate root or select the matching compression mode`, { kind: "jsonl", path });
+ 	}
+ 	legacyLayout(path) {
+-		return /* @__PURE__ */ new Error(`session artifact ${JSON.stringify(path)} uses the unsupported flat-file layout; use a separate root or move it into a project/session directory before loading`);
++		return new SessionFormatUnsupportedError(`session artifact ${JSON.stringify(path)} uses the unsupported flat-file layout; use a separate root or move it into a project/session directory before loading`, { kind: "jsonl", path });
+ 	}
+ 	async exists(path) {
+ 		try {

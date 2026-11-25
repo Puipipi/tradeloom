@@ -1,0 +1,9 @@
+{
+  "purpose": "Test-only dependencies installed into the candidate ROOT node_modules, never this subdirectory.",
+  "dependencies": {
+    "@deepseek-ai/dsh": "0.2.1-rc.4",
+    "@deepseek-ai/dsh-llm-mock-server": "0.2.1-rc.4"
+  },
+  "nodeEngines": "^22.19.0 || >=24.0.0",
+  "timezone": "Asia/Shanghai"
+}

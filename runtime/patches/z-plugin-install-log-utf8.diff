@@ -1,0 +1,29 @@
+--- a/node_modules/@deepseek-ai/dsh-plugin-manager/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-plugin-manager/lib/index.js
+@@ -1,4 +1,5 @@
+ import { randomUUID } from "node:crypto";
++import { StringDecoder } from "node:string_decoder";
+ import { existsSync, globSync, readFileSync, realpathSync, statSync } from "node:fs";
+ import { mkdir, mkdtemp, open, readFile, rm } from "node:fs/promises";
+ import { dirname, isAbsolute, join, resolve } from "node:path";
+@@ -843,6 +844,7 @@
+ 			}, options.idleTimeoutMs);
+ 		};
+ 		const collect = async (stream, kind) => {
++			const decoder = new StringDecoder("utf8");
+ 			try {
+ 				for await (const chunk of stream) {
+ 					armIdle();
+@@ -851,9 +853,11 @@
+ 						await log.write(bytes);
+ 					});
+ 					await writes;
+-					options.onOutput?.(bytes.toString("utf8"), kind);
++					options.onOutput?.(decoder.write(bytes), kind);
+ 					append(bytes);
+ 				}
++				const remaining = decoder.end();
++				if (remaining) options.onOutput?.(remaining, kind);
+ 			} catch (error) {
+ 				if (!cut) {
+ 					failure ??= error instanceof Error ? error : new Error(String(error));

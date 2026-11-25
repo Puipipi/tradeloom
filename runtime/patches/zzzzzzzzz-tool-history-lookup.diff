@@ -1,0 +1,30 @@
+--- a/node_modules/@deepseek-ai/dsh-session/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-session/lib/index.js
+@@ -702,9 +702,26 @@
+ 		} else if (event.type === "developer/message") {
+ 			const { message, headerSeq } = event.data;
+ 			const definitions = headerSeq === void 0 ? [] : this.headers.get(headerSeq);
++			let additionCount = 0;
++			for (const block of message.content) {
++				if (block.type === "tool-addition" && ++additionCount === 2) break;
++			}
++			let definitionsByName;
++			let nextDefinition = 0;
+ 			const additions = message.content.flatMap((block) => {
+ 				if (block.type !== "tool-addition") return [];
+-				const tool = definitions?.find((tool) => tool.name === block.toolName);
++				let tool = additionCount < 2
++					? definitions?.find((candidate) => candidate.name === block.toolName)
++					: definitionsByName?.get(block.toolName);
++				if (tool === void 0 && additionCount >= 2) {
++					definitionsByName ??= new Map();
++					while (nextDefinition < (definitions?.length ?? 0)) {
++						const candidate = definitions[nextDefinition++];
++						// Keep the first definition, just like find; scan only as far as needed.
++						if (!definitionsByName.has(candidate.name)) definitionsByName.set(candidate.name, candidate);
++						if (candidate.name === block.toolName) { tool = candidate; break; }
++					}
++				}
+ 				if (tool === void 0) throw new Error(`tool history: missing definition for ${block.toolName}`);
+ 				return [tool];
+ 			});

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="phone_scope_busy">Background resources are occupied or still being cleaned up. Wait for the original task to finish.</string>
+    <string name="phone_scope_history_full">This service has retained 256 task completion records. Clean up all tasks, turn the channel off, then explicitly select it again. It will not restart automatically.</string>
+    <string name="phone_scope_mode_mismatch">This service is in compatibility mode. Clean up and turn the channel off before explicitly reconnecting.</string>
+</resources>

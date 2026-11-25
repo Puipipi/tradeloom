@@ -1,0 +1,11 @@
+# DSH 0.2.2-rc.1: preserve raw-byte progress when no output tail is retained (636 regression).
+--- a/node_modules/@deepseek-ai/dsh-subprocess-local/lib/output.js
++++ b/node_modules/@deepseek-ai/dsh-subprocess-local/lib/output.js
+@@ -188,1 +188,7 @@
+ 	readFrom(fromByte) {
++		if (this.bytes === 0) return {
++			text: "",
++			nextOffset: this.total,
++			lossy: fromByte < this.total,
++			...this.spillFile !== void 0 ? { spillPath: this.spillFile } : {}
++		};

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="phone_system_start_attempted">Attempted to %1$s. Check the actual screen; a returned system call does not confirm completion.</string>
+    <string name="phone_system_start_rejected">Attempted to %1$s, but the system call failed. Check the actual state before trying again.</string>
+    <string name="phone_system_review_notice">Check whether the original action completed. If it did not, complete it yourself, then tap Continue. DSH will not send the original request again.</string>
+    <string name="phone_system_review_unavailable">Manual review is unavailable. The original request was attempted and will not be repeated; check the target screen directly.</string>
+    <string name="phone_system_review_timeout">Manual review timed out. The actual result of the original action is still unknown; check it yourself before any further request.</string>
+    <string name="phone_system_review_continued">You tapped Continue. Use the current screen to check the state; the original request was not sent again.</string>
+    <string name="phone_system_handler_unconfirmed">The later screen read did not confirm the planned handler in the foreground; the action will not be repeated.</string>
+    <string name="phone_system_attempt_stopped">%1$s (attempted; stopped afterward)</string>
+    <string name="phone_system_choose_handler">Choose an app</string>
+    <string name="phone_system_unknown_app">Unknown app</string>
+    <string name="phone_system_confirm_unknown">The handling app is unknown. Allow this operation (%1$s)?</string>
+    <string name="phone_system_intent_unavailable">This system action could not be prepared. No request was sent.</string>
+</resources>

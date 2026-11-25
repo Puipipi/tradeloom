@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="background_gate_checking">Connecting the background screen channel…</string>
+    <string name="background_setup_old_service">An older background service from before an app update is still running and could not be replaced. Stop the DSH Go service in Shizuku, then reconnect.</string>
+    <string name="background_setup_bind_timeout">Shizuku connection timed out. Check that it is running and reconnect.</string>
+    <string name="background_setup_unbind_wait">The old connection is still closing. Reconnect shortly.</string>
+    <string name="background_setup_unbind_failed">The old connection could not be released. Restart the DSH Go service in Shizuku.</string>
+    <string name="background_setup_bind_failed">Could not connect to the Shizuku background service. Reconnect.</string>
+</resources>

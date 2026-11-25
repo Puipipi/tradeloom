@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launcher shortcut icons: the default accent (雾蓝, lib/ui/theme/accent.dart) — its
+     container tone behind a glyph in the seed colour. -->
+<resources>
+    <color name="shortcut_icon_background">#FFDEE8FF</color>
+    <color name="shortcut_icon_glyph">#FF4B67B4</color>
+</resources>

@@ -1,0 +1,13 @@
+# dsh-go: installed Direct rootfs has a startup durability barrier; do not open Android system ancestors.
+--- a/node_modules/@deepseek-ai/dsh-attachment-local/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-attachment-local/lib/index.js
+@@ -406,2 +406,2 @@
+-* below the filesystem root are durable. Mere existence is insufficient: a
+-* concurrent process may have created the directory but not synced its parent.
++* below the filesystem root (or installed Direct root) are durable. Existence
++* alone is insufficient: another creator may not have synced the parent yet.
+@@ -412 +412,3 @@
+-		await ensureDurableDirectory(home, parse(home).root);
++		const directRoot = globalThis[Symbol.for("dsh.go.direct")]?.root;
++		const boundary = typeof directRoot === "string" && (home === directRoot || home.startsWith(directRoot + "/")) ? directRoot : parse(home).root;
++		await ensureDurableDirectory(home, boundary);

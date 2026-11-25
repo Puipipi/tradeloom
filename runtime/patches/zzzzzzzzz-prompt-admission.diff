@@ -1,0 +1,11 @@
+--- a/node_modules/@deepseek-ai/dsh-api-session-controller/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-api-session-controller/lib/index.js
+@@ -853,6 +853,8 @@
+ 						source
+ 					});
+ 					if (this.ctx.agents.get(agent.id) !== agent) throw new RemoteError("session/not-found", `session "${agent.id}" was disposed during prompt admission`, { sessionId: agent.id });
++					// A concurrent retry may have committed while attachment admission awaited.
++					if (hasPromptRequest(agent, request.requestId)) return { accepted: true };
+ 					const binding = __addDisposableResource$5(env_2, this.ctx.fileUploads.bindPrompt(agent, admission.receiptIds, request.requestId), false);
+ 					if (request.mode === "steer") agent.steer(message);
+ 					else agent.followup(message);

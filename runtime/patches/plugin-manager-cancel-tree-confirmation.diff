@@ -1,0 +1,343 @@
+--- a/node_modules/@deepseek-ai/dsh-plugin-manager/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-plugin-manager/lib/index.js
+@@ -270,8 +270,9 @@
+ 	});
+ 	try {
+ 		return alive(targetOf(pid, tree.grouped, platform));
+-	} catch {
+-		return false;
++	} catch (error) {
++		if (error?.code === "ESRCH") return false;
++		throw error;
+ 	}
+ }
+ /**
+@@ -287,6 +288,92 @@
+ 		if (Date.now() >= deadline) return;
+ 		await new Promise((resolve) => setTimeout(resolve, TREE_POLL_MS));
+ 	}
++}
++/** Private service guard. A settled parent does not establish that its group stopped. */
++function ownedRunGuard(dir, tree, signal, internals = {}) {
++	if (tree.grouped !== true || (internals.platform ?? process.platform) === "win32" || tree.pid !== void 0 && (!Number.isSafeInteger(tree.pid) || tree.pid <= 0)) throw new Error("Invalid owned package process group");
++	const state = { tree, confirmedGone: false, failure: void 0 };
++	let rejectFailure;
++	const failed = new Promise((_, reject) => { rejectFailure = reject; });
++	failed.catch(() => {});
++	let stopping;
++	let releasing;
++	let released = false;
++	let recorded = false;
++	const alive = () => {
++		if (state.confirmedGone) return false;
++		if (treeAlive(tree, internals)) return true;
++		state.confirmedGone = true;
++		return false;
++	};
++	const wait = async () => {
++		const now = internals.now ?? (() => performance.now());
++		const deadline = now() + (internals.waitMs ?? TREE_WAIT_MS);
++		while (alive()) {
++			if (now() >= deadline) return false;
++			await new Promise((resolve) => setTimeout(resolve, TREE_POLL_MS));
++		}
++		return true;
++	};
++	const send = (name) => {
++		if (!alive()) return;
++		try {
++			(internals.kill ?? process.kill)(-tree.pid, name);
++		} catch (error) {
++			if (error?.code !== "ESRCH") throw error;
++			state.confirmedGone = true;
++		}
++	};
++	const stop = () => {
++		if (stopping !== void 0) return stopping;
++		stopping = (async () => {
++			try {
++				if (state.confirmedGone) return;
++				if (released) throw new Error("Owned run was already released");
++				if (!alive()) return;
++				send("SIGTERM");
++				if (await wait()) return;
++				send("SIGKILL");
++				if (await wait()) return;
++				throw new Error("Owned package group remains present");
++			} catch (error) {
++				state.failure ??= new Error("dsh: cannot confirm that the package process tree stopped; further profile recovery was not attempted");
++				rejectFailure(state.failure);
++				throw state.failure;
++			}
++		})();
++		stopping.catch(() => {});
++		return stopping;
++	};
++	const onAbort = () => { void stop(); };
++	const detach = () => signal?.removeEventListener("abort", onAbort);
++	const release = () => {
++		if (releasing !== void 0) return releasing;
++		detach();
++		releasing = (async () => {
++			if (stopping !== void 0) await stopping;
++			if (state.failure !== void 0) throw state.failure;
++			released = true;
++			// A primary guard must never erase the record of its repair successor.
++			if (recorded && optionalFile(runRecordPath(dir)) === `${JSON.stringify(tree)}\n`) await rm(runRecordPath(dir), { force: true });
++		})();
++		return releasing;
++	};
++	Object.assign(state, { failed, stop, detach, release, observe: () => !alive(), async record() {
++		await recordRun(dir, tree);
++		recorded = tree.pid !== void 0;
++	} });
++	signal?.addEventListener("abort", onAbort, { once: true });
++	if (signal?.aborted) onAbort();
++	return state;
++}
++function ownedStopFailure(runs) {
++	return runs.find((run) => run.failure !== void 0)?.failure;
++}
++async function stopOwnedRuns(runs) {
++	const results = await Promise.allSettled(runs.map((run) => run.stop()));
++	const failure = ownedStopFailure(runs) ?? results.find((result) => result.status === "rejected")?.reason;
++	if (failure !== void 0) throw failure;
+ }
+ //#endregion
+ //#region lib/types/failure.js
+@@ -707,6 +794,18 @@
+ 		if (preflight.length > 0) return await rejected(preflight, "nothing was installed");
+ 		const cancellation = new AbortController();
+ 		const grouped = leadsOwnGroup(options.execution);
++		const combinedSignal = options.signal === void 0 ? cancellation.signal : AbortSignal.any([cancellation.signal, options.signal]);
++		const ownedRuns = [];
++		const ownedChildren = [];
++		const track = (child) => {
++			if (!grouped) return void 0;
++			const guard = ownedRunGuard(dir, { pid: child.pid, grouped }, combinedSignal);
++			ownedRuns.push(guard);
++			ownedChildren.push(child);
++			Promise.resolve(child).catch(() => {});
++			options.onRunGuard?.(guard);
++			return guard;
++		};
+ 		const child = execa(options.command ?? "pnpm", [...options.args ?? [], ...args.map((arg) => anchorPathSpec(arg, context.cwd))], {
+ 			cwd: dir,
+ 			env: environment,
+@@ -717,9 +816,11 @@
+ 			killDescendants: options.execution === "service",
+ 			buffer: false,
+ 			stdin: options.execution === "cli" ? "inherit" : "ignore",
+-			cancelSignal: options.signal === void 0 ? cancellation.signal : AbortSignal.any([cancellation.signal, options.signal])
++			cancelSignal: combinedSignal
+ 		});
++		const primary = track(child);
+ 		const exited = once(child.nodeChildProcess, "exit").catch(() => void 0);
++		const settled = Promise.allSettled([child]);
+ 		let writes = Promise.resolve();
+ 		/** `settled` records that the process outcome is known; `stalled` that the silence bound stopped the run. */
+ 		const control = {
+@@ -737,6 +838,7 @@
+ 			clearTimeout(idleTimer);
+ 			idleTimer = setTimeout(() => {
+ 				control.stalled = true;
++				if (primary !== void 0) void primary.stop();
+ 				child.kill();
+ 			}, options.idleTimeoutMs);
+ 		};
+@@ -764,16 +866,19 @@
+ 		for (const collector of collectors) collector.catch(() => {});
+ 		if (collectors.length > 0) armIdle();
+ 		let exitCode;
++		let completed = false;
+ 		try {
+-			await recordRun(dir, {
++			if (primary !== void 0) await primary.record();
++			else await recordRun(dir, {
+ 				pid: child.pid,
+ 				grouped
+ 			});
+-			const settled = Promise.allSettled([child]);
+-			await Promise.race([exited, settled]);
++			await Promise.race([exited, settled, ...primary === void 0 ? [] : [primary.failed]]);
++			primary?.observe();
+ 			control.settled = true;
+ 			clearTimeout(idleTimer);
+-			if (control.stalled) await awaitTreeGone({
++			if (primary !== void 0 && (combinedSignal.aborted || control.stalled)) await primary.stop();
++			else if (control.stalled) await awaitTreeGone({
+ 				pid: child.pid,
+ 				grouped
+ 			});
+@@ -789,7 +894,8 @@
+ 				options.onOutput?.(notice, "stderr");
+ 				append(Buffer.from(notice));
+ 			}
+-			const [completion] = await settled;
++			const [completion] = await Promise.race([settled, ...primary === void 0 ? [] : [primary.failed]]);
++			primary?.observe();
+ 			if (completion.status === "rejected") throw completion.reason;
+ 			const result = completion.value;
+ 			exitCode = result.exitCode ?? (result.code === "ENOENT" ? 127 : 1);
+@@ -839,7 +945,10 @@
+ 					}
+ 				}
+ 				if (warnings.length > 0) {
++					// Compatibility recovery writes the same files as outer rollback.
++					await stopOwnedRuns(ownedRuns);
+ 					await restore();
++					if (combinedSignal.aborted) throw new InstallCancelledError();
+ 					const repair = ["install", savedFiles.some((file) => file.path.endsWith("pnpm-lock.yaml") && file.text !== void 0) ? "--frozen-lockfile" : "--config.lockfile=false"];
+ 					const repairing = execa(options.command ?? "pnpm", [...options.args ?? [], ...repair], {
+ 						cwd: dir,
+@@ -847,13 +956,22 @@
+ 						extendEnv: false,
+ 						reject: false,
+ 						stdin: "ignore",
++						...grouped ? { killDescendants: true, cancelSignal: combinedSignal } : {},
+ 						...options.idleTimeoutMs === void 0 ? {} : { timeout: options.idleTimeoutMs }
+ 					});
+-					await recordRun(dir, {
+-						pid: repairing.pid,
+-						grouped: false
+-					});
+-					const repaired = await repairing;
++					const repairGuard = track(repairing);
++					// Repair's existing bound is an absolute timeout, not the output idle timer.
++					const repairTimer = repairGuard !== void 0 && options.idleTimeoutMs !== void 0
++						? setTimeout(() => { void repairGuard.stop(); }, options.idleTimeoutMs) : void 0;
++					let repaired;
++					try {
++						if (repairGuard !== void 0) await repairGuard.record();
++						else await recordRun(dir, { pid: repairing.pid, grouped: false });
++						repaired = await Promise.race([repairing, ...repairGuard === void 0 ? [] : [repairGuard.failed]]);
++						repairGuard?.observe();
++					} finally {
++						clearTimeout(repairTimer);
++					}
+ 					exitCode = 1;
+ 					const restoration = repaired.exitCode === 0 ? "restored package.json, pnpm-lock.yaml, and node_modules" : "restored package.json and pnpm-lock.yaml, but node_modules could not be reinstalled; run 'dsh plugin install'";
+ 					const diagnostic = `\ndsh: installation rejected: ${warnings.join("\n")}\ndsh: ${restoration}.\n`;
+@@ -871,11 +989,38 @@
+ 					}
+ 				}
+ 			}
++			completed = true;
+ 		} finally {
+ 			control.settled = true;
+ 			clearTimeout(idleTimer);
+-			await rm(runRecordPath(dir), { force: true });
+-			await log.close();
++			if (grouped) {
++				const mustStop = !completed || exitCode !== 0 || control.stalled || combinedSignal.aborted;
++				try {
++					if (mustStop) await stopOwnedRuns(ownedRuns);
++				} catch (error) {
++					// A stop failure must not rejoin a parent/collector that can remain alive.
++					cut = true;
++					for (const current of ownedChildren) {
++						current.stdout?.destroy();
++						current.stderr?.destroy();
++					}
++					throw error;
++				} finally {
++					try {
++						if (ownedStopFailure(ownedRuns) !== void 0) {
++							for (const run of ownedRuns) run.detach();
++						} else if (mustStop || options.onRunGuard === void 0) {
++							// Install retains a normal successful primary until its applying boundary.
++							for (const run of ownedRuns) await run.release();
++						}
++					} finally {
++						await log.close();
++					}
++				}
++			} else {
++				await rm(runRecordPath(dir), { force: true });
++				await log.close();
++			}
+ 		}
+ 		return {
+ 			exitCode,
+@@ -2714,6 +2859,8 @@
+ 			const control = {
+ 				abort: new AbortController(),
+ 				phase: "installing",
++				runs: [],
++				restoreFailure: void 0,
+ 				result: Promise.resolve(null)
+ 			};
+ 			const stopped = () => control.abort.signal.aborted || this.abort.signal.aborted;
+@@ -2789,7 +2936,10 @@
+ 					let run;
+ 					let used = null;
+ 					for (const [index, registry] of plan.entries()) {
+-						if (index > 0) await this.restoreFiles(files);
++						if (index > 0) {
++							await stopOwnedRuns(control.runs);
++							await this.restoreFiles(files);
++						}
+ 						if (stopped()) throw new InstallCancelledError();
+ 						result.registries.push(registry);
+ 						used = registry;
+@@ -2803,7 +2953,7 @@
+ 							installSpec,
+ 							...options?.saveExact === true ? ["--save-exact"] : [],
+ 							...registryArguments(registry)
+-						], control.abort.signal, requestId);
++						], control.abort.signal, requestId, control.runs);
+ 						result.packageResult = run;
+ 						if (stopped()) throw new InstallCancelledError();
+ 						if (run.incompatible !== void 0) throw new ManagementFailure("incompatible-version", run.incompatible);
+@@ -2845,12 +2995,23 @@
+ 					for (const file of bundlePatchPaths(dir, manifest.dsh.bundle)) loadOverlayPatches("dsh", file);
+ 					version = manifest.version;
+ 					this.installedFrom.set(name, used);
++					if (stopped()) throw new InstallCancelledError();
+ 				} catch (error) {
+-					await this.restoreFiles(files);
++					// Private stop and restore facts survive unrelated finalizer failures and result folding.
++					await stopOwnedRuns(control.runs);
++					try {
++						await this.restoreFiles(files);
++					} catch (restoreError) {
++						control.restoreFailure = restoreError;
++						throw restoreError;
++					} finally {
++						for (const run of control.runs) await run.release();
++					}
+ 					throw error;
+ 				}
+ 				control.phase = "applying";
+ 				announce("applying");
++				for (const run of control.runs) await run.release();
+ 				result.bundle = name;
+ 				if (version !== void 0) result.version = version;
+ 				result.target = name;
+@@ -2895,6 +3056,9 @@
+ 			control.abort.abort();
+ 			/* v8 ignore next -- change() folds every failure into its result; only a lock or disposal error rejects */
+ 			await control.result.then(() => void 0, () => void 0);
++			const stopFailure = ownedStopFailure(control.runs);
++			if (stopFailure !== void 0) throw stopFailure;
++			if (control.restoreFailure !== void 0) throw control.restoreFailure;
+ 			return { status: "cancelled" };
+ 		}
+ 		/** Unload and remove a profile-owned bundle dependency through dsh plugin's pnpm path; a selected name no
+@@ -2969,7 +3133,7 @@
+ 			};
+ 		}
+ 		/** Run one pnpm command in the profile, streaming its output as install-log chunks. */
+-		async runPnpm(args, signal, requestId) {
++		async runPnpm(args, signal, requestId, ownedRuns) {
+ 			const jobId = randomUUID();
+ 			// Log arguments are separate from execution arguments. Restrict userinfo
+ 			// matching to URL authority; support aliases and --registry=URL too.
+@@ -2987,6 +3151,7 @@
+ 				activateNewBundles: false,
+ 				idleTimeoutMs: this.idleTimeoutMs,
+ 				lookupTimeoutMs: this.inspectTimeoutMs,
++				...ownedRuns === void 0 ? {} : { onRunGuard: (guard) => ownedRuns.push(guard) },
+ 				onOutput: (text, stream) => {
+ 					this.ownerContext.emit("plugin-manager/install-log", {
+ 						...identity,

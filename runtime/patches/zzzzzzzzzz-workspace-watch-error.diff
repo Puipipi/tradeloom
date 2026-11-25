@@ -1,0 +1,18 @@
+--- a/node_modules/@deepseek-ai/dsh-api-workspace-files/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-api-workspace-files/lib/index.js
+@@ -89,6 +89,7 @@
+ 			for await (const [observed] of follower.read()) {
+ 				if (observed.targetKey !== target.targetKey) continue;
+ 				const info = await stat();
++				if (follower.error !== void 0) throw follower.error;
+ 				if (aborted()) return;
+ 				const absolutePath = this.ctx.fs.processPath(target);
+ 				yield {
+@@ -140,6 +141,7 @@
+ 		return this.closing;
+ 	}
+ 	fail(error) {
++		if (this.closed) return;
+ 		this.error = error;
+ 		this.controller.abort();
+ 	}

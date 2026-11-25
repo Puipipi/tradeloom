@@ -1,0 +1,12 @@
+--- a/node_modules/@deepseek-ai/dsh-session-persistence-jsonl/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-session-persistence-jsonl/lib/index.js
+@@ -3571,7 +3571,8 @@
+ 			signal?.throwIfAborted();
+ 			const entries = await readdir(this.root, { withFileTypes: true });
+ 			signal?.throwIfAborted();
+-			return entries.filter((e) => e.isDirectory()).map((e) => join(this.root, e.name));
++			// Runtime-owned leases and tombstones are not project/session generations.
++			return entries.filter((e) => e.isDirectory() && e.name !== ".dsh-go-lifecycle").map((e) => join(this.root, e.name));
+ 		} catch (error) {
+ 			if (isENOENT(error)) return [];
+ 			throw error;

@@ -1,0 +1,56 @@
+{
+  "name": "dsh-go-example-quick",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DSH plugin example for the dsh-go app: composer capsules (static and invoked) and reply menu items.",
+  "author": "DSH-TUI (ccch1mneyyy)",
+  "license": "MIT",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "README.en.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "check": "node ../../../sdk/plugin-kit/bin/check.mjs ."
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dshGo": {
+    "v": 1,
+    "title": { "zh": "快捷", "en": "Quick" },
+    "icon": "bolt",
+    "wants": ["clipboard", "message"],
+    "contributes": {
+      "composer.actions": [
+        {
+          "id": "summarize",
+          "label": { "zh": "总结", "en": "Summarize" },
+          "icon": "summary",
+          "effect": { "type": "insert", "text": "总结上面的对话，列三条要点。" }
+        },
+        { "id": "translate", "label": { "zh": "译成英文", "en": "To English" }, "icon": "translate" }
+      ],
+      "message.actions": [
+        { "id": "copy-md", "label": { "zh": "复制为 Markdown", "en": "Copy as MD" }, "icon": "document" },
+        { "id": "save-note", "label": { "zh": "存进笔记", "en": "Save note" }, "icon": "note" }
+      ]
+    }
+  },
+  "engines": {
+    "node": ">=22.19",
+    "dsh": ">=0.2.1-rc.2 <0.3.0-0"
+  }
+}

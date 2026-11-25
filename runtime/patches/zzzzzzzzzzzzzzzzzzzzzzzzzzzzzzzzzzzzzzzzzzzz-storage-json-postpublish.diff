@@ -1,0 +1,78 @@
+--- a/node_modules/@deepseek-ai/dsh-storage-json/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-storage-json/lib/index.js
+@@ -33,8 +33,14 @@
+ 			await handle.close();
+ 		}
+ 		await rename(tmp, path);
+-		await fsyncDirectory(dirname(path));
++		try {
++			await fsyncDirectory(dirname(path));
++		} catch (error) {
++			throw new StorageError("unknown-state", `file "${path}" was replaced but directory durability was not acknowledged`, { cause: error });
++		}
+ 	} catch (error) {
++		// Successful rename consumed the temporary path; preserve the uncertain outcome.
++		if (error instanceof StorageError && error.code === "unknown-state") throw error;
+ 		await rm(tmp, { force: true });
+ 		throw error;
+ 	}
+@@ -197,6 +203,7 @@
+ 	return new SingleJsonUnit(descriptor, path, state, onClose);
+ }
+ var SingleJsonUnit = class {
++	unusable;
+ 	descriptor;
+ 	path;
+ 	state;
+@@ -270,6 +277,7 @@
+ 	}
+ 	assertOpen() {
+ 		if (this.closed) throw new StorageError("closed", `unit '${this.descriptor.name}' is closed`);
++		if (this.unusable !== void 0) throw this.unusable;
+ 	}
+ 	records(table) {
+ 		const records = this.state.tables.get(table);
+@@ -290,7 +298,10 @@
+ 					if (Array.isArray(this.state.global[key])) this.state.global[key] = this.state.global[key].filter((id) => !seam.deleted(id));
+ 			}
+ 		}
+-		const write = writeAtomic(this.path, serialize(this.descriptor.name, this.state));
++		const write = writeAtomic(this.path, serialize(this.descriptor.name, this.state)).catch((error) => {
++			if (error instanceof StorageError && error.code === "unknown-state") this.unusable = error;
++			throw error;
++		});
+ 		this.inFlight.add(write);
+ 		write.catch(() => {}).finally(() => this.inFlight.delete(write));
+ 		return write;
+@@ -466,7 +477,7 @@
+ 	dir;
+ 	onClose;
+ 	closed = false;
+-	/** Set when a failed batch could not restore its staged documents. */
++	/** Set when a mutation cannot establish its readable or durable outcome. */
+ 	unusable;
+ 	/** In-flight durable writes; close() drains them before releasing the unit. */
+ 	inFlight = /* @__PURE__ */ new Set();
+@@ -478,7 +489,10 @@
+ 	/** Re-read the tree: the directory is the authoritative state. */
+ 	async loadAll() {
+ 		this.assertOpen();
+-		const state = await loadPerRecordState(this.descriptor, this.dir);
++		const state = await loadPerRecordState(this.descriptor, this.dir).catch((error) => {
++			if (error instanceof StorageError && error.code === "unknown-state") this.unusable = error;
++			throw error;
++		});
+ 		const tables = {};
+ 		for (const [table, records] of state.tables) tables[table] = Object.fromEntries(records);
+ 		return {
+@@ -624,6 +638,10 @@
+ 	}
+ 	/** Track one durable write so close() drains it. */
+ 	tracked(write) {
++		write = write.catch((error) => {
++			if (error instanceof StorageError && error.code === "unknown-state") this.unusable = error;
++			throw error;
++		});
+ 		this.inFlight.add(write);
+ 		write.catch(() => {}).finally(() => this.inFlight.delete(write));
+ 		return write;

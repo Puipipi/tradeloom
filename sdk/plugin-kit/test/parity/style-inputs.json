@@ -1,0 +1,14 @@
+[
+  {"name":"v1 ignores styles","budget":"panel","view":{"type":"text","text":"fallback","style":{"color":"#FFFFFF","size":"display"},"spans":[{"text":"rich"}]}},
+  {"name":"unknown version falls back","budget":"panel","view":{"v":3,"type":"text","text":"fallback","style":{"color":"#FFFFFF"}}},
+  {"name":"both theme corrections","budget":"panel","view":{"v":2,"accent":"#FFFF00","type":"stack","style":{"card":"surface","padding":"L","gap":"S"},"children":[{"type":"text","text":"fallback","style":{"size":"display","weight":"bold","color":"#FFFFFF","maxLines":2}},{"type":"text","text":"fallback","spans":[{"text":"green","color":"green","background":"pink","weight":"bold","mono":true}]}]}},
+  {"name":"unknown styles and forbidden geometry","budget":"toolCard","view":{"v":2,"type":"text","text":"fallback","style":{"size":80,"weight":500,"maxLines":0,"opacity":0,"gradient":["red","blue"],"position":"fixed","unknown":true,"color":"#FFFFFF00","italic":"yes"},"spans":[{"text":"plain","href":"https://example.com"},{"bad":"span"}]}},
+  {"name":"wrong style shapes","budget":"panel","view":{"v":2,"accent":"accent","type":"stack","style":{"columns":[0,13],"card":"system","gap":10,"padding":100,"dividers":"yes","color":"red"},"children":[{"type":"metric","label":"value","value":5,"style":{"card":"surface","background":"blue","columns":[1,2],"padding":"M"}},{"type":"text","text":"ok","style":"red"}]}},
+  {"name":"binding styles","budget":"panel","data":{"accent":"teal","size":"title","spans":[{"text":"bound","color":"#AAAAAA"}]},"view":{"v":2,"accent":{"$":"data.accent"},"type":"text","text":"fallback","style":{"size":{"$":"data.size"},"color":{"$":"data.missing"}},"spans":{"$":"data.spans"}}},
+  {"name":"privileged role","budget":"panel","view":{"v":2,"type":"text","text":"no","role":"approval"}},
+  {"name":"unknown component retains sibling","budget":"panel","view":{"v":2,"type":"stack","children":[{"type":"future-widget"},{"type":"text","text":"fallback"}]}},
+  {"name":"v2 primary becomes outlined","budget":"panel","view":{"v":2,"type":"actions","items":[{"label":"Grant","style":"primary","action":"plugin.action"}]}},
+  {"name":"sibling background restoration","budget":"panel","view":{"v":2,"type":"stack","children":[{"type":"stack","style":{"card":"tinted","background":"#000000"},"children":[{"type":"text","text":"inside","style":{"color":"#888888"}}]},{"type":"text","text":"outside","style":{"color":"#888888"}}]}},
+  {"name":"chart palette on tinted background","budget":"panel","view":{"v":2,"type":"stack","style":{"background":"#000000"},"children":[{"type":"chart","kind":"bar","categories":["a","b"],"series":[{"values":[1,2]}]}]}},
+  {"name":"accent app follows the palette; app is no colour","budget":"panel","view":{"v":2,"accent":"app","type":"stack","style":{"card":"tinted"},"children":[{"type":"text","text":"a","style":{"color":"accent","size":"title"}},{"type":"text","text":"b","style":{"color":"app"}}]}}
+]

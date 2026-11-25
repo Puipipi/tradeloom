@@ -1,0 +1,76 @@
+# 分类、标签和界面文字覆盖。由 scripts/apply_settings.rb 写入，可重复执行：
+# 已存在的分类（按 slug 匹配）只同步权限、颜色和「已解决」开关，不改名称和说明，
+# 方便你之后在后台手动调整文案。
+
+categories:
+  - name: 公告
+    slug: announcements
+    color: "4D6BFE"
+    text_color: "FFFFFF"
+    description: 版本发布与社区通知
+    # 所有人可看，只有管理员和版主能发帖
+    permissions: { everyone: readonly, staff: full }
+    position: 0
+
+  - name: 插件
+    slug: plugins
+    color: "25AAE2"
+    text_color: "FFFFFF"
+    description: 插件发布、推荐与评测，附分享码可在 dsh-go 一键安装
+    position: 1
+
+  - name: 配置分享
+    slug: configs
+    color: "12A89D"
+    text_color: "FFFFFF"
+    description: 模型、技能、工作区与自动化配置，附分享码一键导入
+    position: 2
+
+  - name: 玩法
+    slug: tips
+    color: "F7941D"
+    text_color: "FFFFFF"
+    description: 用法心得、实战案例与成果展示
+    position: 3
+
+  - name: 求助
+    slug: help
+    color: "E45735"
+    text_color: "FFFFFF"
+    description: 安装、连接、使用中遇到的问题
+    # 开启后，提问者和版主可以把某个回复标记为解决方案
+    solved: true
+    position: 4
+
+  - name: 反馈
+    slug: feedback
+    color: "8C6238"
+    text_color: "FFFFFF"
+    description: Bug 报告与功能建议
+    # 新站自带一个「网站反馈」分类；这里直接把它改造成「反馈」，避免两个反馈分类并存
+    reuse_site_setting: meta_category_id
+    position: 5
+
+# 话题标签。只有 3 级用户和版主能新建，其余人从这里选
+tags:
+  - 本机
+  - 远程
+  - 分享码
+  - 技能
+  - mcp
+  - 自动化
+  - 模型
+  - 提示词
+  - bug
+  - 建议
+
+# 界面文字覆盖：登录按钮显示 LINUX DO，而不是插件默认的 OpenID Connect
+translation_overrides:
+  zh_CN:
+    js.login.oidc.name: "LINUX DO"
+    js.login.oidc.title: "使用 LINUX DO 登录"
+    js.login.oidc.message: "正在通过 LINUX DO 登录"
+  en:
+    js.login.oidc.name: "LINUX DO"
+    js.login.oidc.title: "with LINUX DO"
+    js.login.oidc.message: "Authenticating with LINUX DO"

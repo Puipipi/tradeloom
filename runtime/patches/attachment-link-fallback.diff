@@ -1,0 +1,54 @@
+--- a/node_modules/@deepseek-ai/dsh-attachment-local/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-attachment-local/lib/index.js
+@@ -486,6 +486,17 @@
+-		try {
+-			await link(source, target);
+-		} catch (error) {
+-			/* v8 ignore next -- Private same-filesystem directories make EEXIST the only recoverable link race. */
+-			if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) throw error;
+-			if (await digestFile(target) !== sha256) throw new AttachmentError("Stored attachment failed integrity verification.", "ATTACHMENT_CORRUPT");
++		try {
++			await link(source, target);
++		} catch (error) {
++			if (error?.code === "EACCES" || error?.code === "EPERM") {
++				const staged = await stageImmutableObject(root, (async function* () {
++					yield* createReadStream(source);
++				})());
++				if (staged.sha256 !== sha256) {
++					await removeTemporary(staged.path);
++					throw new AttachmentError("Stored attachment failed integrity verification.", "ATTACHMENT_CORRUPT");
++				}
++				await publishStagedObject(root, target, staged);
++				return;
++			}
++			/* v8 ignore next -- Private same-filesystem directories make EEXIST the only recoverable link race. */
++			if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) throw error;
++			if (await digestFile(target) !== sha256) throw new AttachmentError("Stored attachment failed integrity verification.", "ATTACHMENT_CORRUPT");
+@@ -549,11 +560,16 @@
+-		try {
+-			await link(staged.path, target);
+-		} catch (error) {
+-			/* v8 ignore next -- Private same-filesystem directories make EEXIST the only recoverable link race. */
+-			if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) throw error;
+-			if (await digestFile(target) !== staged.sha256) throw new AttachmentError("Stored attachment failed integrity verification.", "ATTACHMENT_CORRUPT");
+-		}
+-		await unlink(staged.path);
+-		await chmod(target, 256);
+-		const stop = resolve(root);
+-		for (let level = parent; level !== stop; level = dirname(level)) {
++		try {
++			await link(staged.path, target);
++		} catch (error) {
++			if (!(error instanceof Error && ["EEXIST", "EACCES", "EPERM"].includes(error.code))) throw error;
++			try {
++				if (await digestFile(target) !== staged.sha256) throw new AttachmentError("Stored attachment failed integrity verification.", "ATTACHMENT_CORRUPT");
++			} catch (existingError) {
++				if (error.code === "EEXIST" || existingError?.code !== "ENOENT") throw existingError;
++				// Every publisher of this content-addressed name has the same bytes.
++				await rename(staged.path, target);
++			}
++		}
++		await removeTemporary(staged.path);
++		await chmod(target, 256);
++		const stop = resolve(root);
++		for (let level = parent; level !== stop; level = dirname(level)) {

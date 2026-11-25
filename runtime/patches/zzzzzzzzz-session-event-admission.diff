@@ -1,0 +1,12 @@
+--- a/node_modules/@deepseek-ai/dsh-session/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-session/lib/index.js
+@@ -1558,6 +1558,9 @@
+ 	*/
+ 	append(type, data, ...opts) {
+ 		this.publicationEntry();
++		if (!KNOWN_SESSION_EVENT_TYPES.has(type)) {
++			throw new TypeError("session.append only accepts known core event types; use appendPluginRecord for plugin records");
++		}
+ 		const surfaceOpts = opts[0];
+ 		const surfaceMetadata = {
+ 			...surfaceOpts?.sourceEventSeqs === void 0 ? {} : { sourceEventSeqs: surfaceOpts.sourceEventSeqs },

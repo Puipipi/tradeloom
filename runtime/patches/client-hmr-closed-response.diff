@@ -1,0 +1,8 @@
+# A client may close while the route guard waits for Connection to activate.
+# Do not retain that already-closed response as an HMR SSE subscriber.
+--- a/node_modules/@deepseek-ai/dsh-client-hmr/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-client-hmr/lib/index.js
+@@ -124 +124,2 @@
+-	const connect = (res) => {
++	const connect = (res) => {
++		if (res.destroyed) return;

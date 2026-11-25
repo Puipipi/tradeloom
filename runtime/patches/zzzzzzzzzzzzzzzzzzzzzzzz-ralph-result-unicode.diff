@@ -1,0 +1,15 @@
+--- a/node_modules/@deepseek-ai/dsh-tool-ralph/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-tool-ralph/lib/index.js
+@@ -240,7 +240,11 @@
+ function boundResult(text, maxChars) {
+ 	if (text.length <= maxChars) return text;
+ 	if (maxChars <= 14) return TRUNCATION_NOTICE.slice(0, maxChars);
+-	return `${text.slice(0, maxChars - 14)}${TRUNCATION_NOTICE}`;
++	let end = maxChars - 14;
++	const high = text.charCodeAt(end - 1);
++	const low = text.charCodeAt(end);
++	if (high >= 0xD800 && high <= 0xDBFF && low >= 0xDC00 && low <= 0xDFFF) end--;
++	return `${text.slice(0, end)}${TRUNCATION_NOTICE}`;
+ }
+ /** Render the fixed terminal envelope without presenting self-report as certification. */
+ function renderResult(result, maxChars) {

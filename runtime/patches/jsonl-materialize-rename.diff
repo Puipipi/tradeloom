@@ -1,0 +1,22 @@
+--- a/node_modules/@deepseek-ai/dsh-session-persistence-jsonl/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-session-persistence-jsonl/lib/index.js
+@@ -5 +5 @@
+-import { link, lstat, mkdir, mkdtemp, open, readFile, readdir, realpath, rm, stat, truncate } from "node:fs/promises";
++import { link, lstat, mkdir, mkdtemp, open, readFile, readdir, realpath, rename, rm, stat, truncate } from "node:fs/promises";
+@@ -3279 +3279,12 @@
+-			await link(tmp, finalPath);
++			try {
++				await link(tmp, finalPath);
++			} catch (error) {
++				if (error?.code !== "EACCES" && error?.code !== "EPERM") throw error;
++				// Current first publishers hold the mutation lease. Keep link's
++				// no-replace semantics wherever hard links are available.
++				const existing = await lstat(finalPath).catch((statError) => {
++					if (statError?.code !== "ENOENT") throw statError;
++				});
++				if (existing !== void 0) throw error;
++				await rename(tmp, finalPath);
++			}
+@@ -3282 +3293 @@
+-			/* v8 ignore next -- link failure is the TOCTOU/IO race guarded above; not reachable in test */
++			/* v8 ignore next -- publication failure cleans only its owned temporary. */

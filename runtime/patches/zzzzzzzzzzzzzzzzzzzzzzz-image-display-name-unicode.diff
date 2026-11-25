@@ -1,0 +1,18 @@
+--- a/node_modules/@deepseek-ai/dsh-attachment-local/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-attachment-local/lib/index.js
+@@ -279,7 +279,14 @@
+ }
+ function displayName(value) {
+ 	if (value === void 0) return void 0;
+-	const clean = value.slice(Math.max(value.lastIndexOf("/"), value.lastIndexOf("\\")) + 1).replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 255);
++	let clean = value.slice(Math.max(value.lastIndexOf("/"), value.lastIndexOf("\\")) + 1).replace(/[\u0000-\u001f\u007f]/g, "").trim();
++	if (clean.length > 255) {
++		let end = 255;
++		const high = clean.charCodeAt(end - 1);
++		const low = clean.charCodeAt(end);
++		if (high >= 0xD800 && high <= 0xDBFF && low >= 0xDC00 && low <= 0xDFFF) end--;
++		clean = clean.slice(0, end);
++	}
+ 	return clean === "" ? void 0 : clean;
+ }
+ function ensureReference(ref) {

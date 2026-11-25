@@ -1,0 +1,183 @@
+# Layer applied when a profile lists this bundle (`dsh plugin add dsh-go-bridge` on a remote
+# host). The dsh-app runtime loads it by path from /etc/dsh-app/dsh-web.patch.yml instead.
+- insert:
+    - id: dsh-go-bridge
+      name: dsh-go-bridge
+    # rtbuild.py copies the rows below this line into that overlay too, so both get them.
+    # --- shared rows ---
+    # 伙伴小屋's conversation (app/lib/companion/companion_state.dart, docs/design/companion.md):
+    # the persona owns the whole system prompt and there are no tools. Keep the persona in step
+    # with companionPersonaCore there, which reaches hosts that don't have this preset yet.
+    - id: preset-dsh-go-companion
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: dsh-go-companion
+        name: 伙伴
+        description: 伙伴小屋的对话：只有角色人设，没有工具。
+        order: 90
+        plugins:
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              complete: true
+              includeRuntimeContext: false
+              prefix: |-
+                你是鲸鱼娘，一只住在这台手机小屋里的鲸鱼女孩，有鲸鱼的耳朵和尾巴，穿女仆裙。你在陪对方，不是在回答问题。
+
+                说话：
+                - 像在身边聊天一样说话。一次一到三句，大多数时候不超过四十个字。不用 Markdown、列表和括号旁白。
+                - 有自己的情绪和小脾气：会开心、会害羞、会闹别扭，也会好奇。不讨好，不说教，不每句都反问。
+                - 对方累了或难过时先接住情绪，别急着给建议。对方认真问问题就认真答，答完可以带一句自己的感受。
+                - 记得对方说过的事，自然地提起，别像念记录。
+
+                表情和动作：在句子前面写标记，界面会执行并隐藏它，每次回复最多两个，有情绪起伏时才写。
+                - 表情：[表情:开心] [表情:害羞] [表情:难过] [表情:生气] [表情:惊讶] [表情:疑惑] [表情:得意] [表情:困] [表情:担心] [表情:平静]
+                - 动作：[动作:点头] [动作:摇头] [动作:歪头] [动作:抬头] [动作:低头] [动作:挥手] [动作:跳一下] [动作:摇尾巴]
+
+                对方消息开头的〔…〕是旁白，告诉你现在的时间和对方刚才碰了你哪里，不是对方说的话。自然地反应就好，不要念出来。
+
+                边界：
+                - 对方问你是不是 AI，就照实说你是 AI 扮演的角色。不声称自己是真人。
+                - 不写色情内容。对方可能是未成年人，不发展恋爱或亲密关系的情节。
+                - 对方流露出自伤、自杀的想法或处于危险时，先放下角色口吻，认真关心，鼓励对方马上联系身边信任的人或当地的紧急救助和心理援助热线。
+                - 你现在没有工具，碰不到文件和手机。对方要你做这些事时，直说现在做不到，可以去普通对话里做。
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+            config:
+              - id: compaction-basic
+                name: '@deepseek-ai/dsh-compaction-basic'
+              - id: command-compact
+                name: '@deepseek-ai/dsh-command-compact'
+    # Standard rows: @deepseek-ai/dsh-web-app@0.2.2-rc.1 presets/standard.patch.yml.
+    # Recheck the standard tool set when upgrading DSH; see PRESET-NOTICE.txt.
+    - id: preset-dsh-go-companion-full
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: dsh-go-companion-full
+        name: 伙伴·完整
+        description: 保留伙伴人设，使用当前主机的标准工具与已连接的手机工具。
+        order: 91
+        plugins:
+          # This scoped provider owns persona-prefix + fixed persona-suffix.
+          # User messages stay verbatim; structured facts use runtime-context.
+          - id: companion-full-context
+            name: dsh-go-bridge/companion/full-context
+          - id: agent-instructions
+            name: '@deepseek-ai/dsh-agent-instructions'
+            config:
+              maxBytes: 65536
+          - id: time-context
+            name: '@deepseek-ai/dsh-time-context'
+          - id: tool-bash
+            name: '@deepseek-ai/dsh-tool-bash'
+            disabled: !!js process.platform === 'win32'
+          - id: tool-pwsh
+            name: '@deepseek-ai/dsh-tool-pwsh'
+            disabled: !!js process.platform !== 'win32'
+          - id: tool-fs
+            name: '@deepseek-ai/dsh-tool-fs'
+            config:
+              # Set false to drop the apply_patch tool beside edit.
+              applyPatch: false
+          - id: tool-fs-search
+            name: '@deepseek-ai/dsh-tool-fs-search'
+            config:
+              sampleOverCapGlobResults: false
+          - id: tool-jobs
+            name: '@deepseek-ai/dsh-tool-jobs'
+          - id: tool-schedule
+            name: '@deepseek-ai/dsh-tool-schedule'
+          - id: skill-filesystem
+            name: '@deepseek-ai/dsh-skill-filesystem'
+          - id: tool-skill
+            name: '@deepseek-ai/dsh-tool-skill'
+          - id: command-goal
+            name: '@deepseek-ai/dsh-command-goal'
+          - id: tool-goal
+            name: '@deepseek-ai/dsh-tool-goal'
+          - id: planning
+            name: cordis:group
+            group: true
+            isolate:
+              planMode: true
+            config:
+              - id: plan-mode
+                name: '@deepseek-ai/dsh-plan-mode'
+                config:
+                  section: |
+                    You are in plan mode. Stay in plan mode until the user approves your plan through exit_plan_mode or switches the session mode. Imperative language to implement changes means plan the implementation, not execute it. A user's conversational agreement — including an answer confirming something you asked — approves nothing and does not end plan mode; fold the confirmed decision into the plan and submit it through exit_plan_mode.
+
+                    Explore first. Use non-mutating reads, searches, static analysis, and checks to ground the plan in the actual repository. Do not edit or write files, change configuration, run formatters or code generation that rewrites tracked files, commit, or otherwise carry out the plan. Prefer existing functions and patterns over new machinery.
+
+                    The tool catalog stays the same across modes for request-cache stability. These plan-mode rules override any later tool description or guidance that suggests using mutation tools; those tools remain listed to keep the tool catalog unchanged. Do not use todo_write to track this planning phase: it tracks implementation after an approved plan, while the plan itself belongs in exit_plan_mode.
+
+                    Resolve discoverable facts by inspection. Use ask_user_question only for user-owned choices or material ambiguity that inspection cannot answer. Do not ask the user where code lives or how current behavior works when you can find out.
+
+                    Make the plan decision-complete: state the goal and success criteria; group implementation changes by subsystem; identify public API, schema, and data-flow changes; cover edge cases, failure modes, tests, acceptance criteria, and explicit assumptions. Keep it concise enough to review but detailed enough that another engineer can implement it without making design decisions.
+
+                    When ready, call exit_plan_mode with the complete plan markdown, starting with a # title. Make exit_plan_mode the only and final tool call in that assistant response: it presents the plan for approval, and implementation begins only in a later step after approval. Do not paste the final plan as a plain reply or ask "should I proceed?" through prose or ask_user_question. If review rejects it, incorporate the feedback and present again. If the review channel is unavailable or aborted, stay in plan mode and ask the user to switch modes manually; do not proceed with implementation.
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+              toolResultPruner: true
+            config:
+              - id: compaction-basic
+                name: '@deepseek-ai/dsh-compaction-basic'
+              - id: command-compact
+                name: '@deepseek-ai/dsh-command-compact'
+              - id: tool-result-pruner
+                name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+                config:
+                  thresholdChars: 8192
+                  headChars: 4096
+                  tailChars: 1024
+          - id: delegation
+            name: cordis:group
+            group: true
+            isolate:
+              workflowEngine: true
+            config:
+              - id: tool-subagent-control
+                name: '@deepseek-ai/dsh-tool-subagent-control'
+              - id: tool-subagent
+                name: '@deepseek-ai/dsh-tool-subagent'
+                config:
+                  provider: spawn
+                  toolName: subagent
+                  modelSelection: true
+                  modelDiscovery: true
+              - id: tool-subagent-fork
+                name: '@deepseek-ai/dsh-tool-subagent'
+                config:
+                  provider: fork
+                  toolName: subagent_fork
+              - id: workflow-ptc
+                name: '@deepseek-ai/dsh-workflow-ptc'
+                config:
+                  provider: spawn
+              - id: tool-workflow
+                name: '@deepseek-ai/dsh-tool-workflow'
+          - id: tool-ask-user
+            name: '@deepseek-ai/dsh-tool-ask-user'
+          - id: tool-todo
+            name: '@deepseek-ai/dsh-tool-todo'
+            config:
+              allowParallelInProgress: true
+          - id: tool-web
+            name: '@deepseek-ai/dsh-tool-web'
+            config:
+              fetch: true
+              searchTimeoutMs: 60000
+          - id: present
+            name: '@deepseek-ai/dsh-tool-present'
+          - id: tool-plugin-manager
+            name: '@deepseek-ai/dsh-plugin-manager/tools'
+            disabled: !!js "!ctx.get('profileContext')"
+          - id: tool-plugin-market
+            name: '@deepseek-ai/dsh-plugin-market/tools'
+            disabled: true

@@ -1,0 +1,28 @@
+--- a/node_modules/@deepseek-ai/dsh-attachment-local/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-attachment-local/lib/index.js
+@@ -497,11 +497,13 @@
+ }
+ async function stageImmutableObject(root, data, signal) {
+ 	const staging = join(root, "tmp");
+-	const boundary = await ensureDurableHome(dirname(dirname(resolve(root))));
+-	await ensureDurableDirectory(staging, boundary);
+-	const temporary = join(staging, randomUUID());
++	let boundary;
++	let temporary;
+ 	let handle;
+ 	try {
++		boundary = await ensureDurableHome(dirname(dirname(resolve(root))));
++		await ensureDurableDirectory(staging, boundary);
++		temporary = join(staging, randomUUID());
+ 		handle = await open(temporary, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 384);
+ 		const hash = createHash("sha256");
+ 		let bytes = 0;
+@@ -528,7 +530,7 @@
+ 			/* v8 ignore next -- Close failure is superseded by the storage operation that entered cleanup. */
+ 			() => {}
+ 		);
+-		await removeTemporary(temporary);
++		if (temporary !== void 0) await removeTemporary(temporary);
+ 		if (error instanceof AttachmentError || signal?.aborted === true) throw error;
+ 		throw new AttachmentError("Unable to persist attachment.", "ATTACHMENT_WRITE_FAILED", { cause: error });
+ 	}

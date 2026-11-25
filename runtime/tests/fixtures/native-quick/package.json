@@ -1,0 +1,31 @@
+{
+  "name": "dsh-go-fixture-quick",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "description": "Test-only native plugin (never shipped): composer / message actions, invoke handlers and deliberate misbehaviour for runtime/tests/native-bridge.mjs.",
+  "dshGo": {
+    "v": 1,
+    "title": "快捷",
+    "icon": "bolt",
+    "wants": ["clipboard", "message"],
+    "contributes": {
+      "composer.actions": [
+        { "id": "translate", "label": { "zh": "译成英文", "en": "To English, please now" }, "icon": "translate" },
+        { "id": "sum", "label": "总结", "effect": { "type": "insert", "text": "总结上面的对话" } }
+      ],
+      "message.actions": [
+        { "id": "speak", "label": "朗读", "icon": "speaker" },
+        { "id": "slow", "label": "慢" }
+      ],
+      "panels": [
+        { "id": "tools", "title": "工具", "placement": ["chat.panel"] },
+        { "id": "boom", "title": "Boom" },
+        { "id": "huge", "title": "Huge" },
+        { "id": "late", "title": "Late" },
+        { "id": "fifth", "title": "Fifth panel is dropped" }
+      ]
+    }
+  }
+}

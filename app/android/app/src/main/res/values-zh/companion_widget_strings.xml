@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 伙伴小屋的桌面小组件（companion/CompanionWidget.kt）。她在做什么、说了什么由 App 按自己的语言发过来；
+     这些用于还没发过的时候，以及小组件列表里。 -->
+<resources>
+    <string name="companion_widget_label">伙伴小屋</string>
+    <string name="companion_widget_description">她在你的桌面上，点一下去看她</string>
+    <string name="companion_widget_name">鲸鱼娘</string>
+    <string name="companion_widget_waiting">在小屋里等你</string>
+    <string name="companion_widget_asleep">睡着了</string>
+</resources>

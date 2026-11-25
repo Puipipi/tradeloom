@@ -1,0 +1,13 @@
+diff --git a/node_modules/@deepseek-ai/cordis-plugin-loader/lib/index.js b/node_modules/@deepseek-ai/cordis-plugin-loader/lib/index.js
+index 701496a..7eb65b5 100644
+--- a/node_modules/@deepseek-ai/cordis-plugin-loader/lib/index.js
++++ b/node_modules/@deepseek-ai/cordis-plugin-loader/lib/index.js
+@@ -89,7 +89,7 @@ var EntryGroup = class {
+ 			...newMap
+ 		});
+ 		await Promise.all(ids.map(async (id) => {
+-			if (newMap[id]) await this.create(newMap[id]).catch((error) => {
++			if (Object.hasOwn(newMap, id)) await this.create(newMap[id]).catch((error) => {
+ 				this.ctx.logger.error(error);
+ 			});
+ 			else this.remove(id);

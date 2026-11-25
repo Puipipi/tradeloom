@@ -1,0 +1,11 @@
+--- a/node_modules/@deepseek-ai/dsh-api-job-controller/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-api-job-controller/lib/index.js
+@@ -110,6 +110,8 @@
+ 			const read = registry.readAt(id, cursor, request.sessionId);
+ 			if (read.chunks.length > 0 || read.lossy) yield* outputFrames(read.chunks, read.next, read.lossy, options.maxFrameBytes);
+ 			cursor = read.next;
++			// Teardown can remove a job while an output frame is yielded.
++			if (removed !== void 0) continue;
+ 			job = registry.get(id, request.sessionId);
+ 			if (isTerminal(job.status) && cursor >= job.output.total) {
+ 				yield {

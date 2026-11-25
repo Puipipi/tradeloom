@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="background_gate_checking">正在连接后台屏通道…</string>
+    <string name="background_setup_old_service">App 更新前的旧后台服务仍在运行，未能替换。请在 Shizuku 中停止 DSH Go 服务后重新连接。</string>
+    <string name="background_setup_bind_timeout">连接 Shizuku 服务超时，请确认它正在运行后重连。</string>
+    <string name="background_setup_unbind_wait">旧连接尚未释放，请稍后重连。</string>
+    <string name="background_setup_unbind_failed">无法释放旧连接，请在 Shizuku 中重启 DSH Go 服务。</string>
+    <string name="background_setup_bind_failed">无法连接 Shizuku 的后台服务，请重连。</string>
+</resources>

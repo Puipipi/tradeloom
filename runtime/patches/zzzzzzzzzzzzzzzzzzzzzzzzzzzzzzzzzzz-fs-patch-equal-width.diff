@@ -1,0 +1,21 @@
+--- a/node_modules/@deepseek-ai/dsh-fs-patch/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-fs-patch/lib/index.js
+@@ -261,9 +261,13 @@
+ 	replacements.sort((left, right) => left.start - right.start);
+ 	let lines = original;
+-	for (const replacement of replacements.reverse()) lines = [
+-		...lines.slice(0, replacement.start),
+-		...replacement.newLines,
+-		...lines.slice(replacement.start + replacement.oldLength)
+-	];
++	for (const replacement of replacements.reverse()) {
++		if (replacement.oldLength === replacement.newLines.length) {
++			for (let index = 0; index < replacement.newLines.length; index++) lines[replacement.start + index] = replacement.newLines[index];
++		} else lines = [
++			...lines.slice(0, replacement.start),
++			...replacement.newLines,
++			...lines.slice(replacement.start + replacement.oldLength)
++		];
++	}
+ 	if (lines.at(-1) !== "") lines.push("");
+ 	return {

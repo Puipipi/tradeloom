@@ -1,0 +1,37 @@
+--- a/node_modules/@deepseek-ai/dsh-tool-str-replace-editor/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-tool-str-replace-editor/lib/index.js
+@@ -159,4 +159,10 @@
+ 	return `New file created successfully at: ${target.displayPath}`;
+ }
++// Restore only the original UTF-8 format marker omitted by readText.
++async function originalBom(ctx, target, info, before, signal) {
++	if (info.size === void 0 || info.size !== Buffer.byteLength(before, "utf8") + 3) return "";
++	const bytes = await ctx.fs.readByteRange(target, { offset: 0, length: 3 }, signal);
++	return bytes.length === 3 && bytes[0] === 239 && bytes[1] === 187 && bytes[2] === 191 ? "\uFEFF" : "";
++}
+ async function replaceInFile(ctx, policy, path, oldStr, newStr, exec) {
+ 	if (newStr === null) throw new Error("Parameter `new_str` must be omitted or contain a string for command: str_replace");
+@@ -175,5 +181,6 @@
+ 	let outcome;
+ 	try {
+-		outcome = await ctx.fs.writeText(target, before.slice(0, offset) + newValue + before.slice(offset + oldValue.length), intent === void 0 ? {
++		const bom = await originalBom(ctx, target, info, before, exec.signal);
++		outcome = await ctx.fs.writeText(target, bom + before.slice(0, offset) + newValue + before.slice(offset + oldValue.length), intent === void 0 ? {
+ 			kind: "replaceIfVersion",
+ 			version: info.version
+@@ -199,5 +206,6 @@
+ 	const info = await statExisting(ctx, target, "insert", exec);
+ 	if (info.type !== "file") throw new FsError(`cannot insert into "${target.displayPath}": not a regular file`, "FS_NOT_REGULAR_FILE");
+-	const lines = (await ctx.fs.readText(target, exec.signal)).split("\n");
++	const before = await ctx.fs.readText(target, exec.signal);
++	const lines = before.split("\n");
+ 	if (!Number.isInteger(insertLine) || insertLine < 0 || insertLine > lines.length) throw new Error(`Invalid \`insert_line\` parameter: ${insertLine}. It should be within the range of lines of the file: [0, ${lines.length}]`);
+ 	const after = [
+@@ -215,5 +223,6 @@
+ 	let outcome;
+ 	try {
+-		outcome = await ctx.fs.writeText(target, after, expected, exec.signal, sandboxPolicy);
++		const bom = await originalBom(ctx, target, info, before, exec.signal);
++		outcome = await ctx.fs.writeText(target, bom + after, expected, exec.signal, sandboxPolicy);
+ 	} catch (error) {
+ 		throw policy.mapError(error, sandboxPolicy);

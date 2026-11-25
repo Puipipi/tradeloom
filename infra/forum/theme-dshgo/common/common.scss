@@ -1,0 +1,102 @@
+// dsh-go 分享码卡片。只用 Discourse 的配色变量，浅色 / 深色配色方案自动适配。
+
+.cooked .dshgo-share-card,
+.d-editor-preview .dshgo-share-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75em;
+  max-width: 34em;
+  margin: 0 0 1em;
+  padding: 0.875em 1em;
+  border: 1px solid var(--primary-low);
+  border-radius: var(--d-border-radius-large, 12px);
+  background: var(--secondary);
+  box-sizing: border-box;
+
+  // .btn 自带 display，会盖过 hidden 属性
+  [hidden] {
+    display: none !important;
+  }
+
+  .dshgo-share-card__body {
+    display: flex;
+    align-items: center;
+    gap: 0.75em;
+    min-width: 0;
+  }
+
+  .dshgo-share-card__mark {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5em;
+    height: 2.5em;
+    border-radius: 0.625em;
+    background: var(--tertiary-low);
+    color: var(--tertiary);
+    font-weight: 600;
+    line-height: 1;
+  }
+
+  .dshgo-share-card__text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125em;
+    min-width: 0;
+  }
+
+  .dshgo-share-card__title {
+    color: var(--primary);
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .dshgo-share-card__meta {
+    color: var(--primary-medium);
+    font-size: var(--font-down-1);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .dshgo-share-card__summary {
+    color: var(--primary-high);
+    font-size: var(--font-down-1);
+    line-height: 1.45;
+  }
+
+  .dshgo-share-card__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5em;
+
+    .btn {
+      flex: 1 1 0;
+      justify-content: center;
+      min-width: 8em;
+      text-decoration: none;
+    }
+  }
+
+  &[data-state="loading"] {
+    .dshgo-share-card__mark {
+      background: var(--primary-very-low);
+    }
+  }
+
+  &[data-state="broken"] {
+    .dshgo-share-card__mark {
+      background: var(--danger-low);
+      color: var(--danger);
+    }
+
+    .dshgo-share-card__title {
+      color: var(--primary-high);
+      font-weight: normal;
+    }
+  }
+}

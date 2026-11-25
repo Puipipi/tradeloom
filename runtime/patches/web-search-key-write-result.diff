@@ -1,0 +1,23 @@
+diff --git a/node_modules/@deepseek-ai/dsh-client-ui-settings-web-search/lib/client.js b/node_modules/@deepseek-ai/dsh-client-ui-settings-web-search/lib/client.js
+--- a/node_modules/@deepseek-ai/dsh-client-ui-settings-web-search/lib/client.js
++++ b/node_modules/@deepseek-ai/dsh-client-ui-settings-web-search/lib/client.js
+@@ -642,9 +642,10 @@
+-			/**
+-			* Write the staged key, then re-read whether the Host now holds one.
+-			* @param value - the staged credential literal.
+-			* @returns whether the Host reports a configured credential afterwards.
+-			*/
+-			async writeKey(value) {
+-				await this.ctx.remote.credentials.set(this.ref(), value);
+-				return (await this.readCredential())?.configured ?? false;
+-			}
++			/**
++			* Write the staged key, then read back only an acknowledged write.
++			* @param value - the staged credential literal.
++			* @returns whether the write succeeded and the Host reports a configured credential.
++			*/
++			async writeKey(value) {
++				const result = await this.ctx.remote.credentials.set(this.ref(), value);
++				if (!result.ok) return false;
++				return (await this.readCredential())?.configured ?? false;
++			}

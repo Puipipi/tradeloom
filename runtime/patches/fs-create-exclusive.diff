@@ -1,0 +1,40 @@
+# dsh-go: retain no-clobber creation when Android shared storage rejects hard links.
+# Pinned to the published @deepseek-ai/dsh-fs-local 0.2.1-rc.2 bytes.
+# Exclusive direct creation can expose partial content; failures retain the target.
+# Node open("wx") includes O_CREAT | O_EXCL; rename would clobber a competitor.
+--- a/node_modules/@deepseek-ai/dsh-fs-local/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-fs-local/lib/index.js
+@@ -579,7 +579,23 @@
+ 		if (options.createIfAbsent) try {
+ 			await linkFile(tempPath, absolutePath);
+ 		} catch (error) {
+-			await throwGuardedCreateFailure(error, absolutePath, displayPath, inspectPublicationTarget);
++			if (!(error instanceof Error && "code" in error && typeof error.code === "string" && ["EPERM", "EXDEV", "ENOTSUP", "EMLINK"].includes(error.code))) {
++				await throwGuardedCreateFailure(error, absolutePath, displayPath, inspectPublicationTarget);
++			}
++			throwIfAborted(signal, "write");
++			handle = await (internals.openPublicationFile ?? open)(absolutePath, "wx", 384)
++				.catch((openError) => throwGuardedCreateFailure(openError, absolutePath, displayPath, inspectPublicationTarget));
++			try {
++				await handle.chmod(384);
++				await handle.writeFile(content, { encoding: "utf8", ...signal ? { signal } : {} });
++				await handle.sync();
++				if (mode !== void 0) await handle.chmod(mode);
++				await handle.close();
++				handle = void 0;
++			} catch (writeError) {
++				// Do not unlink by path: another writer may have replaced the file we opened.
++				throw new FsError(`cannot finish creating "${displayPath}": ${errorMessage(writeError)}; file may be incomplete`, isAbortError(writeError) ? "FS_ABORTED" : "FS_IO_ERROR", { cause: writeError });
++			}
+ 		}
+ 		else if (platform === "win32" && existingDestination) try {
+ 			await replaceFile(absolutePath, tempPath);
+@@ -598,7 +614,7 @@
+ 		if (handle) try {
+ 			await handle.close();
+ 		} catch (closeError) {
+-			failure = new FsError(`write failed (${errorMessage(failure)}) and temp close failed (${errorMessage(closeError)})`, "FS_NOT_FOUND", { cause: failure });
++			failure = new FsError(`write failed (${errorMessage(failure)}) and file close failed (${errorMessage(closeError)})`, "FS_NOT_FOUND", { cause: failure });
+ 		}
+ 		if (!stagingCreated) throw failure;
+ 		return removeStagingDirOrThrow(stagingDir, failure, removeStagingDir);

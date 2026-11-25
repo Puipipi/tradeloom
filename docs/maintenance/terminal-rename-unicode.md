@@ -1,0 +1,9 @@
+# 终端重命名的 UTF16 边界合同
+
+Refs W17-B（普通终端状态参数，无对应公开issue编号）。不会改 runtimeVersion。Android 未编译。
+
+现有TerminalWorkspace.rename先trim并拒绝空/同名值，乐观显示完整next，向Host发送最多120个UTF16单位；失败仍按epoch/owner条件回滚。现有页面maxLength按grapheme计数，119个ASCII加🙂是合法120字符输入，但原substring会把最后emoji切成孤立高代理项。
+
+本修复只在120单位切点左右分别是合法high/low surrogate时退1单位。ASCII、未裁切、完整pair恰好落界不变；不改为码点或grapheme预算，不改变Host/SDK协议、页面或乐观显示策略，也不尝试修复原本非法输入。
+
+验证用既有ProviderContainer和FakeTerminalBackend，通过公开TerminalWorkspace.rename检查发送标题；不是实际Host/PTY或Android验收。原版同3案实际1红2绿；早期package_graph缺失和两次ENOSPC均是准备失败，不计产品红。资源不足时标准TMPDIR与本次自有生成cache位置临时置于RAM，不改变测试/产品/工具链。

@@ -1,0 +1,6 @@
+{ "type": "stack", "title": "演示", "children": [
+  { "type": "gauge", "value": 1 },
+  { "type": "metric", "label": "a", "value": {} },
+  { "type": "list", "items": [{ "title": "x", "action": "bad id" }] },
+  { "type": "text", "text": "ok", "tone": "muted" }
+] }

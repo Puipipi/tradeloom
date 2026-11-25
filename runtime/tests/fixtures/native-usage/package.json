@@ -1,0 +1,20 @@
+{
+  "name": "dsh-go-fixture-usage",
+  "version": "1.2.3",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "description": "Test-only native plugin (never shipped): panel + data feed + strip, plus /native-fixture/* control routes for runtime/tests/native-bridge.mjs.",
+  "dshGo": {
+    "v": 1,
+    "title": { "zh": "用量", "en": "Usage" },
+    "icon": "chart",
+    "contributes": {
+      "composer.strip": [{ "id": "cost", "icon": "coin", "panel": "usage" }],
+      "panels": [
+        { "id": "usage", "title": { "zh": "用量", "en": "Usage" }, "icon": "chart", "placement": ["session.tab", "features"] },
+        { "id": "plain", "title": "Plain" }
+      ]
+    }
+  }
+}

@@ -1,0 +1,11 @@
+# 实施前约定：单次 bundle inventory 元数据复用
+
+基底63e255fab5cb9d817af30b631c3643ccce8e9231，真实rc.1 pluginManager/listBundles公开入口。readBundles同步构造本次inventory，declaredRows按模块specifier与所属解析base查询pluginPackages.metaOf，得到多语言展示数据。相同二元组在一次列表中重复出现；本项仅消除重复成功元数据读取。
+
+保持：bundle顺序、row顺序、模块解析base、错误形态、启用/安装/权限/版本判断、现有wire字段和下一请求读取磁盘的行为。不得缓存跨请求数据；不得缓存undefined或带error的metadata；不得缓存来源授权、revision或包是否存在。
+
+本次同步收集对相同二元组复用首次成功metadata对象，下一readBundles创建新局部Map。外部进程恰在同步收集中改locale或manifest，原版也不是原子文件快照；本项不保证中途变化逐次可见。返回展示元数据按现有只读消费，不新增公开API或配置。
+
+实现仅内部declaredRows接受本次reader，其他直接调用保持原读取方式；reader仍调用真实pluginPackages.metaOf。回归覆盖正常相等、小输入、同模块不同base独立、下一请求成功修改可见、失败不缓存以及原错误保留。数字以真实公开RPC为主要收益证据，helper微基准只作小输入控制，不声称PRoot/Android收益。
+
+早期observer方法临时包装只用于原型测量；正式实现另经实际运行时与公开RPC验证。独立63e补丁需按现行构建流程重新记录pins及runtimeVersion，本项不代录数值。

@@ -1,0 +1,22 @@
+--- a/node_modules/@deepseek-ai/dsh-jobs-local/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-jobs-local/lib/index.js
+@@ -223,11 +223,14 @@
+ 	* @param cap - retention cap in UTF-8 bytes.
+ 	*/
+ 	trim(cap) {
+-		while (this.retainedBytes > cap && this.chunks.length > 1) {
+-			const dropped = this.chunks.shift();
+-			/* v8 ignore next -- the length guard proves shift() returns a chunk; the check only satisfies noUncheckedIndexedAccess. */
+-			if (dropped === void 0) break;
+-			this.retainedBytes -= dropped.bytes;
++		let dropped = 0;
++		while (this.retainedBytes > cap && this.chunks.length - dropped > 1) {
++			this.retainedBytes -= this.chunks[dropped++].bytes;
++		}
++		if (dropped === 1) this.chunks.shift();
++		else if (dropped > 1) {
++			this.chunks.copyWithin(0, dropped);
++			this.chunks.length -= dropped;
+ 		}
+ 		const single = this.chunks.length === 1 ? this.chunks[0] : void 0;
+ 		if (single !== void 0 && single.bytes > cap) {

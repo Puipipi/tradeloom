@@ -1,0 +1,8 @@
+# A client can disconnect while the route guard waits for Connection to activate.
+# Do not open a resource after that response's close event has already happened.
+--- a/node_modules/@deepseek-ai/dsh-host-webserver/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-host-webserver/lib/index.js
+@@ -637 +637,2 @@
+-	async serveResource(req, res, target, resource) {
++	async serveResource(req, res, target, resource) {
++		if (req.aborted || res.destroyed) return;

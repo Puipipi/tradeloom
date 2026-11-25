@@ -1,0 +1,4 @@
+# Selected by dsh plugin --profile web add /absolute/path/to/this/directory.
+- insert:
+    - id: dsh-go-example-overlay
+      name: dsh-go-example-overlay

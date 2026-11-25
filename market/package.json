@@ -1,0 +1,22 @@
+{
+  "name": "dsh-go-market",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test",
+    "check": "node scripts/check.mjs",
+    "build": "node scripts/build.mjs",
+    "watch": "node scripts/watch.mjs"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-plugin-market-index": "0.2.1-rc.2",
+    "ajv": "8.20.0",
+    "semver": "7.8.5",
+    "spdx-expression-parse": "4.0.0",
+    "spdx-license-list": "6.12.0",
+    "tar": "7.5.22"
+  }
+}

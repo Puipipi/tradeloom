@@ -1,0 +1,29 @@
+--- a/node_modules/@deepseek-ai/dsh-llm-pi-ai/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-llm-pi-ai/lib/index.js
+@@ -1303,6 +1303,8 @@
+ }
+ /** Keep one developer event in one system update, resolving its projected tool declarations. */
+ function appendDeveloper(message, options, messages) {
++	let toolsByName;
++	let toolCursor = 0;
+ 	const content = [];
+ 	const toolsAdded = [];
+ 	const toolsRemoved = [];
+@@ -1314,7 +1316,16 @@
+ 			});
+ 			break;
+ 		case "tool-addition": {
+-			const tool = options.tools?.find((tool) => tool.name === block.toolName);
++			let tool;
++			if (toolsAdded.length === 0) tool = options.tools?.find((tool) => tool.name === block.toolName);
++			else {
++				toolsByName ??= /* @__PURE__ */ new Map();
++				while (!toolsByName.has(block.toolName) && toolCursor < options.tools.length) {
++					const candidate = options.tools[toolCursor++];
++					if (!toolsByName.has(candidate.name)) toolsByName.set(candidate.name, candidate);
++				}
++				tool = toolsByName.get(block.toolName);
++			}
+ 			if (tool === void 0) throw new LlmError(`pi-ai tool update references undeclared tool "${block.toolName}"`, "INVALID_REQUEST");
+ 			toolsAdded.push(piTool(tool));
+ 			break;

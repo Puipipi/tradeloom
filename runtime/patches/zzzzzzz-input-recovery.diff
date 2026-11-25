@@ -1,0 +1,187 @@
+# Preserve unadmitted inbox claims and request identity across failure, replay and fork.
+--- a/node_modules/@deepseek-ai/dsh-agent-loop/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-agent-loop/lib/index.js
+@@ -25,12 +25,18 @@
+ /** Standard fold that reconstructs pending input and rejects invalid durable splice history. */
+ const inboxProjectionDefinition = {
+ 	key: "inbox",
+-	stateSchema: inboxProjectionSchema,
++	stateSchema: inboxProjectionSchema.unwrap().extend({ inFlight: z$1.array(z$1.custom()).readonly() }).readonly(),
+ 	init: () => ({
+ 		"next-turn": [],
+-		"next-step": []
++		"next-step": [],
++		inFlight: []
+ 	}),
+ 	apply(state, event) {
++		if (event.type === "user/message") return {
++			...state,
++			inFlight: state.inFlight.filter(({ message }) => message.id !== event.data.id)
++		};
++		if (event.type === "turn/end") return ["completed", "blocked", "max-tokens"].includes(event.data.reason?.kind) ? { ...state, inFlight: [] } : state;
+ 		if (event.type !== "agent/inbox/spliced") return state;
+ 		const splice = event.data;
+ 		try {
+@@ -43,22 +49,19 @@
+ 				if (ids.has(message.id)) throw new Error(`message "${message.id}" is already pending`);
+ 				ids.add(message.id);
+ 			}
+-			return splice.target === "next-turn" ? {
+-				"next-turn": next,
+-				"next-step": state["next-step"]
+-			} : {
+-				"next-turn": state["next-turn"],
+-				"next-step": next
+-			};
++			const settled = new Set([...(splice.settledIds ?? []), ...splice.inserted.map((message) => message.id)]);
++			const inFlight = state.inFlight.filter(({ message }) => !settled.has(message.id));
++			if (splice.outcome !== "canceled") for (const message of inbox.slice(splice.start, splice.start + removedCount)) inFlight.push({ target: splice.target, message });
++			return { ...state, [splice.target]: next, inFlight };
+ 		} catch (error) {
+ 			throw new Error(`invalid persisted inbox splice at session seq ${event.seq}`, { cause: error });
+ 		}
+ 	},
+ 	wire: {
+ 		viewSchema: inboxProjectionSchema,
+-		view: (state) => state
++		view: (state) => ({ "next-turn": state["next-turn"], "next-step": state["next-step"] })
+ 	},
+-	stateVersion: 1
++	stateVersion: 2
+ };
+ /**
+ * Driver-owned durable Inbox implementation used by ReactLoopAgent and focused
+@@ -84,6 +87,10 @@
+ 	get nextStep() {
+ 		return this.readState()["next-step"];
+ 	}
++	/** Unadmitted identities held by the driver, including a failed restore. */
++	get claimed() {
++		return this.readState().inFlight.map(({ message }) => message);
++	}
+ 	/** Whether either pending-message list contains work. */
+ 	get hasPending() {
+ 		const state = this.readState();
+@@ -158,6 +165,25 @@
+ 	*/
+ 	splice(target, start, deleteCount, inserted) {
+ 		return this.mutate(target, start, deleteCount, inserted, true);
++	}
++	/** Persist explicit plugin consumption without inventing a new event type. */
++	settle(messageIds) {
++		if (messageIds.length === 0) return;
++		this.session.append("agent/inbox/spliced", {
++			target: "next-step",
++			start: 0,
++			inserted: [],
++			settledIds: messageIds
++		});
++	}
++	/** Restore only unadmitted claims, in original target/order, without waking the driver. */
++	recover() {
++		const claims = this.readState().inFlight;
++		for (const target of ["next-step", "next-turn"]) {
++			const messages = claims.filter((claim) => claim.target === target).map((claim) => claim.message);
++			if (messages.length > 0) this.splice(target, 0, 0, messages);
++		}
++		return claims.length > 0;
+ 	}
+ 	/** Locate one pending identity across both owned lists. */
+ 	locate(messageId) {
+@@ -564,6 +590,8 @@
+ 	send(message, target, wakeup) {
+ 		if (this.dshGoDeleting) throw new Error("session is being deleted");
+ 		this.loopCtx.get("sessionPersistence")?.dshGoDeletion?.assertAdmit(this.id);
++		// Restore older claims before accepting another wake.
++		if (wakeup && this.phase.kind === "idle") this.inbox.recover();
+ 		const wakingAfterAbort = wakeup && this.phase.kind !== "idle" && this.phase.abort.signal.aborted;
+ 		const resolvedTarget = wakingAfterAbort ? "next-turn" : target;
+ 		this.inbox.splice(resolvedTarget, Infinity, 0, [message]);
+@@ -626,6 +654,12 @@
+ 			if (abortedCancelCause(this.phase.abort.signal)?.kind !== "disposed" && (this.phase.kind === "maintenance" || wakeAfterAbort)) this.phase.wakeRequested = true;
+ 			return;
+ 		}
++		// Direct wakes also restore held claims before a new terminal can settle them.
++		try {
++			this.inbox.recover();
++		} catch (error) {
++			this.throwError(error);
++		}
+ 		const driver = Promise.withResolvers();
+ 		this.activityDone = driver.promise;
+ 		this.setPhase({
+@@ -660,12 +694,20 @@
+ 		} catch (_error) {} finally {
+ 			/* v8 ignore next -- kick owns a running phase until this driver boundary */
+ 			if (this.phase.kind === "running") {
+-				const { turn, wakeRequested } = this.phase;
++				const { turn, step, wakeRequested } = this.phase;
++				let recovered = this.phase.recoveredInput === true;
++				try {
++					if (!recovered) recovered = this.inbox.recover();
++				} catch (error) {
++					// Leave the durable claim for cold recovery; never retry a failing append in a loop.
++					recovered = true;
++					this.dispatch.emit("agent/error", { turn, step, error });
++				}
+ 				this.setPhase({
+ 					kind: "idle",
+ 					lastTurn: turn
+ 				});
+-				if (wakeRequested && this.inbox.hasPending) this.wakeDriver();
++				if (!recovered && wakeRequested && this.inbox.hasPending) this.wakeDriver();
+ 			}
+ 		}
+ 	}
+@@ -701,6 +743,9 @@
+ 					messages: context === void 0 ? claimed : [...claimed, context]
+ 				});
+ 			});
++			// An intentional reject/filter consumes its input; preparation failures do not.
++			const retained = new Set(decision.kind === "reject" ? [] : decision.messages.filter((message) => message.source.kind !== "runtime-context").map((message) => message.id));
++			this.inbox.settle(claimed.filter((message) => !retained.has(message.id)).map((message) => message.id));
+ 			signal.throwIfAborted();
+ 			if (decision.kind === "reject") {
+ 				toolSet.dispose();
+@@ -821,6 +866,18 @@
+ 			};
+ 			this.throwError(error);
+ 		} finally {
++			if (turnEnds === null || turnEnds.kind === "error" || turnEnds.kind === "aborted") {
++				try {
++					if (this.inbox.recover()) {
++						phase.recoveredInput = true;
++						phase.wakeRequested = false;
++					}
++				} catch (error) {
++					phase.recoveredInput = true;
++					phase.wakeRequested = false;
++					this.dispatch.emit("agent/error", { turn, step: phase.step, error });
++				}
++			}
+ 			try {
+ 				this.session.append("turn/end", {
+ 					turn,
+@@ -1592,6 +1649,11 @@
+ 					detachSession = agent.ctx.sessions.enter(session);
+ 					agent.ctx.sessions.announce(session);
+ 					assertLive();
++					// Announced Sessions append through the live feed; never replay this suffix directly.
++					if (agent.inbox.recover() && stored !== void 0) {
++						if (!await agent.ctx.sessions.flush(session)) throw new Error("Input recovery has no persistence checkpoint");
++						assertLive();
++					}
+ 					const setupCommit = await raceAbort(setup?.(agent.ctx, agent), abort.signal, id);
+ 					assertLive();
+ 					setupCommit?.commit();
+--- a/node_modules/@deepseek-ai/dsh-api-session-controller/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-api-session-controller/lib/index.js
+@@ -1014,7 +1014,7 @@
+ 		const source = message.source;
+ 		return source.kind === "user" && "rpcId" in source && source.rpcId === requestId;
+ 	};
+-	if (agent.inbox.nextTurn.some(matches) || agent.inbox.nextStep.some(matches)) return true;
++	if (agent.inbox.nextTurn.some(matches) || agent.inbox.nextStep.some(matches) || agent.inbox.claimed?.some(matches)) return true;
+ 	return agent.session.snapshotEvents().some((event) => {
+ 		if (event.type !== "user/message") return false;
+ 		const source = event.data.source;

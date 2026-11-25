@@ -1,0 +1,45 @@
+--- a/node_modules/@deepseek-ai/dsh-session-query-sqlite/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-session-query-sqlite/lib/index.js
+@@ -505,6 +505,7 @@
+ 	_persistenceEpoch = 0;
+ 	_globalGeneration = 0;
+ 	_localGeneration = 0;
++	_dshGoLiveFingerprints = new WeakMap();
+ 	_tail = Promise.resolve();
+ 	_closed = false;
+ 	_closePromise;
+@@ -760,7 +761,7 @@
+ 			}
+ 			const live = /* @__PURE__ */ new Map();
+ 			for (const session of this.ctx.sessions.list()) {
+-				const observed = observeLive(session);
++				const observed = observeLive(session, this._dshGoLiveFingerprints);
+ 				const durable = persisted.get(session.id);
+ 				if (durable !== void 0) assertSessionHeadersCompatible(observed.header, durable.header);
+ 				live.set(session.id, observed);
+@@ -1011,8 +1012,23 @@
+ 		Buffer.byteLength("﷐", "utf8")
+ 	];
+ }
+-function observeLive(session) {
+-	return observeSession(session.header, session.inheritedEventCount, session.snapshotEvents());
++function observeLive(session, fingerprints) {
++	const header = structuredClone(session.header);
++	const inheritedEventCount = session.inheritedEventCount;
++	const events = session.snapshotEvents();
++	// Session owns immutable snapshots; append creates a different array.
++	// Keep document validation fresh and retain only the fingerprint value.
++	const documents = buildSessionEventSearchDocuments(header.id, events);
++	let fingerprint = fingerprints.get(events);
++	if (fingerprint === void 0) {
++		fingerprint = createHash("sha256").update(JSON.stringify({
++			header,
++			inheritedEventCount,
++			events
++		})).digest("base64url");
++		fingerprints.set(events, fingerprint);
++	}
++	return { header, inheritedEventCount, documents, fingerprint };
+ }
+ function observeSession(header, inheritedEventCount, events) {
+ 	const detachedHeader = structuredClone(header);

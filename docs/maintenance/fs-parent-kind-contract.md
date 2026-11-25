@@ -1,0 +1,11 @@
+# 已解析文件目标的父路径类型变化
+
+Refs W17-B，无对应公开issue编号。基底63e255fab5cb9d817af30b631c3643ccce8e9231；会改 runtimeVersion。Android 未编译；未运行ARM、PRoot或真实模型。
+
+官方FileSystem合同规定读取、列目录、修改失败使用稳定FsError。FsTarget来自公开resolve；正常两次调用之间，自有父目录可以被移动并在原位置成为普通文件。resolveLocalTarget已有ENOTDIR→FS_NOT_FOUND，probeStats将ENOENT/ENOTDIR视为不存在，listingIoError也归为FS_NOT_FOUND；statRegularFile却只翻译ENOENT。
+
+最小改动只让statRegularFile复用现成isENOTDIR，与ENOENT进入相同FS_NOT_FOUND分支。不新增错误code、cause策略、接口或通用catch；其它原生错误不在本补丁范围。readText、streamText、readBytes、readByteRange均经过该真实检查；目录本身仍FS_NOT_REGULAR_FILE，普通缺失仍FS_NOT_FOUND。取消、读取预算、UTF-8解码与写入策略不变。
+
+测试用真实Context+LocalFileSystem与自有临时目录。先resolve并正常读，rename父目录保留原文件，在原父位写普通文件，再用同target读；恢复后同target读回原文。四公开入口均先保留实际失败，再完成原文和恢复检查，最后核typed error。另各有ENOENT和实际目录控制。没有私有回调、权限操作、mock I/O、假Agent或替换外来文件。
+
+本问题只证明公开FS已解析目标后续读取的错误分类。模型工具read另有resolve/stat前置检查，稳定错误通常更早拒绝；未证明工具误报成功、实际Agent竞争或用户数据损坏。可按原CI准备的prefix运行普通node:test；无prefix时lazy skip，不增加额外可执行依赖。

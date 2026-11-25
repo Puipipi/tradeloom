@@ -1,0 +1,21 @@
+{
+  "name": "dshgo-share",
+  "private": true,
+  "description": "Hosted conversation links for dsh-go (docs/design/share-links.md).",
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build-site.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node scripts/build-site.mjs && vitest run",
+    "dev": "wrangler dev",
+    "smoke": "node scripts/smoke.mjs",
+    "e2e": "node scripts/e2e.mjs",
+    "smoke:publish": "node scripts/publish-smoke.mjs"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20261008.1",
+    "typescript": "5.9.3",
+    "vitest": "4.1.10",
+    "wrangler": "4.149.0"
+  }
+}

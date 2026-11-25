@@ -1,0 +1,1152 @@
+{
+  "rulesRevision": 3,
+  "cases": [
+    {
+      "name": "minimal-local-metadata-optional",
+      "pack": {
+        "schema": 1,
+        "id": "author-cat",
+        "canvas": {
+          "w": 2,
+          "h": 2
+        },
+        "contentBox": {
+          "x": 0,
+          "y": 0,
+          "w": 2,
+          "h": 2
+        },
+        "animations": {
+          "idle": {
+            "sheet": "cat.png",
+            "frameW": 2,
+            "frameH": 2,
+            "cols": 1,
+            "box": {
+              "x": 0,
+              "y": 0,
+              "w": 2,
+              "h": 2
+            },
+            "frames": [
+              {
+                "i": 0,
+                "ms": 100
+              }
+            ]
+          }
+        },
+        "states": {
+          "idle": [
+            "idle"
+          ]
+        }
+      },
+      "marketValid": false,
+      "parserValid": true,
+      "appImportValid": true
+    },
+    {
+      "name": "market-explicit-provenance",
+      "pack": {
+        "schema": 1,
+        "id": "author-cat",
+        "canvas": {
+          "w": 2,
+          "h": 2
+        },
+        "contentBox": {
+          "x": 0,
+          "y": 0,
+          "w": 2,
+          "h": 2
+        },
+        "animations": {
+          "idle": {
+            "sheet": "cat.png",
+            "frameW": 2,
+            "frameH": 2,
+            "cols": 1,
+            "box": {
+              "x": 0,
+              "y": 0,
+              "w": 2,
+              "h": 2
+            },
+            "frames": [
+              {
+                "i": 0,
+                "ms": 100
+              }
+            ]
+          }
+        },
+        "states": {
+          "idle": [
+            "idle"
+          ]
+        },
+        "author": "Author",
+        "license": "CC0-1.0",
+        "source": "https://example.org/art"
+      },
+      "marketValid": true,
+      "parserValid": true,
+      "appImportValid": true
+    },
+    {
+      "name": "local-free-text-provenance",
+      "pack": {
+        "schema": 1,
+        "id": "author-cat",
+        "canvas": {
+          "w": 2,
+          "h": 2
+        },
+        "contentBox": {
+          "x": 0,
+          "y": 0,
+          "w": 2,
+          "h": 2
+        },
+        "animations": {
+          "idle": {
+            "sheet": "cat.png",
+            "frameW": 2,
+            "frameH": 2,
+            "cols": 1,
+            "box": {
+              "x": 0,
+              "y": 0,
+              "w": 2,
+              "h": 2
+            },
+            "frames": [
+              {
+                "i": 0,
+                "ms": 100
+              }
+            ]
+          }
+        },
+        "states": {
+          "idle": [
+            "idle"
+          ]
+        },
+        "author": "作者",
+        "license": "作者许可",
+        "source": "作者原创说明"
+      },
+      "marketValid": true,
+      "parserValid": true,
+      "appImportValid": true
+    },
+    {
+      "name": "unknown-animation-ms-ignored",
+      "pack": {
+        "schema": 1,
+        "id": "author-cat",
+        "canvas": {
+          "w": 2,
+          "h": 2
+        },
+        "contentBox": {
+          "x": 0,
+          "y": 0,
+          "w": 2,
+          "h": 2
+        },
+        "animations": {
+          "idle": {
+            "sheet": "cat.png",
+            "frameW": 2,
+            "frameH": 2,
+            "cols": 1,
+            "box": {
+              "x": 0,
+              "y": 0,
+              "w": 2,
+              "h": 2
+            },
+            "frames": [
+              {
+                "i": 0,
+                "ms": 100
+              }
+            ],
+            "ms": 100
+          }
+        },
+        "states": {
+          "idle": [
+            "idle"
+          ]
+        }
+      },
+      "marketValid": false,
+      "parserValid": true,
+      "appImportValid": true
+    },
+    {
+      "name": "non-numeric-scale-defaults-one",
+      "pack": {
+        "schema": 1,
+        "id": "author-cat",
+        "canvas": {
+          "w": 2,
+          "h": 2
+        },
+        "contentBox": {
+          "x": 0,
+          "y": 0,
+          "w": 2,
+          "h": 2
+        },
+        "animations": {
+          "idle": {
+            "sheet": "cat.png",
+            "frameW": 2,
+            "frameH": 2,
+            "cols": 1,
+            "box": {
+              "x": 0,
+              "y": 0,
+              "w": 2,
+              "h": 2
+            },
+            "frames": [
+              {
+                "i": 0,
+                "ms": 100
+              }
+            ]
+          }
+        },
+        "states": {
+          "idle": [
+            "idle"
+          ]
+        },
+        "scale": "bad"
+      },
+      "marketValid": false,
+      "parserValid": true,
+      "appImportValid": false
+    },
+    {
+      "name": "half-round-away-from-zero",
+      "pack": {
+        "schema": 1,
+        "id": "author-cat",
+        "canvas": {
+          "w": 2,
+          "h": 2
+        },
+        "contentBox": {
+          "x": 0,
+          "y": 0,
+          "w": 2,
+          "h": 2
+        },
+        "animations": {
+          "idle": {
+            "sheet": "cat.png",
+            "frameW": 2,
+            "frameH": 2,
+            "cols": 1,
+            "box": {
+              "x": 0,
+              "y": 0,
+              "w": 2,
+              "h": 2
+            },
+            "frames": [
+              {
+                "i": -0.4,
+                "ms": 0.5
+              }
+            ]
+          }
+        },
+        "states": {
+          "idle": [
+            "idle"
+          ]
+        }
+      },
+      "marketValid": false,
+      "parserValid": true,
+      "appImportValid": false
+    },
+    {
+      "name": "invalid-frame-items-skipped",
+      "pack": {
+        "schema": 1,
+        "id": "author-cat",
+        "canvas": {
+          "w": 2,
+          "h": 2
+        },
+        "contentBox": {
+          "x": 0,
+          "y": 0,
+          "w": 2,
+          "h": 2
+        },
+        "animations": {
+          "idle": {
+            "sheet": "cat.png",
+            "frameW": 2,
+            "frameH": 2,
+            "cols": 1,
+            "box": {
+              "x": 0,
+              "y": 0,
+              "w": 2,
+              "h": 2
+            },
+            "frames": [
+              {
+                "i": 0,
+                "ms": 100
+              },
+              null,
+              {
+                "i": 1
+              },
+              "bad"
+            ]
+          }
+        },
+        "states": {
+          "idle": [
+            "idle"
+          ]
+        }
+      },
+      "marketValid": false,
+      "parserValid": true,
+      "appImportValid": false
+    },
+    {
+      "name": "empty-other-states-ignored",
+      "pack": {
+        "schema": 1,
+        "id": "author-cat",
+        "canvas": {
+          "w": 2,
+          "h": 2
+        },
+        "contentBox": {
+          "x": 0,
+          "y": 0,
+          "w": 2,
+          "h": 2
+        },
+        "animations": {
+          "idle": {
+            "sheet": "cat.png",
+            "frameW": 2,
+            "frameH": 2,
+            "cols": 1,
+            "box": {
+              "x": 0,
+              "y": 0,
+              "w": 2,
+              "h": 2
+            },
+            "frames": [
+              {
+                "i": 0,
+                "ms": 100
+              }
+            ]
+          }
+        },
+        "states": {
+          "idle": [
+            "idle"
+          ],
+          "working": [],
+          "error": "bad"
+        }
+      },
+      "marketValid": false,
+      "parserValid": true,
+      "appImportValid": true
+    },
+    {
+      "name": "empty-idle-rejected",
+      "pack": {
+        "schema": 1,
+        "id": "author-cat",
+        "canvas": {
+          "w": 2,
+          "h": 2
+        },
+        "contentBox": {
+          "x": 0,
+          "y": 0,
+          "w": 2,
+          "h": 2
+        },
+        "animations": {
+          "idle": {
+            "sheet": "cat.png",
+            "frameW": 2,
+            "frameH": 2,
+            "cols": 1,
+            "box": {
+              "x": 0,
+              "y": 0,
+              "w": 2,
+              "h": 2
+            },
+            "frames": [
+              {
+                "i": 0,
+                "ms": 100
+              }
+            ]
+          }
+        },
+        "states": {
+          "idle": []
+        }
+      },
+      "marketValid": false,
+      "parserValid": false,
+      "appImportValid": false
+    },
+    {
+      "name": "unknown-state-reference-rejected",
+      "pack": {
+        "schema": 1,
+        "id": "author-cat",
+        "canvas": {
+          "w": 2,
+          "h": 2
+        },
+        "contentBox": {
+          "x": 0,
+          "y": 0,
+          "w": 2,
+          "h": 2
+        },
+        "animations": {
+          "idle": {
+            "sheet": "cat.png",
+            "frameW": 2,
+            "frameH": 2,
+            "cols": 1,
+            "box": {
+              "x": 0,
+              "y": 0,
+              "w": 2,
+              "h": 2
+            },
+            "frames": [
+              {
+                "i": 0,
+                "ms": 100
+              }
+            ]
+          }
+        },
+        "states": {
+          "idle": [
+            "idle"
+          ],
+          "working": [
+            "missing"
+          ]
+        }
+      },
+      "marketValid": false,
+      "parserValid": false,
+      "appImportValid": false
+    },
+    {
+      "name": "reaction-reference-rejected",
+      "pack": {
+        "schema": 1,
+        "id": "author-cat",
+        "canvas": {
+          "w": 2,
+          "h": 2
+        },
+        "contentBox": {
+          "x": 0,
+          "y": 0,
+          "w": 2,
+          "h": 2
+        },
+        "animations": {
+          "idle": {
+            "sheet": "cat.png",
+            "frameW": 2,
+            "frameH": 2,
+            "cols": 1,
+            "box": {
+              "x": 0,
+              "y": 0,
+              "w": 2,
+              "h": 2
+            },
+            "frames": [
+              {
+                "i": 0,
+                "ms": 100
+              }
+            ]
+          }
+        },
+        "states": {
+          "idle": [
+            "idle"
+          ]
+        },
+        "reactions": {
+          "tap": "missing"
+        }
+      },
+      "marketValid": false,
+      "parserValid": false,
+      "appImportValid": false
+    },
+    {
+      "name": "tier-reference-rejected",
+      "pack": {
+        "schema": 1,
+        "id": "author-cat",
+        "canvas": {
+          "w": 2,
+          "h": 2
+        },
+        "contentBox": {
+          "x": 0,
+          "y": 0,
+          "w": 2,
+          "h": 2
+        },
+        "animations": {
+          "idle": {
+            "sheet": "cat.png",
+            "frameW": 2,
+            "frameH": 2,
+            "cols": 1,
+            "box": {
+              "x": 0,
+              "y": 0,
+              "w": 2,
+              "h": 2
+            },
+            "frames": [
+              {
+                "i": 0,
+                "ms": 100
+              }
+            ]
+          }
+        },
+        "states": {
+          "idle": [
+            "idle"
+          ]
+        },
+        "tiers": {
+          "working": [
+            {
+              "anim": "missing"
+            }
+          ]
+        }
+      },
+      "marketValid": false,
+      "parserValid": false,
+      "appImportValid": false
+    },
+    {
+      "name": "roam-reference-rejected",
+      "pack": {
+        "schema": 1,
+        "id": "author-cat",
+        "canvas": {
+          "w": 2,
+          "h": 2
+        },
+        "contentBox": {
+          "x": 0,
+          "y": 0,
+          "w": 2,
+          "h": 2
+        },
+        "animations": {
+          "idle": {
+            "sheet": "cat.png",
+            "frameW": 2,
+            "frameH": 2,
+            "cols": 1,
+            "box": {
+              "x": 0,
+              "y": 0,
+              "w": 2,
+              "h": 2
+            },
+            "frames": [
+              {
+                "i": 0,
+                "ms": 100
+              }
+            ]
+          }
+        },
+        "states": {
+          "idle": [
+            "idle"
+          ]
+        },
+        "roam": {
+          "anim": "missing"
+        }
+      },
+      "marketValid": false,
+      "parserValid": false,
+      "appImportValid": false
+    },
+    {
+      "name": "idle-pool-list-reference-rejected",
+      "pack": {
+        "schema": 1,
+        "id": "author-cat",
+        "canvas": {
+          "w": 2,
+          "h": 2
+        },
+        "contentBox": {
+          "x": 0,
+          "y": 0,
+          "w": 2,
+          "h": 2
+        },
+        "animations": {
+          "idle": {
+            "sheet": "cat.png",
+            "frameW": 2,
+            "frameH": 2,
+            "cols": 1,
+            "box": {
+              "x": 0,
+              "y": 0,
+              "w": 2,
+              "h": 2
+            },
+            "frames": [
+              {
+                "i": 0,
+                "ms": 100
+              }
+            ]
+          }
+        },
+        "states": {
+          "idle": [
+            "idle"
+          ]
+        },
+        "idlePool": [
+          {
+            "anim": "missing"
+          }
+        ]
+      },
+      "marketValid": false,
+      "parserValid": false,
+      "appImportValid": false
+    },
+    {
+      "name": "idle-pool-object-reference-rejected",
+      "pack": {
+        "schema": 1,
+        "id": "author-cat",
+        "canvas": {
+          "w": 2,
+          "h": 2
+        },
+        "contentBox": {
+          "x": 0,
+          "y": 0,
+          "w": 2,
+          "h": 2
+        },
+        "animations": {
+          "idle": {
+            "sheet": "cat.png",
+            "frameW": 2,
+            "frameH": 2,
+            "cols": 1,
+            "box": {
+              "x": 0,
+              "y": 0,
+              "w": 2,
+              "h": 2
+            },
+            "frames": [
+              {
+                "i": 0,
+                "ms": 100
+              }
+            ]
+          }
+        },
+        "states": {
+          "idle": [
+            "idle"
+          ]
+        },
+        "idlePool": {
+          "anims": [
+            {
+              "anim": "missing"
+            }
+          ]
+        }
+      },
+      "marketValid": false,
+      "parserValid": false,
+      "appImportValid": false
+    },
+    {
+      "name": "bonus-reference-rejected",
+      "pack": {
+        "schema": 1,
+        "id": "author-cat",
+        "canvas": {
+          "w": 2,
+          "h": 2
+        },
+        "contentBox": {
+          "x": 0,
+          "y": 0,
+          "w": 2,
+          "h": 2
+        },
+        "animations": {
+          "idle": {
+            "sheet": "cat.png",
+            "frameW": 2,
+            "frameH": 2,
+            "cols": 1,
+            "box": {
+              "x": 0,
+              "y": 0,
+              "w": 2,
+              "h": 2
+            },
+            "frames": [
+              {
+                "i": 0,
+                "ms": 100
+              }
+            ]
+          }
+        },
+        "states": {
+          "idle": [
+            "idle"
+          ]
+        },
+        "bonus": {
+          "idle": {
+            "anims": [
+              "missing"
+            ],
+            "chance": 0
+          }
+        }
+      },
+      "marketValid": false,
+      "parserValid": false,
+      "appImportValid": false
+    },
+    {
+      "name": "optional-malformed-containers-default",
+      "pack": {
+        "schema": 1,
+        "id": "author-cat",
+        "canvas": {
+          "w": 2,
+          "h": 2
+        },
+        "contentBox": {
+          "x": 0,
+          "y": 0,
+          "w": 2,
+          "h": 2
+        },
+        "animations": {
+          "idle": {
+            "sheet": "cat.png",
+            "frameW": 2,
+            "frameH": 2,
+            "cols": 1,
+            "box": {
+              "x": 0,
+              "y": 0,
+              "w": 2,
+              "h": 2
+            },
+            "frames": [
+              {
+                "i": 0,
+                "ms": 100
+              }
+            ]
+          }
+        },
+        "states": {
+          "idle": [
+            "idle"
+          ]
+        },
+        "tiers": "bad",
+        "timings": [],
+        "roam": false,
+        "sleep": [],
+        "hitBoxes": 4,
+        "bonus": "bad",
+        "idlePool": "bad"
+      },
+      "marketValid": false,
+      "parserValid": true,
+      "appImportValid": true
+    },
+    {
+      "name": "rect-negative-position-accepted",
+      "pack": {
+        "schema": 1,
+        "id": "author-cat",
+        "canvas": {
+          "w": 2,
+          "h": 2
+        },
+        "contentBox": {
+          "x": -2,
+          "y": -1,
+          "w": 2,
+          "h": 2
+        },
+        "animations": {
+          "idle": {
+            "sheet": "cat.png",
+            "frameW": 2,
+            "frameH": 2,
+            "cols": 1,
+            "box": {
+              "x": 0,
+              "y": 0,
+              "w": 2,
+              "h": 2
+            },
+            "frames": [
+              {
+                "i": 0,
+                "ms": 100
+              }
+            ]
+          }
+        },
+        "states": {
+          "idle": [
+            "idle"
+          ]
+        }
+      },
+      "marketValid": false,
+      "parserValid": true,
+      "appImportValid": true
+    },
+    {
+      "name": "rect-width-rejected",
+      "pack": {
+        "schema": 1,
+        "id": "author-cat",
+        "canvas": {
+          "w": 2,
+          "h": 2
+        },
+        "contentBox": {
+          "x": 0,
+          "y": 0,
+          "w": 0,
+          "h": 2
+        },
+        "animations": {
+          "idle": {
+            "sheet": "cat.png",
+            "frameW": 2,
+            "frameH": 2,
+            "cols": 1,
+            "box": {
+              "x": 0,
+              "y": 0,
+              "w": 2,
+              "h": 2
+            },
+            "frames": [
+              {
+                "i": 0,
+                "ms": 100
+              }
+            ]
+          }
+        },
+        "states": {
+          "idle": [
+            "idle"
+          ]
+        }
+      },
+      "marketValid": false,
+      "parserValid": false,
+      "appImportValid": false
+    },
+    {
+      "name": "boolean-is-not-number",
+      "pack": {
+        "schema": 1,
+        "id": "author-cat",
+        "canvas": {
+          "w": true,
+          "h": 2
+        },
+        "contentBox": {
+          "x": 0,
+          "y": 0,
+          "w": 2,
+          "h": 2
+        },
+        "animations": {
+          "idle": {
+            "sheet": "cat.png",
+            "frameW": 2,
+            "frameH": 2,
+            "cols": 1,
+            "box": {
+              "x": 0,
+              "y": 0,
+              "w": 2,
+              "h": 2
+            },
+            "frames": [
+              {
+                "i": 0,
+                "ms": 100
+              }
+            ]
+          }
+        },
+        "states": {
+          "idle": [
+            "idle"
+          ]
+        }
+      },
+      "marketValid": false,
+      "parserValid": false,
+      "appImportValid": false
+    },
+    {
+      "name": "frame-rounds-to-zero-time",
+      "pack": {
+        "schema": 1,
+        "id": "author-cat",
+        "canvas": {
+          "w": 2,
+          "h": 2
+        },
+        "contentBox": {
+          "x": 0,
+          "y": 0,
+          "w": 2,
+          "h": 2
+        },
+        "animations": {
+          "idle": {
+            "sheet": "cat.png",
+            "frameW": 2,
+            "frameH": 2,
+            "cols": 1,
+            "box": {
+              "x": 0,
+              "y": 0,
+              "w": 2,
+              "h": 2
+            },
+            "frames": [
+              {
+                "i": 0,
+                "ms": 0.49
+              }
+            ]
+          }
+        },
+        "states": {
+          "idle": [
+            "idle"
+          ]
+        }
+      },
+      "marketValid": false,
+      "parserValid": false,
+      "appImportValid": false
+    },
+    {
+      "name": "geometry-local-accepted-market-rejected",
+      "pack": {
+        "schema": 1,
+        "id": "author-cat",
+        "canvas": {
+          "w": 2,
+          "h": 2
+        },
+        "contentBox": {
+          "x": 0,
+          "y": 0,
+          "w": 2,
+          "h": 2
+        },
+        "animations": {
+          "idle": {
+            "sheet": "cat.png",
+            "frameW": 2,
+            "frameH": 2,
+            "cols": 1,
+            "box": {
+              "x": 0,
+              "y": 0,
+              "w": 2,
+              "h": 2
+            },
+            "frames": [
+              {
+                "i": 0,
+                "ms": 100
+              }
+            ]
+          }
+        },
+        "states": {
+          "idle": [
+            "idle"
+          ]
+        },
+        "author": "Author",
+        "license": "CC0-1.0",
+        "source": "https://example.org/art",
+        "scale": 2
+      },
+      "marketValid": false,
+      "parserValid": true,
+      "appImportValid": false
+    },
+    {
+      "name": "market-whitespace-control-001c",
+      "marketValid": false,
+      "pack": {
+        "schema": 1,
+        "id": "author-cat",
+        "canvas": {
+          "w": 2,
+          "h": 2
+        },
+        "contentBox": {
+          "x": 0,
+          "y": 0,
+          "w": 2,
+          "h": 2
+        },
+        "animations": {
+          "idle": {
+            "sheet": "cat.png",
+            "frameW": 2,
+            "frameH": 2,
+            "cols": 1,
+            "box": {
+              "x": 0,
+              "y": 0,
+              "w": 2,
+              "h": 2
+            },
+            "frames": [
+              {
+                "i": 0,
+                "ms": 100
+              }
+            ]
+          }
+        },
+        "states": {
+          "idle": [
+            "idle"
+          ]
+        },
+        "author": "作者",
+        "license": "作者许可",
+        "source": "\u001c"
+      },
+      "parserValid": true,
+      "appImportValid": true
+    },
+    {
+      "name": "market-nonwhitespace-feff",
+      "marketValid": true,
+      "pack": {
+        "schema": 1,
+        "id": "author-cat",
+        "canvas": {
+          "w": 2,
+          "h": 2
+        },
+        "contentBox": {
+          "x": 0,
+          "y": 0,
+          "w": 2,
+          "h": 2
+        },
+        "animations": {
+          "idle": {
+            "sheet": "cat.png",
+            "frameW": 2,
+            "frameH": 2,
+            "cols": 1,
+            "box": {
+              "x": 0,
+              "y": 0,
+              "w": 2,
+              "h": 2
+            },
+            "frames": [
+              {
+                "i": 0,
+                "ms": 100
+              }
+            ]
+          }
+        },
+        "states": {
+          "idle": [
+            "idle"
+          ]
+        },
+        "author": "作者",
+        "license": "作者许可",
+        "source": "﻿"
+      },
+      "parserValid": true,
+      "appImportValid": true
+    }
+  ],
+  "marketValidMeaning": "JSON market profile: required metadata plus Android-compatible canonical geometry; excludes ZIP/PNG and publication listing HTTPS source checks."
+}

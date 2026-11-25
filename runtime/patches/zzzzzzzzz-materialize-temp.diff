@@ -1,0 +1,26 @@
+--- a/node_modules/@deepseek-ai/dsh-session-persistence-jsonl/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-session-persistence-jsonl/lib/index.js
+@@ -3281,10 +3281,19 @@
+ 		const tmp = `${finalPath}.${randomBytes(6).toString("hex")}.tmp`;
+ 		const handle = await open(tmp, "wx", 384);
+ 		try {
+-			await handle.writeFile(content);
+-			await handle.sync();
+-		} finally {
+-			await handle.close();
++			try {
++				await handle.writeFile(content);
++				await handle.sync();
++			} finally {
++				await handle.close();
++			}
++		} catch (error) {
++			try {
++				await rm(tmp, { force: true });
++			} catch (cleanupError) {
++				throw new AggregateError([error, cleanupError], `failed to clean session temporary "${tmp}" after an earlier failure`);
++			}
++			throw error;
+ 		}
+ 		return tmp;
+ 	}

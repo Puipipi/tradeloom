@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="phone_system_start_attempted">已尝试%1$s。请核对实际界面；系统调用返回不表示操作完成。</string>
+    <string name="phone_system_start_rejected">已尝试%1$s，但系统调用失败。再次尝试前请核对实际状态。</string>
+    <string name="phone_system_review_notice">请先核对原操作是否已完成；如未完成，请自行完成后点「继续」。DSH 不会再次发送原请求。</string>
+    <string name="phone_system_review_unavailable">无法提供人工核对入口。原请求已尝试，不会重复派发；请直接查看目标界面。</string>
+    <string name="phone_system_review_timeout">等待核对超时，原操作的实际结果仍未知；请先人工核对，不要重复派发。</string>
+    <string name="phone_system_review_continued">用户已点「继续」；后续以当前读屏为准，未重复派发原请求。</string>
+    <string name="phone_system_handler_unconfirmed">后续读屏未确认原处理应用位于前台；不会重复启动。</string>
+    <string name="phone_system_attempt_stopped">%1$s（已尝试；后续停止）</string>
+    <string name="phone_system_choose_handler">选择处理应用</string>
+    <string name="phone_system_unknown_app">未知应用</string>
+    <string name="phone_system_confirm_unknown">处理应用未知，允许这次操作（%1$s）吗？</string>
+    <string name="phone_system_intent_unavailable">无法准备这次系统操作，未发送请求。</string>
+</resources>

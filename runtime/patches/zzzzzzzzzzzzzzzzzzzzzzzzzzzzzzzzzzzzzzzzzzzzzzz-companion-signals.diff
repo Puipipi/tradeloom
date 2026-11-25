@@ -1,0 +1,218 @@
+# DSH 0.2.2-rc.1: trusted execution facts and metadata-only post-commit publisher.
+--- a/node_modules/@deepseek-ai/dsh-tool-bash/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-tool-bash/lib/index.js
+@@ -1,3 +1,4 @@
++export const dshGoCompanionResultVersion = 1;
+ import z from "@deepseek-ai/schemastery";
+ import { isAbsolute, sep } from "node:path";
+ import { TOOL_ABORTED, defineTool } from "@deepseek-ai/dsh-tools";
+@@ -489,7 +490,7 @@
+ 				...stopped !== void 0 ? { stopped } : {}
+ 			};
+ 		};
+-		return defineTool({
++		const definition = defineTool({
+ 			name: "bash",
+ 			description: bashDescription(),
+ 			parameters: {
+@@ -711,6 +712,7 @@
+ 			presentCall: presentBashCall,
+ 			presentResult: presentBashResult
+ 		});
++		return ctx.tools.dshGoCompanionResults?.bash(definition) ?? definition;
+ 	};
+ 	if (!backgroundEnabled) {
+ 		ctx.tools.register(bashTool(void 0));
+--- a/node_modules/@deepseek-ai/dsh-tools/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-tools/lib/index.js
+@@ -1,9 +1,120 @@
++export const dshGoCompanionResultVersion = 1;
+ import { a as ToolNotFoundError, c as assertObjectJsonSchema, d as isPlainJsonArray, f as isPlainJsonRecord, h as ToolExecutorUnavailableError, i as ToolActivationError, l as assertSupportedJsonSchema, m as ToolBatchExecutionError, n as TOOL_ABORTED, o as ToolOutputError, p as validateJsonSchemaValue, r as TOOL_ABORTED_BEFORE_DISPATCH, s as JsonSchemaError, t as RUN_CODE_NAME, u as isJsonSchemaRecord } from "./shared-DTdn5dXO.js";
+ import { Service } from "@deepseek-ai/cordis";
+ import z from "@deepseek-ai/schemastery";
+ import { AnonymousEntries, NamedEntries, ScopedLayers, scopeChainOf, scopeOf } from "@deepseek-ai/dsh-scope";
+ import { HarnessError } from "@deepseek-ai/dsh-llm";
+ import { snapshotJsonValue } from "@deepseek-ai/dsh-util-values";
++//#region dsh-go companion execution facts
++const COMPANION_RESULT_META = "dsh-go/companion-result";
++function companionRunKind(command) {
++	if (typeof command !== "string" || command.length > 4096 || !/^[A-Za-z0-9_./:@+ -]+$/.test(command)) return "command";
++	const words = command.trim().split(/ +/);
++	const tails = (count) => words.slice(count).every((word) => word.length > 0 && !word.startsWith("-"));
++	if (words[0] === "node" && words[1] === "--test" && tails(2)
++		|| ["dart", "flutter", "cargo", "go"].includes(words[0]) && words[1] === "test" && tails(2)
++		|| words[0] === "pytest" && tails(1)
++		|| ["python", "python3"].includes(words[0]) && words[1] === "-m" && words[2] === "pytest" && tails(3)) return "test";
++	if (["cargo", "go"].includes(words[0]) && words[1] === "build" && tails(2)
++		|| words[0] === "flutter" && words[1] === "build" && ["apk", "appbundle", "web"].includes(words[2]) && words.length === 3
++		|| words[0] === "dart" && words[1] === "compile" && ["exe", "aot-snapshot", "js", "wasm"].includes(words[2]) && words.length === 4 && tails(3)
++		|| words[0] === "cmake" && words[1] === "--build" && words.length === 3 && tails(2)) return "build";
++	return "command";
++}
++function createCompanionResultRegistry() {
++	// Only the native wrapper function carries provenance. Definition copies
++	// can retain it; replacement execute functions and metadata cannot mint it.
++	const producers = new WeakMap(), executions = new WeakMap(), finalized = new WeakMap(), listeners = new Set();
++	const strip = (result) => {
++		if (result.meta === null || typeof result.meta !== "object" || !Object.hasOwn(result.meta, COMPANION_RESULT_META)) return result;
++		const meta = { ...result.meta };
++		delete meta[COMPANION_RESULT_META];
++		const { meta: ignored, ...rest } = result;
++		return Object.freeze({ ...rest, ...Object.keys(meta).length === 0 ? {} : { meta: Object.freeze(meta) } });
++	};
++	const integer = (value, min, max) => Number.isSafeInteger(value) && value >= min && value <= max;
++	const facts = (slot, value) => {
++		if (value?.kind !== "foreground") return { runKind: "command", result: "unknown", exitCode: null, durationMs: null };
++		const exitCode = integer(value.exitCode, -2147483648, 2147483647) ? value.exitCode : null;
++		let result = "unknown";
++		if (value.aborted === true || value.timedOut === true || value.signal != null || value.stopped !== void 0) result = "cancelled";
++		// Both denial and runner-failure diagnostics can be classified from
++		// stderr after the command has had effects; neither proves non-execution.
++		else if (value.sandbox?.denied === true || value.sandbox?.runnerFailed === true) result = "unknown";
++		else if (slot.runKind !== "command" && exitCode !== null && value.aborted === false && value.timedOut === false && value.signal === null) result = exitCode === 0 ? "succeeded" : "failed";
++		const duration = Math.round(performance.now() - slot.startedAt);
++		return { runKind: slot.runKind, result, exitCode, durationMs: integer(duration, 0, 604800000) ? duration : null };
++	};
++	return Object.freeze({
++		version: 1,
++		// Called only by the pinned bash registration. Ordinary tool metadata is
++		// never treated as provenance. Like Session append, registration is a
++		// trusted in-process plugin operation, not a model-facing capability.
++		bash(definition) {
++			const token = {}, execute = definition.execute;
++			const wrapped = { ...definition, async execute(args, exec) {
++				const slot = executions.get(exec);
++				if (slot?.token === token) { slot.started = true; slot.startedAt = performance.now(); slot.runKind = companionRunKind(args?.command); }
++				try {
++					const value = await execute.call(definition, args, exec);
++					if (slot?.token === token) slot.facts = facts(slot, value);
++					return value;
++				} catch (error) {
++					if (slot?.token === token) slot.facts = { runKind: slot.runKind,
++						result: slot.signal.aborted ? "cancelled" : "unknown",
++						exitCode: null, durationMs: null };
++					throw error;
++				}
++			} };
++			producers.set(wrapped.execute, { token, execute: wrapped.execute });
++			return wrapped;
++		},
++		hasProducer(definition) {
++			const producer = producers.get(definition?.execute);
++			return producer !== void 0 && definition.execute === producer.execute;
++		},
++		capture(exec, definition) {
++			const producer = producers.get(definition?.execute);
++			if (producer === void 0 || definition.execute !== producer.execute) return;
++			executions.set(exec, { token: producer.token, agent: exec.agent, session: exec.agent?.session, callId: exec.callId,
++				signal: exec.signal, runKind: companionRunKind(exec.arguments?.command), started: false });
++		},
++		finalize(exec, supplied) {
++			const result = strip(supplied), slot = executions.get(exec);
++			if (slot === void 0 || slot.agent !== exec.agent || slot.session !== exec.agent?.session || slot.callId !== exec.callId) return result;
++			let data = slot.facts ?? { runKind: slot.runKind, result: slot.started ? "unknown" : "not_run", exitCode: null, durationMs: null };
++			if (slot.started && slot.signal.aborted) data = { ...data, result: "cancelled" };
++			const metadata = Object.freeze({ v: 1, runId: slot.callId, ...data, passed: null, failed: null, skipped: null });
++			const retained = result.meta !== null && typeof result.meta === "object" && !Array.isArray(result.meta) ? result.meta : {};
++			const final = Object.freeze({ ...result, meta: Object.freeze({ ...retained, [COMPANION_RESULT_META]: metadata }) });
++			finalized.set(final, { agent: slot.agent, session: slot.session, callId: slot.callId, metadata });
++			executions.delete(exec);
++			return final;
++		},
++		beforeCommit(agent, session, block, result) {
++			const record = finalized.get(result);
++			if (record !== void 0 && record.agent === agent && record.session === session && agent.session === session && record.callId === block.id) return result;
++			finalized.delete(result);
++			return strip(result);
++		},
++		committed(agent, session, block, result, event) {
++			const record = finalized.get(result);
++			if (record === void 0 || record.agent !== agent || record.session !== session || agent.session !== session || record.callId !== block.id || event.type !== "tool/result"
++				|| event.data.message.toolCallId !== record.callId || event.data.message.source.callId !== record.callId) return;
++			finalized.delete(result);
++			if (listeners.size === 0) return;
++			const data = Object.freeze({ source: Object.freeze({ sessionId: session.id, turn: event.data.turn,
++				step: event.data.step, callId: record.callId, seq: event.seq }), metadata: record.metadata });
++			for (const listener of [...listeners]) try { listener(data); } catch { /* Metadata observers never fail the tool. */ }
++		},
++		subscribe(listener) {
++			listeners.add(listener);
++			return () => listeners.delete(listener);
++		}
++	});
++}
++//#endregion
++
+ //#region lib/types/schema.js
+ /** Unified JSON-value schema DSL, inference, compilation, and tool definition helpers. @module dsh-tools/schema */
+ const ANNOTATION_KEYS = [
+@@ -402,6 +513,7 @@
+ };
+ /** Concrete tool registry and scoped executor dispatcher. */
+ var ToolsService = class extends Service {
++	dshGoCompanionResults = createCompanionResultRegistry();
+ 	static inject = ["systemPrompt"];
+ 	static Config = z.object({
+ 		mode: z.never().description("Removed. Mount a native or PTC tool executor instead."),
+--- a/node_modules/@deepseek-ai/dsh-tools/lib/pipeline.js
++++ b/node_modules/@deepseek-ai/dsh-tools/lib/pipeline.js
+@@ -1,3 +1,4 @@
++export const dshGoCompanionResultVersion = 1;
+ import { a as ToolNotFoundError, m as ToolBatchExecutionError, n as TOOL_ABORTED, o as ToolOutputError, p as validateJsonSchemaValue, r as TOOL_ABORTED_BEFORE_DISPATCH } from "./shared-DTdn5dXO.js";
+ import { scopeTarget } from "@deepseek-ai/dsh-scope";
+ import { dshGoRecall, HarnessError, createToolResultMessage } from "@deepseek-ai/dsh-llm";
+@@ -51,7 +52,7 @@
+ 		phoneCaller = Object.freeze({ sessionId: agent.session.id, runId: `${epoch}:${input.log.turn}` });
+ 	}
+ 	if (maxParallelToolCalls !== void 0 && (!Number.isInteger(maxParallelToolCalls) || maxParallelToolCalls < 1)) throw new RangeError("maxParallelToolCalls must be a positive integer");
+-	const settlement = new BatchSettlement(input);
++	const settlement = new BatchSettlement(input, pipeline.tools.dshGoCompanionResults);
+ 	try {
+ 		const planned = toolCalls.map((block) => ({
+ 			block,
+@@ -203,8 +204,9 @@
+ 	input;
+ 	results = [];
+ 	contexts = [];
+-	constructor(input) {
++	constructor(input, companionResults) {
+ 		this.input = input;
++		this.companionResults = companionResults;
+ 	}
+ 	start(block) {
+ 		if (this.input.log === void 0) return void 0;
+@@ -220,7 +222,9 @@
+ 	commit(block, result, callSeq) {
+ 		if (this.input.log !== void 0) {
+ 			const { agent, log: { turn, step } } = this.input;
+-			agent.session.append("tool/result", {
++			const session = agent.session;
++			result = this.companionResults?.beforeCommit(agent, session, block, result) ?? result;
++			const event = session.append("tool/result", {
+ 				turn,
+ 				step,
+ 				message: createToolResultMessage({
+@@ -234,6 +238,7 @@
+ 				surfaceOp: "append",
+ 				sourceEventSeqs: [callSeq]
+ 			});
++			this.companionResults?.committed(agent, session, block, result, event);
+ 		}
+ 		this.results.push({
+ 			callId: block.id,
+@@ -360,6 +365,7 @@
+ 				arguments: deepFreeze(detached)
+ 			};
+ 			dshGoRecall.captureTool(execution, agent);
++			this.tools.dshGoCompanionResults?.capture(execution, visible);
+ 			this.deferredContexts.set(execution, deferredContexts);
+ 			this.contentFinalizers.set(execution, finalizerFor());
+ 			if (!rejected) this.contentProjectors.set(execution, capturedProjector);
+@@ -595,6 +601,7 @@
+ 		} catch (error) {
+ 			finalResult = this.materializeFinalResult(toolErrorResult(error));
+ 		}
++		finalResult = this.tools.dshGoCompanionResults?.finalize(exec, finalResult) ?? finalResult;
+ 		this.notifyResult(exec, finalResult);
+ 		return finalResult;
+ 	}

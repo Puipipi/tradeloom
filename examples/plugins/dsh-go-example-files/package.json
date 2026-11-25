@@ -1,0 +1,24 @@
+{
+  "name": "dsh-go-example-files",
+  "version": "0.1.0",
+  "private": true,
+  "description": "System-selected file bytes and SHA-256 through native plugin capability files (NA v1.3).",
+  "author": "DSH-TUI (ccch1mneyyy)",
+  "license": "MIT",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": { ".": "./lib/index.js", "./cordis.patch.yml": "./cordis.patch.yml", "./package.json": "./package.json" },
+  "files": ["lib", "cordis.patch.yml", "README.md", "README.en.md", "LICENSE"],
+  "scripts": { "test": "node --test test/*.test.js", "check": "node ../../../sdk/plugin-kit/bin/check.mjs ." },
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } },
+  "dshGo": {
+    "v": 1,
+    "title": { "zh": "文件摘要", "en": "File digest" },
+    "icon": "document",
+    "capabilities": ["files"],
+    "contributes": {
+      "panels": [{ "id": "files", "title": { "zh": "文件摘要", "en": "File digest" }, "icon": "document" }]
+    }
+  },
+  "engines": { "node": ">=22.19", "dsh": ">=0.2.1-rc.2 <0.3.0-0" }
+}

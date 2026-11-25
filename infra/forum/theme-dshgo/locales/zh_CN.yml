@@ -1,0 +1,18 @@
+zh_CN:
+  install: "用 dsh-go 安装"
+  download: "下载 dsh-go"
+  badge: "dsh-go 分享码"
+  kind_plugin: "插件"
+  kind_profile: "配置"
+  untitled_profile: "未命名配置"
+  gist_profile: "配置（存放在 Gist）"
+  broken: "分享码不完整，无法读取"
+  count_plugins: "%{count} 个插件"
+  count_skills: "%{count} 个技能"
+  count_presets: "%{count} 个预设"
+  theme_metadata:
+    description: "把帖子里的 dsh-go 分享链接显示成一键安装卡片。"
+    settings:
+      download_url: "「下载 dsh-go」按钮的地址（https）。留空则不显示这个按钮。"
+      landing_urls: "分享码网页落地页的地址，与 App 的 shareLandingUrl 保持一致。可填多个。"
+      decorate_plain_text: "把正文里没有写成链接的 dshgo://share/… 文本也识别成卡片。"

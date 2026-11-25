@@ -1,0 +1,11 @@
+--- a/node_modules/@deepseek-ai/dsh-fs-local/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-fs-local/lib/index.js
+@@ -376,7 +376,7 @@
+ 		info = await stat(target.targetKey);
+ 	} catch (error) {
+ 		/* v8 ignore next 2 -- a non-ENOENT stat failure needs a permission/IO fault; only the not-found path is reachable in tests. */
+-		if (!isENOENT(error)) throw error;
++		if (!isENOENT(error) && !isENOTDIR(error)) throw error;
+ 		throw new FsError(`cannot ${verb} "${target.displayPath}": not found`, "FS_NOT_FOUND");
+ 	}
+ 	if (!info.isFile()) throw new FsError(`cannot ${verb} "${target.displayPath}": not a regular file`, "FS_NOT_REGULAR_FILE");

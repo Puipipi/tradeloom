@@ -1,0 +1,800 @@
+{
+  "format": "dsh-companion-evaluation-sources-v1",
+  "core": {
+    "format": "dsh-companion-core-compatibility-v1",
+    "measuredAtUtc": "2026-11-07",
+    "officialSdk": {
+      "url": "https://cubism.live2d.com/sdk-web/bin/CubismSdkForWeb-5-r.5.zip",
+      "bytes": 20708681,
+      "sha256": "67064a7fb1812cf502f5c4a03bfe12cc638c75a621bb4acf06bb28763df06ba0",
+      "sourceListing": "https://cubism.live2d.com/sdk-web/js/download.js"
+    },
+    "core": {
+      "zipPath": "CubismSdkForWeb-5-r.5/Core/live2dcubismcore.min.js",
+      "sha256": "8741f739779b5d5210872bd3d7d99f0f1e56e6c87409e7d26d6bb4b80aa1ef47",
+      "versionInteger": 100663297,
+      "versionHex": "0x06000001",
+      "versionString": "6.0.1",
+      "latestMocVersion": 6
+    },
+    "interpretation": "Core 6.0.1 is an actual runtime-library version. MocVersion 6 is the separate file-format enum for Cubism 5.3 exports. They happen to share the integer 6 but are not interchangeable.",
+    "mocFormats": [
+      {
+        "value": 0,
+        "name": "Unknown",
+        "exportRange": null,
+        "status": "not a supported version; invalid/unknown input requires separate diagnosis"
+      },
+      {
+        "value": 1,
+        "name": "30",
+        "exportRange": "3.0.00–3.2.07"
+      },
+      {
+        "value": 2,
+        "name": "33",
+        "exportRange": "3.3.00–3.3.03"
+      },
+      {
+        "value": 3,
+        "name": "40",
+        "exportRange": "4.0.00–4.1.05"
+      },
+      {
+        "value": 4,
+        "name": "42",
+        "exportRange": "4.2.00–4.2.04"
+      },
+      {
+        "value": 5,
+        "name": "50",
+        "exportRange": "5.0.00–5.2.03"
+      },
+      {
+        "value": 6,
+        "name": "53",
+        "exportRange": "5.3.00 and later exports using enum 6"
+      }
+    ],
+    "knownReleasedUnsupportedMoc3Versions": [],
+    "rejectRules": [
+      {
+        "kind": "legacy-cubism2",
+        "condition": "legacy .moc (not .moc3)",
+        "reason": "different runtime format; uppercase PARAM_* identifiers inside a converted .moc3 do not imply this format"
+      },
+      {
+        "kind": "future-format",
+        "condition": "actual csmGetMocVersion(buffer) > actual csmGetLatestMocVersion()",
+        "reason": "newer format unsupported by measured Core; no released enum 7+ is asserted"
+      },
+      {
+        "kind": "unknown-format",
+        "condition": "actual csmGetMocVersion(buffer) == 0",
+        "reason": "unknown/not moc3; do not label as merely too-new"
+      },
+      {
+        "kind": "inconsistent-model",
+        "condition": "version recognized but hasMocConsistency != 1",
+        "reason": "invalid/truncated/corrupt/inconsistent model; separate from version support"
+      }
+    ],
+    "runtimeMatch": {
+      "repoCommit": "98d4628746e2a37f09ebfb05530a718622357982",
+      "aggregateDigest": "20e4e35ce1de09bd9017197363a96afdb4d9fc045d574fb669ebf21b4bc92e81",
+      "status": "not verified: the installed/bundled app runtime bytes were not supplied. This measurement uses official SDK Core matching the version documented by the repository."
+    },
+    "sources": [
+      "https://docs.live2d.com/en/cubism-sdk-manual/compatibility-with-cubism-5-3/",
+      "https://docs.live2d.com/en/cubism-sdk-manual/moc3-consistency/",
+      "https://cubism.live2d.com/sdk-doc/reference/NativeCoreAPIReference_en_r15.pdf",
+      "https://www.live2d.com/en/sdk/download/web/"
+    ],
+    "exactExportRangeSource": {
+      "sdkZipPath": "CubismSdkForWeb-5-r.5/Core/live2dcubismcore.d.ts",
+      "sha256": "25fcaa2a6dfe311db95ad1795a2a7e6286d9192719df4e2c3e634915dc050334",
+      "basis": "MocVersion declarations in actual verified R5 SDK"
+    },
+    "olderPdfLimitation": "NativeCoreAPIReference_en_r15.pdf has an older enum example lacking 53 and older 42/50 endpoints; precise ranges use the measured SDK d.ts, not the PDF example.",
+    "actuallyLoadedFormats": {
+      "1": [
+        "Haru-sdk5-r5",
+        "Natori-sdk5-r5",
+        "Wanko-sdk5-r5"
+      ],
+      "3": [
+        "Hiyori-sdk5-r5",
+        "Mark-sdk5-r5",
+        "Rice-sdk5-r5",
+        "chitose-chitose",
+        "epsilon-Epsilon_free",
+        "epsilon-Epsilon",
+        "gantzert_felixander-Gantzert_Felixander",
+        "hibiki-hibiki",
+        "koharu_haruto-haruto",
+        "koharu_haruto-koharu",
+        "miara-miara_pro_t04",
+        "shizuku-shizuku",
+        "tororo_hijiki-tororo"
+      ],
+      "5": [
+        "Mao-sdk5-r5"
+      ],
+      "6": [
+        "Ren-sdk5-r5"
+      ],
+      "2": [
+        "nito-ni-j",
+        "nito-nico",
+        "nito-nietzsche",
+        "nito-nipsilon",
+        "nito-nito"
+      ],
+      "4": [
+        "Mao-cubism4-r7"
+      ]
+    },
+    "actualModelCount": 24
+  },
+  "sources": [
+    {
+      "id": "SDK5-r5",
+      "type": "zip",
+      "url": "https://cubism.live2d.com/sdk-web/bin/CubismSdkForWeb-5-r.5.zip",
+      "sha256": "67064a7fb1812cf502f5c4a03bfe12cc638c75a621bb4acf06bb28763df06ba0",
+      "bytes": 20708681
+    },
+    {
+      "id": "chitose",
+      "type": "zip",
+      "url": "https://cubism.live2d.com/sample-data/bin/chitose/chitose_ja.zip",
+      "sha256": "8b3feeb65c79452ec64e02dc1776b2c56dee87d44f109be39fef8599e573285b",
+      "bytes": 29049604
+    },
+    {
+      "id": "epsilon",
+      "type": "zip",
+      "url": "https://cubism.live2d.com/sample-data/bin/epsilon/epsilon_ja.zip",
+      "sha256": "a2e4d747bb0fca4f5920637ac8acc350b08c46e3275344a273cb9c37d405f9e1",
+      "bytes": 26626829
+    },
+    {
+      "id": "gantzert_felixander",
+      "type": "zip",
+      "url": "https://cubism.live2d.com/sample-data/bin/gantzert_felixander/gantzert_felixander_ja.zip",
+      "sha256": "226db8c0c8a0f140c1dfe10c4267e87e6b398ba1d77ccd29c43d232abd8c17b5",
+      "bytes": 53239554
+    },
+    {
+      "id": "hibiki",
+      "type": "zip",
+      "url": "https://cubism.live2d.com/sample-data/bin/hibiki/hibiki_ja.zip",
+      "sha256": "0b768ccf08d52dfc5ea4bbc4ab0ff2e0c53efee1fe0b6bd574cfa7b46a60894b",
+      "bytes": 8453934
+    },
+    {
+      "id": "koharu_haruto",
+      "type": "zip",
+      "url": "https://cubism.live2d.com/sample-data/bin/koharu_haruto/koharu_haruto_ja.zip",
+      "sha256": "a0f677361ea94d8266e3c195ecdc6251e9e49529174315af0640e8eb5d170594",
+      "bytes": 23398279
+    },
+    {
+      "id": "miara",
+      "type": "zip",
+      "url": "https://cubism.live2d.com/sample-data/bin/miara/miara_ja.zip",
+      "sha256": "2aad75b2bbd36573125c63e2594de61579c384cd1b91c859677a75d7aa592e76",
+      "bytes": 39899825
+    },
+    {
+      "id": "nito",
+      "type": "zip",
+      "url": "https://cubism.live2d.com/sample-data/bin/nito/nito_ja.zip",
+      "sha256": "712c49f71a4f21b363654df0f6be532e0b99fee8aa081700ef52b641c0beb375",
+      "bytes": 39184828
+    },
+    {
+      "id": "shizuku",
+      "type": "zip",
+      "url": "https://cubism.live2d.com/sample-data/bin/shizuku/shizuku_ja.zip",
+      "sha256": "3304e06999b2b7601674e7c7d09e46c6e5ce124e63193c3cc2040bd82edbec52",
+      "bytes": 45465465
+    },
+    {
+      "id": "tororo_hijiki",
+      "type": "zip",
+      "url": "https://cubism.live2d.com/sample-data/bin/tororo_hijiki/tororo_hijiki_ja.zip",
+      "sha256": "401cf1596180d7f4752ebac653f01b8c05ff88b56bb84706389c0c105aff1dd8",
+      "bytes": 11834388
+    },
+    {
+      "id": "Mao4-r7",
+      "type": "github-files",
+      "repository": "Live2D/CubismWebSamples",
+      "commit": "aacd34c6e01d85ba25a6db0b446f7c7c2bda93e2",
+      "url": "https://github.com/Live2D/CubismWebSamples/tree/aacd34c6e01d85ba25a6db0b446f7c7c2bda93e2/Samples/Resources/Mao",
+      "files": [
+        {
+          "path": "Mao.cdi3.json",
+          "url": "https://raw.githubusercontent.com/Live2D/CubismWebSamples/aacd34c6e01d85ba25a6db0b446f7c7c2bda93e2/Samples/Resources/Mao/Mao.cdi3.json",
+          "bytes": 14356,
+          "sha256": "9d710cb5f4ed1e059f55e2bdc2e2afc38d5036bb602c149fa531e1eb84486f86",
+          "gitBlob": "4813ff003b1343917e78f8e151b766ccf5a0c665"
+        },
+        {
+          "path": "Mao.moc3",
+          "url": "https://raw.githubusercontent.com/Live2D/CubismWebSamples/aacd34c6e01d85ba25a6db0b446f7c7c2bda93e2/Samples/Resources/Mao/Mao.moc3",
+          "bytes": 807488,
+          "sha256": "a9c7010c42ed2cee71c07c62214adde8773ea7b7928e298388972ed00a1d3e23",
+          "gitBlob": "d7de4412a0097fbe88c766b9d80d3affe2baeb90"
+        },
+        {
+          "path": "Mao.model3.json",
+          "url": "https://raw.githubusercontent.com/Live2D/CubismWebSamples/aacd34c6e01d85ba25a6db0b446f7c7c2bda93e2/Samples/Resources/Mao/Mao.model3.json",
+          "bytes": 1563,
+          "sha256": "952a3e454d701ae765c849a97997e12138704c7f738e25a7d55a25c6828c593a",
+          "gitBlob": "8166438bc04a22484fcb20762fc0955608e01953"
+        }
+      ],
+      "sourceFilePaths": [
+        "Mao.2048/texture_00.png",
+        "Mao.cdi3.json",
+        "Mao.moc3",
+        "Mao.model3.json",
+        "Mao.physics3.json",
+        "Mao.pose3.json",
+        "expressions/exp_01.exp3.json",
+        "expressions/exp_02.exp3.json",
+        "expressions/exp_03.exp3.json",
+        "expressions/exp_04.exp3.json",
+        "expressions/exp_05.exp3.json",
+        "expressions/exp_06.exp3.json",
+        "expressions/exp_07.exp3.json",
+        "expressions/exp_08.exp3.json",
+        "motions/mtn_01.motion3.json",
+        "motions/mtn_02.motion3.json",
+        "motions/mtn_03.motion3.json",
+        "motions/mtn_04.motion3.json",
+        "motions/special_01.motion3.json",
+        "motions/special_02.motion3.json"
+      ]
+    }
+  ],
+  "models": [
+    {
+      "id": "Haru-sdk5-r5",
+      "identity": "Haru",
+      "mocSha256": "aa59f7a3dc3b30b23b5f10afd9192ed755e4d01dc9a12442d99b972a418e2543",
+      "source": {
+        "url": "https://cubism.live2d.com/sdk-web/bin/CubismSdkForWeb-5-r.5.zip",
+        "archiveSha256": "67064a7fb1812cf502f5c4a03bfe12cc638c75a621bb4acf06bb28763df06ba0",
+        "mocArchivePath": "CubismSdkForWeb-5-r.5/Samples/Resources/Haru/Haru.moc3",
+        "license": "https://www.live2d.com/eula/live2d-free-material-license-agreement_en.html",
+        "terms": "https://www.live2d.com/eula/live2d-sample-model-terms_en.html",
+        "gitRepository": "Live2D/CubismWebSamples",
+        "gitCommit": "b1de66b0b1f1cb881d95fb6158622aeb6a2827bd",
+        "gitMocPath": "Samples/Resources/Haru/Haru.moc3",
+        "gitBlob": "e5fc43a78cb8b2c6cd4d5601ef56019bd628d6c3"
+      },
+      "mocSourcePath": "CubismSdkForWeb-5-r.5/Samples/Resources/Haru/Haru.moc3",
+      "model3Sha256": "5a41969802b8f9019ca731b07d918fc137e6a61eb9943bdd3f532aeaa0936f8c",
+      "cdi3Sha256": "f0b7b68e8404fb2a327f77515388f9f2418d038e3eb98a7ecff89818c3dd4e97",
+      "sourceId": "SDK5-r5",
+      "model3SourcePath": "CubismSdkForWeb-5-r.5/Samples/Resources/Haru/Haru.model3.json",
+      "cdi3SourcePath": "CubismSdkForWeb-5-r.5/Samples/Resources/Haru/Haru.cdi3.json"
+    },
+    {
+      "id": "Hiyori-sdk5-r5",
+      "identity": "Hiyori",
+      "mocSha256": "0323f5f377b9afef54318be09e9b4eea2a8cb266190ff9d2f843f95ecb77716c",
+      "source": {
+        "url": "https://cubism.live2d.com/sdk-web/bin/CubismSdkForWeb-5-r.5.zip",
+        "archiveSha256": "67064a7fb1812cf502f5c4a03bfe12cc638c75a621bb4acf06bb28763df06ba0",
+        "mocArchivePath": "CubismSdkForWeb-5-r.5/Samples/Resources/Hiyori/Hiyori.moc3",
+        "license": "https://www.live2d.com/eula/live2d-free-material-license-agreement_en.html",
+        "terms": "https://www.live2d.com/eula/live2d-sample-model-terms_en.html",
+        "gitRepository": "Live2D/CubismWebSamples",
+        "gitCommit": "b1de66b0b1f1cb881d95fb6158622aeb6a2827bd",
+        "gitMocPath": "Samples/Resources/Hiyori/Hiyori.moc3",
+        "gitBlob": "7231288fc2ce85ae000c376a11b3f41bcb9cae03"
+      },
+      "mocSourcePath": "CubismSdkForWeb-5-r.5/Samples/Resources/Hiyori/Hiyori.moc3",
+      "model3Sha256": "973cb3392f7b01f5f73e9d3fedc495a81a0f3ee8014e5df72ef943311c56ee12",
+      "cdi3Sha256": "0fc3fc76b7a68136056c8832c930c8af9f93899f359eded7349b481ea2342d03",
+      "sourceId": "SDK5-r5",
+      "model3SourcePath": "CubismSdkForWeb-5-r.5/Samples/Resources/Hiyori/Hiyori.model3.json",
+      "cdi3SourcePath": "CubismSdkForWeb-5-r.5/Samples/Resources/Hiyori/Hiyori.cdi3.json"
+    },
+    {
+      "id": "Mao-sdk5-r5",
+      "identity": "Mao",
+      "mocSha256": "ad5195b39e35e0da8ba0c825ad9cc2d60571502007f6f7d4f00963b768bb90d8",
+      "source": {
+        "url": "https://cubism.live2d.com/sdk-web/bin/CubismSdkForWeb-5-r.5.zip",
+        "archiveSha256": "67064a7fb1812cf502f5c4a03bfe12cc638c75a621bb4acf06bb28763df06ba0",
+        "mocArchivePath": "CubismSdkForWeb-5-r.5/Samples/Resources/Mao/Mao.moc3",
+        "license": "https://www.live2d.com/eula/live2d-free-material-license-agreement_en.html",
+        "terms": "https://www.live2d.com/eula/live2d-sample-model-terms_en.html",
+        "gitRepository": "Live2D/CubismWebSamples",
+        "gitCommit": "b1de66b0b1f1cb881d95fb6158622aeb6a2827bd",
+        "gitMocPath": "Samples/Resources/Mao/Mao.moc3",
+        "gitBlob": "fc4cf72230f9046f8a9df3337f1ab4fb43ba1b58"
+      },
+      "mocSourcePath": "CubismSdkForWeb-5-r.5/Samples/Resources/Mao/Mao.moc3",
+      "model3Sha256": "d5fb29f93ef3cf3eba96b5aa9538eca063abbebee81a8d2dbeecea0cef4fecba",
+      "cdi3Sha256": "f261069f302c013f1c60b48045aa4bf5ac2cb086ebb54917f7e5c3f47e5c8f81",
+      "sourceId": "SDK5-r5",
+      "model3SourcePath": "CubismSdkForWeb-5-r.5/Samples/Resources/Mao/Mao.model3.json",
+      "cdi3SourcePath": "CubismSdkForWeb-5-r.5/Samples/Resources/Mao/Mao.cdi3.json"
+    },
+    {
+      "id": "Mark-sdk5-r5",
+      "identity": "Mark",
+      "mocSha256": "f6351429bd3dd655ac95d1027e463ae415e99e2b1b43431a9662fcd316373e9e",
+      "source": {
+        "url": "https://cubism.live2d.com/sdk-web/bin/CubismSdkForWeb-5-r.5.zip",
+        "archiveSha256": "67064a7fb1812cf502f5c4a03bfe12cc638c75a621bb4acf06bb28763df06ba0",
+        "mocArchivePath": "CubismSdkForWeb-5-r.5/Samples/Resources/Mark/Mark.moc3",
+        "license": "https://www.live2d.com/eula/live2d-free-material-license-agreement_en.html",
+        "terms": "https://www.live2d.com/eula/live2d-sample-model-terms_en.html",
+        "gitRepository": "Live2D/CubismWebSamples",
+        "gitCommit": "b1de66b0b1f1cb881d95fb6158622aeb6a2827bd",
+        "gitMocPath": "Samples/Resources/Mark/Mark.moc3",
+        "gitBlob": "e1da2692742067668559fa5e6a0f480b840e092b"
+      },
+      "mocSourcePath": "CubismSdkForWeb-5-r.5/Samples/Resources/Mark/Mark.moc3",
+      "model3Sha256": "143b23ff339c01fd963d82c5bcc102aa0b4b11bd6baf4adeba4e84fde04ff6b6",
+      "cdi3Sha256": "f66a52b92b7e9aceca0a81e2ba21babce95a56adb7d86642bb256f56b71e0899",
+      "sourceId": "SDK5-r5",
+      "model3SourcePath": "CubismSdkForWeb-5-r.5/Samples/Resources/Mark/Mark.model3.json",
+      "cdi3SourcePath": "CubismSdkForWeb-5-r.5/Samples/Resources/Mark/Mark.cdi3.json"
+    },
+    {
+      "id": "Natori-sdk5-r5",
+      "identity": "Natori",
+      "mocSha256": "8f3122e2d3b5a30f79d95078ac756e45ea5df740f3e72f461cdec793303bf94f",
+      "source": {
+        "url": "https://cubism.live2d.com/sdk-web/bin/CubismSdkForWeb-5-r.5.zip",
+        "archiveSha256": "67064a7fb1812cf502f5c4a03bfe12cc638c75a621bb4acf06bb28763df06ba0",
+        "mocArchivePath": "CubismSdkForWeb-5-r.5/Samples/Resources/Natori/Natori.moc3",
+        "license": "https://www.live2d.com/eula/live2d-free-material-license-agreement_en.html",
+        "terms": "https://www.live2d.com/eula/live2d-sample-model-terms_en.html",
+        "gitRepository": "Live2D/CubismWebSamples",
+        "gitCommit": "b1de66b0b1f1cb881d95fb6158622aeb6a2827bd",
+        "gitMocPath": "Samples/Resources/Natori/Natori.moc3",
+        "gitBlob": "9f7303b4374b92d1e9cd4c557232ca6c72303450"
+      },
+      "mocSourcePath": "CubismSdkForWeb-5-r.5/Samples/Resources/Natori/Natori.moc3",
+      "model3Sha256": "d791d0bd0a98f8165a9b88ef6b1b781389bea8164e5234ce0f68335efd20cfe7",
+      "cdi3Sha256": "b2676c103b172a7a3701395688f5ab0a7e2b71b417fb89750388685f84edbb6e",
+      "sourceId": "SDK5-r5",
+      "model3SourcePath": "CubismSdkForWeb-5-r.5/Samples/Resources/Natori/Natori.model3.json",
+      "cdi3SourcePath": "CubismSdkForWeb-5-r.5/Samples/Resources/Natori/Natori.cdi3.json"
+    },
+    {
+      "id": "Ren-sdk5-r5",
+      "identity": "Ren",
+      "mocSha256": "a9ccf7d6b2f4f16c8b13da29b9b4f34dc865ba9c8ad88a0388530e7f2d6cc533",
+      "source": {
+        "url": "https://cubism.live2d.com/sdk-web/bin/CubismSdkForWeb-5-r.5.zip",
+        "archiveSha256": "67064a7fb1812cf502f5c4a03bfe12cc638c75a621bb4acf06bb28763df06ba0",
+        "mocArchivePath": "CubismSdkForWeb-5-r.5/Samples/Resources/Ren/Ren.moc3",
+        "license": "https://www.live2d.com/eula/live2d-free-material-license-agreement_en.html",
+        "terms": "https://www.live2d.com/eula/live2d-sample-model-terms_en.html",
+        "gitRepository": "Live2D/CubismWebSamples",
+        "gitCommit": "b1de66b0b1f1cb881d95fb6158622aeb6a2827bd",
+        "gitMocPath": "Samples/Resources/Ren/Ren.moc3",
+        "gitBlob": "845b04fdd240b7f0383949ba44bbc65a46b16bd6"
+      },
+      "mocSourcePath": "CubismSdkForWeb-5-r.5/Samples/Resources/Ren/Ren.moc3",
+      "model3Sha256": "6d003c1d34c17a60c17556e8b27c017d9cad09a381a9b35db74a4df52363e630",
+      "cdi3Sha256": "aae40f11bff2d0debeacc3dd9c57f604a5e5bf8f526ef2408bc941779edac422",
+      "sourceId": "SDK5-r5",
+      "model3SourcePath": "CubismSdkForWeb-5-r.5/Samples/Resources/Ren/Ren.model3.json",
+      "cdi3SourcePath": "CubismSdkForWeb-5-r.5/Samples/Resources/Ren/Ren.cdi3.json"
+    },
+    {
+      "id": "Rice-sdk5-r5",
+      "identity": "Rice",
+      "mocSha256": "be56f2d656d279d8db9fe302ec744fa5992ff884b2ebb233f202772d5dd7e4dc",
+      "source": {
+        "url": "https://cubism.live2d.com/sdk-web/bin/CubismSdkForWeb-5-r.5.zip",
+        "archiveSha256": "67064a7fb1812cf502f5c4a03bfe12cc638c75a621bb4acf06bb28763df06ba0",
+        "mocArchivePath": "CubismSdkForWeb-5-r.5/Samples/Resources/Rice/Rice.moc3",
+        "license": "https://www.live2d.com/eula/live2d-free-material-license-agreement_en.html",
+        "terms": "https://www.live2d.com/eula/live2d-sample-model-terms_en.html",
+        "gitRepository": "Live2D/CubismWebSamples",
+        "gitCommit": "b1de66b0b1f1cb881d95fb6158622aeb6a2827bd",
+        "gitMocPath": "Samples/Resources/Rice/Rice.moc3",
+        "gitBlob": "a872a6f019f99ef3c7b16d3e5a2aef9c356ae6cc"
+      },
+      "mocSourcePath": "CubismSdkForWeb-5-r.5/Samples/Resources/Rice/Rice.moc3",
+      "model3Sha256": "0dd95a8524d4540467569e9264e979d7dbc53312d7dd710ca54591b734c1cd52",
+      "cdi3Sha256": "8cdda2aa4ded26313f4cccea99cc1bc34cf939405f1d6e064d25387981648138",
+      "sourceId": "SDK5-r5",
+      "model3SourcePath": "CubismSdkForWeb-5-r.5/Samples/Resources/Rice/Rice.model3.json",
+      "cdi3SourcePath": "CubismSdkForWeb-5-r.5/Samples/Resources/Rice/Rice.cdi3.json"
+    },
+    {
+      "id": "Wanko-sdk5-r5",
+      "identity": "Wanko",
+      "mocSha256": "ae474fc8f67aa7491ed39d76cfbeadf22bed1b40a7d57a7ed5fefe35107e83ad",
+      "source": {
+        "url": "https://cubism.live2d.com/sdk-web/bin/CubismSdkForWeb-5-r.5.zip",
+        "archiveSha256": "67064a7fb1812cf502f5c4a03bfe12cc638c75a621bb4acf06bb28763df06ba0",
+        "mocArchivePath": "CubismSdkForWeb-5-r.5/Samples/Resources/Wanko/Wanko.moc3",
+        "license": "https://www.live2d.com/eula/live2d-free-material-license-agreement_en.html",
+        "terms": "https://www.live2d.com/eula/live2d-sample-model-terms_en.html",
+        "gitRepository": "Live2D/CubismWebSamples",
+        "gitCommit": "b1de66b0b1f1cb881d95fb6158622aeb6a2827bd",
+        "gitMocPath": "Samples/Resources/Wanko/Wanko.moc3",
+        "gitBlob": "b68661061e986f5080133a7e313d7883c4850e36"
+      },
+      "mocSourcePath": "CubismSdkForWeb-5-r.5/Samples/Resources/Wanko/Wanko.moc3",
+      "model3Sha256": "66627edce440b236d0d9757c65e408b9081a2e4d4ddcfb3fd2d48bac617b3764",
+      "cdi3Sha256": "46709213efa27aece03bd03d89a377dc8b141db460f2a8a37bc03862b4d03fe8",
+      "sourceId": "SDK5-r5",
+      "model3SourcePath": "CubismSdkForWeb-5-r.5/Samples/Resources/Wanko/Wanko.model3.json",
+      "cdi3SourcePath": "CubismSdkForWeb-5-r.5/Samples/Resources/Wanko/Wanko.cdi3.json"
+    },
+    {
+      "id": "chitose-chitose",
+      "identity": "Chitose",
+      "variant": "runtime/chitose.moc3",
+      "mocSha256": "308926ffb52a215010887acfeec36a129772b361cb8bc2aab459d70bad4fe89c",
+      "source": {
+        "url": "https://cubism.live2d.com/sample-data/bin/chitose/chitose_ja.zip",
+        "archiveSha256": "8b3feeb65c79452ec64e02dc1776b2c56dee87d44f109be39fef8599e573285b",
+        "archiveBytes": 29049604,
+        "mocArchivePath": "runtime/chitose.moc3",
+        "license": "https://www.live2d.com/eula/live2d-free-material-license-agreement_en.html",
+        "terms": "https://www.live2d.com/eula/live2d-sample-model-terms_en.html"
+      },
+      "mocSourcePath": "runtime/chitose.moc3",
+      "model3Sha256": "36b759ff4832932760d21fba7ceb34e43fb578f3ded6541fadab2dfd275dcf0c",
+      "cdi3Sha256": "4e1e40845c1cc2bab183078ceb272a3929d0ab5aa6e8f52cd2ca195d231eaeb7",
+      "sourceId": "chitose",
+      "model3SourcePath": "runtime/chitose.model3.json",
+      "cdi3SourcePath": "runtime/chitose.cdi3.json"
+    },
+    {
+      "id": "epsilon-Epsilon_free",
+      "identity": "Epsilon",
+      "variant": "epsilon_free/runtime/Epsilon_free.moc3",
+      "mocSha256": "4d2489c2d49c452d9f14c7a79d72434c268aa809d3ee163adf8b7f85502240a7",
+      "source": {
+        "url": "https://cubism.live2d.com/sample-data/bin/epsilon/epsilon_ja.zip",
+        "archiveSha256": "a2e4d747bb0fca4f5920637ac8acc350b08c46e3275344a273cb9c37d405f9e1",
+        "archiveBytes": 26626829,
+        "mocArchivePath": "epsilon_free/runtime/Epsilon_free.moc3",
+        "license": "https://www.live2d.com/eula/live2d-free-material-license-agreement_en.html",
+        "terms": "https://www.live2d.com/eula/live2d-sample-model-terms_en.html"
+      },
+      "mocSourcePath": "epsilon_free/runtime/Epsilon_free.moc3",
+      "model3Sha256": "b6b870d83db77fa25d56f244a7a4cb8277656833d3fba7a948fbfb354f112c30",
+      "cdi3Sha256": "5319f956f79d20fd0c7a531cd75ce1920535f4ec19ec66186af63b3f11aefa2a",
+      "sourceId": "epsilon",
+      "model3SourcePath": "epsilon_free/runtime/Epsilon_free.model3.json",
+      "cdi3SourcePath": "epsilon_free/runtime/Epsilon_free.cdi3.json"
+    },
+    {
+      "id": "epsilon-Epsilon",
+      "identity": "Epsilon",
+      "variant": "epsilon_pro/runtime/Epsilon.moc3",
+      "mocSha256": "7546feaa1f7ce8e95ee7f287d223deb1ac8f532fc065517c50e8fcedbf032a72",
+      "source": {
+        "url": "https://cubism.live2d.com/sample-data/bin/epsilon/epsilon_ja.zip",
+        "archiveSha256": "a2e4d747bb0fca4f5920637ac8acc350b08c46e3275344a273cb9c37d405f9e1",
+        "archiveBytes": 26626829,
+        "mocArchivePath": "epsilon_pro/runtime/Epsilon.moc3",
+        "license": "https://www.live2d.com/eula/live2d-free-material-license-agreement_en.html",
+        "terms": "https://www.live2d.com/eula/live2d-sample-model-terms_en.html"
+      },
+      "mocSourcePath": "epsilon_pro/runtime/Epsilon.moc3",
+      "model3Sha256": "60af1776ef48f1742910d74ae0c27376f90fd9c740fee56e1cdaeb2971d586ae",
+      "cdi3Sha256": "b3bff9e15ae7e1f3c6feec80e448a61e9d50a74403d6d6fb5f738cda4ee1a5ea",
+      "sourceId": "epsilon",
+      "model3SourcePath": "epsilon_pro/runtime/Epsilon.model3.json",
+      "cdi3SourcePath": "epsilon_pro/runtime/Epsilon.cdi3.json"
+    },
+    {
+      "id": "gantzert_felixander-Gantzert_Felixander",
+      "identity": "Gantzert & Felixander",
+      "variant": "runtime/Gantzert_Felixander.moc3",
+      "mocSha256": "e899fd68e55df697fc983fff777dc4175da6193912b4c5a87f38cff14cf67650",
+      "source": {
+        "url": "https://cubism.live2d.com/sample-data/bin/gantzert_felixander/gantzert_felixander_ja.zip",
+        "archiveSha256": "226db8c0c8a0f140c1dfe10c4267e87e6b398ba1d77ccd29c43d232abd8c17b5",
+        "archiveBytes": 53239554,
+        "mocArchivePath": "runtime/Gantzert_Felixander.moc3",
+        "license": "https://www.live2d.com/eula/live2d-free-material-license-agreement_en.html",
+        "terms": "https://www.live2d.com/eula/live2d-sample-model-terms_en.html"
+      },
+      "mocSourcePath": "runtime/Gantzert_Felixander.moc3",
+      "model3Sha256": "c2c2d9cf6176032db9840518070cd9749df4998810b3ef4bb9548a49b2f3d633",
+      "cdi3Sha256": "0ebb1bb8bab9c631e5f251b60cafa2fd4b54dcb301286fb2b72fe0e9415599ea",
+      "sourceId": "gantzert_felixander",
+      "model3SourcePath": "runtime/Gantzert_Felixander.model3.json",
+      "cdi3SourcePath": "runtime/Gantzert_Felixander.cdi3.json"
+    },
+    {
+      "id": "hibiki-hibiki",
+      "identity": "Hibiki",
+      "variant": "runtime/hibiki.moc3",
+      "mocSha256": "e1d5ee02ac3511ab5a4c65f0a70f3c403993fb4f4ae40760f9cc234170af3197",
+      "source": {
+        "url": "https://cubism.live2d.com/sample-data/bin/hibiki/hibiki_ja.zip",
+        "archiveSha256": "0b768ccf08d52dfc5ea4bbc4ab0ff2e0c53efee1fe0b6bd574cfa7b46a60894b",
+        "archiveBytes": 8453934,
+        "mocArchivePath": "runtime/hibiki.moc3",
+        "license": "https://www.live2d.com/eula/live2d-free-material-license-agreement_en.html",
+        "terms": "https://www.live2d.com/eula/live2d-sample-model-terms_en.html"
+      },
+      "mocSourcePath": "runtime/hibiki.moc3",
+      "model3Sha256": "8ca29e6017cd78e81cd6a428f29a594ee32924c2f2d133175ac040f4f9435ed4",
+      "cdi3Sha256": "17f8a252ec4322c51b1acceb940b3fb4258dd2853b21dbbb8bcdf92033c90981",
+      "sourceId": "hibiki",
+      "model3SourcePath": "runtime/hibiki.model3.json",
+      "cdi3SourcePath": "runtime/hibiki.cdi3.json"
+    },
+    {
+      "id": "koharu_haruto-haruto",
+      "identity": "Haruto",
+      "variant": "haruto/runtime/haruto.moc3",
+      "mocSha256": "43f320a45f27777a2ab1aad9a53f06287ed18a274dc2d36951176dc8cc66abe5",
+      "source": {
+        "url": "https://cubism.live2d.com/sample-data/bin/koharu_haruto/koharu_haruto_ja.zip",
+        "archiveSha256": "a0f677361ea94d8266e3c195ecdc6251e9e49529174315af0640e8eb5d170594",
+        "archiveBytes": 23398279,
+        "mocArchivePath": "haruto/runtime/haruto.moc3",
+        "license": "https://www.live2d.com/eula/live2d-free-material-license-agreement_en.html",
+        "terms": "https://www.live2d.com/eula/live2d-sample-model-terms_en.html"
+      },
+      "mocSourcePath": "haruto/runtime/haruto.moc3",
+      "model3Sha256": "99e538e166c3e32cf7adf7c2192a71640662067cf1956a25acd79d246a528b7b",
+      "cdi3Sha256": "084d85ee689e6eca45ee7f104b4062cf501509bdd7745815925e809f3723eb04",
+      "sourceId": "koharu_haruto",
+      "model3SourcePath": "haruto/runtime/haruto.model3.json",
+      "cdi3SourcePath": "haruto/runtime/haruto.cdi3.json"
+    },
+    {
+      "id": "koharu_haruto-koharu",
+      "identity": "Koharu",
+      "variant": "koharu/runtime/koharu.moc3",
+      "mocSha256": "cb5d270b6aeea5cb2a70d8728f52db49cee833f2a66a53db7f80a9e34ed5e005",
+      "source": {
+        "url": "https://cubism.live2d.com/sample-data/bin/koharu_haruto/koharu_haruto_ja.zip",
+        "archiveSha256": "a0f677361ea94d8266e3c195ecdc6251e9e49529174315af0640e8eb5d170594",
+        "archiveBytes": 23398279,
+        "mocArchivePath": "koharu/runtime/koharu.moc3",
+        "license": "https://www.live2d.com/eula/live2d-free-material-license-agreement_en.html",
+        "terms": "https://www.live2d.com/eula/live2d-sample-model-terms_en.html"
+      },
+      "mocSourcePath": "koharu/runtime/koharu.moc3",
+      "model3Sha256": "317bef2e6c0b826283dd776fa4511532e8181b5eff5b48e9e8c0d03ca586a7cd",
+      "cdi3Sha256": "941f09c8ebe346dacfcf58f146b03ca5ce13900f7b5d52cccd34264c8454a33f",
+      "sourceId": "koharu_haruto",
+      "model3SourcePath": "koharu/runtime/koharu.model3.json",
+      "cdi3SourcePath": "koharu/runtime/koharu.cdi3.json"
+    },
+    {
+      "id": "miara-miara_pro_t04",
+      "identity": "Miara",
+      "variant": "runtime/miara_pro_t04.moc3",
+      "mocSha256": "1fc0d850a1d9befa37f4397c0891f2ee077cd3613ca03b0c02a5c4d4909de23b",
+      "source": {
+        "url": "https://cubism.live2d.com/sample-data/bin/miara/miara_ja.zip",
+        "archiveSha256": "2aad75b2bbd36573125c63e2594de61579c384cd1b91c859677a75d7aa592e76",
+        "archiveBytes": 39899825,
+        "mocArchivePath": "runtime/miara_pro_t04.moc3",
+        "license": "https://www.live2d.com/eula/live2d-free-material-license-agreement_en.html",
+        "terms": "https://www.live2d.com/eula/live2d-sample-model-terms_en.html"
+      },
+      "mocSourcePath": "runtime/miara_pro_t04.moc3",
+      "model3Sha256": "d2eb6529cb0406b544b66a5dc5c73da9b5091ebeebfbc838540cc1a18ccf4811",
+      "cdi3Sha256": "e5544ec5d6a1cf09be0961c287123a5c7b6a88b3bcc7db390166192c1525fae0",
+      "sourceId": "miara",
+      "model3SourcePath": "runtime/miara_pro_t04.model3.json",
+      "cdi3SourcePath": "runtime/miara_pro_t04.cdi3.json"
+    },
+    {
+      "id": "nito-ni-j",
+      "identity": "Nito family",
+      "variant": "runtime/ni-j/ni-j.moc3",
+      "mocSha256": "22129dc89a07e2a7ab41ce7bb8176d596d8c45cc4e2d12e31a214a7f41a4a3b8",
+      "source": {
+        "url": "https://cubism.live2d.com/sample-data/bin/nito/nito_ja.zip",
+        "archiveSha256": "712c49f71a4f21b363654df0f6be532e0b99fee8aa081700ef52b641c0beb375",
+        "archiveBytes": 39184828,
+        "mocArchivePath": "runtime/ni-j/ni-j.moc3",
+        "license": "https://www.live2d.com/eula/live2d-free-material-license-agreement_en.html",
+        "terms": "https://www.live2d.com/eula/live2d-sample-model-terms_en.html",
+        "model3ArchivePath": "runtime/ni-j.model3.json",
+        "cdi3ArchivePath": "runtime/ni-j/ni-j.cdi3.json"
+      },
+      "mocSourcePath": "runtime/ni-j/ni-j.moc3",
+      "cdi3Sha256": "0501d541783f633d58e7868cbd81b6a7f3fd5be5b22a1a0bbd066cdd68e49177",
+      "sourceId": "nito",
+      "model3SourcePath": "runtime/ni-j.model3.json",
+      "model3Sha256": "6728b56f893b89ae22828645873b698d59afdcf9cc7c6dd151176c9cb3eb4a24",
+      "cdi3SourcePath": "runtime/ni-j/ni-j.cdi3.json"
+    },
+    {
+      "id": "nito-nico",
+      "identity": "Nito family",
+      "variant": "runtime/nico/nico.moc3",
+      "mocSha256": "ddf4407310ea56faeb44392e0fd576d777b56ddd524cb82719af6ae307dfb015",
+      "source": {
+        "url": "https://cubism.live2d.com/sample-data/bin/nito/nito_ja.zip",
+        "archiveSha256": "712c49f71a4f21b363654df0f6be532e0b99fee8aa081700ef52b641c0beb375",
+        "archiveBytes": 39184828,
+        "mocArchivePath": "runtime/nico/nico.moc3",
+        "license": "https://www.live2d.com/eula/live2d-free-material-license-agreement_en.html",
+        "terms": "https://www.live2d.com/eula/live2d-sample-model-terms_en.html",
+        "model3ArchivePath": "runtime/nico.model3.json",
+        "cdi3ArchivePath": "runtime/nico/nico.cdi3.json"
+      },
+      "mocSourcePath": "runtime/nico/nico.moc3",
+      "cdi3Sha256": "0501d541783f633d58e7868cbd81b6a7f3fd5be5b22a1a0bbd066cdd68e49177",
+      "sourceId": "nito",
+      "model3SourcePath": "runtime/nico.model3.json",
+      "model3Sha256": "49483ed8bce72a499da6da88eebc0e509ea2c4e502d6ad3bf534dc5c979f479b",
+      "cdi3SourcePath": "runtime/nico/nico.cdi3.json"
+    },
+    {
+      "id": "nito-nietzsche",
+      "identity": "Nito family",
+      "variant": "runtime/nietzsche/nietzsche.moc3",
+      "mocSha256": "c3db714dd6d21ca5d56258eb5d74cc02bc0935bee21354d3b0629e2439f413c8",
+      "source": {
+        "url": "https://cubism.live2d.com/sample-data/bin/nito/nito_ja.zip",
+        "archiveSha256": "712c49f71a4f21b363654df0f6be532e0b99fee8aa081700ef52b641c0beb375",
+        "archiveBytes": 39184828,
+        "mocArchivePath": "runtime/nietzsche/nietzsche.moc3",
+        "license": "https://www.live2d.com/eula/live2d-free-material-license-agreement_en.html",
+        "terms": "https://www.live2d.com/eula/live2d-sample-model-terms_en.html",
+        "model3ArchivePath": "runtime/nietzsche.model3.json",
+        "cdi3ArchivePath": "runtime/nietzsche/nietzsche.cdi3.json"
+      },
+      "mocSourcePath": "runtime/nietzsche/nietzsche.moc3",
+      "cdi3Sha256": "0501d541783f633d58e7868cbd81b6a7f3fd5be5b22a1a0bbd066cdd68e49177",
+      "sourceId": "nito",
+      "model3SourcePath": "runtime/nietzsche.model3.json",
+      "model3Sha256": "188f78a5f4a86a4668cc24f8becd2a4ca58153fdbf9d61acd8aae7a8ff58554a",
+      "cdi3SourcePath": "runtime/nietzsche/nietzsche.cdi3.json"
+    },
+    {
+      "id": "nito-nipsilon",
+      "identity": "Nito family",
+      "variant": "runtime/nipsilon/nipsilon.moc3",
+      "mocSha256": "c7bff45e28e01f8bea010b4adaa4c3ead850c1699e126f02dd82f8ac34e3257d",
+      "source": {
+        "url": "https://cubism.live2d.com/sample-data/bin/nito/nito_ja.zip",
+        "archiveSha256": "712c49f71a4f21b363654df0f6be532e0b99fee8aa081700ef52b641c0beb375",
+        "archiveBytes": 39184828,
+        "mocArchivePath": "runtime/nipsilon/nipsilon.moc3",
+        "license": "https://www.live2d.com/eula/live2d-free-material-license-agreement_en.html",
+        "terms": "https://www.live2d.com/eula/live2d-sample-model-terms_en.html",
+        "model3ArchivePath": "runtime/nipsilon.model3.json",
+        "cdi3ArchivePath": "runtime/nipsilon/nipsilon.cdi3.json"
+      },
+      "mocSourcePath": "runtime/nipsilon/nipsilon.moc3",
+      "cdi3Sha256": "0501d541783f633d58e7868cbd81b6a7f3fd5be5b22a1a0bbd066cdd68e49177",
+      "sourceId": "nito",
+      "model3SourcePath": "runtime/nipsilon.model3.json",
+      "model3Sha256": "b20179c1fec10749837d21072e39347eba87368d845ff86f27ebf68ef4a34fc1",
+      "cdi3SourcePath": "runtime/nipsilon/nipsilon.cdi3.json"
+    },
+    {
+      "id": "nito-nito",
+      "identity": "Nito family",
+      "variant": "runtime/nito/nito.moc3",
+      "mocSha256": "df1c5ec2a29d7f2d25e1019aa77aa0785aba4580276700245100675b23bc7dcf",
+      "source": {
+        "url": "https://cubism.live2d.com/sample-data/bin/nito/nito_ja.zip",
+        "archiveSha256": "712c49f71a4f21b363654df0f6be532e0b99fee8aa081700ef52b641c0beb375",
+        "archiveBytes": 39184828,
+        "mocArchivePath": "runtime/nito/nito.moc3",
+        "license": "https://www.live2d.com/eula/live2d-free-material-license-agreement_en.html",
+        "terms": "https://www.live2d.com/eula/live2d-sample-model-terms_en.html",
+        "model3ArchivePath": "runtime/nito.model3.json",
+        "cdi3ArchivePath": "runtime/nito/nito.cdi3.json"
+      },
+      "mocSourcePath": "runtime/nito/nito.moc3",
+      "cdi3Sha256": "0501d541783f633d58e7868cbd81b6a7f3fd5be5b22a1a0bbd066cdd68e49177",
+      "sourceId": "nito",
+      "model3SourcePath": "runtime/nito.model3.json",
+      "model3Sha256": "aa0c9c7eddbd5cb0b40af2fe441b42b2107b297163b21f56c3520cfb46885bd3",
+      "cdi3SourcePath": "runtime/nito/nito.cdi3.json"
+    },
+    {
+      "id": "shizuku-shizuku",
+      "identity": "Shizuku",
+      "variant": "runtime/shizuku.moc3",
+      "mocSha256": "c61cfd02474386a4f2ee19d82cc4a873472b226ad725118f772f15088e74556c",
+      "source": {
+        "url": "https://cubism.live2d.com/sample-data/bin/shizuku/shizuku_ja.zip",
+        "archiveSha256": "3304e06999b2b7601674e7c7d09e46c6e5ce124e63193c3cc2040bd82edbec52",
+        "archiveBytes": 45465465,
+        "mocArchivePath": "runtime/shizuku.moc3",
+        "license": "https://www.live2d.com/eula/live2d-free-material-license-agreement_en.html",
+        "terms": "https://www.live2d.com/eula/live2d-sample-model-terms_en.html"
+      },
+      "mocSourcePath": "runtime/shizuku.moc3",
+      "model3Sha256": "cad88160d5ec3c2f8ef41119e08d85a36b0c3b3a3d87f65eabc507bf4d2d50ce",
+      "cdi3Sha256": "4576c0c2a762c02e804ee1d0edd6a069ee353fd33c05b336bab0de133a9aa0fa",
+      "sourceId": "shizuku",
+      "model3SourcePath": "runtime/shizuku.model3.json",
+      "cdi3SourcePath": "runtime/shizuku.cdi3.json"
+    },
+    {
+      "id": "tororo_hijiki-tororo",
+      "identity": "Tororo & Hijiki shared rig",
+      "variant": "tororo/runtime/tororo.moc3",
+      "mocSha256": "2b028f9769db5d5d1abad0034ecefb1aa8cc0bb16ae699d92392fedacc476af4",
+      "source": {
+        "url": "https://cubism.live2d.com/sample-data/bin/tororo_hijiki/tororo_hijiki_ja.zip",
+        "archiveSha256": "401cf1596180d7f4752ebac653f01b8c05ff88b56bb84706389c0c105aff1dd8",
+        "archiveBytes": 11834388,
+        "mocArchivePath": "tororo/runtime/tororo.moc3",
+        "license": "https://www.live2d.com/eula/live2d-free-material-license-agreement_en.html",
+        "terms": "https://www.live2d.com/eula/live2d-sample-model-terms_en.html",
+        "sameMocOtherArchivePaths": [
+          "hijiki/runtime/hijiki.moc3"
+        ]
+      },
+      "mocSourcePath": "tororo/runtime/tororo.moc3",
+      "model3Sha256": "93037935b550f66446b11e904c262fc081e6d551281fac2fe5cdcb8db976d747",
+      "cdi3Sha256": "d30749ba4d520a5e139239ffe2c7f1db892b5201835ac97c983466a00ae232fb",
+      "sourceId": "tororo_hijiki",
+      "model3SourcePath": "tororo/runtime/tororo.model3.json",
+      "cdi3SourcePath": "tororo/runtime/tororo.cdi3.json"
+    },
+    {
+      "id": "Mao-cubism4-r7",
+      "identity": "Mao",
+      "variant": "historical SDK 4-r.7 model, Cubism 4.2 export",
+      "mocSha256": "a9c7010c42ed2cee71c07c62214adde8773ea7b7928e298388972ed00a1d3e23",
+      "source": {
+        "url": "https://github.com/Live2D/CubismWebSamples/tree/aacd34c6e01d85ba25a6db0b446f7c7c2bda93e2/Samples/Resources/Mao",
+        "gitRepository": "Live2D/CubismWebSamples",
+        "gitCommit": "aacd34c6e01d85ba25a6db0b446f7c7c2bda93e2",
+        "gitMocPath": "Samples/Resources/Mao/Mao.moc3",
+        "gitBlob": "d7de4412a0097fbe88c766b9d80d3affe2baeb90",
+        "fetchedFiles": [
+          {
+            "path": "Mao.cdi3.json",
+            "url": "https://raw.githubusercontent.com/Live2D/CubismWebSamples/aacd34c6e01d85ba25a6db0b446f7c7c2bda93e2/Samples/Resources/Mao/Mao.cdi3.json",
+            "bytes": 14356,
+            "sha256": "9d710cb5f4ed1e059f55e2bdc2e2afc38d5036bb602c149fa531e1eb84486f86",
+            "gitBlob": "4813ff003b1343917e78f8e151b766ccf5a0c665"
+          },
+          {
+            "path": "Mao.moc3",
+            "url": "https://raw.githubusercontent.com/Live2D/CubismWebSamples/aacd34c6e01d85ba25a6db0b446f7c7c2bda93e2/Samples/Resources/Mao/Mao.moc3",
+            "bytes": 807488,
+            "sha256": "a9c7010c42ed2cee71c07c62214adde8773ea7b7928e298388972ed00a1d3e23",
+            "gitBlob": "d7de4412a0097fbe88c766b9d80d3affe2baeb90"
+          },
+          {
+            "path": "Mao.model3.json",
+            "url": "https://raw.githubusercontent.com/Live2D/CubismWebSamples/aacd34c6e01d85ba25a6db0b446f7c7c2bda93e2/Samples/Resources/Mao/Mao.model3.json",
+            "bytes": 1563,
+            "sha256": "952a3e454d701ae765c849a97997e12138704c7f738e25a7d55a25c6828c593a",
+            "gitBlob": "8166438bc04a22484fcb20762fc0955608e01953"
+          }
+        ],
+        "license": "https://www.live2d.com/eula/live2d-free-material-license-agreement_en.html",
+        "terms": "https://www.live2d.com/eula/live2d-sample-model-terms_en.html"
+      },
+      "mocSourcePath": "Samples/Resources/Mao/Mao.moc3",
+      "model3Sha256": "952a3e454d701ae765c849a97997e12138704c7f738e25a7d55a25c6828c593a",
+      "cdi3Sha256": "9d710cb5f4ed1e059f55e2bdc2e2afc38d5036bb602c149fa531e1eb84486f86",
+      "sourceId": "Mao4-r7",
+      "model3SourcePath": "Mao.model3.json",
+      "cdi3SourcePath": "Mao.cdi3.json"
+    }
+  ],
+  "licenseNotice": "This content uses sample data owned and copyrighted by Live2D Inc. Only technical facts, identifiers, fingerprints and measurements are distributed here; original model/runtime/texture/motion files are excluded. Review the linked source licenses for any use of originals.",
+  "duplicatePolicy": "Deduplicate raw moc SHA-256. Tororo and Hijiki share a fingerprint and count once. Nito variants, Epsilon free/pro and historical Mao count as distinct fingerprints with shared source-family identity."
+}

@@ -1,0 +1,26 @@
+--- a/node_modules/@deepseek-ai/dsh-storage-domain/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-storage-domain/lib/index.js
+@@ -411,7 +411,11 @@
+ 			const backendName = this.config.routes?.[spec.name] ?? this.config.backend;
+ 			const backend = this.ctx.storage.backend.get(backendName);
+ 			if (!backend.kv) throw new DomainError("facet-unsupported", `backend '${backendName}' routed for domain '${spec.name}' has no kv facet`);
+-			const unit = await backend.kv.open(descriptorOf(spec));
++			// The App rescue mode isolates storage only; routes and change events stay workspace.
++			const descriptor = descriptorOf(spec);
++			if (spec.name === "workspace" && process.env.DSH_APP_WORKSPACE_RECOVERY === "1")
++				descriptor.name = "dsh_go_workspace_recovery";
++			const unit = await backend.kv.open(descriptor);
+ 			try {
+ 				const snapshot = await unit.loadAll();
+ 				const tables = /* @__PURE__ */ new Map();
+--- a/node_modules/@deepseek-ai/dsh-storage-json/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-storage-json/lib/index.js
+@@ -283,7 +283,7 @@
+ 				const tasks = this.state.tables.get("tasks");
+ 				for (const [id, task] of tasks ?? []) if ((task.involvedSessionIds ?? [task.sessionId]).some((sessionId) => sessionId !== void 0 && seam.deleted(sessionId))) tasks.delete(id);
+ 			}
+-			if (this.descriptor.name === "workspace") {
++			if (this.descriptor.name === "workspace" || this.descriptor.name === "dsh_go_workspace_recovery") {
+ 				for (const [id, record] of this.state.tables.get("workspaces") ?? [])
+ 					this.state.tables.get("workspaces").set(id, { ...record, sessionIds: record.sessionIds.filter((id) => !seam.deleted(id)) });
+ 				if (this.state.global !== null) for (const key of ["archivedSessionIds", "pinnedSessionIds"])

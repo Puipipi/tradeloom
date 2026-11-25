@@ -1,0 +1,5 @@
+--- a/node_modules/@earendil-works/pi-ai/dist/utils/overflow.js
++++ b/node_modules/@earendil-works/pi-ai/dist/utils/overflow.js
+@@ -51 +51 @@
+-    /exceeds the limit of \d+/i, // GitHub Copilot
++    /prompt token count of [\d,]+ exceeds the limit of [\d,]+/i, // GitHub Copilot

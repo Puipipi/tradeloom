@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="phone_prompt_approval_title">DSH Go · 请你授权</string>
+    <string name="phone_prompt_review_title">DSH Go · 等你查看</string>
+    <string name="phone_prompt_native_title">DSH Go · 手机操控确认</string>
+    <string name="phone_prompt_handoff_title">DSH Go · 请你操作</string>
+    <string name="phone_prompt_allow_once">允许一次</string>
+    <string name="phone_prompt_allow_app">本轮允许</string>
+    <string name="phone_prompt_reject">取消</string>
+    <string name="phone_prompt_open">去查看</string>
+    <string name="phone_prompt_later">稍后</string>
+    <string name="phone_prompt_stop">停止任务</string>
+    <string name="phone_prompt_continue">继续</string>
+    <string name="phone_prompt_remaining">剩余 %1$d 秒 · 未回应不会授权</string>
+    <string name="phone_prompt_result_channel">手机操控结果</string>
+    <string name="phone_prompt_result_title">DSH Go · 任务完成</string>
+    <string name="phone_prompt_result_text">查看结果</string>
+    <string name="phone_skill_draft_title">DSH 学会了一个新做法：%1$s</string>
+    <string name="phone_skill_draft_open">点开此对话查看草稿。</string>
+</resources>

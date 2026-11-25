@@ -1,0 +1,182 @@
+# dsh-go 论坛站点设置（非敏感部分）
+#
+# 由 scripts/apply_settings.rb 写入，可重复执行。敏感值（OAuth 密钥、S3 密钥）
+# 放在 secrets.yml（从 secrets.example.yml 复制），不要提交进仓库。
+#
+# 写法：
+#   key: value                     直接覆盖
+#   key: { add: [a, b] }           列表型设置：保留当前值，追加缺少的项
+#   group_list 型设置用组 ID，用 | 分隔：1 管理员 · 2 版主 · 10–14 信任等级 0–4
+#
+# 所有设置名都核对过 Discourse main 分支 config/site_settings.yml（2026-10）。
+# 默认语言 zh_CN 在 containers/app.yml 的 DISCOURSE_DEFAULT_LOCALE 里设置。
+# 注意：用环境变量锁定语言时，数据库里没有 default_locale 这一行，各设置的
+# 「语言默认值」仍按 en 计算（2026.10 实测：最短标题 15、最短正文 20、最短搜索词 3），
+# 所以下面「中文默认值」一节把官方 zh_CN 值逐项写出来。
+
+# ── 站点信息 ──────────────────────────────────────────────────────────
+title: "<<FILL: 论坛名称，如 dsh-go 社区>>"
+site_description: "<<FILL: 一句话介绍，用于搜索引擎和分享卡片>>"
+short_site_description: "<<FILL: 更短的一句话，可与上面相同>>"
+contact_email: "<<FILL: 对外联系邮箱>>"
+# 服务条款模板里引用的主体信息；个人运营可留空，之后在后台补
+company_name: ""
+governing_law: ""
+city_for_disputes: ""
+
+# ── 中文默认值（Discourse 官方 zh_CN 值，见文件头说明）────────────────
+# 中文按词切分（cppjieba）；default_locale 生效时本来就开，这里显式打开
+search_tokenize_chinese: true
+min_search_term_length: 1
+min_post_length: 8
+min_first_post_length: 8
+min_personal_message_post_length: 3
+body_min_entropy: 3
+min_topic_title_length: 6
+title_min_entropy: 3
+title_prettify: false
+min_title_similar_length: 4
+title_max_word_length: 50
+post_excerpt_maxlength: 120
+topic_excerpt_maxlength: 120
+enable_inline_emoji_translation: true
+digest_min_excerpt_length: 50
+post_onebox_maxlength: 200
+read_time_word_count: 350
+# slug 保持 ascii：中英混合标题得到可读 slug，纯中文标题退化为 topic（不影响访问）
+slug_generation_method: "ascii"
+
+# ── 访问与注册 ────────────────────────────────────────────────────────
+# App 未登录浏览依赖公开访问，不要开 login_required
+login_required: false
+invite_only: false
+must_approve_users: false
+enable_local_logins: true
+enable_signup_cta: true
+# 用户名保持 ASCII（@提及、链接更稳）；显示名可以写中文
+unicode_usernames: false
+full_name_requirement: optional_at_signup
+prioritize_username_in_ux: false
+# 同一 IP 每天最多注册的账号数。国内移动网络大量用户共享出口 IP（CGNAT），
+# 太低会误伤，太高放过批量注册；从 5 开始观察
+max_new_accounts_per_registration_ip: 5
+
+# ── dsh-go App 登录（User API Key）───────────────────────────────────
+# App 打开 /user-api-key/new，参数：
+#   application_name=dsh-go  scopes=read,write,notifications,session_info
+#   auth_redirect=dshgo://forum/auth  padding=oaep
+# auth_redirect 必须与下面这一项完全一致（包括没有查询参数）。
+allowed_user_api_auth_redirects:
+  add:
+    - "dshgo://forum/auth"
+# 默认已包含 read|write|message_bus|push|notifications|session_info|one_time_password，
+# 这里用 add 确保 App 需要的四项都在
+allow_user_api_key_scopes:
+  add: [read, write, notifications, session_info]
+# 默认 1|2|10：信任等级 0 的新用户也能在 App 里登录。不要收紧，否则新注册用户登不上 App
+user_api_key_allowed_groups: "1|2|10"
+# 180 天没用过的 App 登录自动失效（默认值）
+revoke_user_api_keys_unused_days: 180
+
+# ── 帖子里的 dsh-go 分享链接 ──────────────────────────────────────────
+# 不加这一项，dshgo://share/… 链接会被 Discourse 的 HTML 净化器去掉 href
+allowed_href_schemes:
+  add: [dshgo]
+
+# ── 第三方登录：LINUX DO（内置 discourse-openid-connect）─────────────
+# 端点和 scope 来自 connect.linux.do 的 OIDC 发现文档（2026-10 实测可访问）
+openid_connect_discovery_document: "https://connect.linux.do/.well-known/openid-configuration"
+openid_connect_authorize_scope: "openid profile email"
+# LINUX DO 不返回 email_verified，保持 false：首次登录的用户需要点一次邮件确认，
+# 并且不会按邮箱自动合并到已有账号（防止冒用）
+openid_connect_email_verified_claim_fallback: false
+# 允许已有账号在个人设置里绑定 / 解绑 LINUX DO
+openid_connect_allow_association_change: true
+# 登录失败时临时打开，日志里能看到完整的 OIDC 交互
+openid_connect_verbose_logging: false
+
+# ── 第三方登录：Gitee（内置 discourse-oauth2-basic）──────────────────
+oauth2_authorize_url: "https://gitee.com/oauth/authorize"
+oauth2_token_url: "https://gitee.com/oauth/token"
+oauth2_token_url_method: "POST"
+# Gitee 在查询参数里接收 access_token（:token 由插件替换）
+oauth2_user_json_url: "https://gitee.com/api/v5/user?access_token=:token"
+oauth2_user_json_url_method: "GET"
+oauth2_json_user_id_path: "id"
+oauth2_json_username_path: "login"
+oauth2_json_name_path: "name"
+# Gitee 只返回用户设为公开的邮箱，常为空；为空时 Discourse 会让用户自己填并验证
+oauth2_json_email_path: "email"
+oauth2_json_avatar_path: "avatar_url"
+oauth2_email_verified: false
+oauth2_scope: "user_info"
+# 只在请求体里带 client_secret（与 Gitee 文档的用法一致），不同时发 Basic 头
+oauth2_send_auth_header: false
+oauth2_send_auth_body: true
+oauth2_button_title: "Gitee"
+oauth2_allow_association_change: true
+oauth2_debug_auth: false
+
+# ── 信任等级（新社区：门槛放低，让真人尽快能正常发言）──────────────────
+default_trust_level: 0
+# 升到 1 级：进 3 个话题、读 15 帖、累计 5 分钟（官方默认 5 / 30 / 10）
+tl1_requires_topics_entered: 3
+tl1_requires_read_posts: 15
+tl1_requires_time_spent_mins: 5
+# 2 级保持官方默认（需要持续访问 15 天），它解锁邀请等能力
+
+# ── 新用户（信任等级 0）限制与反垃圾 ──────────────────────────────────
+# 分享插件、配置时常要贴链接，0 级允许 3 个链接（默认 2）
+newuser_max_links: 3
+newuser_max_embedded_media: 5
+newuser_max_attachments: 0
+newuser_max_mentions_per_post: 2
+newuser_max_replies_per_topic: 3
+# 同一外链域名被新用户反复贴 3 次即判定可疑（默认）
+newuser_spam_host_threshold: 3
+max_topics_in_first_day: 3
+max_replies_in_first_day: 10
+# 新用户首帖打字过快（像脚本粘贴）自动静音待审（默认开启）
+auto_silence_fast_typers_on_first_post: true
+# 同一 IP 注册的新账号互相回复时自动举报（马甲检测）
+flag_sockpuppets: true
+# 3 个不同用户举报即静音该新用户（默认）
+num_users_to_silence_new_user: 3
+# 默认 1|2|10 表示所有人发帖都不需要先审核；开站初期保持。
+# 遇到垃圾潮时改成 "1|2|11"：0 级用户的帖子先进审核队列
+approve_unless_allowed_groups: "1|2|10"
+approve_new_topics_unless_allowed_groups: "1|2|10"
+# 私信只对 1 级及以上开放（默认），减少私信骚扰
+personal_message_enabled_groups: "1|2|11"
+# 邀请只对 2 级及以上开放（默认）
+invite_allowed_groups: "1|2|12"
+
+# ── 标签 ──────────────────────────────────────────────────────────────
+tagging_enabled: true
+max_tags_per_topic: 3
+# 只有 3 级与版主能新建标签，其余人从已有标签里选（默认）
+create_tag_allowed_groups: "1|2|13"
+tag_topic_allowed_groups: "1|2|10"
+
+# ── 内容与界面 ────────────────────────────────────────────────────────
+allow_uncategorized_topics: false
+# 分类按 community.yml 里的 position 固定排序（不开的话按活跃度排）
+fixed_category_positions: true
+top_menu: "latest|new|top|categories"
+desktop_category_page_style: "categories_and_latest_topics"
+# App 不支持聊天，网页端也先关掉，少一处需要巡查的地方
+chat_enabled: false
+# 求助区可标记「已解决」（discourse-solved 内置；具体分类在 community.yml 里开启）
+solved_enabled: true
+# 上传：图片 10 MB 以内（默认），只允许图片
+authorized_extensions: "jpg|jpeg|png|gif|webp|avif|heic|heif"
+max_image_size_kb: 10240
+
+# ── 备份 ──────────────────────────────────────────────────────────────
+enable_backups: true
+# 每天一次，保留 7 份；放在 /var/discourse/shared/standalone/backups/default
+backup_frequency: 1
+maximum_backups: 7
+backup_with_uploads: true
+# 想把备份放到对象存储：把下一行改成 s3，并在 secrets.yml 里填 S3 相关项
+backup_location: "local"

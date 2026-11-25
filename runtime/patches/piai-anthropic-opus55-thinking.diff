@@ -1,0 +1,54 @@
+--- a/node_modules/@earendil-works/pi-ai/dist/api/anthropic-messages.js
++++ b/node_modules/@earendil-works/pi-ai/dist/api/anthropic-messages.js
+@@ -138,6 +138,24 @@
+ function shouldUseServerSideFallbackBeta(model) {
+     return (model.compat?.allowedFallbackModels?.length ?? 0) > 0;
+ }
++function usesAdaptiveThinking(model) {
++    if (model.compat?.forceAdaptiveThinking !== undefined) {
++        return model.compat.forceAdaptiveThinking === true;
++    }
++    // Hand-declared routes lack the built-in catalog's compatibility metadata.
++    // Infer only the exact model on Anthropic's official endpoint, not gateways.
++    if (model.id !== "claude-opus-5-5")
++        return false;
++    try {
++        const url = new URL(model.baseUrl);
++        return url.protocol === "https:" && url.hostname === "api.anthropic.com" &&
++            url.port === "" && url.pathname === "/" && url.username === "" &&
++            url.password === "" && url.search === "" && url.hash === "";
++    }
++    catch {
++        return false;
++    }
++}
+ function getAnthropicCompat(model) {
+     const isOpenRouter = model.provider === "openrouter" || model.baseUrl.includes("openrouter.ai");
+     return {
+@@ -745,7 +763,7 @@
+     }
+     // For models with adaptive thinking: use an effort level.
+     // For older models: use budget-based thinking.
+-    if (model.compat?.forceAdaptiveThinking === true) {
++    if (usesAdaptiveThinking(model)) {
+         const effort = mapThinkingLevelToEffort(model, options.reasoning);
+         return stream(model, context, {
+             ...base,
+@@ -862,7 +880,7 @@
+     if (model.reasoning &&
+         options?.thinkingEnabled === true &&
+         (options.interleavedThinking ?? true) &&
+-        model.compat?.forceAdaptiveThinking !== true) {
++        !usesAdaptiveThinking(model)) {
+         features.push(INTERLEAVED_THINKING_BETA);
+     }
+     if (shouldUseServerSideFallbackBeta(model))
+@@ -978,7 +996,7 @@
+         // Default to "summarized" so Opus 4.7 and Mythos Preview behave like
+         // older Claude 4 models (whose API default is also "summarized").
+         const display = options.thinkingDisplay ?? "summarized";
+-        if (model.compat?.forceAdaptiveThinking === true) {
++        if (usesAdaptiveThinking(model)) {
+             // Adaptive thinking: Claude decides when and how much to think.
+             params.thinking = { type: "adaptive", display };
+             if (options.effort) {

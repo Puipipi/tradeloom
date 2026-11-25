@@ -1,0 +1,62 @@
+# DSH 0.2.2-rc.1: defer only incomplete live UTF-8 output; retain byte cursor and gap semantics.
+--- a/node_modules/@deepseek-ai/dsh-subprocess-local/lib/output.js
++++ b/node_modules/@deepseek-ai/dsh-subprocess-local/lib/output.js
+@@ -81,7 +81,25 @@
+ * Tail-keep rationale (pi/OpenCode): errors and final results cluster at the
+ * end of command output; the spill file covers the head.
+ */
++// A live read may end inside a legal UTF-8 sequence. Keep only that suffix
++// for the caller's next byte-offset read; malformed bytes remain visible.
++function completeUtf8End(bytes) {
++	const end = bytes.length;
++	let start = end - 1;
++	while (start >= 0 && end - start <= 3 && (bytes[start] & 192) === 128) start--;
++	if (start < 0) return end;
++	const lead = bytes[start];
++	const width = lead >= 194 && lead <= 223 ? 2 : lead >= 224 && lead <= 239 ? 3 : lead >= 240 && lead <= 244 ? 4 : 0;
++	const available = end - start;
++	if (width === 0 || available >= width) return end;
++	if (available > 1) {
++		const second = bytes[start + 1];
++		if (lead === 224 && second < 160 || lead === 237 && second > 159 || lead === 240 && second < 144 || lead === 244 && second > 143) return end;
++	}
++	return start;
++}
+ var OutputCollector = class {
++	sealed = false;
+ 	maxBytes;
+ 	label;
+ 	spill;
+@@ -179,7 +197,8 @@
+ 	}
+ 	/**
+ 	* Incremental read in whole-stream byte coordinates: returns everything
+-	* pushed since `fromByte`. When `fromByte` has already slid out of the
++	* pushed since `fromByte`, except a live incomplete UTF-8 suffix deferred
++	* until continuation bytes arrive or seal() marks EOF. When `fromByte` has already slid out of the
+ 	* in-memory tail window, the read is `lossy` — it returns the whole
+ 	* retained tail and the gap is only recoverable from the spill file.
+ 	* @param fromByte - whole-stream offset to resume from (a prior read's `nextOffset`; 0 for the first read).
+@@ -189,9 +208,12 @@
+ 		const windowStart = this.total - this.bytes;
+ 		const buffer = Buffer.concat(this.chunks);
+ 		const lossy = fromByte < windowStart;
++		const available = lossy ? buffer : buffer.subarray(fromByte - windowStart);
++		const end = this.sealed ? available.length : completeUtf8End(available);
+ 		return {
+-			text: (lossy ? buffer : buffer.subarray(fromByte - windowStart)).toString("utf8"),
+-			nextOffset: this.total,
++			text: available.subarray(0, end).toString("utf8"),
++			// Keep an undelivered gap visible to pull sources that ignore empty text.
++			nextOffset: lossy && end === 0 ? fromByte : this.total - (available.length - end),
+ 			lossy,
+ 			...this.spillFile !== void 0 ? { spillPath: this.spillFile } : {}
+ 		};
+@@ -214,6 +236,7 @@
+ 	* never point at a still-open file.
+ 	*/
+ 	seal() {
++		this.sealed = true;
+ 		if (this.spillFd === void 0) return;
+ 		try {
+ 			closeSync(this.spillFd);

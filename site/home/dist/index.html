@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; style-src-elem 'self'; style-src-attr 'unsafe-inline'; img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'">
+  <meta name="theme-color" content="#f8f9fc">
+  <!-- DSH-GO metadata:start -->
+  <title>DSH Go · 万物皆插件，随身而行</title>
+  <meta name="description" content="DSH Go，由 DSH-TUI 作者 ccchimneyyy 精心打造的非官方 DeepSeek Harness 移动应用。万物皆插件，现在随身而行。">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="DSH Go">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="og:title" content="DSH Go · 万物皆插件，随身而行">
+  <meta property="og:description" content="DSH Go，由 DSH-TUI 作者 ccchimneyyy 精心打造的非官方 DeepSeek Harness 移动应用。万物皆插件，现在随身而行。">
+  <link rel="canonical" href="https://go.dshtui.com/">
+  <meta property="og:url" content="https://go.dshtui.com/">
+  <meta property="og:image" content="https://go.dshtui.com/assets/author/share.png">
+  <meta property="og:image:alt" content="DSH Go 的手机和平板界面：把 DeepSeek Harness 装进口袋">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="DSH Go · 万物皆插件，随身而行">
+  <meta name="twitter:description" content="DSH Go，由 DSH-TUI 作者 ccchimneyyy 精心打造的非官方 DeepSeek Harness 移动应用。万物皆插件，现在随身而行。">
+  <meta name="twitter:image" content="https://go.dshtui.com/assets/author/share.png">
+  <meta name="twitter:image:alt" content="DSH Go 的手机和平板界面：把 DeepSeek Harness 装进口袋">
+  <!-- DSH-GO metadata:end -->
+  <link rel="icon" href="assets/dsh-go.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="refinements.css">
+  <script src="site-config.js" defer></script>
+  <script src="config-utils.js" defer></script>
+  <script src="author-ui.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <svg class="svg-defs" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>
+    <clipPath id="share-panel-clip"><rect x="124" y="86" width="876" height="1242" rx="60"/></clipPath>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12m-4-4 4 4 4-4M5 16v4h14v-4"/></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24"><path d="m8 7-5 5 5 5m8-10 5 5-5 5m-3-13-2 20"/></symbol>
+    <symbol id="i-puzzle" viewBox="0 0 24 24"><path d="M9 3h6v4a3 3 0 1 1 4 4h2v10h-7v-3a3 3 0 1 0-4 0v3H3v-7h3a3 3 0 1 0 0-4H3V3h6Z"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m3 17 5-5 4 4 4-6 5 7"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 8V5a2 2 0 0 1 2-2h5l3 3h6a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8Zm0 0h18"/></symbol>
+    <symbol id="i-terminal" viewBox="0 0 24 24"><path d="m5 6 6 6-6 6m8 0h6"/></symbol>
+    <symbol id="i-network" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="6" rx="1.5"/><rect x="2" y="16" width="6" height="6" rx="1.5"/><rect x="16" y="16" width="6" height="6" rx="1.5"/><path d="M12 8v4H5v4m7-4h7v4"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="m12 3 2.6 6.4L21 12l-6.4 2.6L12 21l-2.6-6.4L3 12l6.4-2.6L12 3Z"/></symbol>
+    <symbol id="i-replay" viewBox="0 0 24 24"><path d="M3 10a9 9 0 1 1 1 7M3 4v6h6"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 2.5 2.9 6 6.6 1-4.8 4.6 1.2 6.6-5.9-3.1-5.9 3.1 1.2-6.6-4.8-4.6 6.6-1Z"/></symbol>
+    <symbol id="i-github" viewBox="0 0 24 24"><path d="M9 19c-4 1-4-2-6-2m12 5v-4a3.5 3.5 0 0 0-1-2.5c3.4-.4 7-1.7 7-7.5A6 6 0 0 0 19.3 4 5.6 5.6 0 0 0 19.2 0S17.9-.4 15 1.5a14 14 0 0 0-6 0C6.1-.4 4.8 0 4.8 0a5.6 5.6 0 0 0-.1 4A6 6 0 0 0 3 8c0 5.8 3.6 7.1 7 7.5A3.5 3.5 0 0 0 9 18v4" transform="translate(1 1) scale(.92)"/></symbol>
+    <symbol id="i-bilibili" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="14" rx="4"/><path d="m7 2 4 5m6-5-4 5M8 12v3m8-3v3m-6 2 2 1 2-1"/></symbol>
+  </defs></svg>
+
+  <div class="page-shell">
+    <header class="site-header">
+      <button class="about-button" data-dialog="about">关于作者</button>
+    </header>
+
+    <main>
+    <section class="hero" id="hero" aria-label="DSH Go，万物皆插件">
+      <div class="ambient" aria-hidden="true"></div>
+      <div class="hero-copy">
+        <div class="eyebrow reveal" style="--order:0"><span class="status-dot"></span>DEEPSEEK HARNESS, ON THE GO.</div>
+        <div class="wordmark reveal" style="--order:1"><img src="assets/dsh-go.svg" alt="DSH Go 软件图标" width="76" height="76"><h1>DSH <span>Go</span></h1></div>
+        <h2 class="reveal" style="--order:2">万物皆插件。<br><span>现在，随身而行。</span></h2>
+        <p class="description reveal" style="--order:3">把 DeepSeek Harness 装进口袋。<br>由 DSH-TUI 作者 ccchimneyyy 精心打造，让每一份灵感，随时出发。</p>
+        <div class="actions reveal" style="--order:4">
+          <button class="primary-button" data-dialog="download"><svg class="icon"><use href="#i-download"/></svg><span id="download-label">下载 DSH Go</span></button>
+          <a class="star-callout" aria-disabled="true">
+            <svg class="callout-shape" viewBox="0 0 260 128" aria-hidden="true"><path d="M130 6C197.4 6 252 30.2 252 60C252 89.8 197.4 114 130 114C115 114 100 112.8 87 110.5C75 117 62 121 48 122C55 117 60 111 62 104.5C29.3 94.8 8 78.5 8 60C8 30.2 62.6 6 130 6Z"/></svg>
+            <span class="callout-copy">喜欢DSH Go？<br><span class="callout-last-line">点个Star支持开源作者！<span class="callout-star" aria-hidden="true"><svg class="star-icon"><use href="#i-star"/></svg><svg class="callout-glint glint-one" viewBox="0 0 24 24"><path d="M12 1C13 9 15 11 23 12C15 13 13 15 12 23C11 15 9 13 1 12C9 11 11 9 12 1Z"/></svg><svg class="callout-glint glint-two" viewBox="0 0 24 24"><path d="M12 1C13 9 15 11 23 12C15 13 13 15 12 23C11 15 9 13 1 12C9 11 11 9 12 1Z"/></svg></span><span class="callout-count" id="star-count" hidden></span></span></span>
+          </a>
+        </div>
+        <div class="repo-area reveal" style="--order:5"><a class="repo-line" aria-disabled="true"><span class="terminal-prefix">$</span><span class="repo-code" id="repository-label">github / 仓库即将公布</span><svg class="icon"><use href="#i-arrow"/></svg></a><p class="platform" id="platform-label">Android · arm64</p></div>
+      </div>
+
+      <div class="scene-wrap" aria-hidden="true">
+        <div class="scene">
+          <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div>
+          <div class="orbital-detail" aria-hidden="true"><span class="orbit-runner"></span></div>
+          <div class="connection-detail" aria-hidden="true"><span></span><span></span><span></span></div>
+          <div class="floor-shadow"></div>
+          <div class="phone-position">
+            <div class="phone">
+              <!-- The brand stays on the phone's local plane through the entire tilt. -->
+              <div class="phone-brand">
+                <img class="phone-brand-color" src="assets/dsh-go.svg" width="50" height="50" alt="">
+                <svg class="brand-sketch" viewBox="0 0 56 56" aria-hidden="true">
+                  <rect class="brand-stroke brand-frame" pathLength="1" x=".7" y=".7" width="54.6" height="54.6" rx="13.3"/>
+                  <path class="brand-stroke brand-ribbon" pathLength="1" d="M18 21 C22 13 28 9 35.8 8 C36.1 14.3 31.2 20.7 25 21.2 C22.3 21.4 20.1 22.1 18.9 24 C19.2 28.9 28.6 33.7 39.4 33.5 C45.7 33.3 49.6 35.2 46.7 39.9 C43.4 45.4 35.2 48.1 25.2 48.1 C16.9 48.1 10.4 43.9 9.1 37.2 C7.8 30.8 12.8 25 18 21 Z"/>
+                  <path class="brand-stroke brand-leaf" pathLength="1" d="M17.7 19 C15.9 15 12.6 13.6 7.2 14.1 C7 17.7 11.3 21.2 16.2 21.8"/>
+                  <path class="brand-stroke brand-fold" pathLength="1" d="M14.7 24.4 C12.2 30.5 13.8 36.4 21.6 38.1 C28.7 40.1 35 34.6 41 34"/>
+                  <circle class="brand-stroke brand-dot" pathLength="1" cx="42" cy="25.2" r="6.7"/>
+                </svg>
+              </div>
+              <svg class="phone-sketch" viewBox="0 0 256 516" aria-hidden="true">
+                <path class="sketch-stroke sketch-shell" pathLength="1" d="M128 1 H214 Q255 1 255 42 V474 Q255 515 214 515 H42 Q1 515 1 474 V42 Q1 1 42 1 H128"/>
+                <path class="sketch-stroke sketch-screen" pathLength="1" d="M42 10 H214 Q246 10 246 42 V474 Q246 506 214 506 H42 Q10 506 10 474 V42 Q10 10 42 10"/>
+                <path class="sketch-stroke sketch-camera" pathLength="1" d="M132 27 A4 4 0 1 1 124 27 A4 4 0 1 1 132 27"/>
+                <path class="sketch-stroke sketch-home" pathLength="1" d="M91 497 H165"/>
+                <path class="sketch-stroke sketch-buttons" pathLength="1" d="M259 112 V164 M259 177 V209"/>
+              </svg>
+              <div class="phone-back"></div><div class="phone-edge"></div>
+              <div class="phone-body"><div class="phone-bezel"><div class="phone-screen">
+                <div class="screen-orb"></div><div class="screen-grid"></div>
+                <div class="status-bar"><span>9:41</span><div class="camera"></div><span class="status-icons">▮▮▮ <span class="battery"></span></span></div>
+                <div class="phone-ui"><div class="app-top"><span>☰</span><span>DSH Go <small>⌄</small></span><span>＋</span></div><div class="screen-greeting"><div class="screen-logo-space"></div><strong>今天，想做点什么？</strong><span>让灵感，即刻出发。</span></div><div class="screen-modules"><div><svg class="icon"><use href="#i-code"/></svg>代码</div><div><svg class="icon"><use href="#i-folder"/></svg>文件</div><div><svg class="icon"><use href="#i-puzzle"/></svg>插件</div></div><div class="screen-input"><span>发送消息，开始探索</span><span class="input-plus">↑</span></div><div class="screen-bottom"><span>＋</span><span>DeepSeek</span><span>◉</span></div></div>
+                <div class="screen-shine"></div><div class="home-indicator"></div>
+              </div></div></div><span class="side-button side-one"></span><span class="side-button side-two"></span>
+            </div>
+          </div>
+          <div class="radiance"></div>
+          <div class="particle whale" style="--x:0px;--y:-142px;--r:-8deg;--delay:0s"><div class="float-object whale-object"><img src="assets/dsh-go-pop.svg" alt=""></div></div>
+          <div class="particle plugin code" style="--x:-195px;--y:-200px;--r:-14deg;--delay:.1s"><div class="float-object"><div class="tile"><svg><use href="#i-code"/></svg></div><span class="plugin-label">Code</span></div></div>
+          <div class="particle plugin puzzle" style="--x:190px;--y:-225px;--r:15deg;--delay:.24s"><div class="float-object"><div class="tile"><svg><use href="#i-puzzle"/></svg></div><span class="plugin-label">Plugins</span></div></div>
+          <div class="particle plugin folder" style="--x:-255px;--y:-20px;--r:-17deg;--delay:.18s"><div class="float-object"><div class="tile"><svg><use href="#i-folder"/></svg></div><span class="plugin-label">Files</span></div></div>
+          <div class="particle plugin pictures" style="--x:248px;--y:-38px;--r:15deg;--delay:.32s"><div class="float-object"><div class="tile"><svg><use href="#i-image"/></svg></div><span class="plugin-label">Images</span></div></div>
+          <div class="particle plugin terminal" style="--x:-177px;--y:160px;--r:-10deg;--delay:.3s"><div class="float-object"><div class="tile"><svg><use href="#i-terminal"/></svg></div></div></div>
+          <div class="particle plugin workflow" style="--x:219px;--y:157px;--r:12deg;--delay:.42s"><div class="float-object"><div class="tile"><svg><use href="#i-network"/></svg></div></div></div>
+          <div class="particle little-spark" style="--x:101px;--y:-283px;--r:8deg;--delay:.45s"><svg class="icon"><use href="#i-spark"/></svg></div>
+          <div class="particle little-dot dot-a" style="--x:-115px;--y:-293px;--r:0deg;--delay:.5s"></div>
+          <div class="particle little-dot dot-b" style="--x:286px;--y:70px;--r:0deg;--delay:.5s"></div>
+          <div class="scene-caption"><span class="caption-line"></span>EVERYTHING IS A PLUGIN<span class="caption-line"></span></div>
+        </div>
+      </div>
+      <div class="hero-bottom"><div class="animation-controls"><button class="replay-button" id="replay"><svg class="icon"><use href="#i-replay"/></svg><span>重播开场</span></button><button class="motion-button" id="motion" aria-pressed="false" aria-label="暂停背景动效"><span class="pause-symbol">Ⅱ</span><span class="motion-text">暂停动效</span></button></div></div>
+    </section>
+
+    <section class="features" id="features" aria-labelledby="features-title">
+      <div class="section-heading">
+        <h2 id="features-title">小小屏幕，<br>装下更多可能。</h2>
+        <div class="gallery-navigation" aria-label="浏览功能卡片"><button data-gallery-step="-1" aria-label="上一项功能"><svg class="icon"><use href="#i-arrow"/></svg></button><button data-gallery-step="1" aria-label="下一项功能"><svg class="icon"><use href="#i-arrow"/></svg></button></div>
+      </div>
+      <div class="gallery-window">
+        <div class="feature-gallery" tabindex="0" role="region" aria-label="八项功能画廊，可左右滑动或使用方向键">
+          <div class="gallery-track">
+            <div class="gallery-group">
+              <article class="feature-card card-local">
+                <div class="feature-visual">
+                  
+                  <img class="feature-image" src="assets/features/01-local-engine.webp" width="1120" height="1400" loading="lazy" decoding="async" draggable="false" alt="本机读取奶茶账单，统计消费并交付 Excel 表格的界面">
+                </div>
+                <div class="feature-caption"><h3>不用电脑，手机自己就能干活</h3><p>读账单 · 跑 Python · 做成表格</p><p class="feature-note">整套 DSH 引擎，就跑在这台手机里。</p></div>
+              </article>
+              <article class="feature-card card-control">
+                <div class="feature-visual">
+                  
+                  <img class="feature-image" src="assets/features/02-phone-control.webp" width="1120" height="1400" loading="lazy" decoding="async" draggable="false" alt="DSH 看懂地图界面，为转角奶茶铺选择路线">
+                </div>
+                <div class="feature-caption"><h3>动动嘴，小肥鱼替你点</h3><p>关键一步先问你 · 看懂屏幕再动手</p><p class="feature-note">点按 · 输入 · 滑动。密码、支付、系统设置，都留给你。</p></div>
+              </article>
+              <article class="feature-card card-image">
+                <div class="feature-visual">
+                  <span class="feature-status"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="M8 4.5V8l2.2 1.4"/></svg>即将上线</span>
+                  <img class="feature-image" src="assets/features/03-image-generation.webp" width="1120" height="1400" loading="lazy" decoding="async" draggable="false" alt="图像生成对话中，小肥鱼的四张表情包排列成两行">
+                </div>
+                <div class="feature-caption"><h3>一句话，出图啦！</h3><p>选比例 · 选张数 · 存相册 · 一键分享</p></div>
+              </article>
+              <article class="feature-card card-voice">
+                <div class="feature-visual">
+                  <img class="feature-image" src="assets/features/04-voice-input.webp" width="1120" height="1400" loading="lazy" decoding="async" draggable="false" alt="语音转文字输入框：周末去海边，帮我列个出行清单">
+                </div>
+                <div class="feature-caption"><h3>懒得打字？张嘴就行</h3><p>本机离线识别 · 没网也能听写</p><p class="feature-note">说完直接发。</p></div>
+              </article>
+              <article class="feature-card card-pet">
+                <div class="feature-visual">
+                  
+                  <img class="feature-image" src="assets/features/05-input-pet.webp" width="1120" height="1400" loading="lazy" decoding="async" draggable="false" alt="输入框旁的像素小肥鱼，以及放大的桌宠形象">
+                </div>
+                <div class="feature-caption"><h3>小肥鱼住进输入框</h3><p>干活时敲代码 · 做完了报喜</p><p class="feature-note">还能跟你到桌面。</p></div>
+              </article>
+              <article class="feature-card card-remote">
+                <div class="feature-visual">
+                  
+                  <img class="feature-image" src="assets/features/06-remote-computer.webp" width="1120" height="1400" loading="lazy" decoding="async" draggable="false" alt="切换主机面板显示本机运行中，以及家里的 Windows 电脑在线">
+                </div>
+                <div class="feature-caption"><h3>连上家里的电脑</h3><p>本机、远程主机，随时切换。</p></div>
+              </article>
+              <article class="feature-card card-market">
+                <div class="feature-visual">
+                  
+                  <img class="feature-image" src="assets/features/07-plugin-market.webp" width="1120" height="1400" loading="lazy" decoding="async" draggable="false" alt="插件市场中的小说写作助手、危险命令确认与轻量记忆">
+                </div>
+                <div class="feature-caption"><h3>插件市场</h3><p>找到需要的插件，获取或更新。</p></div>
+              </article>
+              <article class="feature-card card-share">
+                <div class="feature-visual">
+                  
+                  <svg class="feature-image share-image" viewBox="0 0 1122 1402" role="img" aria-label="奶茶账单分享卡片，包含问题、统计结果、品牌信息与不可扫描的小鲸鱼卡通装饰码"><image href="assets/features/08-share.webp" width="1122" height="1402" clip-path="url(#share-panel-clip)"/></svg>
+                </div>
+                <div class="feature-caption"><h3>一键分享</h3><p>把对话与成果，分享出去。</p></div>
+              </article>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    </main>
+    <footer class="closing" aria-label="DSH Go 作者">
+      <img src="assets/dsh-go.svg" width="54" height="54" alt="DSH Go"><p>由 <a href="https://dshtui.com/" target="_blank" rel="noopener noreferrer">DSH-TUI</a> 作者 ccchimneyyy 精心打造</p>
+      <section class="contributors" aria-labelledby="contributors-title"><h2 id="contributors-title">贡献者</h2><div class="contributor-rows" id="contributor-rows"></div></section>
+      <div class="developer-credit"><p>网页开发</p><div id="developer-identity"></div></div>
+      <section class="friend-links" aria-labelledby="friend-links-title">
+        <h2 id="friend-links-title">友情链接</h2>
+        <div class="friend-links-row">
+          <a class="friend-link" href="https://dshtui.com/" target="_blank" rel="noopener noreferrer"><strong>DSH-TUI</strong><span>在终端里使用 DeepSeek Harness</span></a>
+          <a class="friend-link" href="https://github.com/ccch1mneyyy/dsh-TUI" target="_blank" rel="noopener noreferrer"><strong>GitHub</strong><span>dsh-TUI 开源仓库</span></a>
+        </div>
+      </section>
+    </footer>
+  </div>
+  <div class="viewport-softness" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+  <dialog id="info-dialog" aria-labelledby="dialog-title" aria-describedby="dialog-description">
+    <button class="dialog-close" aria-label="关闭">×</button>
+    <img id="dialog-avatar" src="assets/dsh-go.svg" width="64" height="64" alt="">
+    <span class="dialog-eyebrow">DSH Go · DEVELOPER</span>
+    <h2 id="dialog-title"></h2><p id="dialog-description"></p>
+    <div id="download-details" hidden><img id="download-qr" width="240" height="240" alt="DSH Go 下载二维码" hidden><p id="download-qr-note" hidden></p><a id="download-link" class="primary-button" hidden target="_blank" rel="noopener noreferrer">打开下载地址</a><a id="download-alt-link" hidden target="_blank" rel="noopener noreferrer"></a></div>
+  </dialog>
+</body>
+</html>

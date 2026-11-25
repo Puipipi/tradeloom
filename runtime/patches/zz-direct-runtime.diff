@@ -1,0 +1,164 @@
+# dsh-go direct engine: typed path boundaries, L2S refusal and node-pty invocation.
+# No global fs or tool-output rewriting; absent preload leaves proot behavior unchanged.
+--- a/node_modules/@deepseek-ai/dsh-fs-local/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-fs-local/lib/index.js
+@@ -166,6 +166,9 @@
+ * @returns absolute display spelling shared by target resolution and no-follow metadata.
+ */
+ function localDisplayPath(cwd, path) {
++	const direct = globalThis[Symbol.for("dsh.go.direct")];
++	cwd = direct?.toHost(cwd) ?? cwd;
++	path = direct?.toHost(path) ?? path;
+ 	const absoluteCwd = isAbsolute(cwd) ? cwd : `${process.cwd()}${sep}${cwd}`;
+ 	const raw = isAbsolute(path) ? path : `${absoluteCwd}${sep}${path}`;
+ 	const physicalSpelling = /(?:^|[\\/])\.\.(?:[\\/]|$)/u.test(raw) ? raw : resolve(cwd, path);
+@@ -183,10 +186,16 @@
+ async function resolveLocalTarget(cwd, path) {
+ 	if (path.trim().length === 0) throw new FsError("file_path must be a non-empty string", "FS_NOT_FOUND");
+ 	const displayPath = localDisplayPath(cwd, path);
++	const direct = globalThis[Symbol.for("dsh.go.direct")];
++	const checkDirect = (resolved) => {
++		if (direct && (direct.requiresProot(resolved) || !direct.containsExecutionPath(resolved))) throw new FsError("this file needs compatible launch; stop the engine and turn off Direct engine", "FS_IO_ERROR");
++		return resolved;
++	};
++	checkDirect(displayPath);
+ 	try {
+ 		return {
+ 			displayPath,
+-			targetKey: FsTargetKey(await realpath$1(displayPath))
++			targetKey: FsTargetKey(checkDirect(await realpath$1(displayPath)))
+ 		};
+ 	} catch (error) {
+ 		/* v8 ignore next -- Windows reports this case as ENOENT and repairs it in the ancestor walk below. */
+@@ -197,7 +206,7 @@
+ 	const missing = [basename(displayPath)];
+ 	let ancestor = dirname(displayPath);
+ 	while (true) try {
+-		const realAncestor = await realpath$1(ancestor);
++		const realAncestor = checkDirect(await realpath$1(ancestor));
+ 		/* v8 ignore next -- POSIX rejects this traversal; Windows normalizes parent segments before filesystem lookup. */
+ 		if (missing.includes("..")) throw new FsError(`cannot resolve "${displayPath}": parent traversal crosses a missing directory`, "FS_NOT_FOUND");
+ 		/* v8 ignore start -- native Windows coverage exercises this repair; POSIX reports ENOTDIR before this point. */
+@@ -207,7 +216,7 @@
+ 		/* v8 ignore stop */
+ 		return {
+ 			displayPath,
+-			targetKey: FsTargetKey(join(realAncestor, ...missing))
++			targetKey: FsTargetKey(checkDirect(join(realAncestor, ...missing)))
+ 		};
+ 	} catch (error) {
+ 		/* v8 ignore next -- native Windows coverage exercises the FsError raised by the repair above. */
+--- a/node_modules/@deepseek-ai/dsh-working-directory/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-working-directory/lib/index.js
+@@ -78,7 +78,8 @@
+ 	* @returns its effective absolute directory.
+ 	*/
+ 	get(session) {
+-		return this.workingDirectoryProjectionHandle.stateOf(session) ?? this.defaultDirectory;
++		const directory = this.workingDirectoryProjectionHandle.stateOf(session) ?? this.defaultDirectory;
++		return globalThis[Symbol.for("dsh.go.direct")]?.toHost(directory) ?? directory;
+ 	}
+ 	/**
+ 	* Validate the current directory and restore the original project when it disappeared.
+--- a/node_modules/@deepseek-ai/dsh-home-paths/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-home-paths/lib/index.js
+@@ -82,7 +82,8 @@
+ */
+ function resolveRoot(configured, env, envName, fallback) {
+ 	const fromEnv = env[envName];
+-	return resolve(expandHomePath(configured ?? (fromEnv !== void 0 && fromEnv.trim().length > 0 ? fromEnv : fallback())));
++	const path = resolve(expandHomePath(configured ?? (fromEnv !== void 0 && fromEnv.trim().length > 0 ? fromEnv : fallback())));
++	return globalThis[Symbol.for("dsh.go.direct")]?.toHost(path) ?? path;
+ }
+ /**
+ * Label one resolved user-data root symbolically for user-facing display.
+--- a/node_modules/@deepseek-ai/dsh-app-boot/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-app-boot/lib/index.js
+@@ -4718,7 +4718,7 @@
+ function anchorInsertedPluginNames(patches, file) {
+ 	const base = dirname(resolve(file));
+ 	const visit = (entry) => {
+-		if (typeof entry.name === "string" && (isAbsolute(entry.name) || entry.name.startsWith("./") || entry.name.startsWith("../"))) entry.name = pathToFileURL(resolve(base, entry.name)).href;
++		if (typeof entry.name === "string" && (isAbsolute(entry.name) || entry.name.startsWith("./") || entry.name.startsWith("../"))) entry.name = pathToFileURL(globalThis[Symbol.for("dsh.go.direct")]?.toHost(resolve(base, entry.name)) ?? resolve(base, entry.name)).href;
+ 		if (entry.group && Array.isArray(entry.config)) entry.config.forEach(visit);
+ 	};
+ 	for (const patch of patches) patch.insert?.forEach(visit);
+--- a/node_modules/@deepseek-ai/dsh-subprocess-local/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-subprocess-local/lib/index.js
+@@ -1521,6 +1521,7 @@
+ 		if (failures.length > 1) throw new AggregateError(failures, "local subprocess teardown failed");
+ 	}
+ 	async resolveExecutable(command, env, signal) {
++		command = globalThis[Symbol.for("dsh.go.direct")]?.executable(command) ?? command;
+ 		if (command.length === 0) throw new Error("subprocess-local: executable must be non-empty");
+ 		signal?.throwIfAborted();
+ 		const environment = childEnv(env);
+@@ -1653,7 +1654,8 @@
+ 				options.cwd = scope.cwd;
+ 				options.env = scope.env;
+ 			}
+-			terminal = requireNodePty().spawn(scope?.command ?? file, scope?.args ?? [...launch.argv.slice(1)], options);
++			const direct = globalThis[Symbol.for("dsh.go.direct")]?.command(scope?.command ?? file, scope?.args ?? [...launch.argv.slice(1)], options);
++			terminal = requireNodePty().spawn(direct?.file ?? scope?.command ?? file, direct?.args ?? scope?.args ?? [...launch.argv.slice(1)], direct?.options ?? options);
+ 		} catch (error) {
+ 			scope?.cleanup();
+ 			activity?.dispose();
+--- a/node_modules/@deepseek-ai/dsh-sandbox-policy/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-sandbox-policy/lib/index.js
+@@ -66,6 +66,7 @@
+ */
+ /** Preserve execution-world spelling; enforcing providers resolve filesystem identity on their host. */
+ function resolveWorkspaceRoot(path) {
++	path = globalThis[Symbol.for("dsh.go.direct")]?.toHost(path) ?? path;
+ 	if (!isAbsolute(path) || path.includes("\0")) throw new Error("sandbox-policy: workspace root must be an absolute execution-world path without NUL bytes");
+ 	return path;
+ }
+--- a/node_modules/@deepseek-ai/dsh-sandbox/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-sandbox/lib/index.js
+@@ -204,6 +204,7 @@
+ *   outcome; inventing a fallback would grant a path the caller never named).
+ */
+ function canonicalPath(path) {
++	path = globalThis[Symbol.for("dsh.go.direct")]?.toHost(path) ?? path;
+ 	try {
+ 		return realpathSync.native(path);
+ 	} catch {
+--- a/node_modules/@deepseek-ai/dsh-skill-filesystem/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-skill-filesystem/lib/index.js
+@@ -75,13 +75,13 @@
+ 		this.includeDefaultRoots = config.includeDefaultRoots ?? true;
+ 		this.dshHome = resolveDshHome(config.dshHome);
+ 		this.agentsHome = resolveAgentsHome(config.agentsHome);
+-		this.customSkillDirs = (config.customSkillDirs ?? []).map((root) => resolve(root));
++		this.customSkillDirs = (config.customSkillDirs ?? []).map((root) => globalThis[Symbol.for("dsh.go.direct")]?.toHost(resolve(root)) ?? resolve(root));
+ 		this.watchManager = new SkillWatchManager(ctx, control.invalidate, resolveWatchConfig(config));
+ 		control.signal.addEventListener("abort", () => {
+ 			this.dispose();
+ 		}, { once: true });
+ 		const bundledSkillDir = config.bundledSkillDir ?? (this.includeDefaultRoots ? process.env.DSH_BUNDLED_SKILL_DIR : void 0);
+-		this.bundledSkillDir = bundledSkillDir === void 0 ? void 0 : resolve(bundledSkillDir);
++		this.bundledSkillDir = bundledSkillDir === void 0 ? void 0 : globalThis[Symbol.for("dsh.go.direct")]?.toHost(resolve(bundledSkillDir)) ?? resolve(bundledSkillDir);
+ 	}
+ 	/**
+ 	* Discover local skill summaries for a cwd-sensitive workspace.
+@@ -160,7 +160,7 @@
+ 	async roots(cwd) {
+ 		const roots = [];
+ 		if (this.includeDefaultRoots && cwd !== void 0) {
+-			const projectRoot = await findProjectRoot(resolve(cwd), optionalFileSystem(this.ctx));
++			const projectRoot = await findProjectRoot(globalThis[Symbol.for("dsh.go.direct")]?.toHost(resolve(cwd)) ?? resolve(cwd), optionalFileSystem(this.ctx));
+ 			roots.push({
+ 				path: join(projectRoot, ".dsh/skills"),
+ 				source: "project-dsh",
+--- a/node_modules/@deepseek-ai/dsh-api-session-controller/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-api-session-controller/lib/index.js
+@@ -423,7 +423,8 @@
+ 	}
+ 	async createAgent(sessionId, cwd, composition) {
+ 		try {
+-			await mkdir(cwd, { recursive: true });
++			const direct = globalThis[Symbol.for("dsh.go.direct")];
++			await mkdir(direct ? await direct.prepareDirectory(cwd) : cwd, { recursive: true });
+ 		} catch (error) {
+ 			throw new Error(`failed to ensure project directory "${cwd}": ${String(error)}`, { cause: error });
+ 		}

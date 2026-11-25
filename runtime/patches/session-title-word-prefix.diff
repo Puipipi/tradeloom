@@ -1,0 +1,11 @@
+--- a/node_modules/@deepseek-ai/dsh-session-title/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-session-title/lib/index.js
+@@ -61,7 +61,7 @@
+ */
+ function fallbackSessionTitle(input, maxWords, maxBytes) {
+ 	assertPositiveInteger$1("maxWords", maxWords);
+-	return truncateTitleUtf8(cleanTitleText(input).split(" ").filter(Boolean).slice(0, maxWords).join(" "), maxBytes).trimEnd();
++	return truncateTitleUtf8(cleanTitleText(input).split(" ", maxWords <= 0xffffffff ? maxWords : void 0).filter(Boolean).slice(0, maxWords).join(" "), maxBytes).trimEnd();
+ }
+ //#endregion
+ //#region lib/types/index.js

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launch window background (Android 8–11; 12+ shows the system splash instead, and some ROMs
+     still show this window there): the Mist Glass page gradient (night variant via values-night)
+     and nothing else. No icon: a window background is the activity's theme, which can't follow
+     the 桌面图标 the person chose (an activity-alias has no theme), so an icon here would be the
+     default one for everybody. Dart's first frame is this same page and brings the chosen icon
+     in (launch/LaunchThemes.kt, app/lib/launch/). -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="270"
+                android:endColor="@color/launch_background_bottom"
+                android:startColor="@color/launch_background_top"
+                android:type="linear" />
+        </shape>
+    </item>
+</layer-list>

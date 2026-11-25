@@ -1,0 +1,50 @@
+{
+  "name": "@dsh-go/plugin-kit",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Author kit for dsh-go native plugins: view and manifest types, component builders, tool cards, caps helpers and the `check` command. Zero runtime dependencies.",
+  "author": "DSH-TUI (ccch1mneyyy)",
+  "license": "MIT",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./check": {
+      "types": "./types/check.d.ts",
+      "default": "./lib/check.js"
+    },
+    "./testing": {
+      "types": "./types/testing.d.ts",
+      "default": "./lib/testing.js"
+    },
+    "./schema/*": "./schema/*",
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "dsh-go-plugin-check": "bin/check.mjs"
+  },
+  "files": [
+    "lib",
+    "bin",
+    "types",
+    "schema",
+    "README.md",
+    "README.en.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "gen": "node scripts/gen-types.mjs",
+    "sync-skill": "node scripts/sync-skill.mjs"
+  },
+  "engines": {
+    "node": ">=22.19"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}

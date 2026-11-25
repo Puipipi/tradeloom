@@ -1,0 +1,11 @@
+--- a/node_modules/@deepseek-ai/dsh-util-values/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-util-values/lib/index.js
+@@ -799,7 +799,7 @@
+ 	const right = b;
+ 	const keys = Object.keys(left);
+ 	if (keys.length !== Object.keys(right).length) return false;
+-	return keys.every((key) => key in right && deepEqualJson(left[key], right[key]));
++	return keys.every((key) => Object.hasOwn(right, key) && deepEqualJson(left[key], right[key]));
+ }
+ /**
+ * Deep-freeze an object graph in place while leaving live AbortSignal objects mutable.

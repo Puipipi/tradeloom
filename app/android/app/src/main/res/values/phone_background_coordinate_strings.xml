@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="phone_confirm_background_coordinate">. This is a location in the latest background screenshot. Check the target. This confirmation does not contain the original image.</string>
+</resources>

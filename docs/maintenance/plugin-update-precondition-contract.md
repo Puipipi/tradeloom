@@ -1,0 +1,13 @@
+# 661：非 HMR 更新在安装锁内重验版本依据
+
+基底63e255fab5cb9d817af30b631c3643ccce8e9231，DSH0.2.2-rc.1。本约定先于实现；不新增外部RPC字段、配置开关或持久缓存。
+
+公开updateBundle将目标验证为比已安装from更新的版本，随后等待registry检查。非HMR正常原地安装仍可能使用过期from：等待期间另一次公开installBundle已将1升级3，旧1→2检查返回后却静默安装2。另一次已成功remove后旧更新也不应因过期检查自动重新安装。
+
+本项将non-HMR更新视为以{name,version:from}为前提的安装。在既有change的package.json文件锁内、pnpm安装/批准构建脚本/写包文件之前，检查依赖仍存在，且真实已安装bundle manifest版本仍等于from。不符即使用既有failed/operation-error/diagnostic结果拒绝，保留当前状态；不新增错误码，不重试，不回滚已成功的其它操作。
+
+期望值只通过installBundle的可选第三个内部参数传入：仅本模块updateBundle调用，原public RPC描述符/选项和普通两参数调用不变。不新增未来通用wrapper。普通显式install仍可按既有合同降版本；正常1→2更新照常。checking期间仅改变enabled而未改安装版本不应拒绝，660选择保留由其独立补丁负责。
+
+检查和写入在同一已有锁内，不是调用install前再次读取留下await锁缺口。这里只覆盖遵循此锁的普通管理操作；外部进程绕锁修改、同版本重装字节差异不在版本前提内。HMR的remove/install/restore保持原路径，未加此前提，不能声称修复HMR复原竞争。
+
+实际反证包括正常更新、已完成新版安装、已完成卸载、显式安装降版；另组合660四项选择控制。真实Node/Cordis/PluginManager/pnpm、自有普通HTTP registry与tar包，不使用fake pnpm或私有callback。Android未编译，PRoot/ARM未运行；本新增runtime patch会改变runtimeVersion，本包不代录pins。

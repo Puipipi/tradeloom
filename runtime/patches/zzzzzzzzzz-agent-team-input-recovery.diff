@@ -1,0 +1,84 @@
+# Preserve child-owned pending input and unadmitted claims across Team recovery.
+--- a/node_modules/@deepseek-ai/dsh-experimental-agent-team/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-experimental-agent-team/lib/index.js
+@@ -765,26 +765,43 @@
+ //#endregion
+ //#region lib/types/session-message.js
+ /** Durable Session-message acceptance checks for teammate provisioning. */
+-/** Fold the durable inbox suffix into the messages still awaiting a claim. */
+-function pendingInboxMessages(events) {
++/** Fold pending input and unadmitted claims using the standard inbox recovery rules. */
++function recoverableInboxMessages(events) {
+ 	const inbox = {
+ 		"next-turn": [],
+ 		"next-step": []
+ 	};
++	let claimed = [];
+ 	for (const event of events) {
++		if (event.type === "user/message") {
++			claimed = claimed.filter((message) => message.id !== event.data.id);
++			continue;
++		}
++		if (event.type === "turn/end") {
++			if (["completed", "blocked", "max-tokens"].includes(event.data.reason?.kind)) claimed = [];
++			continue;
++		}
+ 		if (event.type !== "agent/inbox/spliced") continue;
+-		inbox[event.data.target].splice(event.data.start, event.data.removedCount ?? 0, ...event.data.inserted);
+-	}
+-	return [...inbox["next-turn"], ...inbox["next-step"]];
++		const splice = event.data;
++		const removed = inbox[splice.target].splice(splice.start, splice.removedCount ?? 0, ...splice.inserted);
++		const settled = new Set([...(splice.settledIds ?? []), ...splice.inserted.map((message) => message.id)]);
++		claimed = claimed.filter((message) => !settled.has(message.id));
++		if (splice.outcome !== "canceled") claimed.push(...removed);
++	}
++	return [...inbox["next-turn"], ...inbox["next-step"], ...claimed];
+ }
+ /**
+-* Test whether one message is model-visible or still durably pending.
+-* @param events - one Session's non-inherited event suffix.
++* Test whether one child-owned message is model-visible or remains durably recoverable.
++* @param events - the complete Session event log, including the inherited prefix.
++* @param inheritedEventCount - number of events inherited from the parent.
+ * @param predicate - identity check for the accepted message.
+-* @returns whether history or the current inbox contains a match.
++* @returns whether owned history or recoverable owned input contains a match.
+ */
+-function messageAccepted(events, predicate) {
+-	return events.some((event) => event.type === "user/message" && predicate(event.data)) || pendingInboxMessages(events).some(predicate);
++function messageAccepted(events, inheritedEventCount, predicate) {
++	const suffix = events.slice(inheritedEventCount);
++	if (suffix.some((event) => event.type === "user/message" && predicate(event.data))) return true;
++	const ownedIds = new Set(suffix.flatMap((event) => event.type === "agent/inbox/spliced" ? event.data.inserted.map((message) => message.id) : []));
++	return recoverableInboxMessages(events).some((message) => ownedIds.has(message.id) && predicate(message));
+ }
+ //#endregion
+ //#region lib/types/validation.js
+@@ -1082,7 +1099,7 @@
+ 			const session = this.ctx.sessions.get(childId);
+ 			if (session === void 0) {
+ 				const stored = await readPersistedSession(this.ctx.sessionPersistence, childId, signal);
+-				if (messageAccepted(stored.events.slice(stored.inheritedEventCount), (message) => message.id === messageId)) return;
++				if (messageAccepted(stored.events, stored.inheritedEventCount, (message) => message.id === messageId)) return;
+ 				throw new TeamError(`teammate "${childId}" initial prompt was not durably accepted`, "TEAM_PROVISIONING_CONFLICT");
+ 			}
+ 			const progress = Promise.withResolvers();
+@@ -1101,7 +1118,7 @@
+ 			try {
+ 				signal.throwIfAborted();
+ 				await this.ctx.sessions.flush(session);
+-				if (messageAccepted(session.snapshotEvents(session.inheritedEventCount), (message) => message.id === messageId)) return;
++				if (messageAccepted(session.snapshotEvents(), session.inheritedEventCount, (message) => message.id === messageId)) return;
+ 				if (this.ctx.sessions.get(childId) !== session) continue;
+ 				await progress.promise;
+ 			} finally {
+@@ -1123,7 +1140,7 @@
+ 				const loaded = await readPersistedSession(this.ctx.sessionPersistence, member.id, signal);
+ 				const suffix = loaded.events.slice(loaded.inheritedEventCount);
+ 				const descriptor = foldSubagentDescriptor(suffix);
+-				const acceptedInitialPrompt = messageAccepted(suffix, (message) => message.source.kind === "user");
++				const acceptedInitialPrompt = messageAccepted(loaded.events, loaded.inheritedEventCount, (message) => message.source.kind === "user");
+ 				if (loaded.header.parentSession === root.id && descriptor?.mode === "continuable" && descriptor.provider === member.provider && acceptedInitialPrompt) phase = "active";
+ 				else failure = "persisted child Session does not match the provisioned continuation";
+ 			} catch (error) {

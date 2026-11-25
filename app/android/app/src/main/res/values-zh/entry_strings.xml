@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launcher shortcuts and the Quick Settings tile (shortcuts/, tile/). Own file so other
+     modules' string edits never collide with it. -->
+<resources>
+    <string name="shortcut_new_chat">新对话</string>
+    <string name="shortcut_voice_input">语音输入</string>
+    <string name="tile_new_chat">新对话</string>
+    <string name="tradeloom_workbench_overlay">织贸工作台</string>
+    <string name="tradeloom_workbench_overlay_glyph">织</string>
+    <string name="tradeloom_workbench_overlay_enabled">工作台悬浮按钮已开启</string>
+</resources>

@@ -1,0 +1,8 @@
+{
+  "name": "dsh-univer-office",
+  "version": "0.3.9",
+  "title": {"zh": "表格与文档", "en": "Spreadsheets and documents"},
+  "summary": {"zh": "表格和文档的办公环境", "en": "An office environment for spreadsheets and documents"},
+  "category": "productivity",
+  "screenshots": []
+}

@@ -1,0 +1,10 @@
+{
+  "package": "tradeloom-read-only-mesh-0.1.2.tgz",
+  "archiveSha256": "b8a5bd60526760ddd3bdec94772445b86f94a3793d217a6f8076f339bbfba150",
+  "entrySha256": "708f4cc709a040e519a6151365dae996968517d3c51c7980604cac25019ba861",
+  "sourcePatchSha256": "36e0218bf72c238e342c36a71d8e72a742e754d109a025320a81efc30b10b1d2",
+  "upstream": "https://github.com/mini-yifan/dsh-mesh",
+  "upstreamCommit": "bc9a5d169563c8dc33ba8281e9271e944a82dfd8",
+  "candidateCommit": "9a92955c145020c968daa980df2d6704fcdcfa60",
+  "dshVersion": "0.2.2-rc.1"
+}

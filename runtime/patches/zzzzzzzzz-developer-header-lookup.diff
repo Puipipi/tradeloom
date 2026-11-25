@@ -1,0 +1,73 @@
+--- a/node_modules/@deepseek-ai/dsh-session/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-session/lib/index.js
+@@ -338,11 +338,29 @@
+ 	const headerSeq = event.data.headerSeq;
+ 	const headerEvent = events[headerSeq - baseSeq];
+ 	if (headerSeq >= event.seq || headerEvent?.type !== "request/header") throw new Error("developer/message headerSeq must reference an earlier request/header");
++	let additionCount = 0;
++	for (const block of event.data.message.content) {
++		if (block.type === "tool-addition" && ++additionCount === 2) break;
++	}
++	let definitionsByName;
++	if (additionCount > 1) {
++		definitionsByName = new Map();
++		// Like filter, forEach skips absent slots in public surface inputs.
++		headerEvent.data.header.tools?.forEach((tool) => {
++			definitionsByName.set(tool.name, definitionsByName.has(tool.name) ? null : tool);
++		});
++	}
+ 	for (const block of event.data.message.content) {
+ 		if (block.type !== "tool-addition") continue;
+-		const definitions = headerEvent.data.header.tools?.filter((tool) => tool.name === block.toolName) ?? [];
+-		if (definitions.length !== 1) throw new Error(`developer/message tool-addition "${block.toolName}" must name exactly one tool in headerSeq ${headerSeq}`);
+-		const definition = definitions[0];
++		let definition;
++		if (definitionsByName === void 0) {
++			const definitions = headerEvent.data.header.tools?.filter((tool) => tool.name === block.toolName) ?? [];
++			if (definitions.length !== 1) throw new Error(`developer/message tool-addition "${block.toolName}" must name exactly one tool in headerSeq ${headerSeq}`);
++			definition = definitions[0];
++		} else {
++			definition = definitionsByName.get(block.toolName);
++			if (definition == null) throw new Error(`developer/message tool-addition "${block.toolName}" must name exactly one tool in headerSeq ${headerSeq}`);
++		}
+ 		if (typeof definition.description !== "string" || !isRecord(definition.parameters)) throw new Error(`developer/message tool-addition "${block.toolName}" requires a complete tool definition in headerSeq ${headerSeq}`);
+ 		if (Object.hasOwn(definition, "deferLoading") && definition.deferLoading !== true) throw new Error("developer/message referenced tool deferLoading must be true when present");
+ 	}
+--- a/node_modules/@deepseek-ai/dsh-session/lib/types/surface.js
++++ b/node_modules/@deepseek-ai/dsh-session/lib/types/surface.js
+@@ -273,14 +273,30 @@
+     if (headerSeq >= event.seq || headerEvent?.type !== 'request/header') {
+         throw new Error('developer/message headerSeq must reference an earlier request/header');
+     }
++    let additionCount = 0;
++    for (const block of event.data.message.content) {
++        if (block.type === 'tool-addition' && ++additionCount === 2) break;
++    }
++    let definitionsByName;
++    if (additionCount > 1) {
++        definitionsByName = new Map();
++        // Like filter, forEach skips absent slots in public surface inputs.
++        headerEvent.data.header.tools?.forEach((tool) => {
++            definitionsByName.set(tool.name, definitionsByName.has(tool.name) ? null : tool);
++        });
++    }
+     for (const block of event.data.message.content) {
+         if (block.type !== 'tool-addition')
+             continue;
+-        const definitions = headerEvent.data.header.tools?.filter(tool => tool.name === block.toolName) ?? [];
+-        if (definitions.length !== 1) {
+-            throw new Error(`developer/message tool-addition "${block.toolName}" must name exactly one tool in headerSeq ${headerSeq}`);
+-        }
+-        const definition = definitions[0];
++        let definition;
++        if (definitionsByName === undefined) {
++            const definitions = headerEvent.data.header.tools?.filter((tool) => tool.name === block.toolName) ?? [];
++            if (definitions.length !== 1) throw new Error(`developer/message tool-addition "${block.toolName}" must name exactly one tool in headerSeq ${headerSeq}`);
++            definition = definitions[0];
++        } else {
++            definition = definitionsByName.get(block.toolName);
++            if (definition == null) throw new Error(`developer/message tool-addition "${block.toolName}" must name exactly one tool in headerSeq ${headerSeq}`);
++        }
+         if (typeof definition.description !== 'string' || !isRecord(definition.parameters)) {
+             throw new Error(`developer/message tool-addition "${block.toolName}" requires a complete tool definition in headerSeq ${headerSeq}`);
+         }

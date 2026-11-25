@@ -1,0 +1,48 @@
+# references cloned for study (not part of the project)
+.refs/
+# toolchain logs and screenshots
+tooling/*.log
+tooling/env.sh
+tooling/shots/
+# runtime build cache and outputs (large, reproducible via runtime/build-runtime.sh)
+runtime/.cache/
+runtime/out*/
+runtime/.work/
+runtime/.build-*.log
+# Dart / Flutter tool state
+**/.dart_tool/
+app/build/
+# Gradle writes reports (problems-report.html) here even though Flutter moves the build dir
+app/android/build/
+# build outputs never belong in git
+*.apk
+*.aab
+# golden-test failure dumps (flutter test writes them next to the goldens)
+**/test/**/failures/
+
+# local scratch (agent notes, review packets)
+# Licensed companion pack is supplied at build time, like the main release.
+app/assets/companion/whale-girl.zip
+.harness-tmp*/
+.claude/
+# bridge PDF extraction dependency; install from the committed npm lock
+runtime/bridge/dsh-go-bridge/node_modules/
+# the media plugin carries its own JS package
+runtime/media/dsh-media/node_modules/
+# the OHOS virtual process backend installs its pinned deps (npm ci) in place
+runtime/ohos/process/node_modules/
+# build-time esbuild for the OHOS Node build (runtime/ohos/node/BUILD.md)
+runtime/ohos/node/build-tools/node_modules/
+# Python bytecode from tooling/
+**/__pycache__/
+*.pyc
+app/test/promo_capture/
+site/build/
+
+# Release assets (tooling/release_assets.py)
+/dist/
+
+# Reproducible private OHOS rg regex build
+runtime/ohos/process/build/
+# NodeMobile, the runtime archive and addon sources: tooling/ios/prepare-engine.sh
+app/ios/Engine/

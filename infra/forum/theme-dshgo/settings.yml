@@ -1,0 +1,15 @@
+download_url:
+  type: string
+  default: ""
+  description: "「下载 dsh-go」按钮的地址（https）。留空则不显示这个按钮。"
+
+landing_urls:
+  type: list
+  list_type: simple
+  default: "https://go.dshtui.com/share/|https://ccch1mneyyy.github.io/dsh-go/share/"
+  description: "分享码网页落地页的地址（与 App 里 share_link.dart 的 shareLandingUrl 保持一致）。可填多个。"
+
+decorate_plain_text:
+  type: bool
+  default: true
+  description: "把正文里没有写成链接的 dshgo://share/… 文本也识别成卡片。"

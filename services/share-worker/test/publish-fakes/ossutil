@@ -1,0 +1,28 @@
+#!/usr/bin/env python3
+"""Fake ossutil 2.x for scripts/publish-smoke.mjs:
+  ossutil cp SRC oss://BUCKET/KEY -f --region R --content-type T --cache-control C -c CFG
+checks the config file publish-release.sh wrote (private, the right key), then
+copies SRC to $FAKE_CN_ROOT/KEY. Every call is logged to $FAKE_LOG."""
+import os
+import shutil
+import stat
+import sys
+
+args = sys.argv[1:]
+with open(os.environ["FAKE_LOG"], "a") as log:
+    log.write("ossutil " + " ".join(args) + "\n")
+assert args[0] == "cp", args
+src, dst = args[1], args[2]
+opt = lambda name: args[args.index(name) + 1]
+cfg = opt("-c")
+assert stat.S_IMODE(os.stat(cfg).st_mode) == 0o600, "config file not private"
+text = open(cfg).read()
+assert text.startswith("[default]\n"), text.splitlines()[0]
+assert f"accessKeyID = {os.environ['FAKE_KEY_ID']}\n" in text and f"accessKeySecret = {os.environ['FAKE_KEY_SECRET']}\n" in text, "wrong key"
+assert f"region = {os.environ['FAKE_REGION']}\n" in text and opt("--region") == os.environ["FAKE_REGION"]
+assert opt("--content-type") and opt("--cache-control") and "-f" in args
+prefix = f"oss://{os.environ['FAKE_BUCKET']}/"
+assert dst.startswith(prefix), dst
+out = os.path.join(os.environ["FAKE_CN_ROOT"], dst[len(prefix):])
+os.makedirs(os.path.dirname(out), exist_ok=True)
+shutil.copyfile(src, out)

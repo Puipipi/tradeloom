@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launcher shortcuts and the Quick Settings tile (shortcuts/, tile/). Own file so other
+     modules' string edits never collide with it. English here, Chinese in values-zh/. -->
+<resources>
+    <string name="shortcut_new_chat">New chat</string>
+    <string name="shortcut_voice_input">Voice input</string>
+    <string name="tile_new_chat">New chat</string>
+    <string name="tradeloom_workbench_overlay">TradeLoom Workbench</string>
+    <string name="tradeloom_workbench_overlay_glyph">TL</string>
+    <string name="tradeloom_workbench_overlay_enabled">Floating Workbench is on</string>
+</resources>

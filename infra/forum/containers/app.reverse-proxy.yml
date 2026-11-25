@@ -1,0 +1,113 @@
+## dsh-go 社区论坛（Discourse）容器配置 · 反向代理模式
+##
+## 用在服务器上已经有一个反向代理占着 80/443（nginx、Caddy、Traefik…）的情况：
+## Discourse 只在本机提供 HTTP，HTTPS 证书和 80→443 跳转都由现有代理负责。
+## 独占服务器、让 Discourse 自己签证书时，用同目录的 app.yml。
+##
+## 用法：复制成 /var/discourse/containers/app.yml（文件名决定容器名，
+## infra/forum/scripts/ 下的脚本默认找名为 app 的容器），然后
+##   cd /var/discourse && ./launcher rebuild app
+## 现有代理的配置示例见 docs/forum/deploy.md「3B 反向代理模式」。
+##
+## 所有需要你填的值都标成 <<FILL: 说明>>。YAML 对缩进很敏感：只改引号里的值。
+
+templates:
+  - "templates/postgres.template.yml"
+  - "templates/redis.template.yml"
+  - "templates/web.template.yml"
+  - "templates/web.ratelimited.template.yml"
+  ## 默认：通过 unix socket 对接现有代理（官方推荐的做法）。
+  ## 容器内的 nginx 改为监听 /shared/nginx.http.sock，
+  ## 宿主机上对应 /var/discourse/shared/standalone/nginx.http.sock，
+  ## 并信任 socket 另一端（现有代理）传来的 X-Real-IP，限流和日志才能拿到访客真实 IP。
+  - "templates/web.socketed.template.yml"
+  ## 不要加 web.ssl / web.letsencrypt.ssl：TLS 由现有代理终止。
+
+## socket 模式不需要映射端口。
+## 改用端口模式时（现有代理连不了 unix socket，或者代理跑在别的容器里）：
+##   1. 删掉上面的 web.socketed 一行；
+##   2. 取消下面两行注释，只绑定到 127.0.0.1，别把 Discourse 直接暴露到公网；
+##   3. 现有代理转发到 http://127.0.0.1:8080。
+#expose:
+#  - "127.0.0.1:8080:80"
+
+params:
+  ## 中文检索由 Discourse 按 default_locale 自动处理，这里保持官方默认
+  db_default_text_search_config: "pg_catalog.english"
+
+  ## PostgreSQL 共享缓冲区，官方建议不超过总内存的 25%
+  ##   2 GB：256MB（默认）    4 GB：1024MB
+  ##   15 GB 且与其他服务共用：1024MB–2048MB（给其他服务留足内存）
+  db_shared_buffers: "256MB"
+
+  ## 上传大小上限（容器内 nginx 的 client_max_body_size）。
+  ## 现有代理的上限要 ≥ 这里；想在后台网页上传备份文件来恢复，就调大到 1024m 之类
+  #upload_size: 10m
+
+  #version: latest
+
+env:
+  LC_ALL: en_US.UTF-8
+  LANG: en_US.UTF-8
+  LANGUAGE: en_US.UTF-8
+
+  ## 站点默认语言（锁定，后台不可改）；zh_CN 自动启用中文分词搜索和中文的长度默认值
+  DISCOURSE_DEFAULT_LOCALE: zh_CN
+
+  ## Web 进程数，不超过 CPU 核数 × 2
+  ##   2 GB：2    4 GB：3–4    15 GB 共用：4（核数多可到 6）
+  UNICORN_WORKERS: 2
+
+  ## 对外访问用的域名，必须与现有代理上配置的域名完全一致
+  DISCOURSE_HOSTNAME: "<<FILL: 论坛域名，如 forum.dshtui.com>>"
+
+  ## 访客走的是 https（由现有代理终止）。必须开：
+  ## 它决定 Discourse 生成的链接、邮件里的链接、OAuth 回调地址都用 https，
+  ## 并给登录 Cookie 加 Secure。官方 web.letsencrypt.ssl 模板也是设这一项。
+  DISCOURSE_FORCE_HTTPS: true
+
+  ## 管理员邮箱（逗号分隔），用这些邮箱注册的账号自动成为管理员
+  DISCOURSE_DEVELOPER_EMAILS: "<<FILL: 你的邮箱>>"
+
+  ## ── 邮件 ─────────────────────────────────────────────────────────
+  DISCOURSE_SMTP_ADDRESS: "<<FILL: SMTP 服务器>>"
+  DISCOURSE_SMTP_PORT: 587
+  DISCOURSE_SMTP_USER_NAME: "<<FILL: SMTP 用户名>>"
+  DISCOURSE_SMTP_PASSWORD: "<<FILL: SMTP 密码>>"
+  DISCOURSE_SMTP_ENABLE_START_TLS: true
+  #DISCOURSE_SMTP_FORCE_TLS: true
+  DISCOURSE_NOTIFICATION_EMAIL: "<<FILL: 发件地址，如 noreply@forum.dshtui.com>>"
+  ## 还没有 SMTP 时可以先跳过构建时的邮件检查（之后补上再 rebuild）
+  #DISCOURSE_SKIP_EMAIL_SETUP: "1"
+
+  #DISCOURSE_MAX_USER_API_REQS_PER_MINUTE: 50
+  #DISCOURSE_MAX_USER_API_REQS_PER_DAY: 4000
+
+volumes:
+  - volume:
+      host: /var/discourse/shared/standalone
+      guest: /shared
+  - volume:
+      host: /var/discourse/shared/standalone/log/var-log
+      guest: /var/log
+
+## 插件：oauth2-basic、openid-connect、solved、reactions、chat 已内置于核心，不要再 clone
+hooks:
+  after_code:
+    - exec:
+        cd: $home/plugins
+        cmd:
+          - git clone https://github.com/discourse/docker_manager.git
+
+run:
+  - exec: echo "Beginning of custom commands"
+  ## 端口模式下，现有代理的请求经 Docker 网桥到达，来源地址是网桥网关（172.x）。
+  ## 信任这些私有网段传来的 X-Real-IP（nginx 默认就读这个头），限流和日志才能看到访客真实 IP。
+  ## socket 模式用不到它，留着也无害。
+  - file:
+      path: /etc/nginx/conf.d/outlets/server/15-real-ip-from-proxy.conf
+      contents: |
+        set_real_ip_from 172.16.0.0/12;
+        set_real_ip_from 10.0.0.0/8;
+        set_real_ip_from 192.168.0.0/16;
+  - exec: echo "End of custom commands"

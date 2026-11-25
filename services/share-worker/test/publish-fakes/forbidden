@@ -1,0 +1,6 @@
+#!/bin/sh
+# Linked as curl, rclone, npx, gh, ossutil and coscli for the dry runs in
+# scripts/publish-smoke.mjs: a dry run must not run any of them.
+echo "$(basename "$0") $*" >>"$FAKE_LOG"
+echo "dry run ran $(basename "$0")" >&2
+exit 97

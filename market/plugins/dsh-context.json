@@ -1,0 +1,14 @@
+{
+  "name": "dsh-context",
+  "version": "0.78.2",
+  "title": {
+    "zh": "上下文管理",
+    "en": "Context"
+  },
+  "summary": {
+    "zh": "看清并管理上下文用量",
+    "en": "Inspect and manage context usage"
+  },
+  "category": "tools",
+  "screenshots": []
+}

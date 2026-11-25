@@ -1,0 +1,28 @@
+--- a/node_modules/@deepseek-ai/dsh-file-reference-local/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-file-reference-local/lib/index.js
+@@ -246,9 +246,10 @@
+ 	return !path.split("/").some((segment) => segment.startsWith("."));
+ }
+ function rankCandidates(candidates, query, limit) {
++	const needle = query === "" ? "" : query.toLowerCase();
+ 	const ranked = [];
+ 	for (const candidate of candidates) {
+-		const score = scoreCandidate(candidate, query);
++		const score = scoreCandidate(candidate, needle);
+ 		if (score !== void 0) ranked.push({
+ 			candidate,
+ 			score
+@@ -257,11 +258,10 @@
+ 	ranked.sort((left, right) => right.score - left.score || kindRank(left.candidate.kind) - kindRank(right.candidate.kind) || (query === "" ? 0 : left.candidate.path.length - right.candidate.path.length) || compareText(left.candidate.path, right.candidate.path));
+ 	return ranked.slice(0, limit).map((entry) => entry.candidate);
+ }
+-function scoreCandidate(candidate, query) {
+-	if (query === "") return 0;
++function scoreCandidate(candidate, needle) {
++	if (needle === "") return 0;
+ 	const path = candidate.path.toLowerCase();
+ 	const name = path.slice(path.lastIndexOf("/") + 1);
+-	const needle = query.toLowerCase();
+ 	const directoryBonus = candidate.kind === "directory" ? 25 : 0;
+ 	if (name === needle) return 1e3 + directoryBonus;
+ 	if (name.startsWith(needle)) return 900 + directoryBonus;

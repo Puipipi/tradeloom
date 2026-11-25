@@ -1,0 +1,12 @@
+--- a/node_modules/@deepseek-ai/dsh-mcp-resources/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-mcp-resources/lib/index.js
+@@ -172,7 +172,8 @@
+ 	}
+ 	/** Resolve the caller-visible server before starting any network operation. */
+ 	request(server, request, exec) {
+-		const provider = this.layers.merge(exec.agent, (layer) => layer.servers).get(server);
++		const layer = this.layers.chainLayers(exec.agent).reverse().find((layer) => layer.servers.has(server));
++		const provider = (layer ?? this.layers.global).servers.get(server);
+ 		if (!provider) throw new Error(`MCP resource server "${server}" is unavailable in this agent's scope`);
+ 		return provider.request(request, exec);
+ 	}

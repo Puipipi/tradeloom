@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Dark launcher: 雾蓝's dark container and its on-container tone. -->
+<resources>
+    <color name="shortcut_icon_background">#FF2E3C5F</color>
+    <color name="shortcut_icon_glyph">#FFD8E1F6</color>
+</resources>

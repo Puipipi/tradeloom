@@ -1,0 +1,18 @@
+diff --git a/node_modules/@deepseek-ai/cordis-plugin-loader/lib/index.js b/node_modules/@deepseek-ai/cordis-plugin-loader/lib/index.js
+index 701496a..adc8157 100644
+--- a/node_modules/@deepseek-ai/cordis-plugin-loader/lib/index.js
++++ b/node_modules/@deepseek-ai/cordis-plugin-loader/lib/index.js
+@@ -585,8 +585,13 @@ var Entry = class Entry {
+ 			this.ctx.logger.error(error);
+ 			return;
+ 		}
++		// Import and patch-context hooks may finish after this entry was disabled or removed.
++		if (this.parent.tree.store[this.options.id] !== this || this.disabled) return;
++		this.parent.ctx.fiber.assertActive();
+ 		const plugin = this.loader.unwrapExports(moduleNamespace);
+ 		await this._patchContext([]);
++		if (this.parent.tree.store[this.options.id] !== this || this.disabled) return;
++		this.parent.ctx.fiber.assertActive();
+ 		this.loader.showLog(this, "apply");
+ 		this.fiber = this.ctx.registry.plugin(plugin, this.options.config, this.getOuterStack);
+ 		this.moduleNamespace = moduleNamespace;

@@ -1,0 +1,27 @@
+--- a/node_modules/@deepseek-ai/dsh-api-workspace-files/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-api-workspace-files/lib/index.js
+@@ -61,6 +61,7 @@
+ 				throw error;
+ 			});
+ 			if (target === void 0 || aborted()) return;
++			follower.targetKey = target.targetKey;
+ 			const stat = async () => {
+ 				const info = await this.ctx.fs.stat(target, signal).catch((error) => {
+ 					if (aborted()) return void 0;
+@@ -110,6 +111,7 @@
+ /** One generation's queue: observations wait here until its consumer pulls them. */
+ var ChangeFollower = class {
+ 	release;
++	targetKey;
+ 	controller = new AbortController();
+ 	initialized = Promise.withResolvers();
+ 	error;
+@@ -125,7 +127,7 @@
+ 		return this.closed;
+ 	}
+ 	push(observed) {
+-		if (this.closed) return;
++		if (this.closed || this.targetKey !== void 0 && observed[0].targetKey !== this.targetKey) return;
+ 		this.queue.pushBack(observed);
+ 		this.wake?.();
+ 	}

@@ -1,0 +1,104 @@
+--- a/node_modules/@deepseek-ai/dsh-session-query-sqlite/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-session-query-sqlite/lib/index.js
+@@ -323,47 +323,61 @@
+ * @returns bounded plain-text snippet.
+ */
+ function makeSnippet(markedText, maxChars) {
+-	const { text: clean, matchStart } = normalizeMarkedText(markedText);
+-	const characters = Array.from(clean);
+-	if (characters.length <= maxChars) return clean;
++	const first = [];
++	const tail = [];
++	const capacity = 2 * maxChars + 4;
++	let length = 0;
++	let lastSpace = false;
++	let matchStart;
++	const at = (index) => index < first.length ? first[index] : tail[index % capacity];
++	const slice = (start, end) => {
++		const result = [];
++		for (let index = start; index < end; index++) result.push(at(index));
++		return result.join("");
++	};
++	const window = () => {
++		const matchedIndex = Math.min(matchStart ?? 0, length - 1);
++		let start = Math.max(0, matchedIndex - Math.floor(maxChars / 3));
++		const prefix = start > 0 ? "…" : "";
++		let suffix = "…";
++		let contentLength = maxChars - prefix.length - suffix.length;
++		if (contentLength < 1) {
++			start = matchedIndex;
++			suffix = "";
++			contentLength = maxChars - prefix.length;
++		} else if (matchedIndex >= start + contentLength) start = matchedIndex - contentLength + 1;
++		let end = Math.min(length, start + contentLength);
++		if (end === length) {
++			suffix = "";
++			contentLength = maxChars - prefix.length;
++			start = Math.max(0, end - contentLength);
++		}
++		end = Math.min(length, start + contentLength);
++		return { start, end, prefix, suffix };
++	};
++	const render = ({start, end, prefix, suffix}) => `${prefix}${slice(start, end)}${suffix}`;
++	for (const character of markedText) {
++		if (character === "﷐") { matchStart ??= length; continue; }
++		if (character === "﷑") continue;
++		const whitespace = /\s/u.test(character);
++		if (whitespace && (length === 0 || lastSpace)) continue;
++		const normalized = whitespace ? " " : character;
++		if (first.length < maxChars) first.push(normalized);
++		tail[length % capacity] = normalized;
++		length++;
++		lastSpace = whitespace;
++		if (!whitespace && length > maxChars) {
++			if (maxChars === 1) return "…";
++			if (matchStart !== void 0 && matchStart < length) {
++				const selected = window();
++				if (selected.end < length) return render(selected);
++			}
++		}
++	}
++	if (lastSpace) length--;
++	if (length <= maxChars) return slice(0, length);
+ 	if (maxChars === 1) return "…";
+-	const matchedIndex = Math.min(matchStart, characters.length - 1);
+-	let start = Math.max(0, matchedIndex - Math.floor(maxChars / 3));
+-	const prefix = start > 0 ? "…" : "";
+-	let suffix = "…";
+-	let contentLength = maxChars - prefix.length - suffix.length;
+-	if (contentLength < 1) {
+-		start = matchedIndex;
+-		suffix = "";
+-		contentLength = maxChars - prefix.length - suffix.length;
+-	} else if (matchedIndex >= start + contentLength) start = matchedIndex - contentLength + 1;
+-	let end = Math.min(characters.length, start + contentLength);
+-	if (end === characters.length) {
+-		suffix = "";
+-		contentLength = maxChars - prefix.length;
+-		start = Math.max(0, end - contentLength);
+-	}
+-	end = Math.min(characters.length, start + contentLength);
+-	return `${prefix}${characters.slice(start, end).join("")}${suffix}`;
+-}
+-function normalizeMarkedText(markedText) {
+-	const characters = [];
+-	let matchStart;
+-	for (const character of markedText) {
+-		if (character === "﷐") {
+-			matchStart ??= characters.length;
+-			continue;
+-		}
+-		if (character === "﷑") continue;
+-		if (/\s/u.test(character)) {
+-			if (characters.length > 0 && characters.at(-1) !== " ") characters.push(" ");
+-		} else characters.push(character);
+-	}
+-	if (characters.at(-1) === " ") characters.pop();
+-	return {
+-		text: characters.join(""),
+-		matchStart: matchStart ?? 0
+-	};
++	return render(window());
+ }
+ function normalizeQuery(value) {
+ 	if (typeof value !== "string") throw new SessionQueryError("session-search query must be text", "SESSION_QUERY_INVALID_QUERY");

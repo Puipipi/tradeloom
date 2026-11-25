@@ -1,0 +1,16 @@
+--- a/node_modules/@deepseek-ai/dsh-tool-str-replace-editor/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-tool-str-replace-editor/lib/index.js
+@@ -101,8 +101,11 @@
+ 		lines = finalLine === -1 ? allLines.slice(initialLine - 1) : allLines.slice(initialLine - 1, finalLine);
+ 		prompt += ` with view_range=[${initialLine}, ${finalLine}]`;
+ 	}
+-	const numbered = lines.map((line, index) => `${String(initialLine + index).padStart(6, " ")}  ${line}`).join("\n");
+-	return maybeTruncate(`${prompt}:\n${numbered}\n`, maxOutputChars);
++	let output = `${prompt}:\n`;
++	for (let index = 0; index < lines.length && output.length <= maxOutputChars; index++) {
++		output += `${String(initialLine + index).padStart(6, " ")}  ${lines[index]}\n`;
++	}
++	return maybeTruncate(output, maxOutputChars);
+ }
+ async function listDirectory(ctx, target, maxOutputChars, exec) {
+ 	async function visit(dir, depth) {

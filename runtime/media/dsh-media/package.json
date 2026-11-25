@@ -1,0 +1,73 @@
+{
+  "name": "@ccch1mneyyy/dsh-media",
+  "version": "0.3.0",
+  "description": "DeepSeek Harness 图片生成、编辑与后台视频生成；DSH Go 媒体协议 v1",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./config": "./src/config.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src/index.js",
+    "src/config.js",
+    "src/adapters.js",
+    "src/media-engine.js",
+    "src/video.js",
+    "src/budget.js",
+    "src/budget-ledger.js",
+    "src/http.js",
+    "src/storage.js",
+    "src/stream-staging.js",
+    "src/core.js",
+    "src/base64.js",
+    "src/errors.js",
+    "src/header.js",
+    "data/models.json",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "test:headless": "TZ=Asia/Shanghai node test/headless-v2/run.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@deepseek-ai/schemastery": "3.18.5 || 3.19.0",
+    "@deepseek-ai/dsh-home-paths": "0.2.1-rc.4 || 0.2.2-rc.1",
+    "image-size": "2.0.2"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-atomic-write": "0.2.1-rc.4 || 0.2.2-rc.1",
+    "@deepseek-ai/cordis": "4.0.5 || 4.1.0",
+    "@deepseek-ai/dsh-credentials": "0.2.1-rc.4 || 0.2.2-rc.1",
+    "@deepseek-ai/dsh-tools": "0.2.1-rc.4 || 0.2.2-rc.1",
+    "@deepseek-ai/dsh-fs": "0.2.1-rc.4 || 0.2.2-rc.1",
+    "@deepseek-ai/dsh-working-directory": "0.2.1-rc.4 || 0.2.2-rc.1",
+    "@deepseek-ai/dsh-sandbox-policy": "0.2.1-rc.4 || 0.2.2-rc.1",
+    "@deepseek-ai/dsh-system-prompt": "0.2.1-rc.4 || 0.2.2-rc.1",
+    "@deepseek-ai/dsh-jobs": "0.2.1-rc.4 || 0.2.2-rc.1",
+    "@deepseek-ai/dsh-user-approval": "0.2.1-rc.4 || 0.2.2-rc.1"
+  },
+  "devDependencies": {
+    "@deepseek-ai/dsh-settings": "0.2.1-rc.4 || 0.2.2-rc.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dshGo": {
+    "v": 1,
+    "minApp": "1.0.2",
+    "contributes": {}
+  }
+}

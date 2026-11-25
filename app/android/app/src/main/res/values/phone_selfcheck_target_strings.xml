@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="phone_selfcheck_target_title">Local phone self-check</string>
+    <string name="phone_selfcheck_target_tap">Increment test counter</string>
+    <string name="phone_selfcheck_target_input">Fixed text replacement test</string>
+    <string name="phone_selfcheck_target_pattern">Local test pixel pattern</string>
+</resources>

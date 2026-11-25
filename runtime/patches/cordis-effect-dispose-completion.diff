@@ -1,0 +1,35 @@
+--- a/node_modules/@deepseek-ai/cordis/lib/index.js
++++ b/node_modules/@deepseek-ai/cordis/lib/index.js
+@@ -470,12 +470,26 @@
+ 			if (disposing) return disposalTask;
+ 			disposing = true;
+ 			let task;
+-			for (const disposable of disposables.splice(0).reverse()) if (task) task = task.then(() => runDisposable(disposable));
+-			else {
+-				const result = runDisposable(disposable);
+-				if (isObject(result) && "then" in result) task = result;
+-			}
+-			return disposalTask = task;
++			let failed = false;
++			let firstError;
++			const capture = (error) => {
++				if (!failed) firstError = error;
++				failed = true;
++			};
++			const run = (disposable) => {
++				try {
++					const result = runDisposable(disposable);
++					if (isObject(result) && "then" in result) return Promise.resolve(result).catch(capture);
++				} catch (error) {
++					capture(error);
++				}
++			};
++			// Finish every owned cleanup in LIFO order before rethrowing the first error.
++			for (const disposable of disposables.splice(0).reverse()) if (task) task = task.then(() => run(disposable));
++			else task = run(disposable);
++			const finish = () => { if (failed) throw firstError; };
++			if (task) return disposalTask = task.then(finish);
++			finish();
+ 		};
+ 		const meta = {
+ 			label,

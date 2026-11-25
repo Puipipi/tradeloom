@@ -1,0 +1,28 @@
+--- a/node_modules/@deepseek-ai/dsh-session-reference/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-session-reference/lib/index.js
+@@ -198,7 +198,7 @@
+ 			text: removed.text
+ 		}), "utf8") + 1;
+ 	}
+-	while (size() > maxBytes) {
++	while (renderedBytes > maxBytes) {
+ 		let longestIndex = -1;
+ 		let longestBytes = 0;
+ 		for (const [index, item] of retained.entries()) {
+@@ -209,7 +209,7 @@
+ 			}
+ 		}
+ 		if (longestIndex < 0 || longestBytes === 0) return void 0;
+-		const overflow = size() - maxBytes;
++		const overflow = renderedBytes - maxBytes;
+ 		const target = Math.max(0, longestBytes - overflow);
+ 		const item = retained[longestIndex];
+ 		/* v8 ignore next 3 -- longestIndex was selected from this exact array's entries. */
+@@ -222,6 +222,7 @@
+ 			text: shortened.text,
+ 			omittedBytes: shortened.omittedBytes
+ 		};
++		renderedBytes = size();
+ 	}
+ 	const compacted = original.some((item) => item.checkpoint);
+ 	const omittedBytes = retained.reduce((sum, item) => sum + item.omittedBytes, 0) + droppedOmittedBytes;

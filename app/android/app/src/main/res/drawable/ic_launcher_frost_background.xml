@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launcher background, 霜白 (frost): the default icon's diagonal (ic_launcher_background.xml)
+     in this variant's colours. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:pathData="M0,0h108v108h-108z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="7.57"
+                android:startY="-5.87"
+                android:endX="100.43"
+                android:endY="113.87">
+                <item android:offset="0" android:color="#FFFCFDFF" />
+                <item android:offset="1" android:color="#FFDDE5F8" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>

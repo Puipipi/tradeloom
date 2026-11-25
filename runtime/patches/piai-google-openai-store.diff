@@ -1,0 +1,30 @@
+--- a/node_modules/@earendil-works/pi-ai/dist/api/openai-completions.js
++++ b/node_modules/@earendil-works/pi-ai/dist/api/openai-completions.js
+@@ -1230,6 +1230,18 @@
+     const isAntLing = provider === "ant-ling" || baseUrl.includes("api.ant-ling.com");
+     const isCerebras = provider === "cerebras" || baseUrl.includes("cerebras.ai");
+     const isDeepSeek = provider === "deepseek" || baseUrl.toLowerCase().includes("deepseek.com");
++    // Google's documented OpenAI endpoint rejects the optional store field.
++    // Keep other compatibility defaults and explicit model.compat overrides.
++    let isGoogleOpenAI = false;
++    try {
++        const url = new URL(baseUrl);
++        isGoogleOpenAI = url.protocol === "https:" &&
++            url.hostname === "generativelanguage.googleapis.com" && url.port === "" &&
++            (url.pathname === "/v1beta/openai" || url.pathname === "/v1beta/openai/");
++    }
++    catch {
++        // Leave invalid URL handling to the existing client path.
++    }
+     const isNonStandard = isNvidia ||
+         isCerebras ||
+         provider === "xai" ||
+@@ -1256,7 +1268,7 @@
+     const isOpenRouterDeveloperRoleModel = isOpenRouter && (model.id.startsWith("anthropic/") || model.id.startsWith("openai/"));
+     const cacheControlFormat = provider === "openrouter" && model.id.startsWith("anthropic/") ? "anthropic" : undefined;
+     return {
+-        supportsStore: !isNonStandard,
++        supportsStore: !isNonStandard && !isGoogleOpenAI,
+         supportsDeveloperRole: isOpenRouterDeveloperRoleModel || (!isNonStandard && !isOpenRouter),
+         supportsReasoningEffort: !isGrok && !isZai && !isMoonshot && !isTogether && !isCloudflareAiGateway && !isNvidia && !isAntLing,
+         supportsUsageInStreaming: true,

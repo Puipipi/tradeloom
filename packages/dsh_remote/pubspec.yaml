@@ -1,0 +1,24 @@
+name: dsh_remote
+description: >-
+  Pure-Dart client for ds-harness-remote (liguobao, MIT): account login,
+  device identity, Host list with key pinning, Noise IK secure channel over
+  the WebSocket Relay, and a dsh_client carrier so a remote Host's Harness API
+  is reachable through the same DshClient API as the local engine.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.11.0
+
+executables:
+  remote_probe: remote_probe
+
+dependencies:
+  dsh_client:
+    path: ../dsh_client
+  cryptography: ^2.9.0
+  crypto: ^3.0.6
+
+dev_dependencies:
+  lints: ^6.0.0
+  test: ^1.26.0

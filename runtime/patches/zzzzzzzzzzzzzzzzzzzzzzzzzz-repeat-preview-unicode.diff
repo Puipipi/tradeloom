@@ -1,0 +1,15 @@
+--- a/node_modules/@deepseek-ai/dsh-repeat-tool-reminder/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-repeat-tool-reminder/lib/index.js
+@@ -2179,7 +2179,11 @@
+ */
+ function previewArguments(canonical, cap) {
+ 	if (canonical.length <= cap) return canonical;
+-	return `${canonical.slice(0, cap)}… (+${canonical.length - cap} more chars)`;
++	let end = cap;
++	const before = canonical.charCodeAt(end - 1);
++	const after = canonical.charCodeAt(end);
++	if (before >= 0xD800 && before <= 0xDBFF && after >= 0xDC00 && after <= 0xDFFF) end -= 1;
++	return `${canonical.slice(0, end)}… (+${canonical.length - end} more chars)`;
+ }
+ /**
+ * Validate `thresholds` per the fail-loud contract and return them sorted

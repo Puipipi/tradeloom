@@ -1,0 +1,31 @@
+# DSH 0.2.2-rc.1: use the boot patch parser for ConfigEditor preflight.
+--- a/node_modules/@deepseek-ai/dsh-app-boot/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-app-boot/lib/index.js
+@@ -5312,4 +5312,4 @@
+ 	}
+ }
+ //#endregion
+-export { FAIL_LOUD_RELEASE_TIMEOUT_MS, LOADER_EXPRESSION_SCHEMA, PROFILES_DIR, PROFILE_COMPATIBILITY_FILENAME, PROFILE_PATCH_FILENAME, PluginPackages, ProfileRuntimeResolution, ResolutionRestartRequired, StartupError, UnsupportedBundlePlatformError, assertBundlePlatform, auditStartupEntries, boot, bundlePatchFiles, bundlePatchPaths, composeEntries, createConfigProjector, createRuntimeResolution, evaluatePluginCompatibility, generateConfigSchema, getDshRuntimeVersion, initProfile, installFailLoud, isNativeConfigSchema, loadEnv, loadLayeredEnv, loadOptionalPatches, loadOverlayPatches, loadProfile, loadProfileDirectory, mountRootInclude, pluginCompatibilityWarning, prepareProfileEntries, prepareProfilePatches, readBundlePatches, readPluginMeta, readProfileCompatibility, readProfileManifest, readProfilePatches, readProfilePlugins, readProfileVersionExemptions, recomposeProfile, reconcileProfilePatches, reconcileProfilePlugins, removeLinkProjections, renderConfigDump, reportSkippedBundles, resolveBundleDir, resolveConfigPath, resolvePluginResource, resolveProfileDir, resolveTelemetryPatch, sanitizeProfile, setProfileVersionExemption, validatePluginVersionExemption, writeProfileBundles, writeProfileManifest };
++export { FAIL_LOUD_RELEASE_TIMEOUT_MS, LOADER_EXPRESSION_SCHEMA, PROFILES_DIR, PROFILE_COMPATIBILITY_FILENAME, PROFILE_PATCH_FILENAME, PluginPackages, ProfileRuntimeResolution, ResolutionRestartRequired, StartupError, UnsupportedBundlePlatformError, assertBundlePlatform, auditStartupEntries, boot, bundlePatchFiles, bundlePatchPaths, composeEntries, createConfigProjector, createRuntimeResolution, evaluatePluginCompatibility, generateConfigSchema, getDshRuntimeVersion, initProfile, installFailLoud, isNativeConfigSchema, loadEnv, loadLayeredEnv, loadOptionalPatches, loadOverlayPatches, parsePatchList, loadProfile, loadProfileDirectory, mountRootInclude, pluginCompatibilityWarning, prepareProfileEntries, prepareProfilePatches, readBundlePatches, readPluginMeta, readProfileCompatibility, readProfileManifest, readProfilePatches, readProfilePlugins, readProfileVersionExemptions, recomposeProfile, reconcileProfilePatches, reconcileProfilePlugins, removeLinkProjections, renderConfigDump, reportSkippedBundles, resolveBundleDir, resolveConfigPath, resolvePluginResource, resolveProfileDir, resolveTelemetryPatch, sanitizeProfile, setProfileVersionExemption, validatePluginVersionExemption, writeProfileBundles, writeProfileManifest };
+--- a/node_modules/@deepseek-ai/dsh-config-editor/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-config-editor/lib/index.js
+@@ -2,9 +2,7 @@
+ import { join } from "node:path";
+ import { isDeepStrictEqual } from "node:util";
+ import { Service } from "@deepseek-ai/cordis";
+-import { entryListSchema } from "@deepseek-ai/cordis-plugin-include";
+-import yaml from "js-yaml";
+-import { composeEntries, loadProfileDirectory, readProfilePatches, reconcileProfilePatches } from "@deepseek-ai/dsh-app-boot";
++import { composeEntries, loadProfileDirectory, parsePatchList, readProfilePatches, reconcileProfilePatches } from "@deepseek-ai/dsh-app-boot";
+ import { withFileLock, writeFileAtomic } from "@deepseek-ai/dsh-atomic-write";
+ import { Scalar, isMap, isSeq, parseDocument, visit } from "yaml";
+ //#region lib/types/index.js
+@@ -116,7 +114,7 @@
+ 				const profile = this.ownerContext.profileContext;
+ 				const patches = readProfilePatches("dsh", profile, {
+ 					...loadProfileDirectory("dsh", profile.dir, profile.installAnchor),
+-					patches: yaml.load(String(document), { schema: entryListSchema })
++					patches: parsePatchList("dsh", path, String(document), "patches")
+ 				});
+ 				if (!isDeepStrictEqual(flatten(composeEntries([patches])).find((row) => row.id === entry.options.id)?.config ?? {}, next)) throw new Error(`Configuration for "${entry.options.id}" is overridden by a home patch or command-line overlay`);
+ 				await writeFileAtomic(path, String(document), { mode: 384 });

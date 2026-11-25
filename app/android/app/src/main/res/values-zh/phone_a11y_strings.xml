@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings of the phone-control accessibility service (phone/a11y). Own file so other
+     modules' string edits never collide with it. -->
+<resources>
+    <string name="phone_a11y_label">DSH 手机操控</string>
+    <string name="phone_a11y_description">只在你让 DSH 做手机上的事时工作：读取当前屏幕上的文字（必要时截图），并按你的要求点击、输入、滑动。屏幕内容会发送给你在 DSH 里选择的 DeepSeek 模型。操作时屏幕上方有悬浮条，可以随时暂停、停止或插话；发送、付款、删除这类动作会先问你。DSH 不会代填密码和验证码，不会替你付款，也不会改系统设置和权限。</string>
+    <!-- 悬浮条的小球、胶囊和卡片（phone/a11y/OverlayBall.kt、OverlayCapsule.kt），见 docs/design/phone-overlay.md。 -->
+    <string name="overlay_ball_running">DSH 正在操作手机，点按展开，按住停止</string>
+    <string name="overlay_ball_paused">已暂停，点按展开，按住停止</string>
+    <string name="overlay_ball_waiting">DSH 在等你确认，点按展开</string>
+    <string name="overlay_ball_stopped">已停止</string>
+    <string name="overlay_collapse">收起详情</string>
+    <string name="overlay_expand">展开详情</string>
+    <string name="overlay_fold">收成小球</string>
+    <string name="overlay_fold_row">收成小球</string>
+    <string name="overlay_hold_hint">按住暂停键或小球 1 秒可直接停止</string>
+    <string name="overlay_thought">DSH 的想法</string>
+    <string name="overlay_stop_description">停止 DSH 的操作</string>
+    <string name="overlay_back_description">回到 DSH Go</string>
+    <string name="overlay_stop_row">停止</string>
+    <string name="overlay_step">第 %1$d 步</string>
+    <string name="overlay_dsh_working">DSH 正在操作</string>
+    <string name="overlay_screen_view">后台屏画面，仅供查看。点按切换大小</string>
+    <string name="overlay_screen_minimize">最小化后台屏画面</string>
+    <string name="overlay_screen_restore">后台屏画面已最小化。点按展开</string>
+    <string name="overlay_move_left">移到左侧</string>
+    <string name="overlay_move_centre">移到中间</string>
+    <string name="overlay_move_right">移到右侧</string>
+    <string name="overlay_paused_short">已暂停</string>
+    <string name="overlay_waiting">等你在下方确认</string>
+    <string name="overlay_waived">免确认</string>
+    <string name="overlay_meta_separator">" · "</string>
+    <string name="overlay_unlocks_review">查看</string>
+    <string name="overlay_unlock_system">系统设置</string>
+    <string name="overlay_unlock_secrets">密码和验证码</string>
+    <string name="overlay_unlock_own_app">DSH Go 自身</string>
+    <string name="overlay_list_separator">、</string>
+    <string name="overlay_preview_waiting">等待后台屏画面…</string>
+    <string name="overlay_preview_protected">受保护的画面，已隐藏预览</string>
+    <string name="overlay_preview_unavailable">暂时无法预览后台屏</string>
+    <string name="overlay_control_rejected">任务未接受这次操作。</string>
+    <string name="overlay_steer_rejected">未发送。任务已不能接受这条插话，文字已保留。</string>
+    <string name="overlay_preview_in_use">正在预览另一任务</string>
+    <string name="background_parallel_limit_invalid">后台任务上限须为 1、2 或 3。</string>
+    <string name="background_parallel_limit_save_failed">后台任务上限保存失败，请重试。</string>
+</resources>

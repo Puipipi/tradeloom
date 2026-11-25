@@ -1,0 +1,20 @@
+--- a/node_modules/@deepseek-ai/dsh-spill-local/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-spill-local/lib/index.js
+@@ -94,9 +94,14 @@
+ 		}
+ 	}
+ 	try {
+-		await handle.writeFile(options.content);
+-	} finally {
+-		await handle.close();
++		try {
++			await handle.writeFile(options.content);
++		} finally {
++			await handle.close();
++		}
++	} catch (error) {
++		await unlink(path);
++		throw error;
+ 	}
+ 	return {
+ 		path,

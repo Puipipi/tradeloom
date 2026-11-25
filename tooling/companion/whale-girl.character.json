@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "whale-girl",
+  "name": "鲸鱼娘",
+  "model": "newfish.model3.json",
+  "author": "Mao绒绒家园",
+  "license": "经作者授权随 DSH Go 分发",
+  "source": "哔哩哔哩",
+  "framing": { "zoom": 0.86, "y": 0.06 },
+  "tail": [
+    "Param_Angle_Rotation_2_ArtMesh367",
+    "Param_Angle_Rotation_3_ArtMesh367",
+    "Param_Angle_Rotation_4_ArtMesh367",
+    "Param_Angle_Rotation_5_ArtMesh367",
+    "Param_Angle_Rotation_6_ArtMesh367"
+  ],
+  "zones": [
+    { "id": "tail", "from": 0.535, "to": 0.68, "xFrom": 0.21 },
+    { "id": "head", "from": 0.02, "to": 0.19 },
+    { "id": "face", "from": 0.19, "to": 0.26 },
+    { "id": "body", "from": 0.26, "to": 0.68 },
+    { "id": "legs", "from": 0.68, "to": 0.96 }
+  ],
+  "emotions": {
+    "happy": { "expression": "02 龇牙", "face": { "ParamEyeSmile": 0.7 } },
+    "shy": { "expression": "04 脸红", "face": { "ParamEyeSmile": 0.2 }, "gaze": [0.45, -0.35] },
+    "sad": { "expression": "08 担心嘴", "face": { "ParamEyeSmile": -0.8, "ParamBrowLForm": -0.6, "ParamBrowRForm": -0.6 }, "gaze": [0, -0.5] },
+    "angry": { "expression": "03 脸黑", "face": { "ParamEyeAnger": 0.8, "ParamBrowLAngle": -1, "ParamBrowRAngle": -1 } },
+    "surprised": { "expression": "08 O嘴", "face": { "ParamEyeAnger": -0.8, "ParamBrowLY": 1, "ParamBrowRY": 1 } },
+    "confused": { "expression": "08 栗子嘴", "face": { "ParamBrowLY": 0.6, "ParamBrowRY": -0.4 }, "gaze": [0.4, 0.4] },
+    "smug": { "expression": "02 3嘴", "face": { "ParamBrowLY": 0.4, "ParamBrowRY": 0.4 }, "gaze": [-0.3, 0.1] },
+    "sleepy": { "expression": null, "face": { "eyelid": 0.45, "ParamBrowLY": -0.3, "ParamBrowRY": -0.3 } },
+    "worried": { "expression": "08 担心嘴", "face": { "ParamBrowLAngle": 0.8, "ParamBrowRAngle": 0.8 } },
+    "dizzy": { "expression": "06 X X" }
+  },
+  "actions": {
+    "wave": {
+      "ms": 1900,
+      "tracks": {
+        "Param_arm_R1": [[0, 0], [0.18, 26], [0.82, 26], [1, 0]],
+        "Param_arm_R2": [[0, 0], [0.18, 22], [0.3, 12], [0.42, 26], [0.54, 12], [0.66, 26], [0.82, 22], [1, 0]],
+        "ParamAngleZ": [[0, 0], [0.2, 5], [0.8, 5], [1, 0]]
+      }
+    }
+  }
+}

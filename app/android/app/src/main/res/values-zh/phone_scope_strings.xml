@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="phone_scope_busy">后台资源正在占用或清理，请等待原任务收尾。</string>
+    <string name="phone_scope_history_full">本次服务已保留256个任务的收尾记录。请先清理全部任务，再关闭通道并重新选择；不会自动重启。</string>
+    <string name="phone_scope_mode_mismatch">后台服务仍采用兼容模式，请先清理并关闭通道，再显式重新连接。</string>
+</resources>

@@ -1,0 +1,41 @@
+--- a/node_modules/@deepseek-ai/dsh-session-query-sqlite/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-session-query-sqlite/lib/index.js
+@@ -801,7 +801,7 @@
+     `);
+ 		for (const document of entry.documents) {
+ 			const text = sanitizeFtsText(document.text);
+-			insert.run(text, document.sessionId, document.seq, document.type, document.time, document.surface, Array.from(text).length);
++			insert.run(text, document.sessionId, document.seq, document.type, document.time, document.surface, codePointLength(text));
+ 		}
+ 	}
+ 	_replaceLiveSession(entry, generation, persisted) {
+@@ -818,7 +818,7 @@
+     `);
+ 		for (const document of entry.documents) {
+ 			const text = sanitizeFtsText(document.text);
+-			insert.run(text, document.sessionId, document.seq, document.type, document.time, document.surface, Array.from(text).length);
++			insert.run(text, document.sessionId, document.seq, document.type, document.time, document.surface, codePointLength(text));
+ 		}
+ 	}
+ 	_querySessions(request, offset, persistenceBinding) {
+@@ -940,6 +940,20 @@
+ 		header.delegationDepth ?? null,
+ 		header.agentPreset ?? null
+ 	];
++}
++/** Count code points without retaining one array entry per character. */
++function codePointLength(text) {
++	let length = text.length;
++	for (let index = 0; index < text.length; index += 1) {
++		const code = text.charCodeAt(index);
++		if (code < 0xD800 || code > 0xDBFF) continue;
++		const next = text.charCodeAt(index + 1);
++		if (next >= 0xDC00 && next <= 0xDFFF) {
++			length -= 1;
++			index += 1;
++		}
++	}
++	return length;
+ }
+ function selectedDocumentsSql() {
+ 	return { sql: `WITH candidates AS (

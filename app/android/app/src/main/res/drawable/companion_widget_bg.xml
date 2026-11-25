@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 伙伴小屋 widget: the room's deep water, as on the stage at night. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <gradient
+        android:angle="270"
+        android:startColor="#FF1C5A8C"
+        android:endColor="#FF0D2F55" />
+    <corners android:radius="24dp" />
+</shape>

@@ -1,0 +1,25 @@
+--- a/node_modules/@deepseek-ai/dsh-settings/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-settings/lib/index.js
+@@ -437,17 +437,17 @@
+ 			const resolved = interpolate(entry.fiber.ctx, inherited);
+ 			const base = projectForm(form, plainConfig(inheritedConfig(entry.fiber.runtime, resolved)));
+ 			const user = projectForm(form, override);
+-			const redacted = redactSecrets(form, value);
++			const redacted = options?.redactSecrets ? redactSecrets(form, value) : void 0;
+ 			return [{
+ 				autoGenerate,
+ 				ns: entry.options.id,
+ 				schema: form.toJSON(),
+ 				revision,
+ 				applies: "live",
+-				value: options?.redactSecrets ? redacted.value : value,
+-				base: options?.redactSecrets ? redactSecrets(form, base).value : base,
+-				user: options?.redactSecrets ? redactSecrets(form, user).value : user,
+-				...options?.redactSecrets ? { secrets: redacted.secrets } : {}
++				value: redacted ? redacted.value : value,
++				base: redacted ? redactSecrets(form, base).value : base,
++				user: redacted ? redactSecrets(form, user).value : user,
++				...redacted ? { secrets: redacted.secrets } : {}
+ 			}];
+ 		});
+ 		for (const [id, previous] of this.revisions) {

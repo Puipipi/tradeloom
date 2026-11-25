@@ -1,0 +1,24 @@
+--- a/node_modules/@deepseek-ai/dsh-plugin-manager/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-plugin-manager/lib/index.js
+@@ -2686,3 +2686,3 @@
+ 			});
+-			const { enabled } = bundle;
++			let { enabled } = bundle;
+ 			const settled = (stage, target, operation) => operation.catch((error) => ({
+@@ -2711,3 +2711,5 @@
+ 			announce("removing");
+-			const removal = await settled("remove", name, this.removeBundle(name));
++			const selection = { enabled };
++			const removal = await settled("remove", name, this.removeBundle(name, selection));
++			enabled = selection.enabled;
+ 			if (removal.application === "failed" || removal.application === "cancelled") return {
+@@ -3079,3 +3081,4 @@
+ 		*/
+-		removeBundle(name) {
++		// selection is owned by this update only; capture it before HMR deselects.
++		removeBundle(name, selection) {
+ 			return this.change(async (result) => {
+@@ -3086,2 +3089,3 @@
+ 					const contributions = bundle.error === void 0 ? this.bundleRows(name) : [];
++					if (selection !== void 0) selection.enabled = bundle.enabled;
+ 					if (bundle.enabled) {

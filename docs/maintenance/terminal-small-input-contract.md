@@ -1,0 +1,9 @@
+# 小合法终端输入预算下整段拒绝不可容纳字符（675）
+
+基底63e255fab5cb9d817af30b631c3643ccce8e9231。官方rc.1 terminal controller允许maxInputBytes为>=1的整数，并按每条write命令的原始UTF-8字节数拒绝超限输入。SDK TerminalAttachment按codepoint分片；当预算只有1–3字节时，单个codepoint可能无法放入任何合法片段。
+
+本次在可写且非空检查之后，仅对limit<4的输入整段预检：cap1允许U+007F以内，cap2允许U+07FF以内，cap3允许U+FFFF以内。Dart runes对孤立UTF-16 surrogate的既有替代语义保持。发现任何不可容纳rune，沿现有inputFull失败/关闭路径返回false，不发送本次任何前缀、不静默丢字符、不假成功。已有排队/待确认输入按既有close语义收束，不引入重放。
+
+limit>=4保持原分片路径，不增加整段预扫描。合法字符仍按既有codepoint边界分片；不可写、空串和普通encoded buffer/window限制保持原行为。不修改Host协议或配置范围，不增加公开API。
+
+测试从自有loopback HTTP的terminal/environment获取合法预算，经公开DshClient.attachTerminal和实际WebSocket观察发送帧；不是PTY、完整官方终端Host或Android测试。后续retain公开流回复充当同socket的有序观察barrier，无sleep/私有回调。无新增依赖、账户或外部服务。SDK代码不属于runtime构建输入，不改runtimeVersion；Android未编译。

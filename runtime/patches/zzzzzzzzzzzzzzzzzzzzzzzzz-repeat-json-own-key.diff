@@ -1,0 +1,11 @@
+--- a/node_modules/@deepseek-ai/dsh-repeat-tool-reminder/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-repeat-tool-reminder/lib/index.js
+@@ -2157,7 +2157,7 @@
+ 	if (Array.isArray(value)) return value.map(sortJsonValue);
+ 	if (value !== null && typeof value === "object") {
+ 		const record = value;
+-		const sorted = {};
++		const sorted = Object.create(null);
+ 		for (const key of Object.keys(record).sort()) sorted[key] = sortJsonValue(record[key]);
+ 		return sorted;
+ 	}

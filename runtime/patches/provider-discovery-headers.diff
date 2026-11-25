@@ -1,0 +1,951 @@
+--- a/node_modules/@deepseek-ai/dsh-llm/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-llm/lib/index.js
+@@ -1976,22 +1976,24 @@
+ * API, interceptable via the `llm/stream` waterfall.
+ */
+ let LlmRuntime = (() => {
+ 	let _classSuper = TypertRemoteService;
+ 	let _instanceExtraInitializers = [];
+ 	let _listProviders_decorators;
+ 	let _listConfigurableProviders_decorators;
+ 	let _remoteDiscoverModels_decorators;
++	let _remoteDiscoverModelsWithHeaders_decorators;
+ 	return class LlmRuntime extends _classSuper {
+ 		static {
+ 			const _metadata = typeof Symbol === "function" && Symbol.metadata ? Object.create(_classSuper[Symbol.metadata] ?? null) : void 0;
+ 			_listProviders_decorators = [Remote];
+ 			_listConfigurableProviders_decorators = [Remote];
+ 			_remoteDiscoverModels_decorators = [Remote("discoverModels")];
++			_remoteDiscoverModelsWithHeaders_decorators = [Remote("discoverModelsWithHeaders")];
+ 			__esDecorate(this, null, _listProviders_decorators, {
+ 				kind: "method",
+ 				name: "listProviders",
+ 				static: false,
+ 				private: false,
+ 				access: {
+ 					has: (obj) => "listProviders" in obj,
+ 					get: (obj) => obj.listProviders
+@@ -2012,16 +2014,27 @@
+ 			__esDecorate(this, null, _remoteDiscoverModels_decorators, {
+ 				kind: "method",
+ 				name: "remoteDiscoverModels",
+ 				static: false,
+ 				private: false,
+ 				access: {
+ 					has: (obj) => "remoteDiscoverModels" in obj,
+ 					get: (obj) => obj.remoteDiscoverModels
++				},
++				metadata: _metadata
++			}, null, _instanceExtraInitializers);
++			__esDecorate(this, null, _remoteDiscoverModelsWithHeaders_decorators, {
++				kind: "method",
++				name: "remoteDiscoverModelsWithHeaders",
++				static: false,
++				private: false,
++				access: {
++					has: (obj) => "remoteDiscoverModelsWithHeaders" in obj,
++					get: (obj) => obj.remoteDiscoverModelsWithHeaders
+ 				},
+ 				metadata: _metadata
+ 			}, null, _instanceExtraInitializers);
+ 			if (_metadata) Object.defineProperty(this, Symbol.metadata, {
+ 				enumerable: true,
+ 				configurable: true,
+ 				writable: true,
+ 				value: _metadata
+@@ -2246,16 +2259,27 @@
+ 			try {
+ 				return await this.discoverModels(settingsNs, request, signal);
+ 			} catch (error) {
+ 				throw new RemoteError("llm/model-discovery-rejected", error instanceof Error ? error.message : String(error), {
+ 					settingsNs,
+ 					...request.baseURL === void 0 ? {} : { baseURL: request.baseURL }
+ 				}, { cause: error });
+ 			}
++		}
++		/**
++		* Interrogate a draft with explicit request headers. A separate Remote entry
++		* lets older Hosts reject this capability instead of stripping the field.
++		* @param settingsNs - namespace whose registered discovery serves this draft.
++		* @param request - endpoint, protocol, one-shot credential and request headers.
++		* @param signal - caller cancellation supplied by the Remote carrier.
++		* @returns advertised models in endpoint order.
++		*/
++		remoteDiscoverModelsWithHeaders(settingsNs, request, signal) {
++			return this.remoteDiscoverModels(settingsNs, request, signal);
+ 		}
+ 		/**
+ 		* Resolve the retry policy captured when one provider route was registered.
+ 		* @param provider - registered provider route to inspect.
+ 		* @returns the provider-owned policy, with normal defaults already resolved.
+ 		*/
+ 		providerRetryPolicy(provider) {
+ 			return this.registration(provider).retryPolicy;
+--- a/node_modules/@deepseek-ai/dsh-llm/lib/types/index.js
++++ b/node_modules/@deepseek-ai/dsh-llm/lib/types/index.js
+@@ -222,25 +222,28 @@
+  * API, interceptable via the `llm/stream` waterfall.
+  */
+ let LlmRuntime = (() => {
+     let _classSuper = TypertRemoteService;
+     let _instanceExtraInitializers = [];
+     let _listProviders_decorators;
+     let _listConfigurableProviders_decorators;
+     let _remoteDiscoverModels_decorators;
++    let _remoteDiscoverModelsWithHeaders_decorators;
+     return class LlmRuntime extends _classSuper {
+         static {
+             const _metadata = typeof Symbol === "function" && Symbol.metadata ? Object.create(_classSuper[Symbol.metadata] ?? null) : void 0;
+             _listProviders_decorators = [Remote];
+             _listConfigurableProviders_decorators = [Remote];
+             _remoteDiscoverModels_decorators = [Remote('discoverModels')];
++            _remoteDiscoverModelsWithHeaders_decorators = [Remote('discoverModelsWithHeaders')];
+             __esDecorate(this, null, _listProviders_decorators, { kind: "method", name: "listProviders", static: false, private: false, access: { has: obj => "listProviders" in obj, get: obj => obj.listProviders }, metadata: _metadata }, null, _instanceExtraInitializers);
+             __esDecorate(this, null, _listConfigurableProviders_decorators, { kind: "method", name: "listConfigurableProviders", static: false, private: false, access: { has: obj => "listConfigurableProviders" in obj, get: obj => obj.listConfigurableProviders }, metadata: _metadata }, null, _instanceExtraInitializers);
+             __esDecorate(this, null, _remoteDiscoverModels_decorators, { kind: "method", name: "remoteDiscoverModels", static: false, private: false, access: { has: obj => "remoteDiscoverModels" in obj, get: obj => obj.remoteDiscoverModels }, metadata: _metadata }, null, _instanceExtraInitializers);
++            __esDecorate(this, null, _remoteDiscoverModelsWithHeaders_decorators, { kind: "method", name: "remoteDiscoverModelsWithHeaders", static: false, private: false, access: { has: obj => "remoteDiscoverModelsWithHeaders" in obj, get: obj => obj.remoteDiscoverModelsWithHeaders }, metadata: _metadata }, null, _instanceExtraInitializers);
+             if (_metadata) Object.defineProperty(this, Symbol.metadata, { enumerable: true, configurable: true, writable: true, value: _metadata });
+         }
+         adapters = (__runInitializers(this, _instanceExtraInitializers), new Map());
+         directory = new Map();
+         discoveries = new Map();
+         constructor(ctx) {
+             super(ctx, 'llm');
+         }
+@@ -510,16 +513,27 @@
+                 return await this.discoverModels(settingsNs, request, signal);
+             }
+             catch (error) {
+                 throw new RemoteError('llm/model-discovery-rejected', error instanceof Error ? error.message : String(error), {
+                     settingsNs,
+                     ...request.baseURL === undefined ? {} : { baseURL: request.baseURL },
+                 }, { cause: error });
+             }
++        }
++        /**
++         * Interrogate a draft with explicit request headers. A separate Remote entry
++         * lets older Hosts reject this capability instead of stripping the field.
++         * @param settingsNs - namespace whose registered discovery serves this draft.
++         * @param request - endpoint, protocol, one-shot credential and request headers.
++         * @param signal - caller cancellation supplied by the Remote carrier.
++         * @returns advertised models in endpoint order.
++         */
++        remoteDiscoverModelsWithHeaders(settingsNs, request, signal) {
++            return this.remoteDiscoverModels(settingsNs, request, signal);
+         }
+         /**
+          * Resolve the retry policy captured when one provider route was registered.
+          * @param provider - registered provider route to inspect.
+          * @returns the provider-owned policy, with normal defaults already resolved.
+          */
+         providerRetryPolicy(provider) {
+             return this.registration(provider).retryPolicy;
+--- a/node_modules/@deepseek-ai/dsh-llm/lib/types/index.d.ts
++++ b/node_modules/@deepseek-ai/dsh-llm/lib/types/index.d.ts
+@@ -320,16 +320,25 @@
+      * @param settingsNs - namespace whose registered discovery serves this draft.
+      * @param request - endpoint, protocol, and one-shot credential to use.
+      * @param signal - caller cancellation supplied by the Remote carrier.
+      * @returns advertised models in endpoint order.
+      * @throws RemoteError with `llm/model-discovery-rejected` when discovery refuses or fails.
+      */
+     remoteDiscoverModels(settingsNs: string, request: LlmModelDiscoveryRequest, signal: AbortSignal): Promise<LlmDiscoveredModel[]>;
+     /**
++     * Interrogate a draft with explicit request headers. A separate Remote entry
++     * lets older Hosts reject this capability instead of stripping the field.
++     * @param settingsNs - namespace whose registered discovery serves this draft.
++     * @param request - endpoint, protocol, one-shot credential and request headers.
++     * @param signal - caller cancellation supplied by the Remote carrier.
++     * @returns advertised models in endpoint order.
++     */
++    remoteDiscoverModelsWithHeaders(settingsNs: string, request: LlmModelDiscoveryRequest, signal: AbortSignal): Promise<LlmDiscoveredModel[]>;
++    /**
+      * Resolve the retry policy captured when one provider route was registered.
+      * @param provider - registered provider route to inspect.
+      * @returns the provider-owned policy, with normal defaults already resolved.
+      */
+     providerRetryPolicy(provider: string): ResolvedRetryPolicy;
+     /**
+      * Resolve provider-side request-image pricing for one exact route, or
+      * `undefined` when the provider is unregistered or declares none. Unknown
+--- a/node_modules/@deepseek-ai/dsh-llm/lib/types/types.d.ts
++++ b/node_modules/@deepseek-ai/dsh-llm/lib/types/types.d.ts
+@@ -287,16 +287,21 @@
+      * Endpoint to interrogate. Optional because a route the adapter already
+      * describes needs none; a route it does not must supply one.
+      */
+     baseURL?: string;
+     /** Wire protocol the endpoint speaks, when the draft names one. */
+     api?: string;
+     /** Credential for this interrogation alone; the harness never stores it. */
+     apiKey?: string;
++    /** Request headers for this interrogation only; omission uses the stored profile, and an empty list clears it. */
++    headers?: Array<{
++        name: string;
++        value: string;
++    }>;
+ }
+ /** Provider-side discovery request with operation-local cancellation attached. */
+ export interface LlmModelDiscoveryOperation extends LlmModelDiscoveryRequest {
+     /** Caller cancellation; implementations must settle promptly after it aborts. */
+     signal?: AbortSignal;
+ }
+ declare module '@deepseek-ai/dsh-typert-protocol' {
+     interface RemoteErrorDetailsMap {
+--- a/node_modules/@deepseek-ai/dsh-llm/lib/typert.host.js
++++ b/node_modules/@deepseek-ai/dsh-llm/lib/typert.host.js
+@@ -6,19 +6,44 @@
+ let _deepseek_ai_dsh_llm_llm_discoverModels_parameter_0$schema$value
+ const _deepseek_ai_dsh_llm_llm_discoverModels_parameter_0$schema = () => (_deepseek_ai_dsh_llm_llm_discoverModels_parameter_0$schema$value ??= z.string())
+ let _deepseek_ai_dsh_llm_llm_discoverModels_parameter_1$schema$value
+ const _deepseek_ai_dsh_llm_llm_discoverModels_parameter_1$schema = () => (_deepseek_ai_dsh_llm_llm_discoverModels_parameter_1$schema$value ??= z.object({
+   'provider': z.string().optional().describe('Route the draft is editing, when it edits an existing one. A route whose adapter already knows its models answers from that knowledge instead of asking the endpoint — the adapter\'s own registry is the better answer, and it costs no network call.'),
+   'baseURL': z.string().optional().describe('Endpoint to interrogate. Optional because a route the adapter already describes needs none; a route it does not must supply one.'),
+   'api': z.string().optional().describe('Wire protocol the endpoint speaks, when the draft names one.'),
+   'apiKey': z.string().optional().describe('Credential for this interrogation alone; the harness never stores it.'),
++  'headers': z.array(z.object({
++  'name': z.string(),
++  'value': z.string(),
++})).optional().describe('Request headers for this interrogation only; omission uses the stored profile, and an empty list clears it.'),
+ }))
+ let _deepseek_ai_dsh_llm_llm_discoverModels_result$schema$value
+ const _deepseek_ai_dsh_llm_llm_discoverModels_result$schema = () => (_deepseek_ai_dsh_llm_llm_discoverModels_result$schema$value ??= z.array(z.object({
++  'id': z.string().describe('Model id the endpoint accepts.'),
++  'name': z.string().optional().describe('Human-readable name when the endpoint supplies one.'),
++  'contextWindow': z.number().optional().describe('Maximum combined request and response context, when disclosed.'),
++  'maxTokens': z.number().optional().describe('Maximum output tokens, when disclosed.'),
++  'inputModalities': z.array(z.union([z.literal("text"), z.literal("image")])).optional().describe('Accepted input types when disclosed by the catalog or endpoint; absent means unknown.'),
++})))
++let _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_0$schema$value
++const _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_0$schema = () => (_deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_0$schema$value ??= z.string())
++let _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_1$schema$value
++const _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_1$schema = () => (_deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_1$schema$value ??= z.object({
++  'provider': z.string().optional().describe('Route the draft is editing, when it edits an existing one. A route whose adapter already knows its models answers from that knowledge instead of asking the endpoint — the adapter\'s own registry is the better answer, and it costs no network call.'),
++  'baseURL': z.string().optional().describe('Endpoint to interrogate. Optional because a route the adapter already describes needs none; a route it does not must supply one.'),
++  'api': z.string().optional().describe('Wire protocol the endpoint speaks, when the draft names one.'),
++  'apiKey': z.string().optional().describe('Credential for this interrogation alone; the harness never stores it.'),
++  'headers': z.array(z.object({
++  'name': z.string(),
++  'value': z.string(),
++})).optional().describe('Request headers for this interrogation only; omission uses the stored profile, and an empty list clears it.'),
++}))
++let _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_result$schema$value
++const _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_result$schema = () => (_deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_result$schema$value ??= z.array(z.object({
+   'id': z.string().describe('Model id the endpoint accepts.'),
+   'name': z.string().optional().describe('Human-readable name when the endpoint supplies one.'),
+   'contextWindow': z.number().optional().describe('Maximum combined request and response context, when disclosed.'),
+   'maxTokens': z.number().optional().describe('Maximum output tokens, when disclosed.'),
+   'inputModalities': z.array(z.union([z.literal("text"), z.literal("image")])).optional().describe('Accepted input types when disclosed by the catalog or endpoint; absent means unknown.'),
+ })))
+ let _deepseek_ai_dsh_llm_llm_listConfigurableProviders_result$schema$value
+ const _deepseek_ai_dsh_llm_llm_listConfigurableProviders_result$schema = () => (_deepseek_ai_dsh_llm_llm_listConfigurableProviders_result$schema$value ??= z.array(z.object({
+@@ -43,16 +68,33 @@
+ let _deepseek_ai_dsh_llm_llm_discoverModels_parameter_0_strict$schema$value
+ const _deepseek_ai_dsh_llm_llm_discoverModels_parameter_0_strict$schema = () => (_deepseek_ai_dsh_llm_llm_discoverModels_parameter_0_strict$schema$value ??= z.string())
+ let _deepseek_ai_dsh_llm_llm_discoverModels_parameter_1_strict$schema$value
+ const _deepseek_ai_dsh_llm_llm_discoverModels_parameter_1_strict$schema = () => (_deepseek_ai_dsh_llm_llm_discoverModels_parameter_1_strict$schema$value ??= z.strictObject({
+   'provider': z.string().optional().describe('Route the draft is editing, when it edits an existing one. A route whose adapter already knows its models answers from that knowledge instead of asking the endpoint — the adapter\'s own registry is the better answer, and it costs no network call.'),
+   'baseURL': z.string().optional().describe('Endpoint to interrogate. Optional because a route the adapter already describes needs none; a route it does not must supply one.'),
+   'api': z.string().optional().describe('Wire protocol the endpoint speaks, when the draft names one.'),
+   'apiKey': z.string().optional().describe('Credential for this interrogation alone; the harness never stores it.'),
++  'headers': z.array(z.strictObject({
++  'name': z.string(),
++  'value': z.string(),
++})).optional().describe('Request headers for this interrogation only; omission uses the stored profile, and an empty list clears it.'),
++}))
++let _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_0_strict$schema$value
++const _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_0_strict$schema = () => (_deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_0_strict$schema$value ??= z.string())
++let _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_1_strict$schema$value
++const _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_1_strict$schema = () => (_deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_1_strict$schema$value ??= z.strictObject({
++  'provider': z.string().optional().describe('Route the draft is editing, when it edits an existing one. A route whose adapter already knows its models answers from that knowledge instead of asking the endpoint — the adapter\'s own registry is the better answer, and it costs no network call.'),
++  'baseURL': z.string().optional().describe('Endpoint to interrogate. Optional because a route the adapter already describes needs none; a route it does not must supply one.'),
++  'api': z.string().optional().describe('Wire protocol the endpoint speaks, when the draft names one.'),
++  'apiKey': z.string().optional().describe('Credential for this interrogation alone; the harness never stores it.'),
++  'headers': z.array(z.strictObject({
++  'name': z.string(),
++  'value': z.string(),
++})).optional().describe('Request headers for this interrogation only; omission uses the stored profile, and an empty list clears it.'),
+ }))
+ 
+ const $remote = createTypertRemoteInfo({
+   package: '@deepseek-ai/dsh-llm',
+   methods: {
+     'llm/discoverModels': {
+       service: 'llm',
+       description: 'Remote adapter for one draft provider interrogation.',
+@@ -79,35 +121,86 @@
+         {
+           name: 'request',
+           description: 'endpoint, protocol, and one-shot credential to use.',
+           source: 'json',
+           codec: {
+             mode: 'strict',
+             typeSymbol: '@deepseek-ai/dsh-llm/types#LlmModelDiscoveryRequest',
+             create: _deepseek_ai_dsh_llm_llm_discoverModels_parameter_1$schema,
+-            jsonSchema: {"type":"object","properties":{"provider":{"type":"string","description":"Route the draft is editing, when it edits an existing one. A route whose adapter already knows its models answers from that knowledge instead of asking the endpoint — the adapter's own registry is the better answer, and it costs no network call."},"baseURL":{"type":"string","description":"Endpoint to interrogate. Optional because a route the adapter already describes needs none; a route it does not must supply one."},"api":{"type":"string","description":"Wire protocol the endpoint speaks, when the draft names one."},"apiKey":{"type":"string","description":"Credential for this interrogation alone; the harness never stores it."}},"required":[],"additionalProperties":true},
++            jsonSchema: {"type":"object","properties":{"provider":{"type":"string","description":"Route the draft is editing, when it edits an existing one. A route whose adapter already knows its models answers from that knowledge instead of asking the endpoint — the adapter's own registry is the better answer, and it costs no network call."},"baseURL":{"type":"string","description":"Endpoint to interrogate. Optional because a route the adapter already describes needs none; a route it does not must supply one."},"api":{"type":"string","description":"Wire protocol the endpoint speaks, when the draft names one."},"apiKey":{"type":"string","description":"Credential for this interrogation alone; the harness never stores it."},"headers":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"value":{"type":"string"}},"required":["name","value"],"additionalProperties":true},"description":"Request headers for this interrogation only; omission uses the stored profile, and an empty list clears it."}},"required":[],"additionalProperties":true},
+           },
+           strictCodec: {
+             mode: 'strict',
+             typeSymbol: '@deepseek-ai/dsh-llm/types#LlmModelDiscoveryRequest',
+             create: _deepseek_ai_dsh_llm_llm_discoverModels_parameter_1_strict$schema,
+-            jsonSchema: {"type":"object","properties":{"provider":{"type":"string","description":"Route the draft is editing, when it edits an existing one. A route whose adapter already knows its models answers from that knowledge instead of asking the endpoint — the adapter's own registry is the better answer, and it costs no network call."},"baseURL":{"type":"string","description":"Endpoint to interrogate. Optional because a route the adapter already describes needs none; a route it does not must supply one."},"api":{"type":"string","description":"Wire protocol the endpoint speaks, when the draft names one."},"apiKey":{"type":"string","description":"Credential for this interrogation alone; the harness never stores it."}},"required":[],"additionalProperties":false},
++            jsonSchema: {"type":"object","properties":{"provider":{"type":"string","description":"Route the draft is editing, when it edits an existing one. A route whose adapter already knows its models answers from that knowledge instead of asking the endpoint — the adapter's own registry is the better answer, and it costs no network call."},"baseURL":{"type":"string","description":"Endpoint to interrogate. Optional because a route the adapter already describes needs none; a route it does not must supply one."},"api":{"type":"string","description":"Wire protocol the endpoint speaks, when the draft names one."},"apiKey":{"type":"string","description":"Credential for this interrogation alone; the harness never stores it."},"headers":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"value":{"type":"string"}},"required":["name","value"],"additionalProperties":false},"description":"Request headers for this interrogation only; omission uses the stored profile, and an empty list clears it."}},"required":[],"additionalProperties":false},
+           },
+         },
+       ],
+       cancellation: { parameter: 'signal' },
+       result: {
+         mode: 'strict',
+         typeSymbol: '@deepseek-ai/dsh-llm#llm/discoverModels:result',
+         create: _deepseek_ai_dsh_llm_llm_discoverModels_result$schema,
+         description: 'advertised models in endpoint order.',
+         jsonSchema: {"type":"array","items":{"type":"object","properties":{"id":{"type":"string","description":"Model id the endpoint accepts."},"name":{"type":"string","description":"Human-readable name when the endpoint supplies one."},"contextWindow":{"type":"number","description":"Maximum combined request and response context, when disclosed."},"maxTokens":{"type":"number","description":"Maximum output tokens, when disclosed."},"inputModalities":{"type":"array","items":{"type":"string","enum":["text","image"]},"description":"Accepted input types when disclosed by the catalog or endpoint; absent means unknown."}},"required":["id"],"additionalProperties":true}},
+       },
+       sourceLocation: {"file":"packages/llm/llm/src/index.ts","line":643,"column":9},
++    },
++    'llm/discoverModelsWithHeaders': {
++      service: 'llm',
++      description: 'Interrogate a draft with explicit request headers. A separate Remote entry lets older Hosts reject this capability instead of stripping the field.',
++      implementation: 'remoteDiscoverModelsWithHeaders',
++      invocation: { kind: 'direct' },
++      parameters: [
++        {
++          name: 'settingsNs',
++          description: 'namespace whose registered discovery serves this draft.',
++          source: 'json',
++          codec: {
++            mode: 'strict',
++            typeSymbol: '@deepseek-ai/dsh-llm#llm/discoverModelsWithHeaders:settingsNs',
++            create: _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_0$schema,
++            jsonSchema: {"type":"string"},
++          },
++          strictCodec: {
++            mode: 'strict',
++            typeSymbol: '@deepseek-ai/dsh-llm#llm/discoverModelsWithHeaders:settingsNs',
++            create: _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_0_strict$schema,
++            jsonSchema: {"type":"string"},
++          },
++        },
++        {
++          name: 'request',
++          description: 'endpoint, protocol, one-shot credential and request headers.',
++          source: 'json',
++          codec: {
++            mode: 'strict',
++            typeSymbol: '@deepseek-ai/dsh-llm/types#LlmModelDiscoveryRequest',
++            create: _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_1$schema,
++            jsonSchema: {"type":"object","properties":{"provider":{"type":"string","description":"Route the draft is editing, when it edits an existing one. A route whose adapter already knows its models answers from that knowledge instead of asking the endpoint — the adapter's own registry is the better answer, and it costs no network call."},"baseURL":{"type":"string","description":"Endpoint to interrogate. Optional because a route the adapter already describes needs none; a route it does not must supply one."},"api":{"type":"string","description":"Wire protocol the endpoint speaks, when the draft names one."},"apiKey":{"type":"string","description":"Credential for this interrogation alone; the harness never stores it."},"headers":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"value":{"type":"string"}},"required":["name","value"],"additionalProperties":true},"description":"Request headers for this interrogation only; omission uses the stored profile, and an empty list clears it."}},"required":[],"additionalProperties":true},
++          },
++          strictCodec: {
++            mode: 'strict',
++            typeSymbol: '@deepseek-ai/dsh-llm/types#LlmModelDiscoveryRequest',
++            create: _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_1_strict$schema,
++            jsonSchema: {"type":"object","properties":{"provider":{"type":"string","description":"Route the draft is editing, when it edits an existing one. A route whose adapter already knows its models answers from that knowledge instead of asking the endpoint — the adapter's own registry is the better answer, and it costs no network call."},"baseURL":{"type":"string","description":"Endpoint to interrogate. Optional because a route the adapter already describes needs none; a route it does not must supply one."},"api":{"type":"string","description":"Wire protocol the endpoint speaks, when the draft names one."},"apiKey":{"type":"string","description":"Credential for this interrogation alone; the harness never stores it."},"headers":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"value":{"type":"string"}},"required":["name","value"],"additionalProperties":false},"description":"Request headers for this interrogation only; omission uses the stored profile, and an empty list clears it."}},"required":[],"additionalProperties":false},
++          },
++        },
++      ],
++      cancellation: { parameter: 'signal' },
++      result: {
++        mode: 'strict',
++        typeSymbol: '@deepseek-ai/dsh-llm#llm/discoverModelsWithHeaders:result',
++        create: _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_result$schema,
++        description: 'advertised models in endpoint order.',
++        jsonSchema: {"type":"array","items":{"type":"object","properties":{"id":{"type":"string","description":"Model id the endpoint accepts."},"name":{"type":"string","description":"Human-readable name when the endpoint supplies one."},"contextWindow":{"type":"number","description":"Maximum combined request and response context, when disclosed."},"maxTokens":{"type":"number","description":"Maximum output tokens, when disclosed."},"inputModalities":{"type":"array","items":{"type":"string","enum":["text","image"]},"description":"Accepted input types when disclosed by the catalog or endpoint; absent means unknown."}},"required":["id"],"additionalProperties":true}},
++      },
++      sourceLocation: {"file":"packages/llm/llm/src/index.ts","line":672,"column":3},
+     },
+     'llm/listConfigurableProviders': {
+       service: 'llm',
+       description: 'List every declared configurable provider, registered or dormant.',
+       invocation: { kind: 'direct' },
+       parameters: [
+       ],
+       result: {
+@@ -199,16 +292,23 @@
+             "kind": "method",
+             "name": "remoteDiscoverModels",
+             "signature": "@Remote('discoverModels') async remoteDiscoverModels( settingsNs: string, request: LlmModelDiscoveryRequest, signal: AbortSignal, ): Promise<LlmDiscoveredModel[]>",
+             "summary": "Remote adapter for one draft provider interrogation.",
+             "jsDoc": "/**\n * Remote adapter for one draft provider interrogation.\n * @param settingsNs - namespace whose registered discovery serves this draft.\n * @param request - endpoint, protocol, and one-shot credential to use.\n * @param signal - caller cancellation supplied by the Remote carrier.\n * @returns advertised models in endpoint order.\n * @throws RemoteError with `llm/model-discovery-rejected` when discovery refuses or fails.\n */"
+           },
+           {
+             "kind": "method",
++            "name": "remoteDiscoverModelsWithHeaders",
++            "signature": "@Remote('discoverModelsWithHeaders') remoteDiscoverModelsWithHeaders( settingsNs: string, request: LlmModelDiscoveryRequest, signal: AbortSignal, ): Promise<LlmDiscoveredModel[]>",
++            "summary": "Interrogate a draft with explicit request headers.",
++            "jsDoc": "/**\n * Interrogate a draft with explicit request headers. A separate Remote entry\n * lets older Hosts reject this capability instead of stripping the field.\n * @param settingsNs - namespace whose registered discovery serves this draft.\n * @param request - endpoint, protocol, one-shot credential and request headers.\n * @param signal - caller cancellation supplied by the Remote carrier.\n * @returns advertised models in endpoint order.\n */"
++          },
++          {
++            "kind": "method",
+             "name": "providerRetryPolicy",
+             "signature": "providerRetryPolicy(provider: string): ResolvedRetryPolicy",
+             "summary": "Resolve the retry policy captured when one provider route was registered.",
+             "jsDoc": "/**\n * Resolve the retry policy captured when one provider route was registered.\n * @param provider - registered provider route to inspect.\n * @returns the provider-owned policy, with normal defaults already resolved.\n */"
+           },
+           {
+             "kind": "method",
+             "name": "imageRequestPricing",
+@@ -428,17 +528,17 @@
+             "declaration": "export type LlmModelBadgeTone = 'neutral' | 'info' | 'success' | 'warning';"
+           },
+           {
+             "name": "LlmModelContext",
+             "declaration": "export interface LlmModelContext {\n    contextWindow: number;\n}"
+           },
+           {
+             "name": "LlmModelDiscoveryRequest",
+-            "declaration": "export interface LlmModelDiscoveryRequest {\n    provider?: string;\n    baseURL?: string;\n    api?: string;\n    apiKey?: string;\n}"
++            "declaration": "export interface LlmModelDiscoveryRequest {\n    provider?: string;\n    baseURL?: string;\n    api?: string;\n    apiKey?: string;\n    headers?: Array<{ name: string; value: string; }>;\n}"
+           },
+           {
+             "name": "LlmModelInfo",
+             "declaration": "export interface LlmModelInfo {\n    provider: string;\n    id: string;\n    name: string;\n    description?: string;\n    inputModalities?: readonly ModelModality[];\n    badge?: LlmModelBadge;\n}"
+           },
+           {
+             "name": "LlmModelReasoningInfo",
+             "declaration": "export interface LlmModelReasoningInfo {\n    efforts: readonly LlmReasoningEffortInfo[];\n    defaultEffort?: ReasoningEffortId;\n}"
+--- a/node_modules/@deepseek-ai/dsh-llm/lib/typert.remote-client.js
++++ b/node_modules/@deepseek-ai/dsh-llm/lib/typert.remote-client.js
+@@ -6,19 +6,44 @@
+ let _deepseek_ai_dsh_llm_llm_discoverModels_parameter_0$schema$value
+ const _deepseek_ai_dsh_llm_llm_discoverModels_parameter_0$schema = () => (_deepseek_ai_dsh_llm_llm_discoverModels_parameter_0$schema$value ??= z.string())
+ let _deepseek_ai_dsh_llm_llm_discoverModels_parameter_1$schema$value
+ const _deepseek_ai_dsh_llm_llm_discoverModels_parameter_1$schema = () => (_deepseek_ai_dsh_llm_llm_discoverModels_parameter_1$schema$value ??= z.object({
+   'provider': z.string().optional().describe('Route the draft is editing, when it edits an existing one. A route whose adapter already knows its models answers from that knowledge instead of asking the endpoint — the adapter\'s own registry is the better answer, and it costs no network call.'),
+   'baseURL': z.string().optional().describe('Endpoint to interrogate. Optional because a route the adapter already describes needs none; a route it does not must supply one.'),
+   'api': z.string().optional().describe('Wire protocol the endpoint speaks, when the draft names one.'),
+   'apiKey': z.string().optional().describe('Credential for this interrogation alone; the harness never stores it.'),
++  'headers': z.array(z.object({
++  'name': z.string(),
++  'value': z.string(),
++})).optional().describe('Request headers for this interrogation only; omission uses the stored profile, and an empty list clears it.'),
+ }))
+ let _deepseek_ai_dsh_llm_llm_discoverModels_result$schema$value
+ const _deepseek_ai_dsh_llm_llm_discoverModels_result$schema = () => (_deepseek_ai_dsh_llm_llm_discoverModels_result$schema$value ??= z.array(z.object({
++  'id': z.string().describe('Model id the endpoint accepts.'),
++  'name': z.string().optional().describe('Human-readable name when the endpoint supplies one.'),
++  'contextWindow': z.number().optional().describe('Maximum combined request and response context, when disclosed.'),
++  'maxTokens': z.number().optional().describe('Maximum output tokens, when disclosed.'),
++  'inputModalities': z.array(z.union([z.literal("text"), z.literal("image")])).optional().describe('Accepted input types when disclosed by the catalog or endpoint; absent means unknown.'),
++})))
++let _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_0$schema$value
++const _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_0$schema = () => (_deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_0$schema$value ??= z.string())
++let _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_1$schema$value
++const _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_1$schema = () => (_deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_1$schema$value ??= z.object({
++  'provider': z.string().optional().describe('Route the draft is editing, when it edits an existing one. A route whose adapter already knows its models answers from that knowledge instead of asking the endpoint — the adapter\'s own registry is the better answer, and it costs no network call.'),
++  'baseURL': z.string().optional().describe('Endpoint to interrogate. Optional because a route the adapter already describes needs none; a route it does not must supply one.'),
++  'api': z.string().optional().describe('Wire protocol the endpoint speaks, when the draft names one.'),
++  'apiKey': z.string().optional().describe('Credential for this interrogation alone; the harness never stores it.'),
++  'headers': z.array(z.object({
++  'name': z.string(),
++  'value': z.string(),
++})).optional().describe('Request headers for this interrogation only; omission uses the stored profile, and an empty list clears it.'),
++}))
++let _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_result$schema$value
++const _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_result$schema = () => (_deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_result$schema$value ??= z.array(z.object({
+   'id': z.string().describe('Model id the endpoint accepts.'),
+   'name': z.string().optional().describe('Human-readable name when the endpoint supplies one.'),
+   'contextWindow': z.number().optional().describe('Maximum combined request and response context, when disclosed.'),
+   'maxTokens': z.number().optional().describe('Maximum output tokens, when disclosed.'),
+   'inputModalities': z.array(z.union([z.literal("text"), z.literal("image")])).optional().describe('Accepted input types when disclosed by the catalog or endpoint; absent means unknown.'),
+ })))
+ let _deepseek_ai_dsh_llm_llm_listConfigurableProviders_result$schema$value
+ const _deepseek_ai_dsh_llm_llm_listConfigurableProviders_result$schema = () => (_deepseek_ai_dsh_llm_llm_listConfigurableProviders_result$schema$value ??= z.array(z.object({
+@@ -43,16 +68,33 @@
+ let _deepseek_ai_dsh_llm_llm_discoverModels_parameter_0_strict$schema$value
+ const _deepseek_ai_dsh_llm_llm_discoverModels_parameter_0_strict$schema = () => (_deepseek_ai_dsh_llm_llm_discoverModels_parameter_0_strict$schema$value ??= z.string())
+ let _deepseek_ai_dsh_llm_llm_discoverModels_parameter_1_strict$schema$value
+ const _deepseek_ai_dsh_llm_llm_discoverModels_parameter_1_strict$schema = () => (_deepseek_ai_dsh_llm_llm_discoverModels_parameter_1_strict$schema$value ??= z.strictObject({
+   'provider': z.string().optional().describe('Route the draft is editing, when it edits an existing one. A route whose adapter already knows its models answers from that knowledge instead of asking the endpoint — the adapter\'s own registry is the better answer, and it costs no network call.'),
+   'baseURL': z.string().optional().describe('Endpoint to interrogate. Optional because a route the adapter already describes needs none; a route it does not must supply one.'),
+   'api': z.string().optional().describe('Wire protocol the endpoint speaks, when the draft names one.'),
+   'apiKey': z.string().optional().describe('Credential for this interrogation alone; the harness never stores it.'),
++  'headers': z.array(z.strictObject({
++  'name': z.string(),
++  'value': z.string(),
++})).optional().describe('Request headers for this interrogation only; omission uses the stored profile, and an empty list clears it.'),
++}))
++let _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_0_strict$schema$value
++const _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_0_strict$schema = () => (_deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_0_strict$schema$value ??= z.string())
++let _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_1_strict$schema$value
++const _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_1_strict$schema = () => (_deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_1_strict$schema$value ??= z.strictObject({
++  'provider': z.string().optional().describe('Route the draft is editing, when it edits an existing one. A route whose adapter already knows its models answers from that knowledge instead of asking the endpoint — the adapter\'s own registry is the better answer, and it costs no network call.'),
++  'baseURL': z.string().optional().describe('Endpoint to interrogate. Optional because a route the adapter already describes needs none; a route it does not must supply one.'),
++  'api': z.string().optional().describe('Wire protocol the endpoint speaks, when the draft names one.'),
++  'apiKey': z.string().optional().describe('Credential for this interrogation alone; the harness never stores it.'),
++  'headers': z.array(z.strictObject({
++  'name': z.string(),
++  'value': z.string(),
++})).optional().describe('Request headers for this interrogation only; omission uses the stored profile, and an empty list clears it.'),
+ }))
+ 
+ export const TYPERT_REMOTE = createTypertRemoteInfo({
+   package: '@deepseek-ai/dsh-llm',
+   methods: {
+     'llm/discoverModels': {
+       service: 'llm',
+       description: 'Remote adapter for one draft provider interrogation.',
+@@ -79,36 +121,87 @@
+         {
+           name: 'request',
+           description: 'endpoint, protocol, and one-shot credential to use.',
+           source: 'json',
+           codec: {
+             mode: 'strict',
+             typeSymbol: '@deepseek-ai/dsh-llm/types#LlmModelDiscoveryRequest',
+             create: _deepseek_ai_dsh_llm_llm_discoverModels_parameter_1$schema,
+-            jsonSchema: {"type":"object","properties":{"provider":{"type":"string","description":"Route the draft is editing, when it edits an existing one. A route whose adapter already knows its models answers from that knowledge instead of asking the endpoint — the adapter's own registry is the better answer, and it costs no network call."},"baseURL":{"type":"string","description":"Endpoint to interrogate. Optional because a route the adapter already describes needs none; a route it does not must supply one."},"api":{"type":"string","description":"Wire protocol the endpoint speaks, when the draft names one."},"apiKey":{"type":"string","description":"Credential for this interrogation alone; the harness never stores it."}},"required":[],"additionalProperties":true},
++            jsonSchema: {"type":"object","properties":{"provider":{"type":"string","description":"Route the draft is editing, when it edits an existing one. A route whose adapter already knows its models answers from that knowledge instead of asking the endpoint — the adapter's own registry is the better answer, and it costs no network call."},"baseURL":{"type":"string","description":"Endpoint to interrogate. Optional because a route the adapter already describes needs none; a route it does not must supply one."},"api":{"type":"string","description":"Wire protocol the endpoint speaks, when the draft names one."},"apiKey":{"type":"string","description":"Credential for this interrogation alone; the harness never stores it."},"headers":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"value":{"type":"string"}},"required":["name","value"],"additionalProperties":true},"description":"Request headers for this interrogation only; omission uses the stored profile, and an empty list clears it."}},"required":[],"additionalProperties":true},
+           },
+           strictCodec: {
+             mode: 'strict',
+             typeSymbol: '@deepseek-ai/dsh-llm/types#LlmModelDiscoveryRequest',
+             create: _deepseek_ai_dsh_llm_llm_discoverModels_parameter_1_strict$schema,
+-            jsonSchema: {"type":"object","properties":{"provider":{"type":"string","description":"Route the draft is editing, when it edits an existing one. A route whose adapter already knows its models answers from that knowledge instead of asking the endpoint — the adapter's own registry is the better answer, and it costs no network call."},"baseURL":{"type":"string","description":"Endpoint to interrogate. Optional because a route the adapter already describes needs none; a route it does not must supply one."},"api":{"type":"string","description":"Wire protocol the endpoint speaks, when the draft names one."},"apiKey":{"type":"string","description":"Credential for this interrogation alone; the harness never stores it."}},"required":[],"additionalProperties":false},
++            jsonSchema: {"type":"object","properties":{"provider":{"type":"string","description":"Route the draft is editing, when it edits an existing one. A route whose adapter already knows its models answers from that knowledge instead of asking the endpoint — the adapter's own registry is the better answer, and it costs no network call."},"baseURL":{"type":"string","description":"Endpoint to interrogate. Optional because a route the adapter already describes needs none; a route it does not must supply one."},"api":{"type":"string","description":"Wire protocol the endpoint speaks, when the draft names one."},"apiKey":{"type":"string","description":"Credential for this interrogation alone; the harness never stores it."},"headers":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"value":{"type":"string"}},"required":["name","value"],"additionalProperties":false},"description":"Request headers for this interrogation only; omission uses the stored profile, and an empty list clears it."}},"required":[],"additionalProperties":false},
+           },
+         },
+       ],
+       cancellation: { parameter: 'signal' },
+       result: {
+         mode: 'strict',
+         typeSymbol: '@deepseek-ai/dsh-llm#llm/discoverModels:result',
+         create: _deepseek_ai_dsh_llm_llm_discoverModels_result$schema,
+         description: 'advertised models in endpoint order.',
+         jsonSchema: {"type":"array","items":{"type":"object","properties":{"id":{"type":"string","description":"Model id the endpoint accepts."},"name":{"type":"string","description":"Human-readable name when the endpoint supplies one."},"contextWindow":{"type":"number","description":"Maximum combined request and response context, when disclosed."},"maxTokens":{"type":"number","description":"Maximum output tokens, when disclosed."},"inputModalities":{"type":"array","items":{"type":"string","enum":["text","image"]},"description":"Accepted input types when disclosed by the catalog or endpoint; absent means unknown."}},"required":["id"],"additionalProperties":true}},
+       },
+       sourceLocation: {"file":"packages/llm/llm/src/index.ts","line":643,"column":9},
+     },
++    'llm/discoverModelsWithHeaders': {
++      service: 'llm',
++      description: 'Interrogate a draft with explicit request headers. A separate Remote entry lets older Hosts reject this capability instead of stripping the field.',
++      implementation: 'remoteDiscoverModelsWithHeaders',
++      invocation: { kind: 'direct' },
++      parameters: [
++        {
++          name: 'settingsNs',
++          description: 'namespace whose registered discovery serves this draft.',
++          source: 'json',
++          codec: {
++            mode: 'strict',
++            typeSymbol: '@deepseek-ai/dsh-llm#llm/discoverModelsWithHeaders:settingsNs',
++            create: _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_0$schema,
++            jsonSchema: {"type":"string"},
++          },
++          strictCodec: {
++            mode: 'strict',
++            typeSymbol: '@deepseek-ai/dsh-llm#llm/discoverModelsWithHeaders:settingsNs',
++            create: _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_0_strict$schema,
++            jsonSchema: {"type":"string"},
++          },
++        },
++        {
++          name: 'request',
++          description: 'endpoint, protocol, one-shot credential and request headers.',
++          source: 'json',
++          codec: {
++            mode: 'strict',
++            typeSymbol: '@deepseek-ai/dsh-llm/types#LlmModelDiscoveryRequest',
++            create: _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_1$schema,
++            jsonSchema: {"type":"object","properties":{"provider":{"type":"string","description":"Route the draft is editing, when it edits an existing one. A route whose adapter already knows its models answers from that knowledge instead of asking the endpoint — the adapter's own registry is the better answer, and it costs no network call."},"baseURL":{"type":"string","description":"Endpoint to interrogate. Optional because a route the adapter already describes needs none; a route it does not must supply one."},"api":{"type":"string","description":"Wire protocol the endpoint speaks, when the draft names one."},"apiKey":{"type":"string","description":"Credential for this interrogation alone; the harness never stores it."},"headers":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"value":{"type":"string"}},"required":["name","value"],"additionalProperties":true},"description":"Request headers for this interrogation only; omission uses the stored profile, and an empty list clears it."}},"required":[],"additionalProperties":true},
++          },
++          strictCodec: {
++            mode: 'strict',
++            typeSymbol: '@deepseek-ai/dsh-llm/types#LlmModelDiscoveryRequest',
++            create: _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_1_strict$schema,
++            jsonSchema: {"type":"object","properties":{"provider":{"type":"string","description":"Route the draft is editing, when it edits an existing one. A route whose adapter already knows its models answers from that knowledge instead of asking the endpoint — the adapter's own registry is the better answer, and it costs no network call."},"baseURL":{"type":"string","description":"Endpoint to interrogate. Optional because a route the adapter already describes needs none; a route it does not must supply one."},"api":{"type":"string","description":"Wire protocol the endpoint speaks, when the draft names one."},"apiKey":{"type":"string","description":"Credential for this interrogation alone; the harness never stores it."},"headers":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"value":{"type":"string"}},"required":["name","value"],"additionalProperties":false},"description":"Request headers for this interrogation only; omission uses the stored profile, and an empty list clears it."}},"required":[],"additionalProperties":false},
++          },
++        },
++      ],
++      cancellation: { parameter: 'signal' },
++      result: {
++        mode: 'strict',
++        typeSymbol: '@deepseek-ai/dsh-llm#llm/discoverModelsWithHeaders:result',
++        create: _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_result$schema,
++        description: 'advertised models in endpoint order.',
++        jsonSchema: {"type":"array","items":{"type":"object","properties":{"id":{"type":"string","description":"Model id the endpoint accepts."},"name":{"type":"string","description":"Human-readable name when the endpoint supplies one."},"contextWindow":{"type":"number","description":"Maximum combined request and response context, when disclosed."},"maxTokens":{"type":"number","description":"Maximum output tokens, when disclosed."},"inputModalities":{"type":"array","items":{"type":"string","enum":["text","image"]},"description":"Accepted input types when disclosed by the catalog or endpoint; absent means unknown."}},"required":["id"],"additionalProperties":true}},
++      },
++      sourceLocation: {"file":"packages/llm/llm/src/index.ts","line":672,"column":3},
++    },
+     'llm/listConfigurableProviders': {
+       service: 'llm',
+       description: 'List every declared configurable provider, registered or dormant.',
+       invocation: { kind: 'direct' },
+       parameters: [
+       ],
+       result: {
+         mode: 'strict',
+--- a/node_modules/@deepseek-ai/dsh-llm/lib/typert.remote-client.d.ts
++++ b/node_modules/@deepseek-ai/dsh-llm/lib/typert.remote-client.d.ts
+@@ -4,28 +4,31 @@
+   TypertRemoteInfo,
+   TypertRemoteMethod,
+ } from '@deepseek-ai/dsh-typert-protocol'
+ import type { LlmConfigurableProvider, LlmDiscoveredModel, LlmModelDiscoveryRequest, LlmProviderInfo } from '@deepseek-ai/dsh-llm/types'
+ 
+ declare module '@deepseek-ai/dsh-typert-protocol' {
+   interface TypertRemoteNamespace$6c6c6d {
+     discoverModels: (settingsNs: string, request: LlmModelDiscoveryRequest, signal?: AbortSignal) => Promise<RemoteResult<LlmDiscoveredModel[]>>
++    discoverModelsWithHeaders: (settingsNs: string, request: LlmModelDiscoveryRequest, signal?: AbortSignal) => Promise<RemoteResult<LlmDiscoveredModel[]>>
+     listConfigurableProviders: () => Promise<RemoteResult<LlmConfigurableProvider[]>>
+     listProviders: () => Promise<RemoteResult<LlmProviderInfo[]>>
+   }
+   interface TypertRemoteMap {
+     'llm/discoverModels': (settingsNs: string, request: LlmModelDiscoveryRequest, signal?: AbortSignal) => Promise<RemoteResult<LlmDiscoveredModel[]>>
++    'llm/discoverModelsWithHeaders': (settingsNs: string, request: LlmModelDiscoveryRequest, signal?: AbortSignal) => Promise<RemoteResult<LlmDiscoveredModel[]>>
+     'llm/listConfigurableProviders': () => Promise<RemoteResult<LlmConfigurableProvider[]>>
+     'llm/listProviders': () => Promise<RemoteResult<LlmProviderInfo[]>>
+   }
+   interface TypertRemoteNamespaceMap {
+     'llm': TypertRemoteNamespace$6c6c6d
+   }
+ }
+ 
+ export declare const TYPERT_REMOTE: TypertRemoteInfo<{
+   readonly 'llm/discoverModels': TypertRemoteMethod<{ readonly 'settingsNs': string; readonly 'request': LlmModelDiscoveryRequest }, LlmDiscoveredModel[]>
++  readonly 'llm/discoverModelsWithHeaders': TypertRemoteMethod<{ readonly 'settingsNs': string; readonly 'request': LlmModelDiscoveryRequest }, LlmDiscoveredModel[]>
+   readonly 'llm/listConfigurableProviders': TypertRemoteMethod<{  }, LlmConfigurableProvider[]>
+   readonly 'llm/listProviders': TypertRemoteMethod<{  }, LlmProviderInfo[]>
+ }>
+ export default TYPERT_REMOTE
+ //# sourceMappingURL=typert.remote-client.d.ts.map
+--- a/node_modules/@deepseek-ai/dsh-llm-pi-ai/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-llm-pi-ai/lib/index.js
+@@ -2451,17 +2451,18 @@
+ 	const api = request.api ?? "openai-completions";
+ 	if (!LISTABLE_PROTOCOLS.has(api)) throw new LlmError(`pi-ai protocol "${api}" has no model listing this build can read; enter this provider's models by hand`, "DISCOVERY_UNSUPPORTED");
+ 	const url = listingUrl(request.baseURL, api);
+ 	const stored = storedProfile?.();
+ 	const supplied = request.apiKey ?? await stored?.resolveApiKey();
+ 	const apiKey = supplied === void 0 ? void 0 : usableProbeKey(supplied);
+ 	let response;
+ 	try {
+-		const headers = new Headers(stored?.headers === void 0 ? void 0 : Object.entries(stored.headers));
++		const configuredHeaders = request.headers?.map(({ name, value }) => [name, value]) ?? (stored?.headers === void 0 ? void 0 : Object.entries(stored.headers));
++		const headers = new Headers(configuredHeaders);
+ 		headers.set("accept", "application/json");
+ 		if (api === "anthropic-messages") {
+ 			headers.set("anthropic-version", ANTHROPIC_VERSION);
+ 			if (apiKey !== void 0) headers.set("x-api-key", apiKey);
+ 		} else if (apiKey !== void 0) headers.set("authorization", `Bearer ${apiKey}`);
+ 		for (const [name, value] of Object.entries(attributionHeaders())) headers.set(name, value);
+ 		response = await fetch(url, {
+ 			method: "GET",
+--- a/node_modules/@deepseek-ai/dsh-api-remotes/lib/client.js
++++ b/node_modules/@deepseek-ai/dsh-api-remotes/lib/client.js
+@@ -12879,20 +12879,45 @@
+ 		//#region ../../llm/llm/lib/typert.remote-client.js
+ 		let _deepseek_ai_dsh_llm_llm_discoverModels_parameter_0$schema$value;
+ 		const _deepseek_ai_dsh_llm_llm_discoverModels_parameter_0$schema = () => _deepseek_ai_dsh_llm_llm_discoverModels_parameter_0$schema$value ??= zod.z.string();
+ 		let _deepseek_ai_dsh_llm_llm_discoverModels_parameter_1$schema$value;
+ 		const _deepseek_ai_dsh_llm_llm_discoverModels_parameter_1$schema = () => _deepseek_ai_dsh_llm_llm_discoverModels_parameter_1$schema$value ??= zod.z.object({
+ 			"provider": zod.z.string().optional().describe("Route the draft is editing, when it edits an existing one. A route whose adapter already knows its models answers from that knowledge instead of asking the endpoint — the adapter's own registry is the better answer, and it costs no network call."),
+ 			"baseURL": zod.z.string().optional().describe("Endpoint to interrogate. Optional because a route the adapter already describes needs none; a route it does not must supply one."),
+ 			"api": zod.z.string().optional().describe("Wire protocol the endpoint speaks, when the draft names one."),
+-			"apiKey": zod.z.string().optional().describe("Credential for this interrogation alone; the harness never stores it.")
++			"apiKey": zod.z.string().optional().describe("Credential for this interrogation alone; the harness never stores it."),
++			"headers": zod.z.array(zod.z.object({
++				"name": zod.z.string(),
++				"value": zod.z.string()
++			})).optional().describe("Request headers for this interrogation only; omission uses the stored profile, and an empty list clears it.")
+ 		});
+ 		let _deepseek_ai_dsh_llm_llm_discoverModels_result$schema$value;
+ 		const _deepseek_ai_dsh_llm_llm_discoverModels_result$schema = () => _deepseek_ai_dsh_llm_llm_discoverModels_result$schema$value ??= zod.z.array(zod.z.object({
++			"id": zod.z.string().describe("Model id the endpoint accepts."),
++			"name": zod.z.string().optional().describe("Human-readable name when the endpoint supplies one."),
++			"contextWindow": zod.z.number().optional().describe("Maximum combined request and response context, when disclosed."),
++			"maxTokens": zod.z.number().optional().describe("Maximum output tokens, when disclosed."),
++			"inputModalities": zod.z.array(zod.z.union([zod.z.literal("text"), zod.z.literal("image")])).optional().describe("Accepted input types when disclosed by the catalog or endpoint; absent means unknown.")
++		}));
++		let _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_0$schema$value;
++		const _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_0$schema = () => _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_0$schema$value ??= zod.z.string();
++		let _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_1$schema$value;
++		const _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_1$schema = () => _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_1$schema$value ??= zod.z.object({
++			"provider": zod.z.string().optional().describe("Route the draft is editing, when it edits an existing one. A route whose adapter already knows its models answers from that knowledge instead of asking the endpoint — the adapter's own registry is the better answer, and it costs no network call."),
++			"baseURL": zod.z.string().optional().describe("Endpoint to interrogate. Optional because a route the adapter already describes needs none; a route it does not must supply one."),
++			"api": zod.z.string().optional().describe("Wire protocol the endpoint speaks, when the draft names one."),
++			"apiKey": zod.z.string().optional().describe("Credential for this interrogation alone; the harness never stores it."),
++			"headers": zod.z.array(zod.z.object({
++				"name": zod.z.string(),
++				"value": zod.z.string()
++			})).optional().describe("Request headers for this interrogation only; omission uses the stored profile, and an empty list clears it.")
++		});
++		let _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_result$schema$value;
++		const _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_result$schema = () => _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_result$schema$value ??= zod.z.array(zod.z.object({
+ 			"id": zod.z.string().describe("Model id the endpoint accepts."),
+ 			"name": zod.z.string().optional().describe("Human-readable name when the endpoint supplies one."),
+ 			"contextWindow": zod.z.number().optional().describe("Maximum combined request and response context, when disclosed."),
+ 			"maxTokens": zod.z.number().optional().describe("Maximum output tokens, when disclosed."),
+ 			"inputModalities": zod.z.array(zod.z.union([zod.z.literal("text"), zod.z.literal("image")])).optional().describe("Accepted input types when disclosed by the catalog or endpoint; absent means unknown.")
+ 		}));
+ 		let _deepseek_ai_dsh_llm_llm_listConfigurableProviders_result$schema$value;
+ 		const _deepseek_ai_dsh_llm_llm_listConfigurableProviders_result$schema = () => _deepseek_ai_dsh_llm_llm_listConfigurableProviders_result$schema$value ??= zod.z.array(zod.z.object({
+@@ -12916,17 +12941,34 @@
+ 		}));
+ 		let _deepseek_ai_dsh_llm_llm_discoverModels_parameter_0_strict$schema$value;
+ 		const _deepseek_ai_dsh_llm_llm_discoverModels_parameter_0_strict$schema = () => _deepseek_ai_dsh_llm_llm_discoverModels_parameter_0_strict$schema$value ??= zod.z.string();
+ 		let _deepseek_ai_dsh_llm_llm_discoverModels_parameter_1_strict$schema$value;
+ 		const _deepseek_ai_dsh_llm_llm_discoverModels_parameter_1_strict$schema = () => _deepseek_ai_dsh_llm_llm_discoverModels_parameter_1_strict$schema$value ??= zod.z.strictObject({
+ 			"provider": zod.z.string().optional().describe("Route the draft is editing, when it edits an existing one. A route whose adapter already knows its models answers from that knowledge instead of asking the endpoint — the adapter's own registry is the better answer, and it costs no network call."),
+ 			"baseURL": zod.z.string().optional().describe("Endpoint to interrogate. Optional because a route the adapter already describes needs none; a route it does not must supply one."),
+ 			"api": zod.z.string().optional().describe("Wire protocol the endpoint speaks, when the draft names one."),
+-			"apiKey": zod.z.string().optional().describe("Credential for this interrogation alone; the harness never stores it.")
++			"apiKey": zod.z.string().optional().describe("Credential for this interrogation alone; the harness never stores it."),
++			"headers": zod.z.array(zod.z.strictObject({
++				"name": zod.z.string(),
++				"value": zod.z.string()
++			})).optional().describe("Request headers for this interrogation only; omission uses the stored profile, and an empty list clears it.")
++		});
++		let _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_0_strict$schema$value;
++		const _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_0_strict$schema = () => _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_0_strict$schema$value ??= zod.z.string();
++		let _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_1_strict$schema$value;
++		const _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_1_strict$schema = () => _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_1_strict$schema$value ??= zod.z.strictObject({
++			"provider": zod.z.string().optional().describe("Route the draft is editing, when it edits an existing one. A route whose adapter already knows its models answers from that knowledge instead of asking the endpoint — the adapter's own registry is the better answer, and it costs no network call."),
++			"baseURL": zod.z.string().optional().describe("Endpoint to interrogate. Optional because a route the adapter already describes needs none; a route it does not must supply one."),
++			"api": zod.z.string().optional().describe("Wire protocol the endpoint speaks, when the draft names one."),
++			"apiKey": zod.z.string().optional().describe("Credential for this interrogation alone; the harness never stores it."),
++			"headers": zod.z.array(zod.z.strictObject({
++				"name": zod.z.string(),
++				"value": zod.z.string()
++			})).optional().describe("Request headers for this interrogation only; omission uses the stored profile, and an empty list clears it.")
+ 		});
+ 		const TYPERT_REMOTE$17 = createTypertRemoteInfo({
+ 			package: "@deepseek-ai/dsh-llm",
+ 			methods: {
+ 				"llm/discoverModels": {
+ 					service: "llm",
+ 					description: "Remote adapter for one draft provider interrogation.",
+ 					implementation: "remoteDiscoverModels",
+@@ -12968,16 +13010,29 @@
+ 									},
+ 									"api": {
+ 										"type": "string",
+ 										"description": "Wire protocol the endpoint speaks, when the draft names one."
+ 									},
+ 									"apiKey": {
+ 										"type": "string",
+ 										"description": "Credential for this interrogation alone; the harness never stores it."
++									},
++									"headers": {
++										"type": "array",
++										"items": {
++											"type": "object",
++											"properties": {
++												"name": { "type": "string" },
++												"value": { "type": "string" }
++											},
++											"required": ["name", "value"],
++											"additionalProperties": true
++										},
++										"description": "Request headers for this interrogation only; omission uses the stored profile, and an empty list clears it."
+ 									}
+ 								},
+ 								"required": [],
+ 								"additionalProperties": true
+ 							}
+ 						},
+ 						strictCodec: {
+ 							mode: "strict",
+@@ -12996,16 +13051,29 @@
+ 									},
+ 									"api": {
+ 										"type": "string",
+ 										"description": "Wire protocol the endpoint speaks, when the draft names one."
+ 									},
+ 									"apiKey": {
+ 										"type": "string",
+ 										"description": "Credential for this interrogation alone; the harness never stores it."
++									},
++									"headers": {
++										"type": "array",
++										"items": {
++											"type": "object",
++											"properties": {
++												"name": { "type": "string" },
++												"value": { "type": "string" }
++											},
++											"required": ["name", "value"],
++											"additionalProperties": false
++										},
++										"description": "Request headers for this interrogation only; omission uses the stored profile, and an empty list clears it."
+ 									}
+ 								},
+ 								"required": [],
+ 								"additionalProperties": false
+ 							}
+ 						}
+ 					}],
+ 					cancellation: { parameter: "signal" },
+@@ -13048,16 +13116,171 @@
+ 								"additionalProperties": true
+ 							}
+ 						}
+ 					},
+ 					sourceLocation: {
+ 						"file": "packages/llm/llm/src/index.ts",
+ 						"line": 643,
+ 						"column": 9
++					}
++				},
++				"llm/discoverModelsWithHeaders": {
++					service: "llm",
++					description: "Interrogate a draft with explicit request headers. A separate Remote entry lets older Hosts reject this capability instead of stripping the field.",
++					implementation: "remoteDiscoverModelsWithHeaders",
++					invocation: { kind: "direct" },
++					parameters: [{
++						name: "settingsNs",
++						description: "namespace whose registered discovery serves this draft.",
++						source: "json",
++						codec: {
++							mode: "strict",
++							typeSymbol: "@deepseek-ai/dsh-llm#llm/discoverModelsWithHeaders:settingsNs",
++							create: _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_0$schema,
++							jsonSchema: { "type": "string" }
++						},
++						strictCodec: {
++							mode: "strict",
++							typeSymbol: "@deepseek-ai/dsh-llm#llm/discoverModelsWithHeaders:settingsNs",
++							create: _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_0_strict$schema,
++							jsonSchema: { "type": "string" }
++						}
++					}, {
++						name: "request",
++						description: "endpoint, protocol, one-shot credential and request headers.",
++						source: "json",
++						codec: {
++							mode: "strict",
++							typeSymbol: "@deepseek-ai/dsh-llm/types#LlmModelDiscoveryRequest",
++							create: _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_1$schema,
++							jsonSchema: {
++								"type": "object",
++								"properties": {
++									"provider": {
++										"type": "string",
++										"description": "Route the draft is editing, when it edits an existing one. A route whose adapter already knows its models answers from that knowledge instead of asking the endpoint — the adapter's own registry is the better answer, and it costs no network call."
++									},
++									"baseURL": {
++										"type": "string",
++										"description": "Endpoint to interrogate. Optional because a route the adapter already describes needs none; a route it does not must supply one."
++									},
++									"api": {
++										"type": "string",
++										"description": "Wire protocol the endpoint speaks, when the draft names one."
++									},
++									"apiKey": {
++										"type": "string",
++										"description": "Credential for this interrogation alone; the harness never stores it."
++									},
++									"headers": {
++										"type": "array",
++										"items": {
++											"type": "object",
++											"properties": {
++												"name": { "type": "string" },
++												"value": { "type": "string" }
++											},
++											"required": ["name", "value"],
++											"additionalProperties": true
++										},
++										"description": "Request headers for this interrogation only; omission uses the stored profile, and an empty list clears it."
++									}
++								},
++								"required": [],
++								"additionalProperties": true
++							}
++						},
++						strictCodec: {
++							mode: "strict",
++							typeSymbol: "@deepseek-ai/dsh-llm/types#LlmModelDiscoveryRequest",
++							create: _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_parameter_1_strict$schema,
++							jsonSchema: {
++								"type": "object",
++								"properties": {
++									"provider": {
++										"type": "string",
++										"description": "Route the draft is editing, when it edits an existing one. A route whose adapter already knows its models answers from that knowledge instead of asking the endpoint — the adapter's own registry is the better answer, and it costs no network call."
++									},
++									"baseURL": {
++										"type": "string",
++										"description": "Endpoint to interrogate. Optional because a route the adapter already describes needs none; a route it does not must supply one."
++									},
++									"api": {
++										"type": "string",
++										"description": "Wire protocol the endpoint speaks, when the draft names one."
++									},
++									"apiKey": {
++										"type": "string",
++										"description": "Credential for this interrogation alone; the harness never stores it."
++									},
++									"headers": {
++										"type": "array",
++										"items": {
++											"type": "object",
++											"properties": {
++												"name": { "type": "string" },
++												"value": { "type": "string" }
++											},
++											"required": ["name", "value"],
++											"additionalProperties": false
++										},
++										"description": "Request headers for this interrogation only; omission uses the stored profile, and an empty list clears it."
++									}
++								},
++								"required": [],
++								"additionalProperties": false
++							}
++						}
++					}],
++					cancellation: { parameter: "signal" },
++					result: {
++						mode: "strict",
++						typeSymbol: "@deepseek-ai/dsh-llm#llm/discoverModelsWithHeaders:result",
++						create: _deepseek_ai_dsh_llm_llm_discoverModelsWithHeaders_result$schema,
++						description: "advertised models in endpoint order.",
++						jsonSchema: {
++							"type": "array",
++							"items": {
++								"type": "object",
++								"properties": {
++									"id": {
++										"type": "string",
++										"description": "Model id the endpoint accepts."
++									},
++									"name": {
++										"type": "string",
++										"description": "Human-readable name when the endpoint supplies one."
++									},
++									"contextWindow": {
++										"type": "number",
++										"description": "Maximum combined request and response context, when disclosed."
++									},
++									"maxTokens": {
++										"type": "number",
++										"description": "Maximum output tokens, when disclosed."
++									},
++									"inputModalities": {
++										"type": "array",
++										"items": {
++											"type": "string",
++											"enum": ["text", "image"]
++										},
++										"description": "Accepted input types when disclosed by the catalog or endpoint; absent means unknown."
++									}
++								},
++								"required": ["id"],
++								"additionalProperties": true
++							}
++						}
++					},
++					sourceLocation: {
++						"file": "packages/llm/llm/src/index.ts",
++						"line": 672,
++						"column": 3
+ 					}
+ 				},
+ 				"llm/listConfigurableProviders": {
+ 					service: "llm",
+ 					description: "List every declared configurable provider, registered or dormant.",
+ 					invocation: { kind: "direct" },
+ 					parameters: [],
+ 					result: {

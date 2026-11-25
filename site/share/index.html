@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src https://api.github.com https://gist.githubusercontent.com; base-uri 'none'; form-action 'none'">
+<meta name="color-scheme" content="light dark">
+<title>dsh-go 分享</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="viewer.css">
+<style>
+  :root {
+    --bg: #eef0f5;
+    --card: #ffffff;
+    --ink: #161a22;
+    --ink-2: #4a5160;
+    --ink-3: #8a90a0;
+    --line: rgba(20, 24, 34, 0.08);
+    --primary: #4d6bfe;
+    --on-primary: #ffffff;
+    --tile: rgba(77, 107, 254, 0.12);
+    --ok: #2f7d4f;
+    --ok-bg: rgba(47, 125, 79, 0.12);
+    --danger: #c0392b;
+    /* The brand glyph's gradient stops, for light pages (app/assets/brand/glyph-light.svg). */
+    --g-tail-0: #4261cd; --g-tail-1: #5e93e1; --g-fin-0: #4e68ce; --g-fin-1: #6692db; --g-belly-0: #839ae6; --g-belly-1: #7b8de0; --g-belly-2: #7075d2; --g-bubble-0: #779ee6; --g-bubble-1: #6f91e0; --g-bubble-2: #7075d2;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151c;
+      --card: #1d212b;
+      --ink: #eef0f5;
+      --ink-2: #b6bccb;
+      --ink-3: #7c8396;
+      --line: rgba(255, 255, 255, 0.08);
+      --primary: #8ea2ff;
+      --on-primary: #10131a;
+      --tile: rgba(142, 162, 255, 0.16);
+      --ok: #8fd3a8;
+      --ok-bg: rgba(143, 211, 168, 0.14);
+      --danger: #ff8a7a;
+      /* …and for dark pages (glyph-dark.svg). */
+      --g-tail-0: #8faffa; --g-tail-1: #ddeefd; --g-fin-0: #8eadfb; --g-fin-1: #cde2fb; --g-belly-0: #bfccfa; --g-belly-1: #ccd8fb; --g-belly-2: #eceafe; --g-bubble-0: #a6c3fa; --g-bubble-1: #b7ccfa; --g-bubble-2: #ece5fc;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); }
+  body {
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: max(32px, env(safe-area-inset-top)) 16px max(32px, env(safe-area-inset-bottom));
+  }
+  main { width: 100%; max-width: 440px; }
+  .brand { display: flex; align-items: center; gap: 8px; color: var(--ink-3); font-size: 13px; margin: 0 4px 16px; }
+  .brand b { color: var(--ink); font-weight: 600; letter-spacing: 0.01em; }
+  /* Lockup (BrandLockup in the app): glyph 1.25× the word's size, 0.36× from it, its visual
+     centre (57% down its box) on the word's x-height centre. */
+  .lockup { white-space: nowrap; }
+  .lockup .glyph { width: 1.3105em; height: 1.25em; margin-right: 0.36em; vertical-align: -0.27em; }
+  .card { background: var(--card); border-radius: 28px; padding: 24px 20px 20px; box-shadow: 0 8px 28px rgba(0, 0, 0, 0.06); border: 0.5px solid var(--line); }
+  .hero { display: flex; align-items: center; gap: 16px; }
+  .tile { flex: none; width: 56px; height: 56px; border-radius: 14px; background: var(--tile); color: var(--primary); display: grid; place-items: center; font-size: 24px; font-weight: 600; }
+  .tile svg { width: 26px; height: 26px; }
+  h1 { font-size: 21px; line-height: 1.3; margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+  .sub { color: var(--ink-3); font-size: 13px; margin-top: 2px; overflow-wrap: anywhere; }
+  .summary { color: var(--ink-2); margin: 16px 0 0; overflow-wrap: anywhere; }
+  .facts { margin: 16px 0 0; padding: 0; list-style: none; border-top: 0.5px solid var(--line); }
+  .facts li { display: flex; justify-content: space-between; gap: 16px; padding: 12px 0; border-bottom: 0.5px solid var(--line); }
+  .facts li span:first-child { color: var(--ink-2); flex: none; }
+  .facts li span:last-child { text-align: right; color: var(--ink); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+  .group { margin-top: 18px; }
+  .group h2 { font-size: 13px; font-weight: 600; color: var(--ink-3); margin: 0 0 6px; }
+  .group ul { margin: 0; padding: 0; list-style: none; }
+  .group li { display: flex; justify-content: space-between; gap: 16px; padding: 6px 0; }
+  .group li span:last-child { color: var(--ink-3); text-align: right; }
+  .mono { font-family: ui-monospace, "JetBrains Mono", Menlo, monospace; font-size: 13px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 999px; background: var(--ok-bg); color: var(--ok); font-size: 13px; font-weight: 600; }
+  .chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .actions { display: grid; gap: 12px; margin-top: 24px; }
+  .btn { display: flex; align-items: center; justify-content: center; height: 48px; border-radius: 999px; font-size: 16px; font-weight: 600; text-decoration: none; }
+  .btn.primary { background: var(--primary); color: var(--on-primary); }
+  .btn.secondary { color: var(--ink); border: 1px solid var(--line); background: transparent; }
+  .note { color: var(--ink-3); font-size: 13px; text-align: center; margin: 14px 0 0; }
+  .error { color: var(--danger); }
+  [hidden] { display: none !important; }
+  /* A conversation (viewer.css) takes the whole page. */
+  body.dv-page { display: block; padding: 0; }
+</style>
+</head>
+<body>
+<main>
+  <div class="brand"><span class="lockup"><svg class="glyph" viewBox="26.75 28.01 54.51 52" aria-hidden="true"><defs><linearGradient id="m-tail" gradientUnits="userSpaceOnUse" x1="36.3" y1="57" x2="66.5" y2="40"><stop offset="0" style="stop-color:var(--g-tail-0)"/><stop offset="1" style="stop-color:var(--g-tail-1)"/></linearGradient><linearGradient id="m-fin" gradientUnits="userSpaceOnUse" x1="40.2" y1="41.5" x2="28.1" y2="39.4"><stop offset="0" style="stop-color:var(--g-fin-0)"/><stop offset="1" style="stop-color:var(--g-fin-1)"/></linearGradient><radialGradient id="m-belly" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="1" gradientTransform="matrix(27 0 0 13.5 52.7 71)"><stop offset="0" style="stop-color:var(--g-belly-0)"/><stop offset="0.6" style="stop-color:var(--g-belly-1)"/><stop offset="1" style="stop-color:var(--g-belly-2)"/></radialGradient><radialGradient id="m-bubble" gradientUnits="userSpaceOnUse" cx="74.773" cy="47.737" r="11.858"><stop offset="0" style="stop-color:var(--g-bubble-0)"/><stop offset="0.55" style="stop-color:var(--g-bubble-1)"/><stop offset="1" style="stop-color:var(--g-bubble-2)"/></radialGradient></defs><path fill="url(#m-tail)" d="M41.533 42.237C44.542 35.225 52.318 30.559 59.471 28.765C60.371 28.538 62.707 28.015 63.555 28.015C64.422 28.015 64.421 28.514 64.421 29.29C64.421 31.68 63.303 34.553 62.143 36.621C55.998 47.579 48.019 44.056 43.838 46.999C43.15 47.483 42.766 48.054 42.766 48.912C42.766 50.39 43.965 52.011 44.897 53.082C45.928 54.267 47.16 55.238 48.469 56.094C55.176 60.483 63.472 60.609 71.206 61.347C74.082 61.621 79.534 62.636 79.534 66.422C79.534 68.215 78.222 70.141 77.075 71.438C71.344 77.92 61.895 80.004 53.58 80.004C44.713 80.004 35.314 77.576 31.142 68.924C30.012 66.582 29.365 64.181 29.365 61.571C29.365 55.356 33.535 50.83 37.86 46.956C38.345 46.522 38.831 46.123 39.305 45.676C38.855 45.728 38.235 45.778 37.786 45.778C33.274 45.778 29.511 43.364 27.53 39.337C27.273 38.812 26.75 37.645 26.75 37.084C26.75 36.858 26.762 36.709 26.938 36.537C27.598 35.893 30.489 35.739 31.449 35.739C34.863 35.739 39.247 36.73 40.913 40.064C41.275 40.789 41.476 41.422 41.533 42.237Z"/><path fill="url(#m-fin)" d="M39.305 45.676C38.855 45.728 38.235 45.778 37.786 45.778C33.274 45.778 29.511 43.364 27.53 39.337C27.273 38.812 26.75 37.645 26.75 37.084C26.75 36.858 26.762 36.709 26.938 36.537C27.598 35.893 30.489 35.739 31.449 35.739C34.863 35.739 39.247 36.73 40.913 40.064C41.275 40.789 41.476 41.422 41.533 42.237C40.939 43.623 40.431 44.616 39.305 45.676Z"/><path fill="url(#m-belly)" d="M71.206 61.347C74.082 61.621 79.534 62.636 79.534 66.422C79.534 68.215 78.222 70.141 77.075 71.438C71.344 77.92 61.895 80.004 53.58 80.004C44.713 80.004 35.314 77.576 31.142 68.924C30.012 66.582 29.365 64.181 29.365 61.571C29.365 55.356 33.535 50.83 37.86 46.956C36.25 49.744 34.973 51.951 34.973 55.33C34.973 60.404 38.211 65.143 42.955 66.973C44.549 67.587 46.222 67.824 47.922 67.824C55.125 67.824 60.394 63.817 66.806 62.094C68.398 61.666 69.588 61.553 71.206 61.347Z"/><path fill="url(#m-bubble)" d="M72.336 41.925C77.122 41.925 81.257 45.674 81.257 50.54C81.257 55.583 76.554 58.82 71.902 58.82C67.179 58.82 63.019 55.302 63.019 50.453C63.019 45.66 67.675 41.925 72.336 41.925Z"/></svg><b>dsh-go</b></span><span data-i18n="share">分享</span></div>
+  <section class="card" id="card" aria-live="polite">
+    <div class="hero">
+      <div class="tile" id="tile" aria-hidden="true"></div>
+      <div>
+        <h1 id="title" data-i18n="reading">正在读取…</h1>
+        <div class="sub" id="sub"></div>
+      </div>
+    </div>
+    <p class="summary" id="summary" hidden></p>
+    <ul class="facts" id="facts" hidden></ul>
+    <div id="groups"></div>
+    <div class="actions">
+      <a class="btn primary" id="open" data-i18n="openApp" href="#" hidden>用 dsh-go 打开</a>
+      <a class="btn secondary" id="download" data-i18n="download" href="https://github.com/ccch1mneyyy/dsh-go/releases/latest" rel="noopener">下载 dsh-go</a>
+    </div>
+    <p class="note" id="note" hidden></p>
+  </section>
+</main>
+<div id="dv-root" hidden></div>
+<script src="viewer.js"></script>
+<script src="share.js"></script>
+</body>
+</html>

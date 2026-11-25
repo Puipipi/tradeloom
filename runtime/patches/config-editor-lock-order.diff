@@ -1,0 +1,30 @@
+--- a/node_modules/@deepseek-ai/dsh-config-editor/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-config-editor/lib/index.js
+@@ -93,9 +93,9 @@
+ 	* @returns Fulfillment after Loader reconciliation completes.
+ 	*/
+ 	async edit(entry, change) {
+-		const run = async () => {
+-			const path = this.documentPath;
+-			await withFileLock(join(this.ownerContext.profileContext.dir, "package.json"), async () => {
++		await withFileLock(join(this.ownerContext.profileContext.dir, "package.json"), async () => {
++			const run = async () => {
++				const path = this.documentPath;
+ 				if (!this.entries().includes(entry) || entry.fiber === void 0) throw new Error("Configuration entry is no longer available");
+ 				const beforePatches = readProfilePatches("dsh", this.ownerContext.profileContext);
+ 				await reconcileProfilePatches(this.ownerContext.root, beforePatches, "dsh");
+@@ -154,10 +154,10 @@
+ 					await reconcileProfilePatches(this.ownerContext.root, beforePatches, "dsh");
+ 					throw error;
+ 				}
+-			});
+-		};
+-		const hmr = this.ownerContext.get("hmr");
+-		await (hmr === void 0 ? run() : hmr.runExclusive(run));
++			};
++			const hmr = this.ownerContext.get("hmr");
++			await (hmr === void 0 ? run() : hmr.runExclusive(run));
++		});
+ 	}
+ };
+ //#endregion

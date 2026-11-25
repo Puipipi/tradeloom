@@ -1,0 +1,39 @@
+--- a/node_modules/@deepseek-ai/dsh-workspace-changes/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-workspace-changes/lib/index.js
+@@ -1,6 +1,6 @@
+ import { homedir, tmpdir } from "node:os";
+ import z from "@deepseek-ai/schemastery";
+-import { copyFile, mkdir, mkdtemp, open, readFile, realpath, rm, writeFile } from "node:fs/promises";
++import { copyFile, mkdir, mkdtemp, open, readFile, realpath, rm } from "node:fs/promises";
+ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+ import { createHash } from "node:crypto";
+ import { structuredPatch } from "diff";
+@@ -491,10 +491,25 @@
+ 	}
+ 	const file = join(directory, createHash("sha1").update(bytes).digest("hex"));
+ 	await mkdir(directory, { recursive: true });
+-	await writeFile(file, bytes, { flag: "wx" }).catch((error) => {
+-		/* v8 ignore next -- a copy that cannot be written needs a directory the tests cannot make unwritable on every host. */
++	let copy;
++	try {
++		copy = await open(file, "wx");
++	} catch (error) {
+ 		if (error.code !== "EEXIST") throw error;
+-	});
++	}
++	if (copy !== void 0) {
++		try {
++			try {
++				await copy.writeFile(bytes);
++			} finally {
++				await copy.close();
++			}
++		} catch (error) {
++			// Only this successful exclusive open owns an incomplete cache file.
++			await rm(file, { force: true });
++			throw error;
++		}
++	}
+ 	return {
+ 		kind: "file",
+ 		file,

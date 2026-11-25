@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The splash icon of a launch whose icon isn't known to the theme (launch/LaunchThemes.kt):
+     nothing at all. A theme can't follow the 桌面图标 the person chose (an activity-alias has no
+     theme of its own), so the manifest's splash shows the page colour alone and the app brings
+     the chosen icon in. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@android:color/transparent" />
+    <size android:width="108dp" android:height="108dp" />
+</shape>

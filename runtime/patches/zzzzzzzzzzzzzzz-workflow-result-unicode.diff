@@ -1,0 +1,18 @@
+--- a/node_modules/@deepseek-ai/dsh-tool-workflow/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-tool-workflow/lib/index.js
+@@ -197,7 +197,14 @@
+ /** Render the run's outcome text: the meta name, agent count, and the JSON value (capped). */
+ function renderResult(name, agentsStarted, value, maxChars) {
+ 	const rendered = JSON.stringify(value, null, 2);
+-	const clipped = rendered.length > maxChars ? `${rendered.slice(0, maxChars)}\n… [truncated: ${rendered.length - maxChars} more characters]` : rendered;
++	let end = Math.min(rendered.length, maxChars);
++	if (end < rendered.length) {
++		const last = rendered.charCodeAt(end - 1);
++		const next = rendered.charCodeAt(end);
++		if (last >= 0xd800 && last <= 0xdbff && next >= 0xdc00 && next <= 0xdfff) end -= 1;
++	}
++	const retained = rendered.slice(0, end);
++	const clipped = end < rendered.length ? `${retained}\n… [truncated: ${rendered.length - retained.length} more characters]` : rendered;
+ 	return `workflow "${name}" completed (${agentsStarted} agent${agentsStarted === 1 ? "" : "s"}).\nReturn value:\n${clipped}`;
+ }
+ /**

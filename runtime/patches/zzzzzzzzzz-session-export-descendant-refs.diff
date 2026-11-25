@@ -1,0 +1,36 @@
+--- a/node_modules/@deepseek-ai/dsh-session-log-export/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-session-log-export/lib/index.js
+@@ -95,6 +95,10 @@
+ * @returns the serialized JSONL text, or `undefined` when the session does not exist.
+ */
+ async function readSessionLogText(persistence, id, signal) {
++	return readSessionLogTextWithAttachments(persistence, id, signal);
++}
++// Internal export observation; reuse the validated events before releasing the handle.
++async function readSessionLogTextWithAttachments(persistence, id, signal, images, files) {
+ 	const options = signal === void 0 ? {} : { signal };
+ 	let handle;
+ 	try {
+@@ -105,7 +109,9 @@
+ 	}
+ 	try {
+ 		const { events } = await handle.read(0, void 0, options);
+-		return serializeSessionLog(handle.header, events);
++		const text = serializeSessionLog(handle.header, events);
++		if (images !== void 0 && files !== void 0) for (const event of events) collectEventAttachmentRefs(event, images, files);
++		return text;
+ 	} finally {
+ 		await handle.close();
+ 	}
+@@ -285,10 +291,9 @@
+ 				if (seen.has(id)) continue;
+ 				seen.add(id);
+ 				await flushLiveSessionLog(deps, id, signal);
+-				const content = await readSessionLogText(deps.sessionPersistence, id, signal);
++				const content = await readSessionLogTextWithAttachments(deps.sessionPersistence, id, signal, media, files);
+ 				signal?.throwIfAborted();
+ 				if (content === void 0) throw new Error(`subagent "${id}" has no stored log`);
+-				rememberAttachments(content);
+ 				yield {
+ 					path: `subagents/${safeSessionIdSegment(id)}/${SESSION_LOG_FILENAME}`,
+ 					content

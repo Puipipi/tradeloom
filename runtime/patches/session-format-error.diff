@@ -1,0 +1,10 @@
+--- a/node_modules/@deepseek-ai/dsh-api-session-controller/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-api-session-controller/lib/index.js
+@@ -1947,6 +1947,7 @@
+ 				const code = error?.code;
+ 				if (code === "SESSION_QUERY_SESSION_NOT_FOUND") throw new RemoteError("session/not-found", `session "${sessionId}" not found`, { sessionId });
+ 				if (code === "SESSION_QUERY_ABORTED") throw new RemoteError("gateway/cancelled", error instanceof Error ? error.message : "Session read was cancelled", {}, { cause: error });
++				if (code === "SESSION_QUERY_PERSISTENCE_FAILED" && error instanceof Error && error.cause instanceof Error && error.cause.name === "SessionFormatUnsupportedError") throw new RemoteError("session/format-unsupported", error.message, { sessionId }, { cause: error });
+ 				throw error;
+ 			}
+ 			try {

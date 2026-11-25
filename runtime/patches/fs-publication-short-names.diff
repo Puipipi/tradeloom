@@ -1,0 +1,8 @@
+# dsh-go: avoid extending the destination basename in temporary components.
+--- a/node_modules/@deepseek-ai/dsh-fs-local/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-fs-local/lib/index.js
+@@ -555,2 +555,2 @@
+-	const stagingDir = join(directory, internals.tempDirName?.(absolutePath) ?? `.${basename(absolutePath)}.${process.pid}.${randomUUID()}.tmpdir`);
+-	const tempPath = join(stagingDir, internals.tempName?.(absolutePath) ?? `${basename(absolutePath)}.tmp`);
++	const stagingDir = join(directory, internals.tempDirName?.(absolutePath) ?? `.${process.pid}.${randomUUID()}.tmpdir`);
++	const tempPath = join(stagingDir, internals.tempName?.(absolutePath) ?? "file.tmp");

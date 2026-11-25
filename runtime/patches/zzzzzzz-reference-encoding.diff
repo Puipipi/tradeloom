@@ -1,0 +1,19 @@
+--- a/node_modules/@deepseek-ai/dsh-session-reference/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-session-reference/lib/index.js
+@@ -247,6 +247,7 @@
+ 		text,
+ 		omittedBytes: 0
+ 	};
++	const encodedText = new TextEncoder().encode(text);
+ 	let low = 0;
+ 	let high = maxOutputBytes;
+ 	let best = {
+@@ -260,7 +261,7 @@
+ 			headBytes: Math.ceil(retainedBytes / 2),
+ 			tailBytes: Math.floor(retainedBytes / 2)
+ 		});
+-		retainer.push(text);
++		retainer.push(encodedText);
+ 		const result = retainer.finish();
+ 		/* v8 ignore next 3 -- complete-string TextRetainer input cannot report a lower bound. */
+ 		if (result.omittedBytes.kind !== "exact") throw new Error("session-reference retention did not report exact omitted bytes");

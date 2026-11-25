@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="phone_log_coordinate">坐标手势 %1$s · %2$s</string>
+    <string name="phone_confirm_coordinate_long">在「%1$s」长按截图位置 (%2$s, %3$s)</string>
+    <string name="phone_confirm_coordinate_swipe">在「%1$s」从 (%2$d,%3$d) 滑动到 (%4$d,%5$d)，%6$d 毫秒</string>
+    <string name="phone_status_coordinate">执行截图坐标手势</string>
+</resources>

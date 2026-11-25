@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="phone_confirm_background_coordinate">。这是最近后台截图的位置，请核对目标。此确认卡不含原截图。</string>
+</resources>

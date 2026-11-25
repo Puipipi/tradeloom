@@ -1,0 +1,85 @@
+// Source template for gen-types.mjs. Edit this file, never types/testing.d.ts.
+import type { Caps, MicroData, CapabilityEvent, ContributionsIssue, ContributionsPlugin, DshGoService, Effect, Scope, StreamStripData, View } from './index.js'
+
+export function defaultCaps(overrides?: Partial<Caps>): Caps
+
+export class HostError extends Error {
+  /** The HTTP status the bridge would answer (404, 409, 500, 504 …). */
+  readonly status: number
+  /** The protocol error code (not-found, no-handler, plugin-error, timeout …). */
+  readonly code: string
+}
+
+export interface TestFeed<D = unknown> {
+  id: string
+  scope: Scope
+  /** Latest value as the app would hold it (nulls dropped; strip text cut to 24). */
+  data: D | null | undefined
+  /** Every emitted value, in order (no 4 Hz throttling here). */
+  history: Array<D | null>
+  /** How many times ctx.dshGo.refresh(id) was called while subscribed. */
+  stale: number
+  /** Emits the bridge would reject, and failures of the data function or its cleanup. */
+  errors: string[]
+  /** Resolves once the data function has finished starting. Never rejects: a failure lands in `errors`. */
+  settled: Promise<void>
+  stop(): void
+}
+
+export interface TestHost {
+  /** Pass to your plugin: `plugin.apply(host.ctx)`. Cordis-like: inject, on, effect, get, logger. */
+  readonly ctx: any
+  readonly caps: Caps
+  readonly dshGo: DshGoService
+  /** Callbacks waiting for services the host does not provide (e.g. dshGo with `bridge: false`). */
+  readonly pending: Array<{ missing: string[]; callback: (ctx: any) => void }>
+  readonly logs: unknown[][]
+  readonly violations: unknown[]
+  /** The plugin's row in GET /dsh-go/v1/contributions. */
+  contributions(caps?: Partial<Caps>): ContributionsPlugin
+  /** POST /dsh-go/v1/invoke; rejects with HostError where the bridge answers an error. */
+  invoke(id: string, request?: {
+    surface?: 'composer.actions' | 'message.actions' | 'composer.strip' | 'panel' | 'composer.tools' | 'session.actions'
+    action?: string
+    value?: unknown
+    scope?: Scope
+    context?: { draft?: string; clipboard?: string; message?: string }
+    locale?: string
+    /** True only when testing a direct tap; no upload authority is fabricated by this harness. */
+    userGesture?: boolean
+  }): Promise<{
+    effects: Effect[]
+    issues: ContributionsIssue[]
+    /** Present for a deferred result: what the app shows while waiting. */
+    pending?: { id: string; label?: string; timeoutMs: number }
+    /** Deferred only: how it ended (like the stream's `done` / `void`). */
+    settled?: Promise<{ t: 'done'; effects: Effect[]; issues?: ContributionsIssue[] } | { t: 'void'; reason: 'timeout' | 'cancelled' | 'error' }>
+    /** Deferred only: what the app's cancel button does. */
+    cancel?: () => void
+  }>
+  /** Direct callback probes; do not simulate transport leases/auth or throttling. */
+  media(id: string, scope?: Scope, options?: { key?: string; locale?: string; signal?: AbortSignal }): Promise<{ body: Uint8Array; contentType: string }>
+  subscribeMicro(id: string, scope?: Scope): TestFeed<MicroData>
+  capabilityEvent(scope: Scope, event: Omit<CapabilityEvent, 'signal'>): Promise<void>
+  /** GET /dsh-go/v1/views/<pkg>/<id>. */
+  view(id: string, scope?: Scope, caps?: Partial<Caps>): Promise<{ view: View; stats: { bytes: number; nodes: number; depth: number } }>
+  /** Start the data function of a panel, strip or turn note. Removing or replacing its registration stops the feed. */
+  subscribe<D = any>(id: string, scope?: Scope): TestFeed<D>
+  /** Fire a host event to the plugin's ctx.on listeners. */
+  emitEvent(name: string, ...args: unknown[]): void
+  dispose(): void
+}
+
+export function createTestHost(options?: {
+  /** Plugin directory; package.json is read from it. Default: cwd. */
+  dir?: string
+  /** package.json object instead of reading it. */
+  pkg?: Record<string, unknown>
+  /** Other cordis services by name, e.g. { sessions }. */
+  services?: Record<string, unknown>
+  caps?: Partial<Caps>
+  /** false: a host without dsh-go-bridge (the dshGo service never appears). */
+  bridge?: boolean
+}): TestHost
+
+export type { StreamStripData }

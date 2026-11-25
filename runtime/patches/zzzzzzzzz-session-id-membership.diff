@@ -1,0 +1,15 @@
+--- a/node_modules/@deepseek-ai/dsh-session-query/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-session-query/lib/index.js
+@@ -752,7 +752,11 @@
+ }
+ function sessionPredicate(filter) {
+ 	switch (filter.kind) {
+-		case "id": return (record) => filter.values.includes(record.header.id);
++		case "id": {
++			if (filter.values.length < 2) return (record) => filter.values.includes(record.header.id);
++			let values;
++			return (record) => (values ??= new Set(filter.values)).has(record.header.id);
++		}
+ 		case "cwd": return (record) => filter.values.includes(record.header.cwd ?? null);
+ 		case "created-at": {
+ 			const range = validateRange(filter.kind, filter);

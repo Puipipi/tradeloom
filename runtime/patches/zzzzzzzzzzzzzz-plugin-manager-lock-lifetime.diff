@@ -1,0 +1,9 @@
+--- a/node_modules/@deepseek-ai/dsh-plugin-manager/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-plugin-manager/lib/index.js
+@@ -3369,5 +3369,5 @@
+ 					this.ownerContext.emit("plugin-manager/changed", { reason });
+ 					return result;
+-				}, { waitMs: this.lockWaitMs });
++				}, { waitMs: this.lockWaitMs, signal: this.abort.signal });
+ 			} catch (error) {
+ 				this.reportOperation({

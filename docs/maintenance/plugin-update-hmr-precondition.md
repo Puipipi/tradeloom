@@ -1,0 +1,13 @@
+# HMR 更新在实际移除前重验安装依据
+
+Refs W17-B。基底63e255fab5cb9d817af30b631c3643ccce8e9231，运行时前置为662补丁06faae809abd12f31a4f55bc8c7fa6ca02572c5d296e5558e75320b4cbc9bc5f。外层只新增本补丁文件，可以应用到干净基底；构建运行时必须先有662，不声明本inner脱离662可运行。
+
+普通公开updateBundle先读取from，再异步检查registry。HMR分支随后移除实际依赖并安装目标；若检查期间另一个公开更新已成功安装较新版本，旧检查不得静默移除较新版本，再安装过期目标。已成功卸载时也不得重新安装旧检查目标。
+
+实现前约定：复用662的一次更新内部selection holder传递expectedFrom，在removeBundle原change文件锁及configure/HMR锁内、任何deselect、reload或pnpm写入前，沿既有bundle解析规则重新读取安装manifest版本。仍先保留原not-removable校验：已成功卸载的场景原版就会拒绝，此处不把它另报新缺陷或改变错误码。通过可移除校验后若依据已变则抛普通Error，由原change转成既有failed/operation-error，update沿原step=remove提前返回。无新RPC参数、返回字段、用户配置、缓存或整体更新事务。
+
+普通remove没有holder，不新增此限制。target失败后原恢复清理remove不传holder，保留662捕获的选择和原恢复合同。原平台、兼容性、可移除、management-required、bundle-in-use、取消检查不删除。正常HMR更新及显式普通install/remove行为不改变。
+
+新增保证仅为安装版本变化在这次移除前被检测；原正常卸载已由not-removable拒绝，不宣称新增全面存在性保护。同版本不同内容/来源、ABA版本变化、移除之后的阶段间并发、外进程不遵守文件锁、完整更新原子性与恢复必然成功均不保证。不要求撤销已经成功完成的第二次更新。
+
+会改runtimeVersion，不录pins。Android 未编译；PRoot/ARM未运行。验证仅自有本地registry、真实CLI/HMR/PluginManager/pnpm及临时profile，不涉及真实账户或设备业务插件。

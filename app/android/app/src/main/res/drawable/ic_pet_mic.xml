@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-FileCopyrightText: Google -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!-- See THIRD_PARTY_NOTICES.md. -->
+<!-- 问一句's hold-to-talk key on the floating pet: Material `mic_none_rounded`, tinted in code. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12,14.016C13.641,14.016 15,12.656 15,11.016V5.016C15,3.328 13.641,2.016 12,2.016C10.359,2.016 9,3.328 9,5.016V11.016C9,12.656 10.359,14.016 12,14.016ZM11.016,5.016C11.016,4.453 11.438,3.984 12,3.984C12.562,3.984 12.984,4.453 12.984,5.016V11.016C12.984,11.531 12.562,12 12,12C11.438,12 11.016,11.531 11.016,11.016V5.016ZM17.906,11.016C17.438,11.016 17.016,11.344 16.922,11.859C16.5,14.203 14.484,15.984 12,15.984C9.516,15.984 7.5,14.203 7.078,11.859C6.984,11.344 6.562,11.016 6.094,11.016C5.484,11.016 5.016,11.531 5.109,12.141C5.578,15.141 7.969,17.484 11.016,17.906V20.016C11.016,20.531 11.438,21 12,21C12.562,21 12.984,20.531 12.984,20.016V17.906C16.031,17.484 18.422,15.141 18.891,12.141C19.031,11.531 18.516,11.016 17.906,11.016Z" />
+</vector>

@@ -1,0 +1,116 @@
+{
+  "ruleSet": "dsh-go-pet-pack",
+  "revision": 3,
+  "schema": 1,
+  "baseline": "c76c0db2d83573895f240307179e19802f674b1d",
+  "limits": {
+    "packJsonBytes": 262144,
+    "sheetBytes": 8388608,
+    "sheetCount": 64,
+    "totalSheetBytes": 50331648,
+    "sheetSide": 4096,
+    "sheetDecodedBytes": 16777216,
+    "sheetNameCharacters": 120,
+    "archiveBytes": 67108864,
+    "archiveExpandedBytes": 67108864,
+    "archiveEntries": 256,
+    "jsonDepth": 64,
+    "pngMetadataChunkBytes": 1048576,
+    "pngMetadataTotalBytes": 67108864
+  },
+  "localCompatibility": {
+    "required": [
+      "schema",
+      "id",
+      "canvas",
+      "contentBox",
+      "animations",
+      "states.idle"
+    ],
+    "numericRounding": "nearest-ties-away-from-zero",
+    "rect": "numeric x,y,w,h; w,h positive; no containment requirement",
+    "animations": "nonempty map; sheet string; rounded frameW,frameH,cols positive; box rect; ignore frame items without numeric i and ms; remaining list nonempty, rounded i>=0 and ms>0",
+    "references": [
+      "states.*[]",
+      "tiers.*[].anim",
+      "reactions.*",
+      "roam.anim",
+      "idlePool[].anim",
+      "idlePool.anims[].anim",
+      "bonus.*.anims[]"
+    ],
+    "states": "ignore non-list values and empty lists; idle must remain; unknown state names accepted",
+    "optionalMapOrList": "wrong container types become empty; missing optional values use PetPack.parse defaults",
+    "metadata": "author,license,source optional locally; name defaults id",
+    "defaults": {
+      "scale": 1,
+      "pixelArt": true,
+      "loop": true,
+      "anchor": "canvas center/bottom",
+      "tierMin": 1,
+      "idleWeight": 1,
+      "idleMs": 0,
+      "bonusChance": 0,
+      "sleepAfterMs": 60000,
+      "idleEveryMean": 120000,
+      "idleEveryMin": 45000,
+      "idleEveryMax": 300000
+    },
+    "optional": [
+      "name",
+      "author",
+      "license",
+      "source",
+      "pixelArt",
+      "scale",
+      "anchor",
+      "tiers",
+      "timings",
+      "reactions",
+      "roam",
+      "sleep",
+      "hitBoxes",
+      "idlePool",
+      "bonus"
+    ],
+    "sheetBounds": "cols*rounded frameW <= width; (max rounded frame i // cols+1)*rounded frameH <= height",
+    "sheetNameLengthUnit": "utf16-code-units",
+    "scope": "PetPack.parse compatibility only; local file import also requires appImportCompatibility below."
+  },
+  "marketProfile": {
+    "metadataRequired": [
+      "author",
+      "license",
+      "source"
+    ],
+    "finiteNumbers": true,
+    "duplicateJsonKeys": "reject",
+    "zip": "one unambiguous root pack.json or one top-folder pack.json; reject unsafe paths, duplicate/casefold aliases, encryption and non-regular entries; never extract paths",
+    "sheet": "flat non-dot PNG name; no slash, backslash or NUL; complete CRC and decode; reject APNG; reencode RGBA without metadata",
+    "normalization": "deterministic ZIP containing only canonical pack.json then sorted referenced PNGs",
+    "extraMembers": "drop after archive structural checks",
+    "publication": "requires trusted maintainer approval of normalized digest; technical validation is not rights/content approval",
+    "androidCompatibility": "emit explicit integer scale, pixelArt, rounded cell/frame/tier/timing fields; require integral canvas and frame cell == Float32(box)*scale truncated (Android); reject mismatched authored geometry, never resize it; normalized output must also pass appImportCompatibility"
+  },
+  "commonValidation": {
+    "unicodeVersion": "15.0.0",
+    "archiveNameKey": "Unicode NFC followed by full casefold; ZIP UTF-8 BOM in names remains an ordinary U+FEFF character",
+    "json": "strict UTF-8 without leading BOM, no duplicate decoded keys, isolated surrogates, nonfinite numbers or depth beyond limit",
+    "png": "four ASCII letters per chunk type; complete CRC; legal IHDR/color/depth; ordered unique PLTE/tRNS; contiguous IDAT; exact bounded zlib EOF without trailing bytes; Adler32 and expected Adam7/noninterlaced scanline length; filters 0..4; actual pixel decode; no APNG",
+    "pngMetadata": "iCCP/zTXt: keyword 1..79 bytes then NUL, method 0, bounded zlib; iTXt: keyword, flag 0/1, method 0, NUL-terminated language and translated keyword, text; tEXt: keyword then text. Inflated bytes of each compressed metadata payload <=pngMetadataChunkBytes per chunk; all actual text/ICC bytes <=pngMetadataTotalBytes. No per-chunk cap for uncompressed text. Exact zlib EOF/Adler32 and no trailing bytes.",
+    "pngDecode": "only IHDR/PLTE/tRNS/IDAT/IEND go to the pixel decoder; local import retains original validated PNG bytes, market normalization emits RGBA PNG without ancillary metadata",
+    "memory": "sheetDecodedBytes limits width*height*4 RGBA payload, not whole-process peak memory",
+    "metadataWhitespace": "Market required metadata uses Python 3.12 str.isspace (29 code points, Unicode 15.0.0) only for the nonempty check; preserve the original whole string."
+  },
+  "appImportCompatibility": {
+    "source": "pet_library.dart overlayPackProblem at c76c0db2d83573895f240307179e19802f674b1d; moved without relaxing comparisons",
+    "jsonDepth": 60,
+    "scale": "absent defaults 1; otherwise finite whole number in 1..4096",
+    "canvas": "w,h finite whole numbers in 1..1073741824",
+    "cells": "frameW,frameH,cols finite whole numbers in 1..4096",
+    "frames": "each item must have finite whole i in 0..1073741824 and ms in 1..1073741824; no malformed item is skipped",
+    "geometry": "frameW/H equal trunc(Float32(Float32(box.w/h) * scale)); no resizing or guessed geometry",
+    "local": "check the authored manifest after PetPack.parse, before installation",
+    "market": "check the normalized output; parser rounding may repair authored numeric representation, but cannot waive the App import gate"
+  }
+}

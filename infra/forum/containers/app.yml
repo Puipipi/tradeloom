@@ -1,0 +1,115 @@
+## dsh-go 社区论坛（Discourse）容器配置
+##
+## 用法：放到 /var/discourse/containers/app.yml，然后
+##   cd /var/discourse && ./launcher rebuild app
+## 部署步骤见 docs/forum/deploy.md。
+##
+## 基于官方 discourse_docker samples/standalone.yml（2026-10 版）改写，
+## 默认值面向 2 GB 内存的 VPS；4 GB 的推荐值写在对应行的注释里。
+##
+## 所有需要你填的值都标成 <<FILL: 说明>>，全部替换后再 rebuild。
+## YAML 对缩进很敏感：只改引号里的值，不要动缩进。
+
+templates:
+  - "templates/postgres.template.yml"
+  - "templates/redis.template.yml"
+  - "templates/web.template.yml"
+  - "templates/web.ratelimited.template.yml"
+  ## HTTPS：Let's Encrypt 自动签发和续期证书（需要 80/443 端口可从公网访问，
+  ## 且域名 A 记录已经指向这台服务器）
+  - "templates/web.ssl.template.yml"
+  - "templates/web.letsencrypt.ssl.template.yml"
+  ## 如果前面套了 Cloudflare 代理（橙色云朵），取消下一行注释，
+  ## 让限流按访客真实 IP 计算，而不是 Cloudflare 的 IP
+  #- "templates/cloudflare.template.yml"
+
+expose:
+  - "80:80" # http（Let's Encrypt 验证 + 跳转到 https）
+  - "443:443" # https
+
+params:
+  ## 中文站点的全文检索由 Discourse 按 default_locale 自动处理（zh_CN 会用结巴分词 +
+  ## PostgreSQL 的 simple 配置），这里保持官方默认即可
+  db_default_text_search_config: "pg_catalog.english"
+
+  ## PostgreSQL 共享缓冲区，官方建议不超过总内存的 25%
+  ##   2 GB：256MB（默认）    4 GB：1024MB
+  db_shared_buffers: "256MB"
+
+  ## 每个连接的排序内存，小内存机器保持默认
+  #db_work_mem: "10MB"
+
+  ## 版本：默认跟随 latest（官方推荐，Web 后台一键升级）
+  #version: latest
+
+env:
+  LC_ALL: en_US.UTF-8
+  LANG: en_US.UTF-8
+  LANGUAGE: en_US.UTF-8
+
+  ## 站点默认语言。用环境变量设置后后台不可改（GlobalSetting 覆盖站点设置）。
+  ## zh_CN 时搜索自动启用中文分词、最短搜索词 1 个字、标题/正文最短长度等按中文默认值。
+  DISCOURSE_DEFAULT_LOCALE: zh_CN
+
+  ## Web 进程数。2 GB 用 2；4 GB 且 2 核以上用 3–4
+  UNICORN_WORKERS: 2
+
+  ## 论坛域名，必须是域名，不能是 IP。上线后不要再改（改了要重建并迁移）
+  DISCOURSE_HOSTNAME: "<<FILL: 论坛域名，如 forum.dshtui.com>>"
+
+  ## 管理员邮箱（逗号分隔）。用这些邮箱注册的账号自动成为管理员
+  DISCOURSE_DEVELOPER_EMAILS: "<<FILL: 你的邮箱>>"
+
+  ## Let's Encrypt 账户邮箱。当前官方模板已不读取这个变量（证书由 acme.sh 自动续期），
+  ## 保留只为兼容旧模板，填不填都行
+  LETSENCRYPT_ACCOUNT_EMAIL: "<<FILL: 你的邮箱>>"
+
+  ## ── 邮件（注册验证、通知、摘要都靠它）──────────────────────────────
+  ## 多数 VPS 封了 25 端口，用 587（STARTTLS）或 465（隐式 TLS）
+  DISCOURSE_SMTP_ADDRESS: "<<FILL: SMTP 服务器，如 email-smtp.ap-southeast-1.amazonaws.com>>"
+  DISCOURSE_SMTP_PORT: 587
+  DISCOURSE_SMTP_USER_NAME: "<<FILL: SMTP 用户名>>"
+  ## 密码含 # 时必须保留引号
+  DISCOURSE_SMTP_PASSWORD: "<<FILL: SMTP 密码>>"
+  DISCOURSE_SMTP_ENABLE_START_TLS: true
+  ## 用 465 端口时改成 465 并取消下一行注释
+  #DISCOURSE_SMTP_FORCE_TLS: true
+  ## 发件地址，域名要在邮件服务商那里验证过（SPF / DKIM）
+  DISCOURSE_NOTIFICATION_EMAIL: "<<FILL: 发件地址，如 noreply@forum.dshtui.com>>"
+  ## 只在服务商要求时设置 HELO 域名
+  #DISCOURSE_SMTP_DOMAIN: "<<FILL: 发件域名>>"
+
+  ## ── App 接口限流（dsh-go 用 User API Key 访问）──────────────────────
+  ## 官方默认每个 key 每分钟 50、每天 4000 次，对 App 足够；一般不用改
+  #DISCOURSE_MAX_USER_API_REQS_PER_MINUTE: 50
+  #DISCOURSE_MAX_USER_API_REQS_PER_DAY: 4000
+
+  ## 可选：MaxMind 免费地理库，用于在后台显示登录地区
+  #DISCOURSE_MAXMIND_ACCOUNT_ID: "<<FILL: MaxMind 账号 ID>>"
+  #DISCOURSE_MAXMIND_LICENSE_KEY: "<<FILL: MaxMind License Key>>"
+
+## 容器本身无状态，所有数据（数据库、上传、备份、证书）都在宿主机的 shared 目录
+volumes:
+  - volume:
+      host: /var/discourse/shared/standalone
+      guest: /shared
+  - volume:
+      host: /var/discourse/shared/standalone/log/var-log
+      guest: /var/log
+
+## 插件
+## 已内置于 Discourse 核心、无需在这里安装：
+##   discourse-oauth2-basic（Gitee 登录）、discourse-openid-connect（LINUX DO 登录）、
+##   discourse-solved（求助区「已解决」）、discourse-reactions、chat
+## 不要再 git clone 上面这些仓库，会与内置版本冲突。
+hooks:
+  after_code:
+    - exec:
+        cd: $home/plugins
+        cmd:
+          - git clone https://github.com/discourse/docker_manager.git
+
+## 构建完成后执行的命令
+run:
+  - exec: echo "Beginning of custom commands"
+  - exec: echo "End of custom commands"

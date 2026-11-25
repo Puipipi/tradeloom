@@ -1,0 +1,16 @@
+--- a/node_modules/@deepseek-ai/dsh-tool-fs/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-tool-fs/lib/index.js
+@@ -29,7 +29,12 @@
+ 	};
+ }
+ function truncateLine(line, maxLineLength) {
+-	return line.length > maxLineLength ? `${line.substring(0, maxLineLength)}... (line truncated to ${maxLineLength} chars)` : line;
++	if (line.length <= maxLineLength) return line;
++	let end = maxLineLength;
++	const last = line.charCodeAt(end - 1);
++	const next = line.charCodeAt(end);
++	if (last >= 0xd800 && last <= 0xdbff && next >= 0xdc00 && next <= 0xdfff) end -= 1;
++	return `${line.substring(0, end)}... (line truncated to ${maxLineLength} chars)`;
+ }
+ function lineByteSize(line, currentLineCount) {
+ 	return Buffer.byteLength(line, "utf8") + (currentLineCount > 0 ? 1 : 0);

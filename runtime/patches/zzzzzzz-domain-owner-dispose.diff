@@ -1,0 +1,11 @@
+--- a/node_modules/@deepseek-ai/dsh-storage-domain/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-storage-domain/lib/index.js
+@@ -433,6 +433,8 @@
+ 				}
+ 				const globalSpec = spec.global;
+ 				const globalValue = globalSpec === void 0 ? void 0 : snapshot.global === null ? globalSpec.initial : parseRecord(spec.name, "", "", () => globalSpec.schema.parse(snapshot.global));
++				// Do not publish a late handle after this facility owner was disposed.
++				this.ctx.fiber.assertActive();
+ 				const domain = new DomainImpl(this.ctx, spec, unit, tables, globalValue, () => {
+ 					this.domains.delete(spec.name);
+ 					this.reserved.delete(spec.name);

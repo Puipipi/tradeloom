@@ -1,0 +1,8 @@
+{
+  "name": "@ccch1mneyyy/dsh-media",
+  "version": "0.2.1",
+  "title": {"zh": "生图生视频", "en": "Images and video"},
+  "summary": {"zh": "通过当前主机生成图片和视频", "en": "Generate images and videos on the selected host"},
+  "category": "media",
+  "screenshots": []
+}

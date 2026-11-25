@@ -1,0 +1,117 @@
+name: Check market submission
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR number to check (used by the upgrade watcher)
+        required: true
+        type: string
+permissions: {}
+concurrency:
+  group: market-pr-${{ github.event.pull_request.number || inputs.pr }}
+  cancel-in-progress: true
+jobs:
+  catalog:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      statuses: write
+    outputs:
+      eligible: ${{ steps.entry.outputs.eligible }}
+      head: ${{ steps.resolve.outputs.head }}
+      pr: ${{ steps.resolve.outputs.pr }}
+    steps:
+      - uses: actions/github-script@v7
+        id: resolve
+        with:
+          script: |
+            const n=context.payload.pull_request?.number || Number(context.payload.inputs?.pr);
+            if(!Number.isSafeInteger(n)||n<1) throw new Error('Invalid PR number');
+            const {data:pr}=await github.rest.pulls.get({...context.repo,pull_number:n});
+            if(pr.state!=='open'||pr.base.ref!=='main'||pr.base.repo.full_name!==context.repo.owner+'/'+context.repo.repo) throw new Error('Expected an open PR to main');
+            core.setOutput('pr',String(n));core.setOutput('head',pr.head.sha);core.setOutput('base',pr.base.sha);
+      # Only trusted base scripts/dependencies run with a token. Never checkout PR code.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.resolve.outputs.base }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm test
+      - uses: actions/github-script@v7
+        id: entry
+        env:
+          PR_NUMBER: ${{ steps.resolve.outputs.pr }}
+          CHECKED_HEAD: ${{ steps.resolve.outputs.head }}
+          CHECKED_BASE: ${{ steps.resolve.outputs.base }}
+        with:
+          script: |
+            const fs = require('node:fs/promises');
+            const {data:pr}=await github.rest.pulls.get({...context.repo,pull_number:Number(process.env.PR_NUMBER)});
+            if(pr.head.sha!==process.env.CHECKED_HEAD) throw new Error('PR changed');
+            await github.rest.repos.createCommitStatus({...context.repo, sha: pr.head.sha, state:'pending', context:'market/catalog', description:'Checking exact npm tarball'});
+            const {submission}=await import(process.cwd()+'/scripts/ci-entry.mjs');
+            const entry=await submission(github,{
+              repository:context.repo,
+              headRepository:{owner:pr.head.repo.owner.login,repo:pr.head.repo.name},
+              base:process.env.CHECKED_BASE,head:process.env.CHECKED_HEAD,
+            });
+            // The trusted base checkout must not redirect this write through a symlink either.
+            const old=await fs.lstat(entry.path).catch(e=>{if(e.code==='ENOENT')return null;throw e;});
+            if(old && !old.isFile()) throw new Error('Expected regular file in base checkout');
+            await fs.writeFile(entry.path, entry.bytes);
+            core.setOutput('eligible', 'true');
+      - run: npm run build
+      - uses: actions/github-script@v7
+        if: always() && steps.resolve.outputs.head != ''
+        env:
+          RESULT: ${{ job.status }}
+          CHECKED_HEAD: ${{ steps.resolve.outputs.head }}
+        with:
+          script: |
+            await github.rest.repos.createCommitStatus({...context.repo,sha:process.env.CHECKED_HEAD,state:process.env.RESULT==='success'?'success':'failure',context:'market/catalog',description:process.env.RESULT==='success'?'Exact tarball and format checks passed':'Check failed; see Actions log'});
+  auto-merge:
+    needs: catalog
+    if: needs.catalog.outputs.eligible == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/github-script@v7
+        env:
+          CHECKED_HEAD: ${{ needs.catalog.outputs.head }}
+          PR_NUMBER: ${{ needs.catalog.outputs.pr }}
+        with:
+          script: |
+            const {data:pr}=await github.rest.pulls.get({...context.repo,pull_number:Number(process.env.PR_NUMBER)});
+            if(pr.state!=='open'||pr.base.ref!=='main'||pr.base.repo.full_name!==context.repo.owner+'/'+context.repo.repo) throw new Error('Expected an open PR to main');
+            if(pr.head.sha!==process.env.CHECKED_HEAD) throw new Error('PR changed; await its new checks');
+            if(pr.draft) { core.info('Draft: waiting for ready_for_review'); return; }
+            const q=await github.graphql(`query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){autoMergeAllowed pullRequest(number:$number){id baseRef{branchProtectionRule{requiresStatusChecks requiresStrictStatusChecks requiredStatusCheckContexts}}}}}`,{...context.repo,number:pr.number});
+            const r=q.repository, rule=r.pullRequest.baseRef?.branchProtectionRule;
+            // Refuse to bypass missing branch protection. GitHub waits for every required check.
+            if(!r.autoMergeAllowed || !rule?.requiresStatusChecks || !rule.requiresStrictStatusChecks || !rule.requiredStatusCheckContexts.includes('market/catalog')) throw new Error('Configure auto-merge and strict branch protection requiring market/catalog first');
+            // Several independently checked upgrade PRs may race to merge. A strict
+            // branch rule requires updating the remaining branches, then rechecking
+            // their NEW head; never reuse the status from before the update.
+            if(pr.mergeable_state==='behind') {
+              await github.rest.pulls.updateBranch({...context.repo,pull_number:pr.number,expected_head_sha:pr.head.sha});
+              let updated=false;
+              for(let i=0;i<10;i++) {
+                await new Promise(resolve=>setTimeout(resolve,1000));
+                const next=(await github.rest.pulls.get({...context.repo,pull_number:pr.number})).data;
+                if(next.head.sha!==pr.head.sha){updated=true;break;}
+              }
+              if(!updated) throw new Error('Branch update pending; rerun this check');
+              await github.rest.actions.createWorkflowDispatch({...context.repo,workflow_id:'check.yml',ref:'main',inputs:{pr:String(pr.number)}});
+              return;
+            }
+            await github.graphql(`mutation($id:ID!){enablePullRequestAutoMerge(input:{pullRequestId:$id,mergeMethod:SQUASH}){pullRequest{id}}}`,{id:r.pullRequest.id});

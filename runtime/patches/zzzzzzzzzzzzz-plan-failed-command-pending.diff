@@ -1,0 +1,20 @@
+--- a/node_modules/@deepseek-ai/dsh-plan-mode/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-plan-mode/lib/index.js
+@@ -62,7 +62,7 @@
+ /** Projection of logged plan selections and committed mode. */
+ const planProjectionDefinition = {
+ 	key: "plan",
+-	stateVersion: 4,
++	stateVersion: 5,
+ 	stateSchema: z.object({
+ 		active: z.boolean(),
+ 		wanted: z.boolean().nullable(),
+@@ -93,7 +93,7 @@
+ 			};
+ 		}
+ 		if (event.type === "command/done" && event.data.commandId === state.running?.commandId) {
+-			const wanted = event.data.kind === "success" && state.running.wanted !== state.active ? state.running.wanted : null;
++			const wanted = event.data.kind === "success" ? state.running.wanted !== state.active ? state.running.wanted : null : state.wanted;
+ 			return {
+ 				...state,
+ 				wanted,

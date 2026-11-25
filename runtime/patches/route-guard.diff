@@ -1,0 +1,71 @@
+# dsh-app route guard for dsh-host-webserver (docs/design/plugin-seams.md §9.2).
+# Applied by runtime/lib/rtbuild.py patch-dsh; pinned per DSH version in pins.json.
+--- a/node_modules/@deepseek-ai/dsh-host-webserver/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-host-webserver/lib/index.js
+@@ -1,5 +1,5 @@
+ import { readFile } from "node:fs/promises";
+-import { createServer } from "node:http";
++import { STATUS_CODES, createServer } from "node:http";
+ import { createServer as createServer$1 } from "node:https";
+ import { isIP } from "node:net";
+ import { resolve } from "node:path";
+@@ -460,7 +460,9 @@
+ 			/* v8 ignore next -- `?? '/'` arm: node:http always sets url on server
+ 			requests; the field is only optional on the client-side IncomingMessage type */
+ 			const target = new URL(req.url ?? "/", "http://x");
+-			const responder = this.responderFor(target.pathname);
++			const route = this.match(target.pathname);
++			if (route !== void 0 && await this.dshGoRejectRequest(route, req, res)) return;
++			const responder = route ?? this.fallback;
+ 			if (responder === void 0) {
+ 				res.writeHead(404);
+ 				res.end();
+@@ -532,7 +534,7 @@
+ 				}
+ 				this.upgradedSockets.add(socket);
+ 				try {
+-					Promise.resolve(route.handler(req, socket, head)).catch((error) => {
++					Promise.resolve(this.dshGoGuardUpgrade(route, req, socket, head)).catch((error) => {
+ 						this.ctx.logger.warn(error instanceof Error ? error : new Error(String(error)));
+ 						socket.destroy();
+ 					});
+@@ -570,6 +572,39 @@
+ 		}, "webServer.listen");
+ 	}
+ 	/**
++	* dsh-go route guard (dsh-app runtime/patches/route-guard.diff). Every named
++	* route and upgrade passes the same Connection check /api uses (Host/Origin
++	* fence plus browser cookie or API credential) before its handler runs. Open
++	* routes authenticate by other means: the launch-token exchange and the OAuth
++	* redirect (its `state`). Fails closed with 503 while Connection is absent.
++	*/
++	static dshGoOpenRoutes = new Set(["exact /connect", "exact /oauth/callback"]);
++	async dshGoRouteRejection(kind, path, req) {
++		if (WebServer.dshGoOpenRoutes.has(`${kind} ${path}`)) return void 0;
++		let connection = this.ctx.get("connection");
++		for (let waited = 0; connection === void 0 && waited < 5e3; waited += 50) {
++			await new Promise((resolve) => setTimeout(resolve, 50));
++			connection = this.ctx.get("connection");
++		}
++		return connection === void 0 ? 503 : connection.requestRejection(req);
++	}
++	async dshGoRejectRequest(route, req, res) {
++		const status = await this.dshGoRouteRejection(route.kind, route.path, req);
++		if (status === void 0) return false;
++		res.writeHead(status, {
++			"cache-control": "no-store",
++			"content-type": "text/plain; charset=utf-8",
++			"x-dsh-go-guard": "reject"
++		});
++		res.end(req.method === "HEAD" ? void 0 : `${STATUS_CODES[status]}\n`);
++		return true;
++	}
++	async dshGoGuardUpgrade(route, req, socket, head) {
++		const status = await this.dshGoRouteRejection("upgrade", route.path, req);
++		if (status === void 0) return route.handler(req, socket, head);
++		socket.end(`HTTP/1.1 ${status} ${STATUS_CODES[status]}\r\nConnection: close\r\nContent-Length: 0\r\nX-Dsh-Go-Guard: reject\r\n\r\n`);
++	}
++	/**
+ 	* The responder for one request path, shared by HTTP requests and
+ 	* {@link readResource}: the matched named route, otherwise the fallback.
+ 	*/

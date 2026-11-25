@@ -1,0 +1,81 @@
+--- a/node_modules/@deepseek-ai/dsh-fs-local/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-fs-local/lib/index.js
+@@ -658,15 +658,16 @@
+ 	return crlfCount > sample.split("\n").length - 1 - crlfCount ? "CRLF" : "LF";
+ }
+ /**
+-* Convert LF-normalized content back to the line-ending style detected at read
+-* time, for write-back. `LF` returns the content unchanged; `CRLF` re-normalizes
+-* first so an already-CRLF sequence is never doubled to `\r\r\n`.
++* Restore the original UTF-8 BOM and line-ending style for text write-back.
++* CRLF re-normalizes first so existing pairs are never doubled. A leading
++* FEFF explicitly present in the edited content remains independent of the BOM.
+ * @param content - the LF-normalized (edited) text.
+-* @param lineEndings - the original file's style, as detected by {@link readForEdit}.
+-* @returns the text in the original file's line-ending style.
+-*/
+-function restoreLineEndings(content, lineEndings) {
+-	return lineEndings === "LF" ? content : normalizeLineEndings(content).split("\n").join("\r\n");
++* @param original - format metadata returned by {@link readForEdit}.
++* @returns text with the original format marker and line-ending style.
++*/
++function restoreFileText(content, original) {
++	const restored = original.lineEndings === "LF" ? content : normalizeLineEndings(content).split("\n").join("\r\n");
++	return original.bom ? "\uFEFF" + restored : restored;
+ }
+ function countOccurrences(content, needle) {
+ 	let count = 0;
+@@ -680,11 +681,11 @@
+ }
+ /**
+ * Read and decode a file for editing: rejects binaries, returns LF-normalized
+-* content plus the original line-ending style for write-back.
++* content plus the original UTF-8 BOM and line-ending style for write-back.
+ * @param absolutePath - the file to read (typically a target key).
+ * @param displayPath - the caller-facing path used in error messages.
+ * @param signal - aborts the read (`FS_ABORTED`).
+-* @returns the LF-normalized content and the detected style to restore on write-back.
++* @returns LF-normalized content and the original format metadata to restore on write-back.
+ */
+ async function readForEdit(absolutePath, displayPath, signal) {
+ 	throwIfAborted(signal, "edit");
+@@ -694,7 +695,8 @@
+ 	const raw = decodeUtf8(buffer, "edit", displayPath);
+ 	return {
+ 		content: normalizeLineEndings(raw),
+-		lineEndings: detectLineEndings(raw)
++		lineEndings: detectLineEndings(raw),
++		bom: buffer[0] === 239 && buffer[1] === 187 && buffer[2] === 191
+ 	};
+ }
+ /**
+@@ -965,7 +967,7 @@
+ 			if (expected && existing.version !== expected.version) throw new FsError(`cannot edit "${target.displayPath}": file changed since it was read`, "FS_STALE_VERSION");
+ 			const original = await readForEdit(target.targetKey, target.displayPath, signal);
+ 			const edited = applyLiteralEdit(original.content, edit.oldString, edit.newString, edit.replaceAll, target.displayPath);
+-			const content = restoreLineEndings(edited.content, original.lineEndings);
++			const content = restoreFileText(edited.content, original);
+ 			await writeFileAtomic(target.targetKey, content, existing.mode, signal, this.internals, { displayPath: target.displayPath });
+ 			const after = await probe(target.targetKey);
+ 			return {
+@@ -980,7 +982,7 @@
+ 			const existing = await this.requireFile(target, expected, "patch");
+ 			const original = await readForEdit(target.targetKey, target.displayPath, signal);
+ 			const after = this.patchContent(target, original.content, hunks);
+-			await writeFileAtomic(target.targetKey, restoreLineEndings(after, original.lineEndings), existing.mode, signal, this.internals, { displayPath: target.displayPath });
++			await writeFileAtomic(target.targetKey, restoreFileText(after, original), existing.mode, signal, this.internals, { displayPath: target.displayPath });
+ 			return {
+ 				version: this.versionAfterWrite(await probe(target.targetKey), target),
+ 				before: original.content,
+@@ -1005,8 +1007,9 @@
+ 			const existing = await this.writeTarget(destination, options.expectedDestination);
+ 			const original = await readForEdit(source.targetKey, source.displayPath, signal);
+ 			const after = options.hunks === void 0 ? original.content : this.patchContent(source, original.content, options.hunks);
+-			const content = restoreLineEndings(after, original.lineEndings);
+-			const before = existing && Buffer.byteLength(content, "utf8") < this.config.diffBasisMaxBytes ? await readTextForDiff(destination.targetKey, this.config.diffBasisMaxBytes, signal) : null;
++			const content = restoreFileText(after, original);
++			// The diff basis keeps its existing text budget, excluding the stored BOM.
++			const before = existing && Buffer.byteLength(content, "utf8") - (original.bom ? 3 : 0) < this.config.diffBasisMaxBytes ? await readTextForDiff(destination.targetKey, this.config.diffBasisMaxBytes, signal) : null;
+ 			await this.internals.inspectBeforeMutation?.(source);
+ 			if (signal?.aborted) throw new FsError("move aborted", "FS_ABORTED");
+ 			await writeFileAtomic(destination.targetKey, content, sourceInfo.mode, void 0, this.internals, {

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Plugin capabilities (nativemedia/): the listening indicator and the caption's close key. -->
+<resources>
+    <string name="native_media_listening">%1$s is listening</string>
+    <string name="native_media_stop">Stop</string>
+    <string name="native_media_close_caption">Close caption</string>
+</resources>

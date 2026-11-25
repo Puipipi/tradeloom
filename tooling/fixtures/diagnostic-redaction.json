@@ -1,0 +1,3914 @@
+{
+  "schema": 2,
+  "note": "All vectors are synthetic. Kotlin and Dart tests concatenate inputParts and expectedParts. Each part has at most eight characters so source fixtures do not contain complete provider-key or PEM shapes. Full disk and export redaction cut each ANSI-stripped line at 2000 UTF-16 code units without splitting a surrogate pair; live logs keep their token-only rule.",
+  "cases": [
+    {
+      "name": "launch query",
+      "inputParts": [
+        "dsh web:",
+        " http://",
+        "127.0.0.",
+        "1:3080/?",
+        "token=SY",
+        "NTHETIC.",
+        "%2Fq"
+      ],
+      "expectedParts": [
+        "dsh web:",
+        " http://",
+        "127.0.0.",
+        "1:3080/?",
+        "token=••",
+        "•"
+      ]
+    },
+    {
+      "name": "launch fragment",
+      "inputParts": [
+        "http://1",
+        "27.0.0.1",
+        ":3080/#t",
+        "oken=abc"
+      ],
+      "expectedParts": [
+        "http://1",
+        "27.0.0.1",
+        ":3080/#t",
+        "oken=•••"
+      ]
+    },
+    {
+      "name": "provider sk-",
+      "inputParts": [
+        "using sk",
+        "-AB3AB3A",
+        "B3AB3AB3",
+        "AB3AB3AB",
+        "3A done"
+      ],
+      "expectedParts": [
+        "using sk",
+        "-••• don",
+        "e"
+      ]
+    },
+    {
+      "name": "provider AIza",
+      "inputParts": [
+        "using AI",
+        "zaAB3AB3",
+        "AB3AB3AB",
+        "3AB3AB3A",
+        "B3AB3AB3",
+        "AB3AB do",
+        "ne"
+      ],
+      "expectedParts": [
+        "using AI",
+        "za••• do",
+        "ne"
+      ]
+    },
+    {
+      "name": "provider ghp_",
+      "inputParts": [
+        "using gh",
+        "p_AB3AB3",
+        "AB3AB3AB",
+        "3AB3AB3A",
+        "B3AB3AB3",
+        "AB3AB3 d",
+        "one"
+      ],
+      "expectedParts": [
+        "using gh",
+        "p_••• do",
+        "ne"
+      ]
+    },
+    {
+      "name": "overlap Google and sk",
+      "inputParts": [
+        "AIza-sk-",
+        "SYNTHETI",
+        "C3SYNTHE",
+        "TIC3SYNT",
+        "HETIC3SY",
+        "NTHETIC3",
+        "SYNTHETI",
+        "C3SYNTHE",
+        "TIC3"
+      ],
+      "expectedParts": [
+        "AIza•••"
+      ]
+    },
+    {
+      "name": "overlap Google chain",
+      "inputParts": [
+        "AIza-AIz",
+        "aAAAAAAA",
+        "AAAAAAAA",
+        "AAAAAAAA",
+        "AAAAAAAA",
+        "AAAA"
+      ],
+      "expectedParts": [
+        "AIza•••"
+      ]
+    },
+    {
+      "name": "overlap JWT chain",
+      "inputParts": [
+        "eyJABCDE",
+        "FGH.eyJA",
+        "BCDEFGHI",
+        "J.eyJABC",
+        "DEFGHIJ.",
+        "ABCDEFGH",
+        "IJ"
+      ],
+      "expectedParts": [
+        "•••"
+      ]
+    },
+    {
+      "name": "overlap Slack and word provider",
+      "inputParts": [
+        "xoxb-SYN",
+        "THETIC3-",
+        "github_p",
+        "at_SYNTH",
+        "ETIC3SYN",
+        "THETIC3S",
+        "YNTHETIC",
+        "3"
+      ],
+      "expectedParts": [
+        "xoxb-•••"
+      ]
+    },
+    {
+      "name": "provider gho_",
+      "inputParts": [
+        "using gh",
+        "o_AB3AB3",
+        "AB3AB3AB",
+        "3AB3AB3A",
+        "B3AB3AB3",
+        "AB3AB3 d",
+        "one"
+      ],
+      "expectedParts": [
+        "using gh",
+        "o_••• do",
+        "ne"
+      ]
+    },
+    {
+      "name": "provider ghu_",
+      "inputParts": [
+        "using gh",
+        "u_AB3AB3",
+        "AB3AB3AB",
+        "3AB3AB3A",
+        "B3AB3AB3",
+        "AB3AB3 d",
+        "one"
+      ],
+      "expectedParts": [
+        "using gh",
+        "u_••• do",
+        "ne"
+      ]
+    },
+    {
+      "name": "provider ghs_",
+      "inputParts": [
+        "using gh",
+        "s_AB3AB3",
+        "AB3AB3AB",
+        "3AB3AB3A",
+        "B3AB3AB3",
+        "AB3AB3 d",
+        "one"
+      ],
+      "expectedParts": [
+        "using gh",
+        "s_••• do",
+        "ne"
+      ]
+    },
+    {
+      "name": "provider ghr_",
+      "inputParts": [
+        "using gh",
+        "r_AB3AB3",
+        "AB3AB3AB",
+        "3AB3AB3A",
+        "B3AB3AB3",
+        "AB3AB3 d",
+        "one"
+      ],
+      "expectedParts": [
+        "using gh",
+        "r_••• do",
+        "ne"
+      ]
+    },
+    {
+      "name": "provider github_pat_",
+      "inputParts": [
+        "using gi",
+        "thub_pat",
+        "_AB3AB3A",
+        "B3AB3AB3",
+        "AB3AB3AB",
+        "3 done"
+      ],
+      "expectedParts": [
+        "using gi",
+        "thub_pat",
+        "_••• don",
+        "e"
+      ]
+    },
+    {
+      "name": "provider glpat-",
+      "inputParts": [
+        "using gl",
+        "pat-AB3A",
+        "B3AB3AB3",
+        "AB3AB3AB",
+        "3A done"
+      ],
+      "expectedParts": [
+        "using gl",
+        "pat-••• ",
+        "done"
+      ]
+    },
+    {
+      "name": "provider npm_",
+      "inputParts": [
+        "using np",
+        "m_AB3AB3",
+        "AB3AB3AB",
+        "3AB3AB3A",
+        "B3AB3AB3",
+        "AB3AB3 d",
+        "one"
+      ],
+      "expectedParts": [
+        "using np",
+        "m_••• do",
+        "ne"
+      ]
+    },
+    {
+      "name": "provider hf_",
+      "inputParts": [
+        "using hf",
+        "_AB3AB3A",
+        "B3AB3AB3",
+        "AB3AB3AB",
+        "3AB3AB3 ",
+        "done"
+      ],
+      "expectedParts": [
+        "using hf",
+        "_••• don",
+        "e"
+      ]
+    },
+    {
+      "name": "provider AKIA",
+      "inputParts": [
+        "using AK",
+        "IAAB3AB3",
+        "AB3AB3AB",
+        "3A done"
+      ],
+      "expectedParts": [
+        "using AK",
+        "IA••• do",
+        "ne"
+      ]
+    },
+    {
+      "name": "provider ASIA",
+      "inputParts": [
+        "using AS",
+        "IAAB3AB3",
+        "AB3AB3AB",
+        "3A done"
+      ],
+      "expectedParts": [
+        "using AS",
+        "IA••• do",
+        "ne"
+      ]
+    },
+    {
+      "name": "provider LTAI",
+      "inputParts": [
+        "using LT",
+        "AIAB3AB3",
+        "AB3AB3AB",
+        "3A done"
+      ],
+      "expectedParts": [
+        "using LT",
+        "AI••• do",
+        "ne"
+      ]
+    },
+    {
+      "name": "provider AKID",
+      "inputParts": [
+        "using AK",
+        "IDAB3AB3",
+        "AB3AB3AB",
+        "3AB3AB3A",
+        "B3AB3AB3",
+        "AB done"
+      ],
+      "expectedParts": [
+        "using AK",
+        "ID••• do",
+        "ne"
+      ]
+    },
+    {
+      "name": "provider xoxa-",
+      "inputParts": [
+        "using xo",
+        "xa-AB3AB",
+        "3AB3AB3 ",
+        "done"
+      ],
+      "expectedParts": [
+        "using xo",
+        "xa-••• d",
+        "one"
+      ]
+    },
+    {
+      "name": "provider xoxb-",
+      "inputParts": [
+        "using xo",
+        "xb-AB3AB",
+        "3AB3AB3 ",
+        "done"
+      ],
+      "expectedParts": [
+        "using xo",
+        "xb-••• d",
+        "one"
+      ]
+    },
+    {
+      "name": "provider xoxp-",
+      "inputParts": [
+        "using xo",
+        "xp-AB3AB",
+        "3AB3AB3 ",
+        "done"
+      ],
+      "expectedParts": [
+        "using xo",
+        "xp-••• d",
+        "one"
+      ]
+    },
+    {
+      "name": "provider xoxr-",
+      "inputParts": [
+        "using xo",
+        "xr-AB3AB",
+        "3AB3AB3 ",
+        "done"
+      ],
+      "expectedParts": [
+        "using xo",
+        "xr-••• d",
+        "one"
+      ]
+    },
+    {
+      "name": "provider xoxs-",
+      "inputParts": [
+        "using xo",
+        "xs-AB3AB",
+        "3AB3AB3 ",
+        "done"
+      ],
+      "expectedParts": [
+        "using xo",
+        "xs-••• d",
+        "one"
+      ]
+    },
+    {
+      "name": "provider sk_live_",
+      "inputParts": [
+        "using sk",
+        "_live_AB",
+        "3AB3AB3A",
+        "B3AB3A d",
+        "one"
+      ],
+      "expectedParts": [
+        "using sk",
+        "_live_••",
+        "• done"
+      ]
+    },
+    {
+      "name": "provider sk_test_",
+      "inputParts": [
+        "using sk",
+        "_test_AB",
+        "3AB3AB3A",
+        "B3AB3A d",
+        "one"
+      ],
+      "expectedParts": [
+        "using sk",
+        "_test_••",
+        "• done"
+      ]
+    },
+    {
+      "name": "provider rk_live_",
+      "inputParts": [
+        "using rk",
+        "_live_AB",
+        "3AB3AB3A",
+        "B3AB3A d",
+        "one"
+      ],
+      "expectedParts": [
+        "using rk",
+        "_live_••",
+        "• done"
+      ]
+    },
+    {
+      "name": "provider rk_test_",
+      "inputParts": [
+        "using rk",
+        "_test_AB",
+        "3AB3AB3A",
+        "B3AB3A d",
+        "one"
+      ],
+      "expectedParts": [
+        "using rk",
+        "_test_••",
+        "• done"
+      ]
+    },
+    {
+      "name": "provider whsec_",
+      "inputParts": [
+        "using wh",
+        "sec_AB3A",
+        "B3AB3AB3",
+        "AB3AB3AB",
+        "3AB3 don",
+        "e"
+      ],
+      "expectedParts": [
+        "using wh",
+        "sec_••• ",
+        "done"
+      ]
+    },
+    {
+      "name": "JWT",
+      "inputParts": [
+        "session ",
+        "eyJABCDE",
+        "FGH.eyJA",
+        "BCDEFGHI",
+        "J.ABCDEF",
+        "GHIJ end"
+      ],
+      "expectedParts": [
+        "session ",
+        "••• end"
+      ]
+    },
+    {
+      "name": "URL password",
+      "inputParts": [
+        "https://",
+        "example-",
+        "user:syn",
+        "thetic-p",
+        "assword@",
+        "example.",
+        "invalid/",
+        "path"
+      ],
+      "expectedParts": [
+        "https://",
+        "example-",
+        "user:•••",
+        "@example",
+        ".invalid",
+        "/path"
+      ]
+    },
+    {
+      "name": "URL password that looks like key",
+      "inputParts": [
+        "https://",
+        "example-",
+        "user:sk-",
+        "AB3AB3AB",
+        "3AB3AB3A",
+        "B3AB3AB3",
+        "AB3AB3@e",
+        "xample.i",
+        "nvalid/p",
+        "ath"
+      ],
+      "expectedParts": [
+        "https://",
+        "example-",
+        "user:sk-",
+        "•••@exam",
+        "ple.inva",
+        "lid/path"
+      ]
+    },
+    {
+      "name": "generic API key",
+      "inputParts": [
+        "DEEPSEEK",
+        "_API_KEY",
+        "=SYNTHET",
+        "IC_VALUE"
+      ],
+      "expectedParts": [
+        "DEEPSEEK",
+        "_API_KEY",
+        "=•••"
+      ]
+    },
+    {
+      "name": "prefixed API key",
+      "inputParts": [
+        "DEEPSEEK",
+        "_API_KEY",
+        "=sk-AB3A",
+        "B3AB3AB3",
+        "AB3AB3AB",
+        "3AB3AB3A",
+        "B3"
+      ],
+      "expectedParts": [
+        "DEEPSEEK",
+        "_API_KEY",
+        "=sk-•••"
+      ]
+    },
+    {
+      "name": "JSON API key",
+      "inputParts": [
+        "{\"apiKey",
+        "\": \"SYNT",
+        "HETIC_VA",
+        "LUE\"}"
+      ],
+      "expectedParts": [
+        "{\"apiKey",
+        "\": \"•••\"",
+        "}"
+      ]
+    },
+    {
+      "name": "quoted access token",
+      "inputParts": [
+        "access_t",
+        "oken='SY",
+        "NTHETIC_",
+        "VALUE'"
+      ],
+      "expectedParts": [
+        "access_t",
+        "oken='••",
+        "•'"
+      ]
+    },
+    {
+      "name": "password short",
+      "inputParts": [
+        "password",
+        "=abc"
+      ],
+      "expectedParts": [
+        "password",
+        "=•••"
+      ]
+    },
+    {
+      "name": "Cookie header",
+      "inputParts": [
+        "Cookie: ",
+        "dsh_sess",
+        "ion=synt",
+        "hetic; P",
+        "ath=/"
+      ],
+      "expectedParts": [
+        "Cookie: ",
+        "•••"
+      ]
+    },
+    {
+      "name": "Bearer header",
+      "inputParts": [
+        "Authoriz",
+        "ation: B",
+        "earer SY",
+        "NTHETIC_",
+        "VALUE"
+      ],
+      "expectedParts": [
+        "Authoriz",
+        "ation: B",
+        "earer ••",
+        "•"
+      ]
+    },
+    {
+      "name": "Basic header",
+      "inputParts": [
+        "authoriz",
+        "ation: B",
+        "asic SYN",
+        "THETIC_V",
+        "ALUE"
+      ],
+      "expectedParts": [
+        "authoriz",
+        "ation: B",
+        "asic •••"
+      ]
+    },
+    {
+      "name": "JSON phrase",
+      "inputParts": [
+        "{\"passwo",
+        "rd\":\"syn",
+        "thetic p",
+        "hrase, w",
+        "ith; pun",
+        "ctuation",
+        "&tail\",\"",
+        "attempt\"",
+        ":2}"
+      ],
+      "expectedParts": [
+        "{\"passwo",
+        "rd\":\"•••",
+        "\",\"attem",
+        "pt\":2}"
+      ]
+    },
+    {
+      "name": "JSON escaped quote",
+      "inputParts": [
+        "{\"passwo",
+        "rd\":\"syn",
+        "thetic\\\"",
+        "quoted\\\"",
+        "tail\",\"a",
+        "ttempt\":",
+        "2}"
+      ],
+      "expectedParts": [
+        "{\"passwo",
+        "rd\":\"•••",
+        "\",\"attem",
+        "pt\":2}"
+      ]
+    },
+    {
+      "name": "JSON escaped backslash",
+      "inputParts": [
+        "{\"passwo",
+        "rd\":\"syn",
+        "thetic\\\\",
+        "path wit",
+        "h tail\",",
+        "\"attempt",
+        "\":2}"
+      ],
+      "expectedParts": [
+        "{\"passwo",
+        "rd\":\"•••",
+        "\",\"attem",
+        "pt\":2}"
+      ]
+    },
+    {
+      "name": "single quoted phrase",
+      "inputParts": [
+        "passphra",
+        "se='synt",
+        "hetic ph",
+        "rase, wi",
+        "th; punc",
+        "tuation&",
+        "tail'; a",
+        "ttempt=2"
+      ],
+      "expectedParts": [
+        "passphra",
+        "se='•••'",
+        "; attemp",
+        "t=2"
+      ]
+    },
+    {
+      "name": "empty quoted value",
+      "inputParts": [
+        "password",
+        "=\"\""
+      ],
+      "expectedParts": [
+        "password",
+        "=\"\""
+      ]
+    },
+    {
+      "name": "masked authorization",
+      "inputParts": [
+        "Authoriz",
+        "ation: \"",
+        "Bearer •",
+        "••\""
+      ],
+      "expectedParts": [
+        "Authoriz",
+        "ation: \"",
+        "Bearer •",
+        "••\""
+      ]
+    },
+    {
+      "name": "ANSI color",
+      "inputParts": [
+        "\u001b[2mpass",
+        "word\u001b[0m",
+        "=synthet",
+        "ic"
+      ],
+      "expectedParts": [
+        "password",
+        "=•••"
+      ]
+    },
+    {
+      "name": "private key complete",
+      "inputParts": [
+        "before\n-",
+        "----BEGI",
+        "N OPENSS",
+        "H PRIVAT",
+        "E KEY---",
+        "--\nSYNTH",
+        "ETIC-PRI",
+        "VATE-MAT",
+        "ERIAL\n--",
+        "---END O",
+        "PENSSH P",
+        "RIVATE K",
+        "EY-----\n",
+        "after"
+      ],
+      "expectedParts": [
+        "before\n-",
+        "----BEGI",
+        "N OPENSS",
+        "H PRIVAT",
+        "E KEY---",
+        "--\n•••\n-",
+        "----END ",
+        "OPENSSH ",
+        "PRIVATE ",
+        "KEY-----",
+        "\nafter"
+      ]
+    },
+    {
+      "name": "private key incomplete",
+      "inputParts": [
+        "-----BEG",
+        "IN PRIVA",
+        "TE KEY--",
+        "---\nSYNT",
+        "HETIC-PR",
+        "IVATE-MA",
+        "TERIAL"
+      ],
+      "expectedParts": [
+        "-----BEG",
+        "IN PRIVA",
+        "TE KEY--",
+        "---\n•••"
+      ]
+    },
+    {
+      "name": "private key inline",
+      "inputParts": [
+        "before -",
+        "----BEGI",
+        "N PRIVAT",
+        "E KEY---",
+        "-- SYNTH",
+        "ETIC ---",
+        "--END PR",
+        "IVATE KE",
+        "Y----- a",
+        "fter"
+      ],
+      "expectedParts": [
+        "before •",
+        "•• after"
+      ]
+    },
+    {
+      "name": "ordinary or masked 0",
+      "inputParts": [
+        "[agent] ",
+        "2431 tok",
+        "ens"
+      ],
+      "expectedParts": [
+        "[agent] ",
+        "2431 tok",
+        "ens"
+      ]
+    },
+    {
+      "name": "ordinary or masked 1",
+      "inputParts": [
+        "max_toke",
+        "ns=8192"
+      ],
+      "expectedParts": [
+        "max_toke",
+        "ns=8192"
+      ]
+    },
+    {
+      "name": "ordinary or masked 2",
+      "inputParts": [
+        "tokens: ",
+        "12345678",
+        "9"
+      ],
+      "expectedParts": [
+        "tokens: ",
+        "12345678",
+        "9"
+      ]
+    },
+    {
+      "name": "ordinary or masked 3",
+      "inputParts": [
+        "[gateway",
+        "] listen",
+        "ing on 1",
+        "27.0.0.1",
+        ":3080"
+      ],
+      "expectedParts": [
+        "[gateway",
+        "] listen",
+        "ing on 1",
+        "27.0.0.1",
+        ":3080"
+      ]
+    },
+    {
+      "name": "ordinary or masked 4",
+      "inputParts": [
+        "task-run",
+        "ner star",
+        "ted"
+      ],
+      "expectedParts": [
+        "task-run",
+        "ner star",
+        "ted"
+      ]
+    },
+    {
+      "name": "ordinary or masked 5",
+      "inputParts": [
+        "sk-AAAAA",
+        "AAAAAAAA",
+        "AAAAAAAA",
+        "AAAA"
+      ],
+      "expectedParts": [
+        "sk-AAAAA",
+        "AAAAAAAA",
+        "AAAAAAAA",
+        "AAAA"
+      ]
+    },
+    {
+      "name": "ordinary or masked 6",
+      "inputParts": [
+        "prefixgh",
+        "p_AB3AB3",
+        "AB3AB3AB",
+        "3AB3AB3A",
+        "B3AB3AB3",
+        "AB3AB3"
+      ],
+      "expectedParts": [
+        "prefixgh",
+        "p_AB3AB3",
+        "AB3AB3AB",
+        "3AB3AB3A",
+        "B3AB3AB3",
+        "AB3AB3"
+      ]
+    },
+    {
+      "name": "ordinary or masked 7",
+      "inputParts": [
+        "hasApiKe",
+        "y: true"
+      ],
+      "expectedParts": [
+        "hasApiKe",
+        "y: true"
+      ]
+    },
+    {
+      "name": "ordinary or masked 8",
+      "inputParts": [
+        "password",
+        "=\"•••\""
+      ],
+      "expectedParts": [
+        "password",
+        "=\"•••\""
+      ]
+    },
+    {
+      "name": "ordinary or masked 9",
+      "inputParts": [
+        "token=••",
+        "•"
+      ],
+      "expectedParts": [
+        "token=••",
+        "•"
+      ]
+    },
+    {
+      "name": "ideographic space after password separator",
+      "inputParts": [
+        "password",
+        "=　synthe",
+        "tic"
+      ],
+      "expectedParts": [
+        "password",
+        "=　•••"
+      ]
+    },
+    {
+      "name": "ECMAScript BOM space after key separator",
+      "inputParts": [
+        "API_KEY=",
+        "﻿SYNTHET",
+        "IC_VALUE"
+      ],
+      "expectedParts": [
+        "API_KEY=",
+        "﻿•••"
+      ]
+    },
+    {
+      "name": "NEL is part of an unquoted secret",
+      "inputParts": [
+        "password",
+        "=synthe",
+        "tic"
+      ],
+      "expectedParts": [
+        "password",
+        "=•••"
+      ]
+    },
+    {
+      "name": "BOM space ends an unquoted secret",
+      "inputParts": [
+        "password",
+        "=synthet",
+        "ic﻿ordin",
+        "ary"
+      ],
+      "expectedParts": [
+        "password",
+        "=•••﻿ord",
+        "inary"
+      ]
+    },
+    {
+      "name": "Unicode auth separator",
+      "inputParts": [
+        "Authoriz",
+        "ation: B",
+        "asic　SYN",
+        "THETIC_V",
+        "ALUE"
+      ],
+      "expectedParts": [
+        "Authoriz",
+        "ation: B",
+        "asic •••"
+      ]
+    },
+    {
+      "name": "ordinary long line limit",
+      "inputParts": [
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "x"
+      ],
+      "expectedParts": [
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "…"
+      ]
+    },
+    {
+      "name": "long line surrogate boundary",
+      "inputParts": [
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxx😀",
+        "Z"
+      ],
+      "expectedParts": [
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxxx",
+        "xxxxxxx…"
+      ]
+    },
+    {
+      "name": "quoted value loses closing quote at line limit",
+      "inputParts": [
+        "password",
+        "=\"synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic sy",
+        "nthetic ",
+        "syntheti",
+        "c synthe",
+        "tic synt",
+        "hetic \""
+      ],
+      "expectedParts": [
+        "password",
+        "=\"•••"
+      ]
+    },
+    {
+      "name": "unfinished quoted value with dangling escape",
+      "inputParts": [
+        "password",
+        "='synthe",
+        "tic phra",
+        "se\\"
+      ],
+      "expectedParts": [
+        "password",
+        "='•••"
+      ]
+    },
+    {
+      "name": "unfinished quoted value stops at newline",
+      "inputParts": [
+        "password",
+        "=\"synthe",
+        "tic phra",
+        "se\\\nordi",
+        "nary"
+      ],
+      "expectedParts": [
+        "password",
+        "=\"•••\nor",
+        "dinary"
+      ]
+    },
+    {
+      "name": "explicit short API key",
+      "inputParts": [
+        "API_KEY=",
+        "x"
+      ],
+      "expectedParts": [
+        "API_KEY=",
+        "•••"
+      ]
+    },
+    {
+      "name": "explicit numeric JSON API key",
+      "inputParts": [
+        "{\"apiKey",
+        "\": \"1234",
+        "\"}"
+      ],
+      "expectedParts": [
+        "{\"apiKey",
+        "\": \"•••\"",
+        "}"
+      ]
+    },
+    {
+      "name": "explicit numeric access key",
+      "inputParts": [
+        "access_k",
+        "ey=12"
+      ],
+      "expectedParts": [
+        "access_k",
+        "ey=•••"
+      ]
+    },
+    {
+      "name": "explicit short environment token",
+      "inputParts": [
+        "GITHUB_T",
+        "OKEN=ab"
+      ],
+      "expectedParts": [
+        "GITHUB_T",
+        "OKEN=•••"
+      ]
+    },
+    {
+      "name": "explicit numeric camel refresh token",
+      "inputParts": [
+        "refreshT",
+        "oken=7"
+      ],
+      "expectedParts": [
+        "refreshT",
+        "oken=•••"
+      ]
+    },
+    {
+      "name": "key and token counts and flags",
+      "inputParts": [
+        "tokens=1",
+        "23456789",
+        " max_tok",
+        "ens=8192",
+        " input_t",
+        "okens=7 ",
+        "token_co",
+        "unt=1234",
+        "56789 ha",
+        "sApiKey=",
+        "true"
+      ],
+      "expectedParts": [
+        "tokens=1",
+        "23456789",
+        " max_tok",
+        "ens=8192",
+        " input_t",
+        "okens=7 ",
+        "token_co",
+        "unt=1234",
+        "56789 ha",
+        "sApiKey=",
+        "true"
+      ]
+    },
+    {
+      "name": "quoted API key phrase",
+      "inputParts": [
+        "{\"apiKey",
+        "\":\"synth",
+        "etic phr",
+        "ase; wit",
+        "h, punct",
+        "uation&t",
+        "ail\",\"at",
+        "tempt\":2",
+        "}"
+      ],
+      "expectedParts": [
+        "{\"apiKey",
+        "\":\"•••\",",
+        "\"attempt",
+        "\":2}"
+      ]
+    },
+    {
+      "name": "quoted API key escaped quotes",
+      "inputParts": [
+        "{\"apiKey",
+        "\":\"synth",
+        "etic\\\"qu",
+        "oted\\\" t",
+        "ail\",\"at",
+        "tempt\":2",
+        "}"
+      ],
+      "expectedParts": [
+        "{\"apiKey",
+        "\":\"•••\",",
+        "\"attempt",
+        "\":2}"
+      ]
+    },
+    {
+      "name": "unfinished quoted API key dangling escape",
+      "inputParts": [
+        "api_key=",
+        "'synthet",
+        "ic phras",
+        "e\\"
+      ],
+      "expectedParts": [
+        "api_key=",
+        "'•••"
+      ]
+    },
+    {
+      "name": "unfinished quoted token stops at newline",
+      "inputParts": [
+        "access_t",
+        "oken=\"sy",
+        "nthetic ",
+        "phrase\\\n",
+        "ordinary"
+      ],
+      "expectedParts": [
+        "access_t",
+        "oken=\"••",
+        "•\nordina",
+        "ry"
+      ]
+    },
+    {
+      "name": "inline environment credential assignments",
+      "inputParts": [
+        "env FOO=",
+        "normal A",
+        "PI_KEY='",
+        "syntheti",
+        "c phrase",
+        "' REFRES",
+        "H_TOKEN=",
+        "7 comman",
+        "d"
+      ],
+      "expectedParts": [
+        "env FOO=",
+        "normal A",
+        "PI_KEY='",
+        "•••' REF",
+        "RESH_TOK",
+        "EN=••• c",
+        "ommand"
+      ]
+    },
+    {
+      "name": "password equal to Basic",
+      "inputParts": [
+        "password",
+        "=Basic"
+      ],
+      "expectedParts": [
+        "password",
+        "=•••"
+      ]
+    },
+    {
+      "name": "password with Bearer prefix",
+      "inputParts": [
+        "password",
+        "=Bearer-",
+        "syntheti",
+        "c"
+      ],
+      "expectedParts": [
+        "password",
+        "=•••"
+      ]
+    },
+    {
+      "name": "quoted secret with authorization scheme",
+      "inputParts": [
+        "secret=\"",
+        "Basic sy",
+        "nthetic ",
+        "phrase\""
+      ],
+      "expectedParts": [
+        "secret=\"",
+        "•••\""
+      ]
+    },
+    {
+      "name": "quoted password with already masked authorization",
+      "inputParts": [
+        "password",
+        "=\"Bearer",
+        " •••\""
+      ],
+      "expectedParts": [
+        "password",
+        "=\"•••\""
+      ]
+    },
+    {
+      "name": "empty password before token assignment",
+      "inputParts": [
+        "password",
+        "= token=",
+        "'synthet",
+        "ic phras",
+        "e'"
+      ],
+      "expectedParts": [
+        "password",
+        "= token=",
+        "'•••'"
+      ]
+    },
+    {
+      "name": "empty API key before ordinary assignment",
+      "inputParts": [
+        "API_KEY=",
+        " status=",
+        "ready"
+      ],
+      "expectedParts": [
+        "API_KEY=",
+        " status=",
+        "ready"
+      ]
+    },
+    {
+      "name": "empty secret before next line",
+      "inputParts": [
+        "secret=\n",
+        "password",
+        "=abc"
+      ],
+      "expectedParts": [
+        "secret=\n",
+        "password",
+        "=•••"
+      ]
+    },
+    {
+      "name": "empty password preserves inline whitespace",
+      "inputParts": [
+        "password",
+        "= \tAPI_K",
+        "EY=x"
+      ],
+      "expectedParts": [
+        "password",
+        "= \tAPI_K",
+        "EY=•••"
+      ]
+    },
+    {
+      "name": "empty quoted key stays empty",
+      "inputParts": [
+        "API_KEY=",
+        "'' token",
+        "_count=0"
+      ],
+      "expectedParts": [
+        "API_KEY=",
+        "'' token",
+        "_count=0"
+      ]
+    },
+    {
+      "name": "Cookie header masks every cookie",
+      "inputParts": [
+        "Cookie: ",
+        "first=on",
+        "e; secon",
+        "d=two"
+      ],
+      "expectedParts": [
+        "Cookie: ",
+        "•••"
+      ]
+    },
+    {
+      "name": "Set-Cookie header masks whole value",
+      "inputParts": [
+        "Set-Cook",
+        "ie: firs",
+        "t=one; P",
+        "ath=/; H",
+        "ttpOnly"
+      ],
+      "expectedParts": [
+        "Set-Cook",
+        "ie: •••"
+      ]
+    },
+    {
+      "name": "Cookie header stops at newline",
+      "inputParts": [
+        "Cookie: ",
+        "first=on",
+        "e; secon",
+        "d=two\nX-",
+        "Count: 2"
+      ],
+      "expectedParts": [
+        "Cookie: ",
+        "•••\nX-Co",
+        "unt: 2"
+      ]
+    },
+    {
+      "name": "quoted JSON Cookie value",
+      "inputParts": [
+        "{\"Cookie",
+        "\": \"firs",
+        "t=one; s",
+        "econd=tw",
+        "o\", \"att",
+        "empt\":2}"
+      ],
+      "expectedParts": [
+        "{\"Cookie",
+        "\": \"•••\"",
+        ", \"attem",
+        "pt\":2}"
+      ]
+    },
+    {
+      "name": "masked value directly before another secret",
+      "inputParts": [
+        "password",
+        "=•••secr",
+        "et=abc"
+      ],
+      "expectedParts": [
+        "password",
+        "=•••secr",
+        "et=•••"
+      ]
+    },
+    {
+      "name": "masked value directly before another key",
+      "inputParts": [
+        "password",
+        "=•••API_",
+        "KEY=x"
+      ],
+      "expectedParts": [
+        "password",
+        "=•••API_",
+        "KEY=•••"
+      ]
+    },
+    {
+      "name": "masked prefix does not exempt a readable suffix",
+      "inputParts": [
+        "password",
+        "=•••synt",
+        "hetic"
+      ],
+      "expectedParts": [
+        "password",
+        "=•••"
+      ]
+    },
+    {
+      "name": "masked provider directly before another assignment",
+      "inputParts": [
+        "api_key=",
+        "sk-•••pa",
+        "ssword=a",
+        "bc"
+      ],
+      "expectedParts": [
+        "api_key=",
+        "sk-•••pa",
+        "ssword=•",
+        "••"
+      ]
+    },
+    {
+      "name": "quoted masked prefix remains inside the credential",
+      "inputParts": [
+        "password",
+        "=\"•••sec",
+        "ret=abc\""
+      ],
+      "expectedParts": [
+        "password",
+        "=\"•••\""
+      ]
+    },
+    {
+      "name": "quoted key encloses another credential assignment",
+      "inputParts": [
+        "apiKey=\"",
+        "password",
+        "='synthe",
+        "tic valu",
+        "e' tail\""
+      ],
+      "expectedParts": [
+        "apiKey=\"",
+        "•••\""
+      ]
+    },
+    {
+      "name": "numeric JSON key preserves closing punctuation",
+      "inputParts": [
+        "{\"apiKey",
+        "\":1234}"
+      ],
+      "expectedParts": [
+        "{\"apiKey",
+        "\":•••}"
+      ]
+    },
+    {
+      "name": "private key standalone header",
+      "inputParts": [
+        "-----BEG",
+        "IN PRIVA",
+        "TE KEY--",
+        "---"
+      ],
+      "expectedParts": [
+        "-----BEG",
+        "IN PRIVA",
+        "TE KEY--",
+        "---"
+      ]
+    },
+    {
+      "name": "private key standalone header with log prefix",
+      "inputParts": [
+        "before -",
+        "----BEGI",
+        "N PRIVAT",
+        "E KEY---",
+        "--"
+      ],
+      "expectedParts": [
+        "before -",
+        "----BEGI",
+        "N PRIVAT",
+        "E KEY---",
+        "--"
+      ]
+    },
+    {
+      "name": "private key unfinished final newline",
+      "inputParts": [
+        "-----BEG",
+        "IN PRIVA",
+        "TE KEY--",
+        "---\n"
+      ],
+      "expectedParts": [
+        "-----BEG",
+        "IN PRIVA",
+        "TE KEY--",
+        "---\n•••"
+      ]
+    },
+    {
+      "name": "private key inline header payload is not retained",
+      "inputParts": [
+        "-----BEG",
+        "IN PRIVA",
+        "TE KEY--",
+        "--- SYNT",
+        "HETIC\nSY",
+        "NTHETIC-",
+        "TAIL"
+      ],
+      "expectedParts": [
+        "-----BEG",
+        "IN PRIVA",
+        "TE KEY--",
+        "---\n•••"
+      ]
+    },
+    {
+      "name": "private key end after same-line body",
+      "inputParts": [
+        "-----BEG",
+        "IN PRIVA",
+        "TE KEY--",
+        "---\nSYNT",
+        "HETIC --",
+        "---END P",
+        "RIVATE K",
+        "EY-----"
+      ],
+      "expectedParts": [
+        "-----BEG",
+        "IN PRIVA",
+        "TE KEY--",
+        "---\n•••\n",
+        "-----END",
+        " PRIVATE",
+        " KEY----",
+        "-"
+      ]
+    },
+    {
+      "name": "overlap three provider ranges",
+      "inputParts": [
+        "AIza-xox",
+        "b-SYNTHE",
+        "TIC3-git",
+        "hub_pat_",
+        "SYNTHETI",
+        "C3SYNTHE",
+        "TIC3SYNT",
+        "HETIC3SY",
+        "NTHETIC3"
+      ],
+      "expectedParts": [
+        "AIza•••"
+      ]
+    },
+    {
+      "name": "overlap URL and provider chain",
+      "inputParts": [
+        "https://",
+        "u:AIza-s",
+        "k-SYNTHE",
+        "TIC3SYNT",
+        "HETIC3SY",
+        "NTHETIC3",
+        "SYNTHETI",
+        "C3SYNTHE",
+        "TIC3SYNT",
+        "HETIC3@e",
+        "xample.i",
+        "nvalid/"
+      ],
+      "expectedParts": [
+        "https://",
+        "u:AIza••",
+        "•@exampl",
+        "e.invali",
+        "d/"
+      ]
+    },
+    {
+      "name": "overlap provider and private key block",
+      "inputParts": [
+        "sk-3----",
+        "--------",
+        "--------",
+        "--------",
+        "-BEGIN P",
+        "RIVATE K",
+        "EY-----\n",
+        "SYNTHETI",
+        "C\n-----E",
+        "ND PRIVA",
+        "TE KEY--",
+        "---"
+      ],
+      "expectedParts": [
+        "sk-•••"
+      ]
+    },
+    {
+      "name": "Cookie header starting with a quoted value",
+      "inputParts": [
+        "Cookie: ",
+        "\"first=o",
+        "ne\"; sec",
+        "ond=two"
+      ],
+      "expectedParts": [
+        "Cookie: ",
+        "•••"
+      ]
+    },
+    {
+      "name": "overlapping secret assignments with a scheme prefix",
+      "inputParts": [
+        "password",
+        "=Bearer-",
+        "secret=s",
+        "ynthetic"
+      ],
+      "expectedParts": [
+        "password",
+        "=•••"
+      ]
+    },
+    {
+      "name": "URL password with a non-PEM BEGIN prefix",
+      "inputParts": [
+        "https://",
+        "u:-----B",
+        "EGIN-SYN",
+        "THETIC@e",
+        "xample.i",
+        "nvalid/"
+      ],
+      "expectedParts": [
+        "https://",
+        "u:•••@ex",
+        "ample.in",
+        "valid/"
+      ]
+    },
+    {
+      "name": "unquoted password includes a closing bracket",
+      "inputParts": [
+        "password",
+        "=synthet",
+        "ic]tail"
+      ],
+      "expectedParts": [
+        "password",
+        "=•••"
+      ]
+    },
+    {
+      "name": "unquoted API key includes a closing brace",
+      "inputParts": [
+        "API_KEY=",
+        "syntheti",
+        "c}tail"
+      ],
+      "expectedParts": [
+        "API_KEY=",
+        "•••"
+      ]
+    },
+    {
+      "name": "quoted environment key still allows closing brace",
+      "inputParts": [
+        "\"API_KEY",
+        "\"=synthe",
+        "tic}tail"
+      ],
+      "expectedParts": [
+        "\"API_KEY",
+        "\"=•••"
+      ]
+    },
+    {
+      "name": "password URL value after separator whitespace",
+      "inputParts": [
+        "password",
+        "= https:",
+        "//exampl",
+        "e.invali",
+        "d/synthe",
+        "tic"
+      ],
+      "expectedParts": [
+        "password",
+        "= •••"
+      ]
+    },
+    {
+      "name": "API key URL value after separator whitespace",
+      "inputParts": [
+        "API_KEY=",
+        " https:/",
+        "/example",
+        ".invalid",
+        "/synthet",
+        "ic"
+      ],
+      "expectedParts": [
+        "API_KEY=",
+        " •••"
+      ]
+    },
+    {
+      "name": "secret opaque URI after separator whitespace",
+      "inputParts": [
+        "secret= ",
+        "urn:synt",
+        "hetic"
+      ],
+      "expectedParts": [
+        "secret= ",
+        "•••"
+      ]
+    },
+    {
+      "name": "empty password before sensitive colon assignment",
+      "inputParts": [
+        "password",
+        "= secret",
+        ":synthet",
+        "ic"
+      ],
+      "expectedParts": [
+        "password",
+        "= secret",
+        ":•••"
+      ]
+    },
+    {
+      "name": "empty API key before ordinary colon field",
+      "inputParts": [
+        "API_KEY=",
+        " status:",
+        " ready"
+      ],
+      "expectedParts": [
+        "API_KEY=",
+        " status:",
+        " ready"
+      ]
+    },
+    {
+      "name": "masked password followed immediately by a URI",
+      "inputParts": [
+        "password",
+        "=•••http",
+        "s://exam",
+        "ple.inva",
+        "lid/synt",
+        "hetic"
+      ],
+      "expectedParts": [
+        "password",
+        "=•••"
+      ]
+    },
+    {
+      "name": "parenthesized crash summary preserves provider prefix",
+      "inputParts": [
+        "Error: p",
+        "lugin ds",
+        "h-approv",
+        "al-gate ",
+        "failed t",
+        "o load (",
+        "apiKey=s",
+        "k-SYNTHE",
+        "TIC3SYNT",
+        "HETIC3SY",
+        "NTHETIC3",
+        ")"
+      ],
+      "expectedParts": [
+        "Error: p",
+        "lugin ds",
+        "h-approv",
+        "al-gate ",
+        "failed t",
+        "o load (",
+        "apiKey=s",
+        "k-•••)"
+      ]
+    },
+    {
+      "name": "parenthesized short API key preserves closing parenthesis",
+      "inputParts": [
+        "(API_KEY",
+        "=x) ordi",
+        "nary"
+      ],
+      "expectedParts": [
+        "(API_KEY",
+        "=•••) or",
+        "dinary"
+      ]
+    },
+    {
+      "name": "parenthesized numeric token preserves closing parenthesis",
+      "inputParts": [
+        "(refresh",
+        "Token=7)"
+      ],
+      "expectedParts": [
+        "(refresh",
+        "Token=••",
+        "•)"
+      ]
+    },
+    {
+      "name": "unquoted password includes a closing parenthesis",
+      "inputParts": [
+        "password",
+        "=synthet",
+        "ic)tail"
+      ],
+      "expectedParts": [
+        "password",
+        "=•••"
+      ]
+    },
+    {
+      "name": "unquoted API key includes a trailing parenthesis",
+      "inputParts": [
+        "apiKey=s",
+        "ynthetic",
+        ")"
+      ],
+      "expectedParts": [
+        "apiKey=•",
+        "••"
+      ]
+    },
+    {
+      "name": "parenthesized password includes an inner closing parenthesis",
+      "inputParts": [
+        "(passwor",
+        "d=synthe",
+        "tic)tail",
+        ")"
+      ],
+      "expectedParts": [
+        "(passwor",
+        "d=•••)"
+      ]
+    },
+    {
+      "name": "parenthesized masked prefix does not exempt readable suffix",
+      "inputParts": [
+        "(apiKey=",
+        "sk-•••sy",
+        "nthetic)"
+      ],
+      "expectedParts": [
+        "(apiKey=",
+        "•••)"
+      ]
+    },
+    {
+      "name": "parenthesized quoted password includes a closing parenthesis",
+      "inputParts": [
+        "(passwor",
+        "d='synth",
+        "etic)tai",
+        "l')"
+      ],
+      "expectedParts": [
+        "(passwor",
+        "d='•••')"
+      ]
+    },
+    {
+      "name": "empty parenthesized API key stays empty",
+      "inputParts": [
+        "(apiKey=",
+        ")"
+      ],
+      "expectedParts": [
+        "(apiKey=",
+        ")"
+      ]
+    },
+    {
+      "name": "singular token counts keep snake and camel names",
+      "inputParts": [
+        "max_token=1024 prompt_token=5 next_token=2 maxToken=1024 promptToken=5 nextToken=2 token_count=1024"
+      ],
+      "expectedParts": [
+        "max_token=1024 prompt_token=5 next_token=2 maxToken=1024 promptToken=5 nextToken=2 token_count=1024"
+      ]
+    },
+    {
+      "name": "pagination tokens stay readable at any length",
+      "inputParts": [
+        "next_token=page-cursor-123 nextToken=\"page-cursor-123\" continuation_token=page-cursor-123 next-token=page-cursor-123"
+      ],
+      "expectedParts": [
+        "next_token=page-cursor-123 nextToken=\"page-cursor-123\" continuation_token=page-cursor-123 next-token=page-cursor-123"
+      ]
+    },
+    {
+      "name": "singular credential token names mask short and numeric values",
+      "inputParts": [
+        "token=7 api_token='x' accessToken=42 refresh_token=\"12\" auth-token=ab bearerToken=cd session_token=3 id_token=4 GITHUB_TOKEN=5"
+      ],
+      "expectedParts": [
+        "token=••• api_token='•••' accessToken=••• refresh_token=\"•••\" auth-token=••• bearerToken=••• session_token=••• id_token=••• GITHUB_TOKEN=•••"
+      ]
+    },
+    {
+      "name": "unknown singular token credentials are masked at any length",
+      "inputParts": [
+        "(clientToken=1234567) clientToken=12345678 (clientToken=sampleXY) clientToken=sampleXY"
+      ],
+      "expectedParts": [
+        "(clientToken=•••) clientToken=••• (clientToken=•••) clientToken=•••"
+      ]
+    },
+    {
+      "name": "key credentials stay masked beside token counts",
+      "inputParts": [
+        "max_token=1024 API_KEY=7 access_key=5 privateKey=8 hasApiKey=false"
+      ],
+      "expectedParts": [
+        "max_token=1024 API_KEY=••• access_key=••• privateKey=••• hasApiKey=false"
+      ]
+    },
+    {
+      "name": "JSON token counts and cursor survive beside an access credential",
+      "inputParts": [
+        "{\"max_token\":1024,\"prompt_token\":5,\"next_token\":\"page-cursor-123\",\"access_token\":\"7\"}"
+      ],
+      "expectedParts": [
+        "{\"max_token\":1024,\"prompt_token\":5,\"next_token\":\"page-cursor-123\",\"access_token\":\"•••\"}"
+      ]
+    },
+    {
+      "name": "credential token name CLOUDFLARE_API_TOKEN",
+      "inputParts": [
+        "CLOUDFLA",
+        "RE_API_T",
+        "OKEN=syn",
+        "thetic-v",
+        "alue"
+      ],
+      "expectedParts": [
+        "CLOUDFLA",
+        "RE_API_T",
+        "OKEN=•••"
+      ]
+    },
+    {
+      "name": "credential token name DSH_ACCESS_TOKEN",
+      "inputParts": [
+        "DSH_ACCE",
+        "SS_TOKEN",
+        "=synthet",
+        "ic-value"
+      ],
+      "expectedParts": [
+        "DSH_ACCE",
+        "SS_TOKEN",
+        "=•••"
+      ]
+    },
+    {
+      "name": "credential token name GH_TOKEN",
+      "inputParts": [
+        "GH_TOKEN",
+        "=synthet",
+        "ic-value"
+      ],
+      "expectedParts": [
+        "GH_TOKEN",
+        "=•••"
+      ]
+    },
+    {
+      "name": "credential token name TELEGRAM_BOT_TOKEN",
+      "inputParts": [
+        "TELEGRAM",
+        "_BOT_TOK",
+        "EN=synth",
+        "etic-val",
+        "ue"
+      ],
+      "expectedParts": [
+        "TELEGRAM",
+        "_BOT_TOK",
+        "EN=•••"
+      ]
+    },
+    {
+      "name": "credential token name X-Auth-Token",
+      "inputParts": [
+        "X-Auth-T",
+        "oken=syn",
+        "thetic-v",
+        "alue"
+      ],
+      "expectedParts": [
+        "X-Auth-T",
+        "oken=•••"
+      ]
+    },
+    {
+      "name": "credential token name oauth_token",
+      "inputParts": [
+        "oauth_to",
+        "ken=synt",
+        "hetic-va",
+        "lue"
+      ],
+      "expectedParts": [
+        "oauth_to",
+        "ken=•••"
+      ]
+    },
+    {
+      "name": "credential token name VERCEL_TOKEN",
+      "inputParts": [
+        "VERCEL_T",
+        "OKEN=syn",
+        "thetic-v",
+        "alue"
+      ],
+      "expectedParts": [
+        "VERCEL_T",
+        "OKEN=•••"
+      ]
+    },
+    {
+      "name": "credential token name DISCORD_TOKEN",
+      "inputParts": [
+        "DISCORD_",
+        "TOKEN=sy",
+        "nthetic-",
+        "value"
+      ],
+      "expectedParts": [
+        "DISCORD_",
+        "TOKEN=••",
+        "•"
+      ]
+    },
+    {
+      "name": "credential token name TELEGRAM_TOKEN",
+      "inputParts": [
+        "TELEGRAM",
+        "_TOKEN=s",
+        "ynthetic",
+        "-value"
+      ],
+      "expectedParts": [
+        "TELEGRAM",
+        "_TOKEN=•",
+        "••"
+      ]
+    },
+    {
+      "name": "credential token name PYPI_TOKEN",
+      "inputParts": [
+        "PYPI_TOK",
+        "EN=synth",
+        "etic-val",
+        "ue"
+      ],
+      "expectedParts": [
+        "PYPI_TOK",
+        "EN=•••"
+      ]
+    },
+    {
+      "name": "credential token name CODECOV_TOKEN",
+      "inputParts": [
+        "CODECOV_",
+        "TOKEN=sy",
+        "nthetic-",
+        "value"
+      ],
+      "expectedParts": [
+        "CODECOV_",
+        "TOKEN=••",
+        "•"
+      ]
+    },
+    {
+      "name": "credential token name CSRF_TOKEN",
+      "inputParts": [
+        "CSRF_TOK",
+        "EN=synth",
+        "etic-val",
+        "ue"
+      ],
+      "expectedParts": [
+        "CSRF_TOK",
+        "EN=•••"
+      ]
+    },
+    {
+      "name": "credential token name client_token",
+      "inputParts": [
+        "client_t",
+        "oken=syn",
+        "thetic-v",
+        "alue"
+      ],
+      "expectedParts": [
+        "client_t",
+        "oken=•••"
+      ]
+    },
+    {
+      "name": "live log token qualifiers",
+      "inputParts": [
+        "oauth_to",
+        "ken=samp",
+        "leXY x_a",
+        "uth_toke",
+        "n=sample",
+        "XY gh_to",
+        "ken=samp",
+        "leXY bot",
+        "_token=s",
+        "ampleXY"
+      ],
+      "expectedParts": [
+        "oauth_to",
+        "ken=••• ",
+        "x_auth_t",
+        "oken=•••",
+        " gh_toke",
+        "n=••• bo",
+        "t_token=",
+        "•••"
+      ]
+    },
+    {
+      "name": "nonterminal token names retain baseline long-value masking",
+      "inputParts": [
+        "token_va",
+        "lue=samp",
+        "leXY acc",
+        "ountToke",
+        "nValue=s",
+        "ampleXY ",
+        "token_co",
+        "unt=1234",
+        "56789 to",
+        "kens=123",
+        "456789"
+      ],
+      "expectedParts": [
+        "token_va",
+        "lue=••• ",
+        "accountT",
+        "okenValu",
+        "e=••• to",
+        "ken_coun",
+        "t=123456",
+        "789 toke",
+        "ns=12345",
+        "6789"
+      ]
+    },
+    {
+      "name": "compound counts and qualified cursors remain readable",
+      "inputParts": [
+        "maxOutpu",
+        "tToken=1",
+        "024 mode",
+        "l_min_to",
+        "ken=2 in",
+        "put_toke",
+        "n=1024 o",
+        "utput_to",
+        "ken=512 ",
+        "completi",
+        "on_token",
+        "=8 total",
+        "Token=20",
+        "48 prev_",
+        "token=pa",
+        "ge-curso",
+        "r-123 pr",
+        "eviousTo",
+        "ken=page",
+        "-cursor-",
+        "123 next",
+        "PageToke",
+        "n=page-c",
+        "ursor-12",
+        "3 cursor",
+        "_token=p",
+        "age-curs",
+        "or-123"
+      ],
+      "expectedParts": [
+        "maxOutpu",
+        "tToken=1",
+        "024 mode",
+        "l_min_to",
+        "ken=2 in",
+        "put_toke",
+        "n=1024 o",
+        "utput_to",
+        "ken=512 ",
+        "completi",
+        "on_token",
+        "=8 total",
+        "Token=20",
+        "48 prev_",
+        "token=pa",
+        "ge-curso",
+        "r-123 pr",
+        "eviousTo",
+        "ken=page",
+        "-cursor-",
+        "123 next",
+        "PageToke",
+        "n=page-c",
+        "ursor-12",
+        "3 cursor",
+        "_token=p",
+        "age-curs",
+        "or-123"
+      ]
+    },
+    {
+      "name": "credential names with a counter-like substring stay masked",
+      "inputParts": [
+        "ADMIN_TO",
+        "KEN=samp",
+        "leXY x_a",
+        "dmin_tok",
+        "en=sampl",
+        "eXY max_",
+        "access_t",
+        "oken=sam",
+        "pleXY cl",
+        "ientToke",
+        "n=sample",
+        "XY"
+      ],
+      "expectedParts": [
+        "ADMIN_TO",
+        "KEN=••• ",
+        "x_admin_",
+        "token=••",
+        "• max_ac",
+        "cess_tok",
+        "en=••• c",
+        "lientTok",
+        "en=•••"
+      ]
+    },
+    {
+      "name": "a padded value after a space is a value, not the next field",
+      "inputParts": [
+        "API_KEY=",
+        " YWJjZGV",
+        "mZ2g= x-",
+        "api-key:",
+        " c2VjcmV",
+        "0MTI= cl",
+        "ient_sec",
+        "ret: YWJ",
+        "jZA== PA",
+        "SSWORD= ",
+        "HOST=exa",
+        "mple don",
+        "e"
+      ],
+      "expectedParts": [
+        "API_KEY=",
+        " ••• x-a",
+        "pi-key: ",
+        "••• clie",
+        "nt_secre",
+        "t: ••• P",
+        "ASSWORD=",
+        " HOST=ex",
+        "ample do",
+        "ne"
+      ]
+    },
+    {
+      "name": "a readable cursor value is still scanned for a credential",
+      "inputParts": [
+        "next_tok",
+        "en=https",
+        "://examp",
+        "le.inval",
+        "id/?api_",
+        "key=synt",
+        "hetic-va",
+        "lue page",
+        "_token=\"",
+        "a passwo",
+        "rd=sampl",
+        "e22\" max",
+        "_token=1",
+        "024"
+      ],
+      "expectedParts": [
+        "next_tok",
+        "en=https",
+        "://examp",
+        "le.inval",
+        "id/?api_",
+        "key=••• ",
+        "page_tok",
+        "en=\"a pa",
+        "ssword=•",
+        "••\" max_",
+        "token=10",
+        "24"
+      ]
+    },
+    {
+      "name": "a token value with colon, plus, slash and padding is masked whole",
+      "inputParts": [
+        "TELEGRAM",
+        "_BOT_TOK",
+        "EN=123:s",
+        "ynthetic",
+        "+value/x",
+        "== done"
+      ],
+      "expectedParts": [
+        "TELEGRAM",
+        "_BOT_TOK",
+        "EN=••• d",
+        "one"
+      ]
+    },
+    {
+      "name": "query launch token preserves the following route fragment",
+      "inputParts": [
+        "http://1",
+        "27.0.0.1",
+        ":3080/?t",
+        "oken=x#/",
+        "chat/123"
+      ],
+      "expectedParts": [
+        "http://1",
+        "27.0.0.1",
+        ":3080/?t",
+        "oken=•••",
+        "#/chat/1",
+        "23"
+      ]
+    },
+    {
+      "name": "query launch token preserves the enclosing URL parenthesis",
+      "inputParts": [
+        "(http://",
+        "127.0.0.",
+        "1:3080/?",
+        "token=x)"
+      ],
+      "expectedParts": [
+        "(http://",
+        "127.0.0.",
+        "1:3080/?",
+        "token=••",
+        "•)"
+      ]
+    },
+    {
+      "name": "query launch token fragment still masks a nested credential",
+      "inputParts": [
+        "http://1",
+        "27.0.0.1",
+        ":3080/?t",
+        "oken=x#/",
+        "chat/123",
+        "?api_key",
+        "=synthet",
+        "ic"
+      ],
+      "expectedParts": [
+        "http://1",
+        "27.0.0.1",
+        ":3080/?t",
+        "oken=•••",
+        "#/chat/1",
+        "23?api_k",
+        "ey=•••"
+      ]
+    },
+    {
+      "name": "quoted token keeps a fragment inside the secret",
+      "inputParts": [
+        "token=\"s",
+        "ynthetic",
+        "#/chat/1",
+        "23\""
+      ],
+      "expectedParts": [
+        "token=\"•",
+        "••\""
+      ]
+    },
+    {
+      "name": "unquoted token keeps a closing parenthesis inside the secret",
+      "inputParts": [
+        "token=sy",
+        "nthetic)",
+        "tail"
+      ],
+      "expectedParts": [
+        "token=••",
+        "•"
+      ]
+    },
+    {
+      "name": "unquoted token keeps a hash inside the secret",
+      "inputParts": [
+        "token=sy",
+        "nthetic#",
+        "/chat/12",
+        "3"
+      ],
+      "expectedParts": [
+        "token=••",
+        "•"
+      ]
+    },
+    {
+      "name": "query launch token keeps the route after colon plus slash and padding",
+      "inputParts": [
+        "http://1",
+        "27.0.0.1",
+        ":3080/?p",
+        "age=1&to",
+        "ken=123:",
+        "syntheti",
+        "c+value/",
+        "x==#/cha",
+        "t/123"
+      ],
+      "expectedParts": [
+        "http://1",
+        "27.0.0.1",
+        ":3080/?p",
+        "age=1&to",
+        "ken=•••#",
+        "/chat/12",
+        "3"
+      ]
+    },
+    {
+      "name": "fragment launch token keeps the enclosing URL parenthesis",
+      "inputParts": [
+        "(http://",
+        "127.0.0.",
+        "1:3080/#",
+        "token=sy",
+        "nthetic-",
+        "value)"
+      ],
+      "expectedParts": [
+        "(http://",
+        "127.0.0.",
+        "1:3080/#",
+        "token=••",
+        "•)"
+      ]
+    },
+    {
+      "name": "query token keeps an interior parenthesis inside the opaque value",
+      "inputParts": [
+        "http://1",
+        "27.0.0.1",
+        ":3080/?t",
+        "oken=syn",
+        "thetic)t",
+        "ail"
+      ],
+      "expectedParts": [
+        "http://1",
+        "27.0.0.1",
+        ":3080/?t",
+        "oken=•••"
+      ]
+    },
+    {
+      "name": "query token does not expose an opaque suffix before its last parenthesis",
+      "inputParts": [
+        "http://1",
+        "27.0.0.1",
+        ":3080/?t",
+        "oken=syn",
+        "thetic)t",
+        "ail)"
+      ],
+      "expectedParts": [
+        "http://1",
+        "27.0.0.1",
+        ":3080/?t",
+        "oken=•••"
+      ]
+    }
+  ]
+}

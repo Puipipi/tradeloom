@@ -1,0 +1,33 @@
+--- a/node_modules/@deepseek-ai/dsh-terminal-bash/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-terminal-bash/lib/index.js
+@@ -246,17 +246,25 @@
+ 		text,
+ 		truncated: false
+ 	};
+-	const chars = Array.from(text);
+ 	let bytes = 0;
+-	let start = chars.length;
++	let start = text.length;
+ 	while (start > 0) {
+-		const next = Buffer.byteLength(chars[start - 1]);
++		let previous = start - 1;
++		const code = text.charCodeAt(previous);
++		let next = code < 128 ? 1 : code < 2048 ? 2 : 3;
++		if (code >= 56320 && code <= 57343 && previous > 0) {
++			const high = text.charCodeAt(previous - 1);
++			if (high >= 55296 && high <= 56319) {
++				previous -= 1;
++				next = 4;
++			}
++		}
+ 		if (bytes + next > maxBytes) break;
+ 		bytes += next;
+-		start -= 1;
++		start = previous;
+ 	}
+ 	return {
+-		text: chars.slice(start).join(""),
++		text: start === text.length ? "" : Buffer.from(text.slice(start), "utf16le").toString("utf16le"),
+ 		truncated: true
+ 	};
+ }

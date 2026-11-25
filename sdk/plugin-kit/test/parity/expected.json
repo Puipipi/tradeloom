@@ -1,0 +1,504 @@
+{
+ "ok-weather-card": {
+  "fatal": false,
+  "title": "杭州 · 未来 3 天",
+  "issues": []
+ },
+ "root-not-object": {
+  "fatal": true,
+  "title": null,
+  "issues": [
+   {
+    "path": "view",
+    "message": "应该是一个组件对象",
+    "kind": "fatal"
+   }
+  ]
+ },
+ "root-unknown-type": {
+  "fatal": true,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.type",
+    "message": "未知组件 \"gauge\"；可用：stack, row, text, metric, chart, compare, steps, callout, options, confirm, list, keyValue, progress, table, actions, image",
+    "kind": "fatal"
+   }
+  ]
+ },
+ "root-missing-type": {
+  "fatal": true,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.type",
+    "message": "缺少 type；可用：stack, row, text, metric, chart, compare, steps, callout, options, confirm, list, keyValue, progress, table, actions, image",
+    "kind": "fatal"
+   }
+  ]
+ },
+ "all-children-broken": {
+  "fatal": true,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.children[0].type",
+    "message": "未知组件 \"gauge\"；可用：stack, row, text, metric, chart, compare, steps, callout, options, confirm, list, keyValue, progress, table, actions, image",
+    "kind": "fatal"
+   }
+  ]
+ },
+ "child-broken-rest-drawn": {
+  "fatal": false,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.children[0].type",
+    "message": "未知组件 \"gauge\"；可用：stack, row, text, metric, chart, compare, steps, callout, options, confirm, list, keyValue, progress, table, actions, image",
+    "kind": "broken"
+   }
+  ]
+ },
+ "too-many-bytes": {
+  "fatal": true,
+  "title": null,
+  "issues": [
+   {
+    "path": "view",
+    "message": "视图有 2463 字节，超过上限 2048 字节",
+    "kind": "fatal"
+   }
+  ]
+ },
+ "depth-limit": {
+  "fatal": false,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.children[0].children[0].children[0]",
+    "message": "第 4 层，超过上限 3 层",
+    "kind": "broken"
+   }
+  ]
+ },
+ "children-limit": {
+  "fatal": false,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.children",
+    "message": "超过 4 项，后 2 项已截断",
+    "kind": "note"
+   }
+  ]
+ },
+ "metric-problems": {
+  "fatal": false,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.children[0].value",
+    "message": "应该是字符串或数字",
+    "kind": "broken"
+   },
+   {
+    "path": "view.children[1].label",
+    "message": "应该是字符串",
+    "kind": "broken"
+   },
+   {
+    "path": "view.children[2].tone",
+    "message": "未知 tone \"red\"，已忽略；可用：good, warn, bad, info, muted",
+    "kind": "note"
+   },
+   {
+    "path": "view.children[3].tone",
+    "message": "未知 tone \"muted\"，已忽略；可用：good, warn, bad, info, muted",
+    "kind": "note"
+   }
+  ]
+ },
+ "text-too-long": {
+  "fatal": false,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.text",
+    "message": "203 个字符，超过上限 200",
+    "kind": "note"
+   }
+  ]
+ },
+ "chart-problems": {
+  "fatal": false,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.children[0].kind",
+    "message": "未知图表 \"radar\"，按柱状图画；可用：bar, hbar, line, donut",
+    "kind": "note"
+   },
+   {
+    "path": "view.children[0].series[0].values",
+    "message": "1 个值不是有限的数，已留空",
+    "kind": "note"
+   },
+   {
+    "path": "view.children[0].series[1].values",
+    "message": "应该是数字数组，这组已跳过",
+    "kind": "note"
+   },
+   {
+    "path": "view.children[0].series[2].values",
+    "message": "2 个值对 3 个类别，多的截掉、缺的留空",
+    "kind": "note"
+   },
+   {
+    "path": "view.children[1].series",
+    "message": "环形图只画一组数据，其余 1 组已忽略",
+    "kind": "note"
+   },
+   {
+    "path": "view.children[3].categories",
+    "message": "应该是非空的标签数组",
+    "kind": "broken"
+   }
+  ]
+ },
+ "compare-steps-callout": {
+  "fatal": false,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.children[3].tone",
+    "message": "未知 tone {…}，已忽略；可用：good, warn, bad, info, muted",
+    "kind": "note"
+   },
+   {
+    "path": "view.children[4].items[0].rows[1]",
+    "message": "应该是 [名称, 值]，已跳过",
+    "kind": "note"
+   },
+   {
+    "path": "view.children[4].items[1]",
+    "message": "应该是 {title, badge?, rows}，已跳过",
+    "kind": "note"
+   },
+   {
+    "path": "view.children[4].items[2].title",
+    "message": "应该是非空字符串，这项已跳过",
+    "kind": "note"
+   },
+   {
+    "path": "view.children[5].items[2].label",
+    "message": "应该是字符串，这步已跳过",
+    "kind": "note"
+   },
+   {
+    "path": "view.children[5].items[3].status",
+    "message": "未知状态 \"weird\"，按 todo 画；可用：done, current, todo, failed",
+    "kind": "note"
+   },
+   {
+    "path": "view.children[5].items[4]",
+    "message": "应该是 {label, status, detail?}，已跳过",
+    "kind": "note"
+   },
+   {
+    "path": "view.children[6].tone",
+    "message": "未知 tone \"purple\"，按 info 画；可用：info, good, warn, bad",
+    "kind": "note"
+   }
+  ]
+ },
+ "options-confirm": {
+  "fatal": false,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.children[0].options[1].label",
+    "message": "重复的 label \"A\"，已跳过",
+    "kind": "note"
+   },
+   {
+    "path": "view.children[0].options[3].label",
+    "message": "应该是非空字符串，这项已跳过",
+    "kind": "note"
+   },
+   {
+    "path": "view.children[1].id",
+    "message": "动作 id \"bad id\" 不合规，这个元素不可点",
+    "kind": "note"
+   },
+   {
+    "path": "view.children[3].id",
+    "message": "动作 id null 不合规，这个元素不可点",
+    "kind": "note"
+   }
+  ]
+ },
+ "list-keyvalue": {
+  "fatal": false,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.children[0].items[0].icon",
+    "message": "未知图标 \"loudspeaker\"，画默认图标",
+    "kind": "note"
+   },
+   {
+    "path": "view.children[0].items[0].tone",
+    "message": "未知 tone \"loud\"，已忽略；可用：good, warn, bad, info, muted",
+    "kind": "note"
+   },
+   {
+    "path": "view.children[0].items[1].title",
+    "message": "应该是非空字符串，这项已跳过",
+    "kind": "note"
+   },
+   {
+    "path": "view.children[0].items[2]",
+    "message": "应该是 {title, subtitle?, trailing?, icon?, tone?, action?}，这项已跳过",
+    "kind": "note"
+   },
+   {
+    "path": "view.children[0].items[3].action.args",
+    "message": "动作应该是 id 字符串或 {id, args?}，已忽略",
+    "kind": "note"
+   },
+   {
+    "path": "view.children[0].items[4].action",
+    "message": "动作应该是 id 字符串或 {id, args?}，已忽略",
+    "kind": "note"
+   },
+   {
+    "path": "view.children[1].items[2]",
+    "message": "应该是 [label, value] | {label, value, tone?}，这项已跳过",
+    "kind": "note"
+   },
+   {
+    "path": "view.children[1].items[3]",
+    "message": "应该是 [label, value] | {label, value, tone?}，这项已跳过",
+    "kind": "note"
+   },
+   {
+    "path": "view.children[3].items",
+    "message": "应该是数组，每项是 {title, subtitle?, trailing?, icon?, tone?, action?}",
+    "kind": "broken"
+   }
+  ]
+ },
+ "progress-table": {
+  "fatal": false,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.children[0].max",
+    "message": "max 应该是大于 0 的数，按 100 算",
+    "kind": "note"
+   },
+   {
+    "path": "view.children[0].tone",
+    "message": "未知 tone \"muted\"，已忽略；可用：good, warn, bad, info, muted",
+    "kind": "note"
+   },
+   {
+    "path": "view.children[1].value",
+    "message": "应该是有限的数",
+    "kind": "broken"
+   },
+   {
+    "path": "view.children[2].value",
+    "message": "应该是有限的数",
+    "kind": "note"
+   },
+   {
+    "path": "view.children[3].columns",
+    "message": "9 列，超过上限 8",
+    "kind": "note"
+   },
+   {
+    "path": "view.children[3].rows[1]",
+    "message": "应该是 [cell, …]，这项已跳过",
+    "kind": "note"
+   },
+   {
+    "path": "view.children[4].columns",
+    "message": "应该是数组，每项是 label | {label, align?}",
+    "kind": "broken"
+   }
+  ]
+ },
+ "actions-image": {
+  "fatal": false,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.children[1].items[0].style",
+    "message": "一张视图只能有一个主按钮，这个按普通按钮画",
+    "kind": "note"
+   },
+   {
+    "path": "view.children[1].items[0].icon",
+    "message": "未知图标 \"nope\"，画默认图标",
+    "kind": "note"
+   },
+   {
+    "path": "view.children[1].items[1].action",
+    "message": "动作应该是 id 字符串或 {id, args?}，已忽略",
+    "kind": "note"
+   },
+   {
+    "path": "view.children[1].items[2].action.args",
+    "message": "动作应该是 id 字符串或 {id, args?}，已忽略",
+    "kind": "note"
+   },
+   {
+    "path": "view.children[1].items[3].label",
+    "message": "应该是非空字符串，这项已跳过",
+    "kind": "note"
+   },
+   {
+    "path": "view.children[2].src",
+    "message": "图片只收插件资源 asset:<路径>（png、jpg、webp、gif）或 data:image/…",
+    "kind": "note"
+   },
+   {
+    "path": "view.children[2].aspect",
+    "message": "aspect 应该是 0.25 到 4 之间的数，已忽略",
+    "kind": "note"
+   },
+   {
+    "path": "view.children[4].src",
+    "message": "图片只收插件资源 asset:<路径>（png、jpg、webp、gif）或 data:image/…",
+    "kind": "note"
+   },
+   {
+    "path": "view.children[5].src",
+    "message": "图片只收插件资源 asset:<路径>（png、jpg、webp、gif）或 data:image/…",
+    "kind": "note"
+   },
+   {
+    "path": "view.children[6].src",
+    "message": "图片无法解码（只收 PNG、JPEG、WebP、GIF）",
+    "kind": "note"
+   }
+  ]
+ },
+ "bindings": {
+  "fatal": false,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.children[5].type",
+    "message": "缺少 type；可用：stack, row, text, metric, chart, compare, steps, callout, options, confirm, list, keyValue, progress, table, actions, image",
+    "kind": "broken"
+   },
+   {
+    "path": "view.children[6].text",
+    "message": "应该是字符串",
+    "kind": "broken"
+   }
+  ]
+ },
+ "binding-bad-path": {
+  "fatal": false,
+  "title": null,
+  "issues": []
+ },
+ "node-limit-toolcard": {
+  "fatal": false,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.children[2].children",
+    "message": "超过 40 个组件，后 4 项已截断",
+    "kind": "note"
+   }
+  ]
+ },
+ "v2-spacing-array": {
+  "fatal": false,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.accent",
+    "message": "dark：#3D6FD6 已校正为 #698FDF，对比度至少 4.5:1",
+    "kind": "note"
+   },
+   {
+    "path": "view.style.padding",
+    "message": "样式无效，支持 S / M / L",
+    "kind": "note"
+   },
+   {
+    "path": "view.style.gap",
+    "message": "样式无效，支持 S / M / L",
+    "kind": "note"
+   }
+  ]
+ },
+ "v2-spacing-object": {
+  "fatal": false,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.accent",
+    "message": "dark：#3D6FD6 已校正为 #698FDF，对比度至少 4.5:1",
+    "kind": "note"
+   },
+   {
+    "path": "view.style.padding",
+    "message": "样式无效，支持 S / M / L",
+    "kind": "note"
+   },
+   {
+    "path": "view.style.gap",
+    "message": "样式无效，支持 S / M / L",
+    "kind": "note"
+   }
+  ]
+ },
+ "v2-spacing-number": {
+  "fatal": false,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.accent",
+    "message": "dark：#3D6FD6 已校正为 #698FDF，对比度至少 4.5:1",
+    "kind": "note"
+   },
+   {
+    "path": "view.style.padding",
+    "message": "样式无效，支持 S / M / L",
+    "kind": "note"
+   },
+   {
+    "path": "view.style.gap",
+    "message": "样式无效，支持 S / M / L",
+    "kind": "note"
+   }
+  ]
+ },
+ "v2-spacing-boolean": {
+  "fatal": false,
+  "title": null,
+  "issues": [
+   {
+    "path": "view.accent",
+    "message": "dark：#3D6FD6 已校正为 #698FDF，对比度至少 4.5:1",
+    "kind": "note"
+   },
+   {
+    "path": "view.style.padding",
+    "message": "样式无效，支持 S / M / L",
+    "kind": "note"
+   },
+   {
+    "path": "view.style.gap",
+    "message": "样式无效，支持 S / M / L",
+    "kind": "note"
+   }
+  ]
+ }
+}

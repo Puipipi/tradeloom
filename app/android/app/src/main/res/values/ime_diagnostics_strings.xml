@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ime_diagnostics_consent_title">Collect system keyboard evidence?</string>
+    <string name="ime_diagnostics_consent_body">This one-time read uses only an already connected phone-control permission channel. It briefly reads at most 1,000 existing fixed-tag keyboard log lines within a 128 KiB budget; these lines may contain private data or be older than 2 minutes. Only known structured events emitted by this App process from the last 2 minutes, timestamps, user-action flags when available, and fixed reasons are retained. Other processes are excluded even if a log line names this App. No typed text, candidates, raw logs or app list is exported. No screen is started, input injected or permission granted. Backgrounding this App or leaving Diagnostics cancels the request and discards in-flight results without closing the shared channel. In multi-window mode, switching focus while Diagnostics remains visible does not revoke an already approved one-time read; results stay in memory until you explicitly publish or export. Once started, the log subprocess runs for at most 1.5 seconds; waiting for a shared channel is not included. Some Android versions (including Android 12) do not log these events: zero events does not mean the keyboard is healthy.</string>
+    <string name="ime_diagnostics_consent_cancel">Cancel</string>
+    <string name="ime_diagnostics_consent_collect">Collect once</string>
+</resources>

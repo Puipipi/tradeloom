@@ -1,0 +1,11 @@
+# HMR 更新在实际移除时捕获选择
+
+Refs W17-B，基底63e255fab5cb9d817af30b631c3643ccce8e9231。公开updateBundle的registry checking期间，已经成功保存的启用/禁用选择，应在这次HMR更新的目标安装及失败恢复中保留。
+
+原实现checking前捕获enabled；HMR随后先remove（会取消选择），再用旧值install/restore。此修复只在removeBundle现有change/configure锁内、校验可移除且真正deselect前，把当前bundle.enabled写入本次更新私有短生命周期holder。remove返回后update使用该值进行目标安装或旧版本恢复。普通remove无holder，原行为不变。没有新的RPC schema、公开类型、返回字段或用户设置。
+
+保持原平台/兼容性/selectBundle校验；不采取不检查的强行激活。只保证checking期间已成功选择被保留；remove、install、restore各阶段仍分别持原锁，不宣称整个更新原子化。不解决阶段间其它操作、并发版本/删除竞争，不覆盖非HMR660或版本前提661。
+
+测试使用真实dsh web CLI、官方timer/HMR/PluginManager/appReady/PluginPackages、公开管理API、自有localhost registry response gate和真实pnpm。无伪HMR/privatefiber/callback。空bundle只验证管理和持久状态，非Android实际工具。先原四案2红2绿，再增加真实坏目标bundle安装失败后的旧版本恢复控制。
+
+会改runtimeVersion。Android 未编译。最终HMR插件实际业务功能与设备安装由本机补验。

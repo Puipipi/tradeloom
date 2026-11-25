@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-FileCopyrightText: Google -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!-- See THIRD_PARTY_NOTICES.md. -->
+<!-- Quick Settings tile 「新对话」: Material `add_comment_outlined` at 24dp. The system tints it, so only
+     the alpha counts. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M21.984,3.984C21.984,2.906 21.094,2.016 20.016,2.016H3.984C2.906,2.016 2.016,2.906 2.016,3.984V15.984C2.016,17.109 2.906,18 3.984,18H18L21.984,21.984V3.984ZM20.016,17.156L18.844,15.984H3.984V3.984H20.016V17.156ZM12.984,5.016H11.016V9H6.984V11.016H11.016V15H12.984V11.016H17.016V9H12.984V5.016Z" />
+</vector>

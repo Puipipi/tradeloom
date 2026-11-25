@@ -1,0 +1,139 @@
+{
+  "source": "https://registry.npmjs.org/@liustack/modlens/-/modlens-3.27.2.tgz",
+  "retrievedAt": "2026-10-30T15:12:44.861Z",
+  "integrity": "sha512-Xz8BkrLgBFyTlDiRcxv+sf4V0W0xsHFPaCcXV3GpJOWBgqCb2CrgJwrA8Tfd1JoLqS0LInrILEMky/AM+0j9gA==",
+  "license": "MIT",
+  "packument": {
+    "name": "@liustack/modlens",
+    "versions": {
+      "3.27.2": {
+        "_id": "@liustack/modlens@3.27.2",
+        "bin": {
+          "modlens": "dist/main.js"
+        },
+        "dsh": {
+          "bundle": {
+            "patch": "./cordis.patch.yml"
+          },
+          "client": {
+            "inject": [],
+            "platform": "web",
+            "immediately": true
+          }
+        },
+        "bugs": {
+          "url": "https://github.com/liustack/modlens/issues"
+        },
+        "dist": {
+          "shasum": "245dccc202aa8940a694c8c5f9075cb177e279e8",
+          "tarball": "https://registry.npmjs.org/@liustack/modlens/-/modlens-3.27.2.tgz",
+          "fileCount": 34,
+          "integrity": "sha512-Xz8BkrLgBFyTlDiRcxv+sf4V0W0xsHFPaCcXV3GpJOWBgqCb2CrgJwrA8Tfd1JoLqS0LInrILEMky/AM+0j9gA==",
+          "signatures": [
+            {
+              "sig": "MEUCIQCAk8rQJ8POTgspz5NcQoiTCuz3nbQE7h5zBaHl82klvAIgH5ZQhC7/S0FrmmZTOFVoz8xigBjAhIadn88tsxisZc0=",
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+            },
+            {
+              "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U",
+              "sig": "MEYCIQCbxvlrJcsqkLjrocBsfhSA3BS+8kOZjTHN55tlqwd/YgIhAOcjq9r0UVrJBhX+SP8Ro/2AXSPTkoTTIFQzVE/nn0GB"
+            }
+          ],
+          "attestations": {
+            "url": "https://registry.npmjs.org/-/npm/v1/attestations/@liustack%2fmodlens@3.27.2",
+            "provenance": {
+              "predicateType": "https://slsa.dev/provenance/v1"
+            }
+          },
+          "unpackedSize": 732368
+        },
+        "name": "@liustack/modlens",
+        "type": "module",
+        "author": {
+          "name": "Leon Liu"
+        },
+        "engines": {
+          "node": ">=22.19"
+        },
+        "exports": {
+          ".": "./dsh/index.js",
+          "./dsh": "./dsh/index.js",
+          "./client": "./dsh/client.js",
+          "./package.json": "./package.json"
+        },
+        "gitHead": "ac278f885386f785dc1a35ddfbd8994bb5e744d7",
+        "license": "MIT",
+        "scripts": {
+          "dev": "vite build --watch",
+          "eval": "node evals/run.mjs",
+          "lint": "biome check src scripts dsh",
+          "test": "vitest run",
+          "build": "vite build",
+          "format": "biome check --write src scripts",
+          "release": "node scripts/release.mjs",
+          "coverage": "vitest run --coverage",
+          "docs:list": "node scripts/docs-list.js",
+          "typecheck": "tsc --noEmit",
+          "prepublishOnly": "pnpm build"
+        },
+        "version": "3.27.2",
+        "_npmUser": {
+          "name": "GitHub Actions",
+          "email": "npm-oidc-no-reply@github.com",
+          "trustedPublisher": {
+            "id": "github",
+            "oidcConfigId": "eb195ae5-928d-4264-874e-b89ab0c563cb"
+          }
+        },
+        "homepage": "https://github.com/liustack/modlens#readme",
+        "keywords": [
+          "cli",
+          "vision",
+          "ocr",
+          "antigravity",
+          "agent-skill",
+          "claude-code",
+          "skill",
+          "image-to-text",
+          "multimodal",
+          "modlens"
+        ],
+        "repository": {
+          "url": "git+https://github.com/liustack/modlens.git",
+          "type": "git"
+        },
+        "_npmVersion": "11.21.1",
+        "description": "Plug-in vision for text-only LLMs, powered by the free Antigravity CLI",
+        "directories": {},
+        "maintainers": [
+          {
+            "name": "liustack",
+            "email": "leonstdio@gmail.com"
+          }
+        ],
+        "_nodeVersion": "22.23.3",
+        "dependencies": {
+          "undici": "^8.10.0",
+          "commander": "^13.1.0"
+        },
+        "_hasShrinkwrap": false,
+        "devDependencies": {
+          "vite": "^6.4.1",
+          "vitest": "^3.2.7",
+          "typescript": "^5.9.3",
+          "@types/node": "^22.19.7",
+          "@biomejs/biome": "^2.5.7",
+          "@vitest/coverage-v8": "^3.2.7"
+        },
+        "_npmOperationalInternal": {
+          "host": "s3://npm-registry-packages-npm-production",
+          "tmp": "tmp/modlens_3.27.2_1792770154444_0.36834457217819994"
+        }
+      }
+    },
+    "time": {
+      "3.27.2": "2026-10-23T15:42:34.542Z"
+    }
+  },
+  "advisories": {}
+}

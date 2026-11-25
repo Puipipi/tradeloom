@@ -1,0 +1,13 @@
+# 文本读改写保留原 UTF-8 BOM（674）
+
+基底63e255fab5cb9d817af30b631c3643ccce8e9231，DSH0.2.2-rc.1。真实公开LocalFileSystem.editText已复现：合法EF BB BF开头的UTF-8/CRLF文件，把alpha替换成beta时会额外删除原三字节BOM；无BOM对照保持正确。默认edit工具委托此服务，patch executor及公开FS接口也使用相同readForEdit结果。
+
+首个UTF-8 BOM是读改写应保留的原文件格式标记。readForEdit继续返回原有无首BOM、LF规范化的逻辑文本，另记录原始字节是否以EF BB BF开头。editText、patchText、moveFile写回时同时恢复该标记与原有行尾策略。读取显示、diff的before/after、版本检查、互斥与原子发布不变，不增加文件读取或依赖。
+
+move的既有diff-basis早期预算仍按不含原首BOM的文本字节判断；实际写出新增恢复的三个格式字节不应让本来可用的before变成null。目标文件自身的有界读取仍使用原来的真实大小上限。此预算边界有精确等于与小于上限的负控制。
+
+显式writeText仍按调用者给定的完整内容覆盖，不继承旧文件BOM。正文中的U+FEFF、多个连续标记中除首个以外的字符，以及调用者新插入的U+FEFF均属于文本，不去重或吞掉。纯move仍是现有文本服务的两阶段发布/删除并使用原行尾规范策略，不能宣传成任意文件的逐字节copy。
+
+普通Node测试只依赖已有DSH_PREFIX（或DSH_TEST_PREFIX）、真实Cordis/LocalFileSystem和自有临时文件，符合既有CI环境；不新增缺失可执行文件的模块顶层前提。文件字节断言与无首BOM的逻辑结果断言分开，保留无BOM、显式全覆盖及失败不写的负控制。宿主测试不代表Android或PRoot/ARM验收。
+
+Refs W17-B，无对应公开issue。会改runtimeVersion；Android未编译，真机与真实远程模型未验收。

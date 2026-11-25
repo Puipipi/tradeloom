@@ -1,0 +1,13 @@
+# 647 插件操作诊断日志完整性合同（实施前）
+
+基底63e255fab5cb9d817af30b631c3643ccce8e9231。
+
+官方dsh-plugin-manager/lib/types/types.d.ts:129把PackageResult定义为带有unabridged diagnostics检索路径的结果；output/truncated仅是append函数维护的内存尾部长度状态，不能当成磁盘完整性指标。CLI dsh/lib/plugin-DscIHF4k.js:97在失败时把logPath明确指示给使用者；服务installBundle结果也公开packageResult.logPath（App SDK plugins_api.dart:344保留此字段）。因此丢失日志后半而保留成功结果违反诊断路径合同。
+
+两个实际发布入口：index.js的PluginManager.installBundle经内部runPnpm→runProfilePnpm；公开./operations导出的runPluginCommand被CLI直接调用，且正式options支持service捕获。CLI正常execution:cli继承stdio，不将本探测误称CLI会捕获全部stdout；公共operations服务模式和主服务分别实际验证。两者结构不同，保持各自既有收敛逻辑，不拷贝整个实现。
+
+原实证：自有Node包管理器stdout8192字节；子进程RLIMIT_FSIZE4096时两公开入口返回package exit0、内存/事件8192、log4096；32768负控制log8192逐字节完整。主服务installBundle返回restart-required（非failed），正式profile字段齐全，未用私有runPnpm或fake短写。无registry/凭据/外部网络。
+
+最小修复：仅各runProfilePnpm内部的pnpm.log低层log.write改为log.writeFile（bytes、active、diagnostic、notice均覆盖），沿已有顺序await和error收敛；不改truncated、不重试整个包操作、不引缓存/协议。不纳入另一个github-connection/git.log模块，不能宣称所有其他诊断写入已验证。
+
+FileHandle.writeFile写完整输入或抛错，失败由原collect catch→failure/abort及既有finally关闭资源处理。依赖命令可能已完成文件副作用，本包不承诺回滚已安装模块；只防把无声短写当完整诊断返回。保留真实错误类别和原公共结果结构。

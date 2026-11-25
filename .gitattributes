@@ -1,0 +1,8 @@
+# Nested patches are applied to upstream sources byte for byte; never convert their line endings.
+tooling/ios/phone-self-runner/*.patch -text
+runtime/tawcroot/*.diff -text
+
+# These files are validated as bytes by the Android recipe and the Mesh lock.
+runtime/build-runtime.sh text eol=lf
+runtime/lib/rtbuild.py text eol=lf
+runtime/vendor/tradeloom-mesh/upstream-changes.patch -text -diff

@@ -1,0 +1,56 @@
+--- a/node_modules/@deepseek-ai/dsh-tool-jobs/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-tool-jobs/lib/index.js
+@@ -1,3 +1,4 @@
++import { Buffer } from "node:buffer";
+ import z from "@deepseek-ai/schemastery";
+ import { boundContextSummary, createUserMessage } from "@deepseek-ai/dsh-llm";
+ import { TextRetainer } from "@deepseek-ai/dsh-output-retention";
+@@ -130,7 +131,6 @@
+ 		finishedAt: { type: "integer" }
+ 	}
+ };
+-const encoder = new TextEncoder();
+ function retainTail(text, maxBytes) {
+ 	const retainer = new TextRetainer({
+ 		kind: "tail",
+@@ -149,9 +149,9 @@
+ }
+ function fitWithSuffix(content, suffix, maxBytes, omitted) {
+ 	const complete = `${content}${suffix}`;
+-	if (maxBytes === void 0 || encoder.encode(complete).byteLength <= maxBytes) return complete;
++	if (maxBytes === void 0 || Buffer.byteLength(complete, "utf8") <= maxBytes) return complete;
+ 	const fixed = `${content.endsWith(omitted.trimStart()) ? "" : omitted}${suffix}`;
+-	const fixedBytes = encoder.encode(fixed).byteLength;
++	const fixedBytes = Buffer.byteLength(fixed, "utf8");
+ 	if (fixedBytes >= maxBytes) return retainTail(fixed, maxBytes);
+ 	return `${retainTail(content, maxBytes - fixedBytes)}${fixed}`;
+ }
+@@ -186,7 +186,7 @@
+ function inlineCompletionNotice(job, output, maxBytes) {
+ 	const head = `background job ${job.id}${noticeDetail(job)}`;
+ 	const text = output.length === 0 ? `${head}. No new output.` : `${head}. Output:\n${output.replace(/\n$/, "")}`;
+-	const bytes = encoder.encode(text).byteLength;
++	const bytes = Buffer.byteLength(text, "utf8");
+ 	return bytes <= maxBytes && bytes <= (job.outputLimitBytes ?? Infinity) ? text : void 0;
+ }
+ function fitCompletionNotice(job) {
+@@ -195,15 +195,15 @@
+ 	const action = "\nDone; job_output.";
+ 	const complete = `${prefix}${detail}. Read its output with job_output.`;
+ 	const maxBytes = job.outputLimitBytes;
+-	if (maxBytes === void 0 || encoder.encode(complete).byteLength <= maxBytes) return complete;
++	if (maxBytes === void 0 || Buffer.byteLength(complete, "utf8") <= maxBytes) return complete;
+ 	const omitted = "\n[notice truncated]";
+ 	const fixed = `${prefix}${omitted}${action}`;
+-	const fixedBytes = encoder.encode(fixed).byteLength;
++	const fixedBytes = Buffer.byteLength(fixed, "utf8");
+ 	if (fixedBytes <= maxBytes) return fixedBytes === maxBytes ? fixed : `${prefix}${retainHead(detail, maxBytes - fixedBytes)}${omitted}${action}`;
+ 	const compact = `${prefix}${action}`;
+-	if (encoder.encode(compact).byteLength <= maxBytes) return compact;
++	if (Buffer.byteLength(compact, "utf8") <= maxBytes) return compact;
+ 	const recovery = "background job ended; use job_list for id.";
+-	if (encoder.encode(recovery).byteLength <= maxBytes) return recovery;
++	if (Buffer.byteLength(recovery, "utf8") <= maxBytes) return recovery;
+ 	return retainHead("job_list", maxBytes);
+ }
+ function rawSingleText(content) {

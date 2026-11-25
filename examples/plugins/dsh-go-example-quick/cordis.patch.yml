@@ -1,0 +1,6 @@
+# Applied when a profile selects this bundle:
+#   dsh plugin --profile web add /path/to/dsh-go-example-quick
+# A plain insert (id + name) mounts without a restart.
+- insert:
+    - id: dsh-go-example-quick
+      name: dsh-go-example-quick

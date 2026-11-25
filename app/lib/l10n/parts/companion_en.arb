@@ -1,0 +1,1238 @@
+{
+  "companionPhoneConnectionReplaced": "A newer phone connection took over this session. Return to the current companion session and try again.",
+  "@companionPhoneConnectionReplaced": {"description": "A newer callback owner replaced this pending phone connection."},
+  "companionPhoneSessionUnavailable": "The host cannot find this companion session, or its preset has changed. Reopen the companion room.",
+  "@companionPhoneSessionUnavailable": {"description": "The current session no longer resolves to the selected companion."},
+  "companionPhoneToolsConflict": "The host could not connect the phone tools for this turn. Reopen the current companion session and try again.",
+  "@companionPhoneToolsConflict": {"description": "An older host rejected the companion phone connection without a specific reason code."},
+  "companionHostSelectionChanged": "The host session selection changed. Check the current session before sending again.",
+  "@companionHostSelectionChanged": {"description": "Companion session status displayed in the room."},
+  "companionLocalDisconnected": "The on-device engine is disconnected. Check that it is running.",
+  "@companionLocalDisconnected": {"description": "Companion session status displayed in the room."},
+  "companionLocalUnavailable": "The on-device engine cannot open the companion session. Check the engine and its companion preset.",
+  "@companionLocalUnavailable": {"description": "Companion session status displayed in the room."},
+  "companionLocalModelUnavailable": "The on-device engine cannot use this companion’s previously selected model. Check its model settings.",
+  "@companionLocalModelUnavailable": {"description": "Companion session status displayed in the room."},
+  "companionContinuedOnPhone": "The host has not received this message. This turn will use light mode.",
+  "@companionContinuedOnPhone": {"description": "One-turn phone fallback after confirming the host prompt was never dispatched."},
+  "companionLogOnDevice": "On-device history",
+  "@companionLogOnDevice": {
+    "description": "Open this companion's local SQLite and earlier phone conversations."
+  },
+  "companionSessionUsingTool": "Using {tool}",
+  "@companionSessionUsingTool": {
+    "description": "Current tool activity in a companion session, shown on a floating or notification surface.",
+    "placeholders": {"tool": {"type": "String"}}
+  },
+  "companionTitle": "Companion room",
+  "companionEntrySubtitle": "Spend some time with her",
+  "companionDefaultName": "her",
+  "companionInputHint": "Say something to {name}",
+  "companionMenu": "More",
+  "companionVoice": "Voice",
+  "companionSystemAssistant": "System digital assistant",
+  "companionAssistantChoose": "Choose the default assistant",
+  "companionAssistantChooseHint": "Choose DSH Go Companion in Android Settings, then use your phone's assistant gesture or button.",
+  "companionAssistantSelected": "Companion is the default. Open Android Settings here to switch assistants.",
+  "companionAssistantSettingsMissing": "The assistant picker is unavailable. Search for the default digital assistant in Android Settings.",
+  "companionAssistantSharePage": "Include page text on wake",
+  "companionAssistantSharePageHint": "Send text Android makes available to the companion model with this turn. You can remove it before sending.",
+  "companionAssistantPageAttached": "Page text attached",
+  "companionAssistantCalendarAccess": "Allow calendar access",
+  "companionAssistantCalendarHint": "Let the companion and phone tools read visible events. Results are sent to the active model.",
+  "companionAssistantCalendarAllowed": "Calendar access is on. Tap to manage it in Android app permissions.",
+  "companionAssistantAppPermissions": "Open Android app permissions",
+  "companionStop": "Ask her to stop",
+  "companionSend": "Send",
+  "companionNotConnected": "I can't reach the engine right now. Tell me again in a bit?",
+  "companionSendFailed": "That didn't get through. Say it again?",
+  "companionAgentRetryClosed": "I may have already started on that, and I don't want to do it twice. Take a look in Tasks, then tell me whether to carry on?",
+  "companionPhoneRunStopped": "The phone work stopped partway, so I paused rather than repeat a step. Check the phone as it is now, and tell me if I should carry on.",
+  "companionLogTitle": "Log",
+  "companionContextUnsupported": "This host can't take her context yet: her name, persona, recent events and memories on your phone won't reach her, only what you say. Update the host or switch to light mode.",
+  "companionLogEmpty": "Nothing said yet.",
+  "companionLogYou": "You",
+  "companionLogOpenChat": "Open in chat",
+  "companionLogOlder": "Load earlier messages",
+  "companionMenuHistory": "View chat history",
+  "companionMenuRestart": "Start over",
+  "companionMenuRestartHint": "Begin a new conversation",
+  "companionMenuRestartConfirm": "She will forget this conversation. The old record stays on the host and is not deleted.",
+  "companionMenuRemovePack": "Remove assets",
+  "companionMenuRemoveConfirm": "The character assets on this phone will be deleted. Chats aren't affected. You'll need to import them again next time.",
+  "companionCreditAuthor": "By {name}",
+  "companionSetupTitle": "Bring her home",
+  "companionSetupBody": "Character assets aren't part of the app and only land on your phone when you want them. Import an asset pack (zip) to meet her.",
+  "companionSetupImport": "Import asset pack",
+  "companionFailedTitle": "She couldn't come out",
+  "companionFailedBody": "Loading failed on this phone ({reason}). You can import the asset pack again and retry.",
+  "companionFailedBodyPlain": "Your companion didn't load just now. Try again first; if that doesn't help, import the asset pack again.",
+  "companionPackBroken": "This file can't be opened. It may not be an asset pack, or it may be damaged.",
+  "companionPackRuntimeMismatch": "The runtime in this pack doesn't match this version of the app.",
+  "companionPackNoRuntime": "This pack only has a character and there's no runtime on this phone yet. Import a full asset pack first.",
+  "companionPackNoModel": "No Live2D model (.model3.json) found in the pack. Zip the model's whole folder and try again.",
+  "companionPackUnsafe": "The pack has files or paths that aren't allowed, so it wasn't imported.",
+  "companionPackTooLarge": "This asset pack is too large.",
+  "companionPackStorage": "Couldn't write the files. Check your phone's free storage.",
+  "companionGreetFirst": "Hi, I'm {name}. I live here now, nice to meet you.",
+  "companionGreetMorning": "Morning! Don't skip breakfast today.",
+  "companionGreetNoon": "It's noon already. Have you eaten?",
+  "companionGreetAfternoon": "Good afternoon. I was just daydreaming.",
+  "companionGreetEvening": "Good evening. How was your day?",
+  "companionGreetLate": "Still up this late?",
+  "companionGreetLong": "It's been a while! I thought you'd forgotten me.",
+  "companionGreetBack": "Hm? Back again.",
+  "companionWake": "Mm... I wasn't asleep. Just resting my eyes.",
+  "companionPat1": "Hehe... you can keep going a little longer.",
+  "companionPat2": "Mmm, that's nice.",
+  "companionPat3": "You're messing up my hair.",
+  "companionTapHead1": "What's up?",
+  "companionTapHead2": "Hm?",
+  "companionTapFace1": "Don't poke my face.",
+  "companionTapFace2": "Whoa, your hands are cold.",
+  "companionTapFace3": "Is there something on my face?",
+  "companionTapBody1": "Oh! You startled me.",
+  "companionTapBody2": "What is it?",
+  "companionTapBody3": "I just washed this apron!",
+  "companionTapTail1": "Tails are not for touching!",
+  "companionTapTail2": "Eek, that tickles.",
+  "companionTapTail3": "This is a very important tail.",
+  "companionTapLegs1": "Is something on the floor?",
+  "companionTapLegs2": "Where are you looking?",
+  "companionTease1": "Stop it, I'm getting dizzy.",
+  "companionTease2": "One more poke and I'm ignoring you!",
+  "companionTease3": "Don't you have anything better to do?",
+  "companionShake1": "Whoa, stop shaking!",
+  "companionShake2": "I'm so dizzy… the water's sloshing everywhere.",
+  "companionShake3": "Keep that up and I'll start blowing bubbles!",
+  "companionShakeDizzy": "My head is spinning…",
+  "companionStatusIdle": "Daydreaming",
+  "companionStatusListening": "Listening",
+  "companionStatusThinking": "Thinking",
+  "companionStatusSpeaking": "Talking",
+  "companionStatusSleeping": "Asleep",
+  "companionStatusAway": "Away",
+  "companionListening": "Listening…",
+  "companionTouchHint": "Try patting her head",
+  "companionArriving": "She's swimming over…",
+  "companionPrivacyLine": "Assets stay on this phone. Chats go through the current host.",
+  "companionMemoryTitle": "What she remembers",
+  "companionMemoryCard": "Card",
+  "companionMemoryPerson": "Person",
+  "companionMemoryDiary": "Diary",
+  "companionMemoryImpression": "Her impression of you",
+  "companionMemorySearchTitle": "Memory search",
+  "companionMemorySearchDescription": "Download an approximately 24 MB model to find related memories on this phone.",
+  "companionMemorySearchDownload": "Download model",
+  "companionMemorySearchReady": "Local model is ready",
+  "companionMemorySearchDownloading": "Downloading…",
+  "companionMemorySearchFailed": "Could not prepare the local model. Try downloading it again.",
+  "companionMemorySearchUnavailable": "Local memory search is not available on this device.",
+  "companionMemoryScope": "Saved on {host}, shared by both modes. You can edit or forget these anytime.",
+  "companionMemoryAdd": "Add",
+  "companionMemoryEdit": "Update current details",
+  "companionMemorySave": "Save",
+  "companionMemoryHint": "For example: I like unsweetened tea and don't drink coffee",
+  "companionMemoryForget": "Forget",
+  "companionMemoryForgetTitle": "Have her forget this?",
+  "companionMemoryEmpty": "Nothing saved yet",
+  "companionMemoryEmptyHint": "She picks up what you talk about on her own. If there is something you want her to keep in mind, you can write it here.",
+  "companionMemoryUnsupported": "This host can't keep her memories yet",
+  "companionMemoryUnsupportedHint": "It isn't available over the DSH Remote relay, or this host's dsh-go bridge is older.",
+  "companionMemoryLoadFailed": "Couldn't load",
+  "companionMemoryRetry": "Retry",
+  "companionMemoryConflict": "It was just changed elsewhere, so it's been refreshed",
+  "companionMemoryFull": "The list is full. Delete some first",
+  "companionMemorySaveFailed": "Couldn't save. Try again?",
+  "companionStatusSnacking": "Having a snack",
+  "companionStatusPlaying": "Playing with the bubble",
+  "companionStatusResting": "Resting on the cushion",
+  "companionSnack1": "Nom! So good!",
+  "companionSnack2": "Seaweed flavour. Thank you.",
+  "companionSnack3": "Mm... can I have another?",
+  "companionPlay1": "Hey, got it!",
+  "companionPlay2": "The bubble is so squishy. Fun!",
+  "companionPlay3": "It floated back again.",
+  "companionRest1": "I'll lean here for a while, then.",
+  "companionRest2": "Go on, I'm listening.",
+  "companionTouchHintHome": "Tap the shell, the bubble and the cushion, or drag a snack to her mouth",
+  "companionMenuMode": "How she talks",
+  "companionModeLight": "Light",
+  "companionModeLightHint": "Chat only. The phone talks to the model; no engine",
+  "companionModeFull": "Full",
+  "companionModeFullHint": "DSH on the host, with tools and phone control",
+  "companionLightNoKey": "Light mode needs a DeepSeek API key. Add one in Settings and we can talk.",
+  "companionLightBadKey": "The API key seems wrong, or it is no longer valid.",
+  "companionLightBusy": "It is busy over there. Tell me again in a bit?",
+  "companionNotConnectedTryLight": "I can't reach your computer right now. Check the connection, or switch to Light in How she talks.",
+  "companionHostModelUnavailable": "There isn't a model ready on your computer yet. Choose one so we can talk, or switch to Light in How she talks.",
+  "companionHostUnavailable": "I can't start this chat through your computer yet. Check the connection and updates, or switch to Light in How she talks.",
+  "companionMenuRestartLightHint": "Start a new conversation and keep earlier records",
+  "companionMenuRestartLightConfirm": "Start a new conversation. Memories and earlier chat records will be kept.",
+  "companionInviteRest": "Rest on the cushion with me for a bit?",
+  "companionInviteAccept": "Sure",
+  "companionInviteDecline": "Not now",
+  "companionInviteYes1": "Hehe, just for a little while.",
+  "companionInviteYes2": "I'll get comfy. You relax too.",
+  "companionMenuPace": "How often she speaks up",
+  "companionPaceHint": "She speaks up only while you sit quietly with her: asking you to rest together, or mentioning another conversation. Never late at night, and at most one invitation per visit.",
+  "companionPaceQuiet": "Quiet",
+  "companionPaceQuietHint": "Never unasked; she talks when you talk to her",
+  "companionPaceRare": "Now and then",
+  "companionPaceRareHint": "Up to 2 times a day, at least 6 hours apart",
+  "companionPaceOften": "Often",
+  "companionPaceOftenHint": "Up to 6 times a day, at least 2 hours apart",
+  "companionPaceChatty": "Chatty",
+  "companionPaceChattyHint": "Up to 12 times a day, at least half an hour apart",
+  "companionSetupBundled": "Bring her home",
+  "companionSetupBodyBundled": "She comes with the app: one tap and she's here, unpacked only on this phone. You can also import another asset pack, or zip up a Live2D model's folder and import that.",
+  "companionSetupImportOther": "Import another pack",
+  "companionMenuRemoveConfirmBundled": "The character assets unpacked on this phone will be deleted. Chats aren't affected. You can bring her back anytime.",
+  "companionHug1": "Mm... a hug.",
+  "companionHug2": "I feel safe like this.",
+  "companionHug3": "A little longer, just a little.",
+  "companionBondTitle": "You two",
+  "companionBond0": "Just met",
+  "companionBond1": "Familiar",
+  "companionBond2": "Friends",
+  "companionBond3": "Close",
+  "companionBond4": "Very close",
+  "companionBond5": "Inseparable",
+  "companionCloser1": "I think... I'm not so nervous anymore.",
+  "companionCloser2": "Being with you feels easier and easier.",
+  "companionCloser3": "Keep coming back, okay? I'll miss you.",
+  "companionCloser4": "Even sitting quietly feels nice with you here.",
+  "companionCloser5": "Somewhere along the way, having you here became part of my day.",
+  "companionPatClose": "I love it when you pat my head.",
+  "companionHugClose": "You can hold me tighter, you know.",
+  "companionTaskDoneUntitled": "Your task over there is done.",
+  "companionTaskFailedUntitled": "Your task over there seems to have hit an error. Take a look?",
+  "companionTaskOpen": "Take a look",
+  "companionMenuSignals": "What she brings up",
+  "companionAlwaysOn": "Stay with me",
+  "companionAlwaysOnHint": "She stays when you leave the room, in a notification you can reply to",
+  "companionAlwaysOnRunning": "She's with you in the notifications",
+  "companionAlwaysOnNoNotify": "Notifications are off; turn them on to reply to her there",
+  "companionAlwaysOnFailed": "She couldn't stay this time; try turning it on again",
+  "companionSignalsHint": "These are said only to you, here in her room; nothing goes to the model. How often follows How often she speaks up, shared with invitations, and never late at night. On Quiet she says nothing.",
+  "companionSignalState": "Keep track of other conversations",
+  "companionSignalStateHint": "She notices when another conversation on this host finishes or fails",
+  "companionSignalSpeech": "Mention it",
+  "companionSignalSpeechHint": "She says a short line while you're quiet",
+  "companionSignalVoice": "Say it out loud",
+  "companionSignalVoiceHint": "Reads the line aloud when her voice is on",
+  "companionSignalNight": "Late-night reminder to rest",
+  "companionSignalNightHint": "After a while in her room late at night, she gently reminds you once",
+  "companionSignalLateUse": "It's so late and you're still here with me... maybe rest a little?",
+  "companionRecallTitle": "Remember things in full mode",
+  "companionRecallHint": "Turning it on starts a new conversation; changing what she remembers turns it off",
+  "companionRecallConfirm": "Once on, her confirmed memories (up to 12) go to the model along with each of her replies in full mode. A new conversation starts; the current one stays in the main chat list. Changing her memories turns this off, and you can turn it on again.",
+  "companionRecallTurnOn": "Turn on",
+  "companionRecallOn": "From this new conversation on, I'll keep in mind what you asked me to remember.",
+  "companionRecallBusy": "Another conversation is already using automatic recall. Turn it off there first.",
+  "companionRecallUnsupported": "This host can't turn on automatic recall right now",
+  "companionRecallFailed": "Automatic recall didn't turn on. Try again.",
+  "companionRecallOff": "Automatic recall is off. Your next message starts a new conversation.",
+  "companionRecallOffFailed": "Automatic recall didn't turn off. Try again.",
+  "companionRecallStopped": "Automatic recall stopped (what she remembers changed), so a new conversation began. You can turn it on again from the menu.",
+  "companionMenuVoice": "Her voice",
+  "companionMenuVoiceHint": "Reads her words aloud with the phone's own voice",
+  "companionVoiceHello": "Hi, this is my voice. Keep it on if you like it.",
+  "companionVoiceUnavailable": "This phone has no Chinese voice to use. You can add one under Text-to-speech in system settings.",
+  "companionWidgetWaiting": "Waiting for you in the room",
+  "companionVoiceOn": "Let her speak",
+  "companionVoiceOffHint": "When you turn it on, she says hello in the chosen voice first.",
+  "companionVoiceOff": "Off",
+  "companionVoiceSource": "Voice",
+  "companionVoiceSystem": "The phone's own",
+  "companionVoiceSystemHint": "System text-to-speech, works offline",
+  "companionVoiceOpenai": "OpenAI-compatible API",
+  "companionVoiceOpenaiHint": "OpenAI, SiliconFlow, and most self-hosted GPT-SoVITS, CosyVoice or edge-tts servers",
+  "companionVoiceCustom": "Custom HTTP",
+  "companionVoiceCustomHint": "Anything else: describe the request and the reply",
+  "companionVoiceApi": "API",
+  "companionVoiceBase": "Address",
+  "companionVoiceBaseHelper": "Up to /v1; the app adds /audio/speech",
+  "companionVoiceKeyHelper": "Kept in this phone's secure storage",
+  "companionVoiceModel": "Model",
+  "companionVoiceVoice": "Voice",
+  "companionVoiceVoiceHelper": "The service's voice name, like alloy, or a speaker on your own server",
+  "companionVoiceRequest": "Request",
+  "companionVoiceUrl": "Request URL",
+  "companionVoiceUrlHelper": "{text} works in the URL too",
+  "companionVoiceMethod": "Method",
+  "companionVoiceHeaders": "Headers",
+  "companionVoiceHeadersHelper": "One per line; kept in secure storage",
+  "companionVoiceBody": "Body",
+  "companionVoiceBodyHelper": "{text} becomes what she says",
+  "companionVoiceField": "Audio field",
+  "companionVoiceFieldHelper": "If the reply is JSON: where the audio is (base64 or a link), like data.audio. Leave empty when it returns audio",
+  "companionVoicePrivacy": "What she says is sent to the service you enter.",
+  "companionVoicePreview": "Preview",
+  "companionVoicePreviewing": "Requesting…",
+  "companionVoicePreviewOk": "It works. Did you hear her?",
+  "companionVoicePreviewFailed": "Didn't work: {reason}",
+  "companionVoiceNotSetUp": "Fill in the address above first.",
+  "companionVoiceFallback": "Couldn't reach her voice service, so the phone's own voice stood in",
+  "companionGreetFirstNameless": "Hi, I live here now. Nice to meet you.",
+  "companionRenamed": "\"{name}\"... okay, that's my name from now on.",
+  "companionVoicePreset": "Popular services",
+  "companionVoicePresetHint": "Xiaomi MiMo, OpenAI, SiliconFlow, Alibaba Model Studio: just add a key",
+  "companionVoiceService": "Service",
+  "companionVoiceKeyWhere": "Get one at {site}; kept in this phone's secure storage",
+  "companionVoiceVoiceCustomHelper": "Pick one, or type a voice ID the service gave you",
+  "companionVoiceStyle": "Speaking style",
+  "companionVoiceStyleHelper": "Describe her tone and the service reads in it; leave empty for the default gentle girl's voice",
+  "companionVoiceFemale": "female",
+  "companionVoiceMale": "male",
+  "companionClonePreset": "Preset voices",
+  "companionCloneMine": "Clone a voice",
+  "companionVoicePresetVoice": "Preset voice",
+  "companionCloneRecording": "Recording",
+  "companionCloneHelper": "5–30 seconds of one person speaking with no background noise, mp3 or wav, up to 7 MB. Only use your own voice, or one whose owner agreed. Every line she says sends this recording to Xiaomi.",
+  "companionCloneNone": "No recording yet",
+  "companionCloneReady": "Uploaded · {detail}",
+  "companionCloneSeconds": "{n} s",
+  "companionClonePick": "Choose a recording",
+  "companionCloneReplace": "Replace",
+  "companionCloneTooLarge": "The recording is too large (7 MB at most). Trim it and try again.",
+  "companionCloneNotAudio": "Only mp3 or wav recordings work.",
+  "companionCloneFailed": "Couldn't read that recording.",
+  "companionMenuPersona": "About her",
+  "companionPersonaName": "Name",
+  "companionPersonaNameHelper": "Leave empty for the pack's name",
+  "companionPersonaCallMe": "What she calls you",
+  "companionPersonaCallMeHint": "e.g. Sam",
+  "companionPersonaCallMeHelper": "Leave empty for nothing in particular",
+  "companionPersonaText": "Persona",
+  "companionPersonaTextLabel": "Who she is and how she talks",
+  "companionPersonaTextHelper": "Her personality, who she is, how she talks, what she won't say: all yours to write or delete. Only the format of her expression marks is added by the app.",
+  "companionPersonaReset": "Reset",
+  "companionPersonaFooter": "Light mode uses it from her next reply; full mode tells her with your next message.",
+  "companionMenuMoves": "Moves and faces",
+  "companionMovesHint": "These come with the model. The ones switched on are offered to the AI (up to 24 expressions and 24 motions, in list order) and she uses them in her replies; tap a name to give it a clearer one, tap ▶ to try it on her.",
+  "companionMovesNone": "This model brings no expressions or motions of its own; she uses her built-in ones.",
+  "companionMovesRename": "Rename",
+  "companionMovesTry": "Try it",
+  "companionPackLegacyModel": "This is an old Cubism 2 model (.moc and model.json); the runtime on the phone only reads .moc3 from Cubism 3 on. Open it in Cubism Editor, export it as moc3 and import that.",
+  "companionFailedMocVersion": "This model was exported by a newer Cubism (moc version {version}); the runtime on the phone reads up to {latest}. Export it for an older version in Cubism Editor and import that.",
+  "companionMenuAdapt": "Fit this model",
+  "companionAdaptHint": "Your own model (your key, billed per request) reads this character and matches up her head, eyes, expressions and where she can be touched. Sent: the model's name, its parameter list, the names of its expressions, motions and parts, what you write below and the current fitting. Never the model files or textures.",
+  "companionAdaptOffer": "This model needs fitting: your own model reads its parameter list and the names of its expressions and motions (never the model files), using your key once. New models after this are fitted on their own; you can turn that off in the menu.",
+  "companionAdaptOfferYes": "Fit it",
+  "companionAdaptOfferNo": "Not now",
+  "companionAdaptNote": "What's off? (optional)",
+  "companionAdaptNoteHint": "For example: patting her head does nothing, her face goes dark when she's happy",
+  "companionAdaptRun": "Let the AI fit it",
+  "companionAdaptUndo": "Undo the fitting",
+  "companionAdaptAuto": "Fit new models when they're imported",
+  "companionAdaptStart": "Let me get used to this new body…",
+  "companionAdaptDone": "There, I've got the hang of this body.",
+  "companionAdaptDoneNote": "There, I've got the hang of this body. {note}",
+  "companionAdaptUndone": "OK, back to how I was.",
+  "companionAdaptNoKey": "To fit me with your model, add an API key in Settings first.",
+  "companionAdaptFailed": "That didn't work ({reason}). You can try again from Fit this model in the menu.",
+  "companionAdaptUnreadable": "the model's answer made no sense",
+  "companionAdaptEmpty": "the model found nothing to match",
+  "companionAdaptNetwork": "no connection",
+  "companionMemoryMigrationPending": "Some older memories have not moved yet. The originals are still kept. You can try again later.",
+  "companionMemoryWaiting": "Memory extraction is waiting. Your original words are saved on this phone.",
+  "companionMemoryWidgetPending": "The old line on the widget will clear shortly.",
+  "companionMemoryConfiguration": "This channel is not ready to save new memories automatically. Your words are kept; you can still edit memories.",
+  "companionMemoryWording": "Edit wording only",
+  "companionMemoryPin": "Pin",
+  "companionMemoryUnpin": "Unpin",
+  "companionMemoryConfirmReality": "This is true of my real life",
+  "companionMemorySources": "My original words",
+  "companionMemoryEditSource": "Edit these words",
+  "companionMemoryDeleteSource": "Delete the phone copy",
+  "companionMemoryDeleteSourceHint": "Delete these words from the phone and memories supported only by them. Old host conversations and separate copies remain.",
+  "companionMemoryNoSource": "This was written by hand, or its original source is no longer available.",
+  "companionMemoryCleanupUnknown": "I can't confirm all the original messages that should be deleted. Nothing was deleted.",
+  "companionMemoryTooLong": "Too long to extract automatically from this version",
+  "companionMemoryNotExtracted": "This batch was not saved as memories",
+  "companionMemoryPending": "Not processed yet",
+  "companionMemorySourceKept": "Original words kept",
+  "companionMemoryDisplayOnly": "Old record, kept for viewing",
+  "companionMemoryCancelled": "Plan cancelled",
+  "companionMemoryLess": "Bring this up less",
+  "companionMemoryNever": "Do not bring this up",
+  "companionMemoryNormal": "Okay to bring up again",
+  "companionMemoryCancelPlan": "Cancel this plan",
+  "companionMemoryActions": "Options for this memory",
+  "companionMemoryWhich": "Which one do you mean?",
+  "companionMemoryForgotten": "Okay, it's forgotten.",
+  "companionMemoryNeverDone": "Okay, I won't bring it up.",
+  "companionMemoryLessDone": "Okay, I'll mention it less.",
+  "companionMemoryNormalDone": "Sure, we can talk about it whenever you like.",
+  "companionMemoryCancelledDone": "Okay, I won't wait to ask you about it.",
+  "companionMemoryCorrected": "Oh, I had that mixed up.",
+  "companionMemoryHostSourceRemaining": "The phone copy is deleted. The old host conversation remains; you can delete that conversation from the chat list.",
+  "companionMemoryHostRestarted": "The host has restarted. Your message is saved; tap Send again to continue.",
+  "companionMemoryUsage": "Model usage",
+  "companionMemoryUsageHint": "Recent request records. Unknown does not mean free; costs are estimates using verified rates, not provider bills. Host records cover only captured companion chat calls.",
+  "companionMemoryUsageUnknown": "Unknown",
+  "companionMemoryUsageExtract": "Memory extraction",
+  "companionMemoryUsageOrganize": "Memory consolidation",
+  "companionMemoryUsageChat": "Chat",
+  "companionMemoryUsageWaiting": "Waiting for usage records",
+  "companionMemoryUsageIncomplete": "Usage coverage is incomplete; known records are kept",
+  "companionMemoryUsageInput": "Uncached input",
+  "companionMemoryUsageCacheRead": "Cache read",
+  "companionMemoryUsageCacheWrite": "Cache write",
+  "companionMemoryUsageOutput": "Output",
+  "companionMemoryUsageCost": "Estimated cost",
+  "companionMemoryUsageNotSent": "Not sent locally",
+  "companionMemoryUsageEmpty": "No usage recorded yet",
+  "companionMemoryHostUnsupported": "This host is a bit out of date, so here she can't recall what you've talked about. Updating the host fixes it.",
+  "companionMemoryPostponedDone": "Okay, let's pick it up once you have a new time.",
+  "companionTasksTitle": "Errands",
+  "companionTasksEmpty": "You haven't asked me to do anything yet.",
+  "companionTasksEarlier": "Earlier errands",
+  "companionTaskMissing": "I can't find this one anymore.",
+  "companionTaskChanged": "This was changed later. I'm going with the latest.",
+  "companionReminderEdit": "Change reminder",
+  "companionReminderCancel": "Don't remind me",
+  "companionReminderText": "Remind you about",
+  "companionReminderWhen": "Date and time",
+  "companionReminderWhenHint": "Like 2026-11-21 08:00",
+  "companionReminderZone": "Time zone",
+  "companionReminderZoneHint": "Like Asia/Shanghai or +08:00",
+  "companionReminderQueued": "Okay, I've saved the reminder request. I haven't confirmed it's set.",
+  "companionReminderDone": "All set. I'll ping you on time.",
+  "companionReminderUnknown": "I'm not sure this one got set. Mind checking your system alarms?",
+  "companionReminderFailed": "Sorry, I couldn't set this one.",
+  "companionReminderCancelled": "Okay, I won't remind you about this.",
+  "companionReminderTextMissing": "What should I remind you about?",
+  "companionReminderDateMissing": "Which day should I remind you?",
+  "companionReminderTimeMissing": "What time that day?",
+  "companionReminderZoneMissing": "Which time zone should I use?",
+  "companionReminderGap": "That time gets skipped that day (daylight saving). Pick another time?",
+  "companionReminderOverlap": "That time happens twice that day. Which one?",
+  "companionReminderFirst": "The first one",
+  "companionReminderSecond": "The second one",
+  "companionReminderNotificationsMissing": "It's set, but notifications are off, so I can't reach you when it's time. Turn them on in system settings.",
+  "companionReminderChannelMissing": "It's set, but reminder notifications are turned off, so I can't reach you when it's time. Turn them on in system settings.",
+  "companionReminderGroupMissing": "It's set, but the notification group for reminders is turned off, so I can't reach you when it's time. Turn it on in system settings.",
+  "companionReminderTimePassed": "That time has already passed, so I didn't ring late.",
+  "companionReminderInvalidTime": "I didn't quite get that time. Tell me the date, time and time zone again?",
+  "companionReminderCancelUnknown": "Your request to cancel is saved. I haven't confirmed that this reminder has been removed.",
+  "companionReminderWhich": "Which one do you mean? Tap it in Errands.",
+  "companionReminderSyntax": "Tell me the day and time, like “Remind me at tomorrow 08:00 to bring my ID”.",
+  "companionReminderSaveFailed": "That didn't save. What you wrote is still here. Try again?",
+  "companionReminderSettings": "Open system settings",
+  "companionReminderCheck": "Refresh",
+  "companionReminderUnknownNotification": "This reminder may have gone off already. I'm not sure.",
+  "companionReminderUnhandled": "I can't help with this part yet: {text}",
+  "companionReminderCancelSource": "Cancel the reminder to {text}",
+  "@companionReminderUnhandled": {
+    "placeholders": {
+      "text": {
+        "type": "String"
+      }
+    }
+  },
+  "@companionReminderCancelSource": {
+    "placeholders": {
+      "text": {
+        "type": "String"
+      }
+    }
+  },
+  "companionReminderNotHere": "This one wasn't set on this phone, so I can't change or cancel it here.",
+  "companionReminderPlatformUnavailable": "I can't see your phone's reminders right now. Check back in a bit?",
+  "companionReminderPastRegistration": "It was set up before.",
+  "companionLookupAccepted": "Okay, I'll look it up and leave what I find in Errands.",
+  "companionLookupSyntax": "Which museum or library, and which day? Tell me its full name and the date.",
+  "companionLookupDateMissing": "Which day should I check? Give me a specific date.",
+  "companionLookupZoneMissing": "What time zone is it in? Tell me the date and time zone together.",
+  "companionLookupWhich": "Which lookup should I drop? Tap it in Errands.",
+  "companionLookupQueued": "I'm looking it up. One moment.",
+  "companionLookupDone": "Found it. Where I read it is below.",
+  "companionLookupPartial": "I found some of it, but I still can't say for sure about that day.",
+  "companionLookupFailed": "I couldn't find anything solid this time, so I can't say.",
+  "companionLookupUnknown": "I didn't get a clear answer this time. I won't look it up again for now.",
+  "companionLookupCancelled": "Okay, I won't look it up.",
+  "companionLookupCancelUnknown": "Your request to stop is saved. I haven't confirmed that the original lookup has stopped.",
+  "companionLookupUnavailable": "I can't reach anywhere to look this up right now, so no answer yet.",
+  "companionLookupDeadline": "The time we agreed on has passed, so I stopped here.",
+  "companionLookupInputLimit": "There's too much to read at once, so here's where I looked.",
+  "companionLookupQueryLong": "That name is a bit long. Is there a shorter name I won't mix up?",
+  "companionLookupAnswerIncomplete": "I found the pages but haven't pieced it together yet. Here's where I looked.",
+  "companionLookupNotHere": "This wasn't looked up on this phone, so I can only show you what I found.",
+  "companionLookupSources": "Where I looked",
+  "companionLookupSearchOnly": "Only saw the search snippet; didn't open the page",
+  "companionLookupNoTitle": "No title",
+  "companionLookupCancel": "Don't look it up",
+  "companionLookupSaveFailed": "That didn't go through. Try again in a bit?",
+  "companionLookupCancelSource": "Cancel the lookup for {name}",
+  "@companionLookupCancelSource": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "companionLookupObservedAt": "Read at {time}",
+  "@companionLookupObservedAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "companionLookupViewSources": "See where I looked · {name}",
+  "@companionLookupViewSources": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "companionNotesTitle": "Turn notes into a to-do list",
+  "companionNotesView": "Take a look",
+  "companionNotesSyntax": "Which day’s notes should I tidy up, and should the computer keep going after you leave? Then you can pick the folder.",
+  "companionNotesDateMissing": "The date, time zone or deadline isn't clear yet. Tell me again?",
+  "companionNotesConnect": "Connect the computer with your notes first, then pick the folder.",
+  "companionNotesOriginalHost": "This lives on the computer you used before. Connect to it and I'll pick it back up.",
+  "companionNotesUnavailable": "This computer can't take this on right now.",
+  "companionNotesNoDirectory": "No folder picked yet, so I haven't started.",
+  "companionNotesChooseDirectory": "Pick the notes folder",
+  "companionNotesChooseOutput": "Pick where to save it",
+  "companionNotesKeepDirectory": "Same notes folder",
+  "companionNotesKeepOutput": "Same save folder",
+  "companionNotesWhich": "Which one should I drop? Tap it in Errands.",
+  "companionNotesQueued": "Got it. Waiting for the computer to pick it up.",
+  "companionNotesRunning": "The computer has accepted this task. The result isn't ready yet.",
+  "companionNotesDone": "Done. The to-do list is saved as a new file. Tap to read it.",
+  "companionNotesPartial": "It stopped partway. You can look at what’s there so far.",
+  "companionNotesFailed": "This one didn't work out.",
+  "companionNotesWaiting": "This can't continue yet. The request is still here.",
+  "companionNotesUnknown": "I'm not sure what's happening on the computer right now.",
+  "companionNotesCancelUnknown": "Your request to stop is saved, but I haven't confirmed that the computer has stopped. Files it already wrote will stay.",
+  "companionNotesCancelled": "Okay, I've stopped. Files already written are still there.",
+  "companionNotesPauseUnavailable": "You said to stop when you leave, but I can't tell right now whether you've left, so I haven't started. Want it to keep going after you leave instead?",
+  "companionNotesOpportunityLost": "I missed handing it to the computer, and you said not to wait for it to come online. Tell me if you still want it done.",
+  "companionNotesDeadline": "The deadline we agreed on has passed, so I won't keep going.",
+  "companionNotesOriginalPending": "The computer got your change. Give it a moment to catch up.",
+  "companionNotesSaveFailed": "That didn't go through. It's still here. Try again in a bit?",
+  "companionNotesModifiedDay": "I'll turn the notes in this folder changed that day (Markdown and plain text) into a to-do list. Your files stay as they are.",
+  "companionNotesNoInputs": "No notes in this folder changed that day, so there's no to-do list.",
+  "companionNotesOutputExists": "A file with that name already exists, so I left it alone. Pick a new name.",
+  "companionNotesFileCountLimit": "More than 20 notes match. That’s a lot. Try a smaller folder, or split it up?",
+  "companionNotesFileSizeLimit": "One note is over 64 KiB, too long for me. Narrow it down; I'd rather not read just half.",
+  "companionNotesTotalSizeLimit": "These notes add up to more than 256 KiB. Narrow it down, or split it up?",
+  "companionNotesModelLimit": "That's more than I can read at once. Narrow it down; I'd rather not read just half.",
+  "companionNotesPause": "Stop when I leave",
+  "companionNotesForegroundStart": "Continue here",
+  "companionNotesForegroundReady": "I'll ask the computer to continue while you stay here. When you leave, I'll ask it to pause; we'll check its progress when you return.",
+  "companionNotesForegroundUnknown": "I haven't confirmed the computer's progress yet. Refresh to check.",
+  "companionNotesContinue": "Keep going after I leave",
+  "companionNotesAllowQueue": "If the computer is offline, wait for it",
+  "companionNotesNoQueue": "If the computer is offline, don't wait",
+  "companionNotesApproval": "The computer needs your okay to keep going.",
+  "companionNotesOpenFile": "Read the to-do list",
+  "companionNotesFileMissing": "I can't find this file anymore, and I didn't remake it.",
+  "companionNotesFileChanged": "This file was changed later; it's not what I wrote anymore.",
+  "companionNotesFileUnknown": "I can't open this file right now.",
+  "companionNotesCancel": "Don't do it",
+  "companionNotesEdit": "Change it",
+  "companionNotesDate": "Which day’s notes",
+  "companionNotesFilename": "New file name (.md or .txt)",
+  "companionNotesDeadlineField": "New deadline (leave blank to keep it)",
+  "companionNotesClearDeadline": "No deadline",
+  "companionNotesKeepDeadline": "Same deadline",
+  "companionNotesSourceDirectory": "Notes in: {path}",
+  "@companionNotesSourceDirectory": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "companionNotesOutputDirectory": "Saved to: {path}",
+  "@companionNotesOutputDirectory": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "companionNotesDue": "Done by {time}",
+  "@companionNotesDue": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "companionNotesCancelSource": "Cancel the notes task for “{name}”",
+  "@companionNotesCancelSource": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "companionNotesAmendSource": "Change the notes task: notes from {date}, save as “{name}”, deadline: {deadline}; {afterExit}; {queue}; {source}; {output}.",
+  "@companionNotesAmendSource": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      },
+      "name": {
+        "type": "String"
+      },
+      "deadline": {
+        "type": "String"
+      },
+      "afterExit": {
+        "type": "String"
+      },
+      "queue": {
+        "type": "String"
+      },
+      "source": {
+        "type": "String"
+      },
+      "output": {
+        "type": "String"
+      }
+    }
+  },
+  "companionNotesRetry": "Let the computer keep going",
+  "companionNotesSubmitSaved": "Hand it to the computer now",
+  "companionNotesResendOriginal": "Hand it to the computer again",
+  "companionNotesResendCancel": "Tell the computer to stop again",
+  "companionNotesResendAmend": "Send the change to the computer again",
+  "companionMapChoose": "Which map app would you like to use?",
+  "companionMapSystemChoice": "Let me choose in the system",
+  "companionMapDone": "The address was handed to the map app.",
+  "companionMapUnknown": "I cannot yet tell whether the map opened. I will not open it again automatically.",
+  "companionMapCancelled": "This opening has been cancelled. If the map is already open, it will stay open.",
+  "companionMapUnavailable": "Maps are unavailable right now. You can still copy the address.",
+  "companionMapNotHere": "This record is from earlier. You can copy the address or open it again if you need it now.",
+  "companionMapFailed": "The map did not open. The address is here to copy.",
+  "companionMapChoiceWaiting": "The app selection screen opened. I cannot yet tell which map received the address.",
+  "companionMapWaiting": "The map has not opened this time. The address is saved.",
+  "companionMapQueued": "The address is saved. The map has not opened yet.",
+  "companionMapSyntax": "Give one complete address, for example: 在地图打开“文华路 18 号东门”. Choose one if there are several.",
+  "companionMapWhich": "Which address would you like to change or open again? You can select it in your tasks.",
+  "companionMapNoTarget": "No map was selected, so nothing has opened.",
+  "companionMapSaveFailed": "I could not confirm whether the map opened. I will not retry automatically.",
+  "companionMapTarget": "Selected map: {label}",
+  "@companionMapTarget": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "companionMapCopy": "Copy original address",
+  "companionMapView": "View address",
+  "companionMapReopen": "Open again",
+  "companionMapCancel": "Cancel this opening",
+  "companionMapReopenSource": "Open this address in a map again",
+  "companionMapCancelSource": "Cancel opening this address in a map",
+  "companionFindTitle": "Find drafts",
+  "companionFindSyntax": "Tell me which folder to search at this level, when the drafts were modified, and whether to continue after you leave. Include a deadline if you have one.",
+  "companionFindWhich": "Which search would you like to stop? You can select it in your tasks.",
+  "companionFindConnect": "No folder has been selected on this computer yet. Connect to it and choose one first.",
+  "companionFindSavedDirectory": "Choose a folder you used before",
+  "companionFindSeven": "Did you mean seven in the morning or evening?",
+  "companionFindMorningSeven": "07:00 in the morning",
+  "companionFindEveningSeven": "19:00 in the evening",
+  "companionFindDeadlineMissing": "The deadline is not settled yet, so this search has not started.",
+  "companionFindChooseDirectory": "Choose the “{name}” folder",
+  "@companionFindChooseDirectory": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "companionFindChooseAgain": "Choose another folder",
+  "companionFindKeepDirectory": "Keep the same folder",
+  "companionFindUnavailable": "This computer cannot find and open your drafts yet.",
+  "companionFindNoDirectory": "No folder has been selected, so this search has not started.",
+  "companionFindDone": "The search is finished. The results are below.",
+  "companionFindPartial": "I could not finish the whole search. Found drafts and unfinished areas are listed below.",
+  "companionFindFailed": "This search could not finish. The earlier record is still here.",
+  "companionFindWaiting": "The search cannot continue yet. You can check again later.",
+  "companionFindCancelled": "The search has stopped. The earlier results are still here.",
+  "companionFindCancelUnknown": "Your request to stop is saved, but I have not confirmed that the computer stopped. Earlier results remain.",
+  "companionFindCancel": "Stop searching",
+  "companionFindCancelSource": "Cancel this draft search",
+  "companionFindAmendSource": "Change this search: only {formats} files modified on {date} at this level. Deadline: {deadline}; {afterExit}; {queue}; {source}.",
+  "@companionFindAmendSource": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      },
+      "formats": {
+        "type": "String"
+      },
+      "deadline": {
+        "type": "String"
+      },
+      "afterExit": {
+        "type": "String"
+      },
+      "queue": {
+        "type": "String"
+      },
+      "source": {
+        "type": "String"
+      }
+    }
+  },
+  "companionFindDate": "Draft modification date",
+  "companionFindScope": "Only {formats} files modified on this day at this level. Originals stay unchanged.",
+  "@companionFindScope": {
+    "placeholders": {
+      "formats": {
+        "type": "String"
+      }
+    }
+  },
+  "companionFindSourceDirectory": "Search folder: {path}",
+  "@companionFindSourceDirectory": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "companionFindReport": "Drafts found this time",
+  "companionFindPreviousReport": "Earlier search results",
+  "companionFindCoverage": "Checked {entries} entries, including {supported} in the selected formats, and found {matches} drafts matching the date.",
+  "@companionFindCoverage": {
+    "placeholders": {
+      "entries": {
+        "type": "String"
+      },
+      "supported": {
+        "type": "String"
+      },
+      "matches": {
+        "type": "String"
+      }
+    }
+  },
+  "companionFindEnumerationComplete": "The file names in this level have been checked. See below for which files could be opened. Files added during the search may not be included.",
+  "companionFindEnumerationPartial": "Some areas have not been searched completely.",
+  "companionFindEntryLimit": "This search checks up to 200 entries. The remaining entries have not been checked.",
+  "companionFindCandidateLimit": "More than 20 drafts match the date. The first 20 are listed here.",
+  "companionFindEmpty": "No draft in the selected formats and date was found in the area searched.",
+  "companionFindGap": "This item still needs checking: {name}",
+  "@companionFindGap": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "companionFindModified": "Modified: {time}",
+  "@companionFindModified": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "companionFindWasOpenable": "This draft opened at the time. Opening it now will check whether it has changed.",
+  "companionFindWasUnreadable": "This draft could not be read at the time.",
+  "companionFindOpenSource": "Open this original",
+  "companionFindSourceOffline": "The list is still here. Connect to the original computer to open a draft.",
+  "companionFindSourceMissing": "This draft can no longer be found. The earlier search list is still here.",
+  "companionFindSourceChanged": "This draft has been replaced or modified. I cannot confirm it is still the same draft.",
+  "companionFindSourceUnreadable": "This draft could not be opened in full. It has not been replaced with a different file.",
+  "companionFindSourceUnknown": "This draft cannot be opened right now. Connect to the original computer and try again.",
+  "companionFindDeadline": "The agreed deadline has passed. No new search will start. Existing results will stay here.",
+  "companionFindOriginalPending": "The computer received the changes and still needs to confirm the original search.",
+  "companionFindUnknown": "I have not confirmed whether the computer received this search or how far it got.",
+  "companionCompareTitle": "Compare two drafts",
+  "companionCompareA": "A · earlier draft",
+  "companionCompareB": "B · later draft",
+  "companionCompareSyntax": "Please choose A as the earlier draft and B as the later draft, and say whether to wait for the computer and continue after you leave. Include a deadline if you have one.",
+  "companionCompareWhich": "Which comparison should stop? Open that task and choose Stop.",
+  "companionCompareDeadlineMissing": "The deadline is not clear yet. Please specify the date, time, and time zone.",
+  "companionCompareUnavailable": "This computer cannot compare two drafts yet.",
+  "companionCompareConnect": "Connect the original computer to select A and B first. No previously selected drafts are available offline yet.",
+  "companionCompareAmbiguousFile": "More than one selected draft has this name. Connect to the original computer to choose it again.",
+  "companionCompareNoInputs": "Both original drafts have not been selected, so this comparison has not started.",
+  "companionCompareOriginalHost": "The agreement and any existing result are kept. Connect the original computer to check again.",
+  "companionCompareSaveFailed": "The comparison could not be confirmed yet. Please check this task again later.",
+  "companionCompareSaved": "Choose a previously selected {side}",
+  "@companionCompareSaved": {
+    "placeholders": {
+      "side": {
+        "type": "String"
+      }
+    }
+  },
+  "companionCompareChooseDirectory": "Choose the folder containing {side}",
+  "@companionCompareChooseDirectory": {
+    "placeholders": {
+      "side": {
+        "type": "String"
+      }
+    }
+  },
+  "companionCompareFilename": "Enter the file name for {side}",
+  "@companionCompareFilename": {
+    "placeholders": {
+      "side": {
+        "type": "String"
+      }
+    }
+  },
+  "companionCompareFileLimit": "Enter the exact name inside the selected folder. Markdown and txt files up to 64 KiB each are supported. The originals will not be changed.",
+  "companionCompareFilenameMissing": "Enter a file name.",
+  "companionCompareQueued": "Both drafts are saved, waiting for the computer.",
+  "companionCompareRunning": "The computer has accepted this task. The comparison isn't ready yet.",
+  "companionCompareDone": "The comparison of the two drafts is ready.",
+  "companionComparePartial": "This comparison is only partly complete. Verified changes and remaining gaps are shown below.",
+  "companionCompareCancelled": "Further comparison has stopped. Any previous comparison is kept.",
+  "companionCompareCancelUnknown": "The stop request is saved, but the computer has not confirmed it yet. Existing results are kept.",
+  "companionCompareWaiting": "This comparison cannot continue yet. The original selections and agreement are kept.",
+  "companionCompareUnknown": "The computer’s progress is not clear yet. The comparison will not automatically restart.",
+  "companionCompareFailed": "The comparison could not be completed. This task did not edit the original files.",
+  "companionCompareDeadline": "The original deadline has passed. This comparison will not be moved to a later time.",
+  "companionCompareOriginalPending": "The change is saved, but the original comparison agreement still needs to be delivered.",
+  "companionCompareReport": "This comparison",
+  "companionCompareUnfinishedReport": "An unfinished comparison",
+  "companionComparePreviousReport": "Previous comparison",
+  "companionCompareUnread": "This draft has not been read completely.",
+  "companionCompareChanged": "This draft was read, but its original version could not be confirmed when the result was prepared.",
+  "companionCompareIncomplete": "Some parts are still unfinished. The verified text changes are kept.",
+  "companionCompareIdentical": "The two drafts read for this comparison contain no text changes.",
+  "companionCompareCoverage": "This comparison found {total} groups of text changes and shows {shown} of them.",
+  "@companionCompareCoverage": {
+    "placeholders": {
+      "total": {
+        "type": "String"
+      },
+      "shown": {
+        "type": "String"
+      }
+    }
+  },
+  "companionCompareSourceOrder": "The verified changes below follow their order in the text. Rehearsal priorities have not been ranked.",
+  "companionCompareDifference": "Text change {number}",
+  "@companionCompareDifference": {
+    "placeholders": {
+      "number": {
+        "type": "String"
+      }
+    }
+  },
+  "companionCompareNoExcerpt": "There is no short source excerpt to show on this side.",
+  "companionCompareSuggestions": "Rehearsal suggestions",
+  "companionComparePractice": "Change {number}: {practice}",
+  "@companionComparePractice": {
+    "placeholders": {
+      "number": {
+        "type": "String"
+      },
+      "practice": {
+        "type": "String"
+      }
+    }
+  },
+  "companionCompareSuggestionsUnknown": "Rehearsal suggestions are still unconfirmed. Verified text changes are kept.",
+  "companionCompareSuggestionsMissing": "Rehearsal suggestions are not ready. Verified text changes are kept.",
+  "companionCompareParagraph": "Paragraph {range}",
+  "@companionCompareParagraph": {
+    "placeholders": {
+      "range": {
+        "type": "String"
+      }
+    }
+  },
+  "companionCompareBetween": "Between paragraphs {before} and {after}",
+  "@companionCompareBetween": {
+    "placeholders": {
+      "before": {
+        "type": "String"
+      },
+      "after": {
+        "type": "String"
+      }
+    }
+  },
+  "companionCompareAfter": "After paragraph {number}",
+  "@companionCompareAfter": {
+    "placeholders": {
+      "number": {
+        "type": "String"
+      }
+    }
+  },
+  "companionCompareBefore": "Before paragraph {number}",
+  "@companionCompareBefore": {
+    "placeholders": {
+      "number": {
+        "type": "String"
+      }
+    }
+  },
+  "companionCompareLines": "Near line {range}",
+  "@companionCompareLines": {
+    "placeholders": {
+      "range": {
+        "type": "String"
+      }
+    }
+  },
+  "companionCompareCancel": "Stop comparing",
+  "companionCompareCancelSource": "Cancel this comparison and keep any result already returned.",
+  "companionCompareAmendSource": "Change this comparison: {deadline}; {exit}; {queue}; {inputs}. Leave both original files unchanged.",
+  "@companionCompareAmendSource": {
+    "placeholders": {
+      "deadline": {
+        "type": "String"
+      },
+      "exit": {
+        "type": "String"
+      },
+      "queue": {
+        "type": "String"
+      },
+      "inputs": {
+        "type": "String"
+      }
+    }
+  },
+  "companionCompareChooseAgain": "Choose A and B again",
+  "companionCompareKeepInputs": "Keep the originally selected A and B",
+  "companionCompareNewDeadline": "A new deadline uses the local time zone of this change. Leave blank to keep the original deadline.",
+  "companionReceiptTitle": "Receipt table",
+  "companionReceiptSyntax": "Please specify four receipts, a new workbook name, and whether to continue after you leave. I can create a new file, not overwrite one.",
+  "companionReceiptUnavailable": "This computer cannot prepare this receipt table yet.",
+  "companionReceiptConnect": "Connect the original computer to choose all four receipts and an output folder. I cannot guess originals that have never been selected.",
+  "companionReceiptWhich": "Which table should stop? Open that task and cancel it there.",
+  "companionReceiptSaveFailed": "This request has not been handed over successfully. Your words are kept for another try.",
+  "companionReceiptOriginalHost": "Reconnect the original computer to continue or check the result.",
+  "companionReceiptNoInputs": "The four receipts and output folder have not all been chosen. Nothing will be handed over yet.",
+  "companionReceiptInput": "Receipt {index}",
+  "@companionReceiptInput": {
+    "placeholders": {
+      "index": {
+        "type": "String"
+      }
+    }
+  },
+  "companionReceiptSavedInput": "Choose a previously selected receipt for position {index}",
+  "@companionReceiptSavedInput": {
+    "placeholders": {
+      "index": {
+        "type": "String"
+      }
+    }
+  },
+  "companionReceiptChooseDirectory": "Which folder contains receipt {index}?",
+  "@companionReceiptChooseDirectory": {
+    "placeholders": {
+      "index": {
+        "type": "String"
+      }
+    }
+  },
+  "companionReceiptFilename": "Filename of receipt {index}",
+  "@companionReceiptFilename": {
+    "placeholders": {
+      "index": {
+        "type": "String"
+      }
+    }
+  },
+  "companionReceiptFormats": "This computer can read {formats}, up to 4 MiB each. Enter a filename within the selected folder.",
+  "@companionReceiptFormats": {
+    "placeholders": {
+      "formats": {
+        "type": "String"
+      }
+    }
+  },
+  "companionReceiptSavedOutput": "Which previously selected folder should hold the new workbook?",
+  "companionReceiptQueued": "Saved on the phone; not yet handed to the computer.",
+  "companionReceiptRunning": "The computer accepted the request; no workbook is ready yet.",
+  "companionReceiptDone": "The new workbook is ready and the requested fields are verified.",
+  "companionReceiptPartial": "The new workbook is ready, with the unverified fields noted in it.",
+  "companionReceiptCancelled": "No further work will be done. Any workbook already written remains.",
+  "companionReceiptFailed": "No new workbook could be delivered. The observations already made are kept below.",
+  "companionReceiptWaiting": "This task is waiting for what it needs; the workbook is not ready.",
+  "companionReceiptUnknown": "It is not yet clear whether the workbook was written. Check the original task before making another.",
+  "companionReceiptCancelUnknown": "The stop request is saved. The original computer still needs to confirm whether a workbook was already written.",
+  "companionReceiptNoFields": "These four receipts currently have no verified fields available for the workbook, so no empty workbook was created.",
+  "companionReceiptOutputExists": "A file with that name already exists. It was not overwritten; you can choose a new name.",
+  "companionReceiptDeadline": "The agreed deadline has passed. No new work will start, and earlier results can still be checked.",
+  "companionReceiptOriginalPending": "The computer has not received the complete original request and will not start the workbook yet.",
+  "companionReceiptReport": "Receipt fields observed",
+  "companionReceiptPreviousReport": "Earlier receipt observations",
+  "companionReceiptCoverage": "In this result, {count} of the four receipts have verified fields.",
+  "@companionReceiptCoverage": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "companionReceiptImageScope": "Only the PDF text layer was read. Dates or other fields in images remain unverified.",
+  "companionReceiptUnread": "This original has not been read completely.",
+  "companionReceiptParseFailed": "Text could not be fully extracted from this original.",
+  "companionReceiptChanged": "The original version could not be confirmed before publication. This row cannot be treated as verified.",
+  "companionReceiptDate": "Date",
+  "companionReceiptItem": "Item",
+  "companionReceiptAmount": "Amount",
+  "companionReceiptUnverified": "Unverified: {reason}",
+  "@companionReceiptUnverified": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "companionReceiptFieldUnknown": "the original text does not establish this field",
+  "companionReceiptSourcePosition": "Lines {from}–{to}",
+  "@companionReceiptSourcePosition": {
+    "placeholders": {
+      "from": {
+        "type": "String"
+      },
+      "to": {
+        "type": "String"
+      }
+    }
+  },
+  "companionReceiptPdfPosition": "Page {page}, extracted text lines {from}–{to}",
+  "@companionReceiptPdfPosition": {
+    "placeholders": {
+      "page": {
+        "type": "String"
+      },
+      "from": {
+        "type": "String"
+      },
+      "to": {
+        "type": "String"
+      }
+    }
+  },
+  "companionReceiptOpenWorkbook": "Open {name}",
+  "@companionReceiptOpenWorkbook": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "companionReceiptOpenFailed": "The original workbook cannot be opened now. Its earlier completion record is kept; it will not be recreated automatically.",
+  "companionReceiptChooseAgain": "Choose the four receipts again",
+  "companionReceiptKeepInputs": "Keep the same four receipts",
+  "companionReceiptOutputName": "New workbook filename (.xlsx)",
+  "companionReceiptCancelSource": "Cancel this receipt task; stop unfinished work and keep any workbook already written.",
+  "companionReceiptAmendSource": "Amend this receipt task to create {name}; deadline: {deadline}; after leaving: {afterExit}; wait for computer: {queue}; originals: {inputs}; output folder: {output}.",
+  "@companionReceiptAmendSource": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "deadline": {
+        "type": "String"
+      },
+      "afterExit": {
+        "type": "String"
+      },
+      "queue": {
+        "type": "String"
+      },
+      "inputs": {
+        "type": "String"
+      },
+      "output": {
+        "type": "String"
+      }
+    }
+  },
+  "companionReceiptNoText": "No usable text layer was read. Fields in images remain unverified.",
+  "companionReceiptPassword": "The original requires a password and could not be read.",
+  "companionReceiptPdfUnavailable": "This computer cannot extract PDF text yet.",
+  "companionReceiptLimit": "The file exceeds this task’s size, page, or text limit.",
+  "companionReceiptDateUnknown": "A complete date could not be verified, or the date is ambiguous.",
+  "companionReceiptItemUnknown": "A clear item description could not be verified.",
+  "companionReceiptAmountUnknown": "The amount or currency could not be confirmed.",
+  "companionReceiptKeepOutput": "Keep the original output folder",
+  "companionReceiptPriorResult": "The workbook from the earlier agreement was found; the new agreement has not been completed.",
+  "companionLegacyConversation": "Earlier conversation (character not recorded)",
+  "companionScreen": "Watch the screen with me",
+  "companionScreenHint": "She watches the screen with you and speaks up when something catches her eye; the screen itself is not kept, only her last few remarks",
+  "companionScreenNeedsAccess": "Turn on phone control's accessibility service first, or let her record the screen",
+  "companionScreenAllowProjection": "Allow screen recording",
+  "companionScreenVision": "Allow screen images",
+  "companionScreenVisionHint": "Images are checked for privacy with on-device text recognition (OCR) first, so it needs to be on. Up to 512 px on the longest side, never saved",
+  "companionScreenVisionTextOnly": "This capture method only reads text; images need accessibility capture with on-device text recognition on",
+  "companionScreenVisionModel": "Model for screen images",
+  "companionScreenVisionChoose": "Choose a model that accepts images",
+  "companionScreenVisionAvailable": "The selected model can see images; they're sent only while on-device text recognition is on, and never saved",
+  "companionScreenVisionChecking": "Checking the selected model; text only for now",
+  "companionScreenVisionUnavailable": "This connection or model can't take images, so screen watching uses text",
+  "companionScreenFrequency": "How often she speaks",
+  "companionScreenQuiet": "Quiet",
+  "companionScreenQuietHint": "Rarely, only when it matters",
+  "companionScreenNormal": "Normal",
+  "companionScreenNormalHint": "A word when something catches her eye",
+  "companionScreenChatty": "Chatty",
+  "companionScreenChattyHint": "Talks with you more often",
+  "companionScreenLive": "Live",
+  "@companionScreenLive": {"description": "Highest screen-watching frequency: she keeps watching and may speak several times a minute."},
+  "companionScreenLiveHint": "Keeps watching and can speak up several times a minute",
+  "@companionScreenLiveHint": {"description": "Subtitle of the Live frequency option."},
+  "companionScreenPerHour": "Most lines an hour",
+  "@companionScreenPerHour": {"description": "Caption above the choices for how many times an hour she may speak while watching the screen; quips count too."},
+  "companionScreenPerHourNone": "No limit",
+  "@companionScreenPerHourNone": {"description": "Default choice: no hourly limit on what she says while watching the screen."},
+  "companionScreenUsageAccess": "Let her know which app you're using",
+  "companionScreenCost": "About ¥{amount} today",
+  "@companionScreenCost": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "companionNotices": "She keeps an eye on your notifications",
+  "companionNoticesHint": "When an app you pick gets a notification, she takes a look and only speaks up if it matters",
+  "companionNoticesNeedsAccess": "One more step: let DSH Go read notifications",
+  "companionNoticesAllow": "Allow",
+  "companionNoticesApps": "Apps she looks at",
+  "companionNoticesAppsEmpty": "Once this is on, apps that send you notifications show up here",
+  "companionNoticesAppCount": "{count, plural, =1{1 in the last 7 days} other{{count} in the last 7 days}}",
+  "@companionNoticesAppCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "companionNoticesQuiet": "No notifications lately",
+  "companionNoticesToday": "{received} came in today · she spoke up {said, plural, =1{once} other{{said} times}}",
+  "@companionNoticesToday": {
+    "placeholders": {
+      "received": {
+        "type": "int"
+      },
+      "said": {
+        "type": "int"
+      }
+    }
+  },
+  "companionNoticesFooter": "Notifications go to the model you set up for her (DeepSeek for now), and only from the apps you pick. The text itself isn't kept, only the few notes she makes, which you can see and delete on the memory page; this phone also keeps counts, usage and markers that stop repeats. She doesn't look while the phone is locked.",
+  "companionNoticesFailed": "That didn't go through; try again",
+  "companionNoticeLevelOff": "Off",
+  "companionNoticeLevelOffHint": "She doesn't read this app's notifications",
+  "companionNoticeLevelGlance": "Glance",
+  "companionNoticeLevelGlanceHint": "Only to decide whether to tell you; forgotten right after",
+  "companionNoticeLevelRemember": "Remember",
+  "companionNoticeLevelRememberHint": "News worth keeping, she notes down",
+  "companionMemoryAll": "All",
+  "companionMemoryFromNotices": "From notifications",
+  "companionMemoryNoticesClear": "Clear all",
+  "companionMemoryNoticesClearTitle": "Forget what she saw in notifications?",
+  "companionMemoryNoticesClearBody": "Every note she made from notifications is deleted, and the same things won't be noted again.",
+  "companionPanelCompany": "Company",
+  "companionPanelHer": "Her",
+  "companionPanelTalk": "Conversation",
+  "companionPanelMore": "More",
+  "companionDrawerHere": "Always here",
+  "companionDrawerRoom": "Companion room",
+  "companionTabRoom": "Room",
+  "companionTabMemory": "Memories",
+  "companionTabTasks": "Errands",
+  "companionTabHer": "Her",
+  "companionDrawerReminderToday": "Reminder at {time}",
+  "@companionDrawerReminderToday": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "companionDrawerReminderTomorrow": "Tomorrow {time}",
+  "@companionDrawerReminderTomorrow": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "companionDrawerReminderLater": "Reminder {date}",
+  "@companionDrawerReminderLater": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "companionRawEraseAsk": "Erase the original words too — “{quote}”? It can't be undone.",
+  "@companionRawEraseAsk": {
+    "placeholders": {
+      "quote": {
+        "type": "String"
+      }
+    }
+  },
+  "companionRawEraseAskMany": "Erase the original words too — “{quote}” and {count} lines in all? It can't be undone.",
+  "@companionRawEraseAskMany": {
+    "placeholders": {
+      "quote": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "companionRawEraseYes": "Erase",
+  "companionRawEraseNo": "Keep",
+  "companionRawErased": "Done, the original words are gone too.",
+  "companionRawKept": "Okay, the original words stay.",
+  "companionRawEraseGone": "Too late this time; the original words are still here.",
+  "@companionShakeDizzy": {
+    "description": "What she says when the phone is shaken, for any character."
+  },
+  "companionSetupWorkshop": "Find one in the Workshop",
+  "@companionSetupWorkshop": {
+    "description": "On the companion setup screen: open the Workshop on its companions to download one."
+  },
+  "companionRosterTitle": "Companions",
+  "companionRosterHere": "In the room",
+  "companionRosterAdd": "Add a companion",
+  "companionRosterBring": "Bring her into the room",
+  "companionRosterRemove": "Remove from this phone",
+  "companionRosterRemoveConfirm": "Remove “{name}” from this phone? Her files are deleted; memories and reminders stay.",
+  "@companionRosterTitle": {
+    "description": "Her page's group listing every companion installed on the phone."
+  },
+  "@companionRosterHere": {
+    "description": "Under the companion who is in the room now."
+  },
+  "@companionRosterAdd": {
+    "description": "Row that adds another companion (from a file or the Workshop)."
+  },
+  "@companionRosterBring": {
+    "description": "Switch to this companion: she moves into the room, the current one is kept."
+  },
+  "@companionRosterRemove": {
+    "description": "Delete a kept (not active) companion from the phone."
+  },
+  "@companionRosterRemoveConfirm": {
+    "description": "Confirmation before deleting a kept companion.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  }
+}

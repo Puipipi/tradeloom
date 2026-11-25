@@ -1,0 +1,27 @@
+--- a/node_modules/@deepseek-ai/dsh-session-persistence-jsonl/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-session-persistence-jsonl/lib/index.js
+@@ -1616,2 +1616,3 @@
+-	link,
+-	rm: (path) => rm(path, { force: true })
++	link,
++	rename,
++	rm: (path) => rm(path, { force: true })
+@@ -2041,6 +2042,12 @@
+-	} catch (error) {
+-		/* v8 ignore else -- a non-collision filesystem error propagates unchanged. */
+-		if (isEEXIST(error)) return false;
+-		/* v8 ignore next -- the filesystem error is already complete. */
+-		throw error;
+-	}
++	} catch (error) {
++		if (isEEXIST(error)) return false;
++		if (error?.code !== "EPERM" && error?.code !== "EACCES") throw error;
++		// The production migration caller holds the directory write lease.
++		try {
++			await internals.fs.lstat(currentPath);
++			return false;
++		} catch (existingError) {
++			if (existingError?.code !== "ENOENT") throw existingError;
++		}
++		await internals.fs.rename(staged, currentPath);
++	}

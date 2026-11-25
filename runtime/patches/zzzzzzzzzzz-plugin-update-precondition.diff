@@ -1,0 +1,19 @@
+--- a/node_modules/@deepseek-ai/dsh-plugin-manager/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-plugin-manager/lib/index.js
+@@ -2699,3 +2699,3 @@
+ 				...requestId === void 0 ? {} : { requestId }
+-			}));
++			}, this.ownerContext.get("hmr") === void 0 ? { name, version: from } : void 0));
+ 			if (this.ownerContext.get("hmr") === void 0) {
+@@ -2872,3 +2872,4 @@
+ 		*/
+-		installBundle(spec, options) {
++		// expectedInstalled is an internal update precondition, not a Remote option.
++		installBundle(spec, options, expectedInstalled) {
+ 			const requestId = options?.requestId;
+@@ -2893,2 +2894,5 @@
+ 				const before = readProfileManifest("dsh", this.profile.dir).dependencies ?? {};
++				if (expectedInstalled !== void 0 && (!Object.hasOwn(before, expectedInstalled.name) || bundleManifest(expectedInstalled.name, this.profile.dir, this.profile.installAnchor)?.version !== expectedInstalled.version)) {
++					throw new Error(`Bundle ${expectedInstalled.name} changed while checking the update from ${expectedInstalled.version}. Check its current version before updating again.`);
++				}
+ 				const known = specPackageName(spec, before, this.profile.dir);

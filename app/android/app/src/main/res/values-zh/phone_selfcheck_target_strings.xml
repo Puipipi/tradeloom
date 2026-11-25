@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="phone_selfcheck_target_title">本机手机操控自检</string>
+    <string name="phone_selfcheck_target_tap">增加测试计数</string>
+    <string name="phone_selfcheck_target_input">固定文字替换测试</string>
+    <string name="phone_selfcheck_target_pattern">本机测试像素图样</string>
+</resources>

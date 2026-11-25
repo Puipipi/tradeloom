@@ -1,0 +1,35 @@
+--- a/node_modules/@deepseek-ai/dsh-atomic-write/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-atomic-write/lib/index.js
+@@ -1,5 +1,5 @@
+ import { createHash, randomBytes } from "node:crypto";
+-import { lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
++import { lstat, mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
+ import { dirname } from "node:path";
+ import { setTimeout as setTimeout$1 } from "node:timers/promises";
+ //#region lib/types/index.js
+@@ -123,12 +123,19 @@
+ 	const record = await readLockRecord(lockPath);
+ 	if (record === void 0 || !holderExited(record)) return false;
+ 	const claim = `${lockPath}.takeover-${createHash("sha256").update(record).digest("hex").slice(0, 16)}`;
+-	try {
+-		await writeFile(claim, `${process.pid}\n`, {
+-			mode: 384,
+-			flag: "wx"
+-		});
+-	} catch (error) {
++	let handle;
++	try {
++		handle = await open(claim, "wx", 384);
++		try {
++			await handle.writeFile(`${process.pid}\n`);
++		} finally {
++			await handle.close();
++		}
++	} catch (error) {
++		if (handle !== void 0) {
++			await rm(claim, { force: true });
++			throw error;
++		}
+ 		const code = error.code;
+ 		if (code === "EEXIST" || code === "EPERM") return false;
+ 		throw error;

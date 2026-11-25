@@ -1,0 +1,13 @@
+{
+  "name": "dsh-go-landing",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DSH Go home page at go.dshtui.com (site/home/README.md)",
+  "scripts": {
+    "dev": "node server.mjs",
+    "check": "node --check dist/app.js && node --check dist/author-ui.js && node --check dist/site-config.js && node --check dist/config-utils.js && node --check scripts/release-tools.mjs && node --check scripts/check-content.mjs && node --check scripts/prepare-publish.mjs",
+    "check:content": "node scripts/check-content.mjs",
+    "prepare:publish": "node scripts/prepare-publish.mjs",
+    "test": "node --test tests/release.test.mjs"
+  }
+}

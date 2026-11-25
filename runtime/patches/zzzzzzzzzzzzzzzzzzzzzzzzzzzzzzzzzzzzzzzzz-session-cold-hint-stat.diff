@@ -1,0 +1,23 @@
+diff --git a/node_modules/@deepseek-ai/dsh-api-session-controller/lib/index.js b/node_modules/@deepseek-ai/dsh-api-session-controller/lib/index.js
+index af96973..16ab0ba 100644
+--- a/node_modules/@deepseek-ai/dsh-api-session-controller/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-api-session-controller/lib/index.js
+@@ -2804,11 +2804,14 @@ var ApiSessionList = class {
+ 			projections = this.projectionsFor(header, void 0);
+ 			if (projections?.values.sessionListMetadata === void 0) {
+ 				const persistence = this.ctx.get("sessionPersistence");
+-				const stored = await persistence?.stat(header.id, { signal });
+-				signal?.throwIfAborted();
+-				if (stored === void 0) return;
++				if (persistence === void 0) return;
+ 				const cached = coldHints.get(header.id);
+-				if (cached?.identity === persistence.identity && cached.revision === stored.revision) {
++				const currentHint = cached !== void 0 && cached.identity === persistence.identity;
++				// Without a reusable hint, observeSession performs the authoritative stat.
++				const stored = currentHint ? await persistence.stat(header.id, { signal }) : void 0;
++				signal?.throwIfAborted();
++				if (currentHint && stored === void 0) return;
++				if (currentHint && cached.revision === stored.revision) {
+ 					header = cached.header;
+ 					projections = cached.projections;
+ 				} else {

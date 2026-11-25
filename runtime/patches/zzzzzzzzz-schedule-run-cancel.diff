@@ -1,0 +1,11 @@
+# DSH 0.2.2-rc.1: honor manual-run cancellation after asynchronous target activation.
+--- a/node_modules/@deepseek-ai/dsh-schedule/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-schedule/lib/index.js
+@@ -1195,6 +1195,7 @@
+ 				admitted: false
+ 			};
+ 			const target = await this.resolveTarget(task);
++			signal?.throwIfAborted();
+ 			if (this.stopping) throw new Error("Schedule runtime is stopping");
+ 			const occurrenceAt = new Date(Date.now()).toISOString();
+ 			const held = task.target.kind !== "new" ? [id] : [];

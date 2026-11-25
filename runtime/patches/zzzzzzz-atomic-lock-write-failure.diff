@@ -1,0 +1,28 @@
+--- a/node_modules/@deepseek-ai/dsh-atomic-write/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-atomic-write/lib/index.js
+@@ -200,13 +200,20 @@
+ 	let retriedUnconfirmedPermissionError = false;
+ 	for (;;) {
+ 		options?.signal?.throwIfAborted();
+-		try {
+-			await writeFile(lockPath, `${process.pid}\n`, {
+-				mode: 384,
+-				flag: "wx"
+-			});
++		let handle;
++		try {
++			handle = await open(lockPath, "wx", 384);
++			try {
++				await handle.writeFile(`${process.pid}\n`);
++			} finally {
++				await handle.close();
++			}
+ 			break;
+ 		} catch (error) {
++			if (handle !== void 0) {
++				await rm(lockPath, { force: true });
++				throw error;
++			}
+ 			if (!await isLockContention(error, lockPath)) {
+ 				if (process.platform !== "win32" || error?.code !== "EPERM" || retriedUnconfirmedPermissionError) throw error;
+ 				retriedUnconfirmedPermissionError = true;

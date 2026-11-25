@@ -1,0 +1,66 @@
+import assert from 'node:assert/strict';
+import { readFile, writeFile, unlink, mkdtemp, rm, rename } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+const prefix=resolve(process.argv[2]);
+const pkg=prefix+'/node_modules/@deepseek-ai/';
+const { Context } = await import(pathToFileURL(pkg+'cordis/lib/index.js'));
+const owner = new Context();
+const temporary=pkg+`dsh-api-session-controller/lib/title-cache-test-export-${process.pid}.mjs`;
+await writeFile(temporary,(await readFile(pkg+'dsh-api-session-controller/lib/index.js','utf8'))+'\nexport { ApiSessionList };\n');
+try {
+ const { ApiSessionList }=await import(pathToFileURL(temporary));
+ const {DomainFacility, defineDomain,domainTable}=await import(pathToFileURL(pkg+'dsh-storage-domain/lib/index.js'));
+ const {z}=await import(pathToFileURL(prefix+'/node_modules/zod/index.js'));
+ let raw={title:'old'}, pause, writes=0,reads=0;
+ const unit={loadAll:async()=>({tables:{sessions:{s:raw}},global:null}),readRecord:async()=>{reads++;return raw},statRecord:async()=>undefined,putRecord:async(t,k,v)=>{writes++;if(pause)await pause;raw=v},close:async()=>{}};
+ const ctx={fiber:owner.fiber,emit(){},logger:{warn(){},error(){}},storage:{backend:{get:()=>({kv:{open:async()=>unit}})}}};
+ const facility=new DomainFacility(ctx,{backend:'json'});
+ const domain=await facility.open(defineDomain({name:'cache_test',version:1,tables:{sessions:domainTable(z.object({title:z.string()}))}}));
+ const table=domain.table('sessions');
+ raw={title:'external'};await table.refresh('s');assert.equal(table.get('s').title,'external');assert.equal(writes,0);
+ raw=undefined;await table.refresh('s');assert.equal(table.get('s'),undefined);
+ raw={invalid:true};await table.refresh('s');assert.equal(table.get('s'),undefined);assert.equal(writes,0);
+ let release;pause=new Promise(r=>release=r);const put=table.put('s',{title:'local'});const refresh=table.refresh('s');await new Promise(r=>setImmediate(r));assert.equal(reads,3);release();await Promise.all([put,refresh]);assert.equal(table.get('s').title,'local');assert.equal(writes,1);
+ delete unit.readRecord;await table.refresh('s');assert.equal(table.get('s').title,'local');await domain.close();
+ console.log('PASS domain: external update, delete, invalid schema, serialized local write, unsupported backend');
+ const {JsonStorageBackend}=await import(pathToFileURL(pkg+'dsh-storage-json/lib/index.js'));
+ const disk=await mkdtemp('/tmp/title-cache-record-');
+ try {
+  const backend=new JsonStorageBackend(disk);
+  const unit=await backend.kv.open({name:'cache_test',version:7,compatibleVersions:[6],tables:['sessions'],hasGlobal:false,layout:'per-record'});
+  await unit.putRecord('sessions','s',{title:'one'});
+  assert.deepEqual(await unit.readRecord('sessions','s'),{title:'one'});
+  const file=disk+'/cache_test/sessions/s.json';
+  await writeFile(file,JSON.stringify({version:6,record:{title:'compatible'}}));
+  assert.equal((await unit.readRecord('sessions','s')).title,'compatible');
+  await writeFile(file,JSON.stringify({version:8,record:{title:'future'}}));assert.equal(await unit.readRecord('sessions','s'),undefined);
+  await writeFile(file,'{broken');assert.equal(await unit.readRecord('sessions','s'),undefined);
+  await assert.rejects(unit.readRecord('sessions','../escape'));
+  await unit.putRecord('sessions','s',{title:'one'});
+  const replacing=(async()=>{for(let i=0;i<20;i++) {await writeFile(file+'.tmp',JSON.stringify({version:7,record:{title:i%2?'one':'two'}}));await rename(file+'.tmp',file);}})();
+  for(let i=0;i<20;i++)assert.ok(['one','two'].includes((await unit.readRecord('sessions','s')).title));
+  await replacing;await unlink(file);assert.equal(await unit.readRecord('sessions','s'),undefined);
+  await unit.close();
+ } finally {await rm(disk,{recursive:true,force:true});}
+ console.log('PASS real JSON backend: versions, malformed, safe key, concurrent atomic replace, deletion');
+
+ let record,observations=0,stats=0,refreshes=0,revision='r1',missing=false,blank=true;
+ const header={id:'s',version:1,createdAt:1,cwd:'/tmp',isSeeded:false};
+ const values=t=>({title:t,sessionListMetadata:{blank,lastPromptAt:null}});
+ const block=t=>({asOfSeq:0,values:values(t)});
+ const persistence={identity:{},stat:async()=>{stats++;return missing?undefined:{revision,header}}};
+ const cache={refresh:async()=>{refreshes++},cachedSnapshot:()=>record,cachedPredecessorTitle:()=>undefined};
+ const contexts={sessionProjectionCache:cache,sessionPersistence:persistence};
+ const listctx={logger:{warn(){}},inject(){},sessionProjections:{register(){},summaryKeys(){return ["title","sessionListMetadata"]}},sessions:{get(){}},get:n=>contexts[n],sessionQuery:{listSessions:async()=>[{header,formatStatus:'current'}],observeSession:async()=>{observations++;return {revision,header,projections:block('log '+revision),[Symbol.dispose](){}}}}};
+ const list=new ApiSessionList(listctx,10);
+ record=block('disk1');assert.equal((await list.list())[0].projections.values.title,'disk1');assert.equal(observations,0);assert.equal(stats,0);
+ record=block('disk2');assert.equal((await list.list())[0].projections.values.title,'disk2');assert.equal(observations,0);
+ record=undefined;assert.equal((await list.list())[0].blank,true);await list.list();assert.equal(observations,1);
+ revision='r2';assert.equal((await list.list())[0].projections.values.title,'log r2');assert.equal(observations,2);
+ blank=false;revision='r3';assert.equal((await list.list())[0].blank,false);assert.equal(observations,3);
+ missing=true;assert.deepEqual(await list.list(),[]);missing=false;
+ const abort=new AbortController();abort.abort();await assert.rejects(list.list(abort.signal));
+ console.log(JSON.stringify({case:'list-call-counts',refreshes,observations,stats}));
+ console.log('PASS list: cached record never observes log, changed record refreshes, miss LRU avoids repeat observe, revision invalidates, deletion skipped, abort propagates');
+} finally {await owner.fiber.dispose();await unlink(temporary);}

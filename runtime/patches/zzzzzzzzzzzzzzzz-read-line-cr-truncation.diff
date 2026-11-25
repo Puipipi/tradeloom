@@ -1,0 +1,7 @@
+--- a/node_modules/@deepseek-ai/dsh-tool-fs/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-tool-fs/lib/index.js
+@@ -73,3 +73,3 @@
+ 	const acc = newAccumulator();
+-	const lineBufferCap = request.maxLineLength + 1;
++	const lineBufferCap = request.maxLineLength + 2;
+ 	let lineBuffer = "";

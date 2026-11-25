@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Mist Glass page gradient; the Flutter backdrop starts from the
+         same colour, so there is no white flash between the splash and the first frame. -->
+    <color name="launch_background_top">#FFEBF1FE</color>
+    <color name="launch_background_bottom">#FFF6F7FC</color>
+    <!-- The splash icon's backdrop (windowSplashScreenIconBackgroundColor): one step off the page
+         colour. Android 12+ draws an animated icon 1.2x larger (192dp) when this is transparent or
+         equal to the splash colour; any other value keeps it in the 160dp square the app's first
+         frame uses. It isn't drawn behind an adaptive icon, and one step off the page wouldn't
+         show if a system drew it anyway. -->
+    <color name="launch_icon_ground">#FFEBF1FF</color>
+</resources>
