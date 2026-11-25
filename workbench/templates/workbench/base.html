@@ -18,7 +18,7 @@
         </a>
         <nav class="main-nav" aria-label="主要业务板块" data-testid="main-nav">
           <a class="nav-link {% if page == 'home' %}active{% endif %}" href="{% business_path '/home' %}" data-testid="nav-home" {% if page == 'home' %}aria-current="page"{% endif %}>首页</a>
-          <a class="nav-link {% if page == 'products' %}active{% endif %}" href="{% business_path '/products' %}" data-testid="nav-products" {% if page == 'products' %}aria-current="page"{% endif %}>成本台账</a>
+          <a class="nav-link {% if page == 'products' %}active{% endif %}" href="{% business_path '/products' %}" data-testid="nav-products" {% if page == 'products' %}aria-current="page"{% endif %}>产品资料</a>
           <a class="nav-link {% if page == 'orders' %}active{% endif %}" href="{% business_path '/orders' %}" data-testid="nav-orders" {% if page == 'orders' %}aria-current="page"{% endif %}>订单与生产</a>
           <a class="nav-link {% if page == 'agent_center' %}active{% endif %}" href="{% business_path '/agent-center' %}" data-testid="nav-agent-center" {% if page == 'agent_center' %}aria-current="page"{% endif %}>工作流</a>
           <a class="nav-link {% if page == 'artifacts' %}active{% endif %}" href="{% business_path '/artifacts' %}" data-testid="nav-artifacts" {% if page == 'artifacts' %}aria-current="page"{% endif %}>交付物</a>
@@ -54,7 +54,7 @@
         <main class="content-area" id="main-content">
           {% if page == 'products' or page == 'customers' %}
           <nav class="customer-context-nav" aria-label="产品与客户">
-            <a class="customer-context-link {% if page == 'products' %}is-active{% endif %}" href="{% business_path '/products' %}" {% if page == 'products' %}aria-current="page"{% endif %}>成本台账</a>
+            <a class="customer-context-link {% if page == 'products' %}is-active{% endif %}" href="{% business_path '/products' %}" {% if page == 'products' %}aria-current="page"{% endif %}>产品资料</a>
             <a class="customer-context-link {% if page == 'customers' %}is-active{% endif %}" href="{% business_path '/customers' %}" data-testid="customer-context-customers" {% if page == 'customers' %}aria-current="page"{% endif %}>客户洞察</a>
           </nav>
           {% endif %}

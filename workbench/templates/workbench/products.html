@@ -1,7 +1,7 @@
 {% extends "workbench/base.html" %}
 {% load business_urls %}
-{% block page_eyebrow %}成本台账 / SKU 单件核算{% endblock %}
-{% block page_title %}成本台账{% endblock %}
+{% block page_eyebrow %}产品资料 / SKU 成本台账{% endblock %}
+{% block page_title %}产品资料{% endblock %}
 {% block stylesheets %}{{ block.super }}<link rel="stylesheet" href="{% business_path '/static/workbench/sku-ledger.css' %}">
 <script>
   /* 折叠状态记在本机：先给根元素打类，body 一渲染就是收起的，不会先铺开再塌回去 */

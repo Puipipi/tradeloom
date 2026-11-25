@@ -1,7 +1,7 @@
 # SKU 成本台账：功能说明与实现方法
 
-> 位置：`workbench/sku/` + `workbench/templates/workbench/products.html`（页面路由仍是 `/products`）
-> 取代：原「产品资料 / 只读总览」页面
+> 位置：`workbench/sku/` + `workbench/templates/workbench/products.html`（页面路由仍是 `/products`，导航名仍是「产品资料」）
+> 取代：原「产品资料 / 只读总览」页面的内容（表格与批次列表面板下线，页面本身保留）
 > 迁移：`0021_sku_ledger` → `0026_sku_duty_preferred`，依赖 `0020_business_documents`
 
 ## 1. 这个模块回答什么
@@ -18,7 +18,7 @@
 | 商品清单从 CSV 导入或官网后台推送（可重建） | 在界面上单条新增 / 删除 / 改名 SKU |
 | 期间费用按月、按市场登记，与商品毛利在汇总层相加 | 把期间费用摊回单件成本 |
 
-**为什么把「产品资料」换成「成本台账」**：原来的页面是把 intake 解析出的产品事实列出来看，回答的是「资料齐不齐」；实际经营里更常被问到的是「这价能不能接」。两者用同一批 SKU 主数据，但只有成本台账每天都要改数字，所以这个槽位给了台账。产品资料的数据模型（`Product` / `ProductRevision`）与 `/api/products/**`、`/api/product-library` 全部保留，交付物生成、ERPNext 适配、图片恢复仍走原链路，只是不再有独立页面。
+**为什么这个槽位给了成本台账**：原来的页面是把 intake 解析出的产品事实列出来看，回答的是「资料齐不齐」；实际经营里更常被问到的是「这价能不能接」。两者用同一批 SKU 主数据，但只有成本台账每天都要改数字，所以这个槽位给了台账。**导航与页面标题仍是「产品资料」**（与桌面版「织贸工作台」完全一致），换掉的只是页面内容。产品资料的数据模型（`Product` / `ProductRevision`）与 `/api/products/**`、`/api/product-library` 全部保留，交付物生成、ERPNext 适配、图片恢复仍走原链路，只是不再有独立页面。
 
 ## 2. 数据模型
 
@@ -178,3 +178,38 @@ TRADELOOM_DB_TEST_NAME=tradeloom_test_xxx python manage.py test \
 | 日本 / 澳洲 / 香港不自动取数 | 返回官网链接，人工填 | 有稳定机读接口再接 |
 | 「本月销售额」是估算 | 售价 × 预估月销，页面标「按预估月销」 | 接订单模块后换成实际成交额 |
 | 逐笔订单汇率 | 不在本模块 | 订单模块按单登记，台账只做月度参考 |
+
+## 12. 模块清单（按文件读代码）
+
+改动集中在 12 个文件、约 5700 行，读代码建议按下面顺序：先 `market → service`（口径），再 `store → api`（数据与接口），最后前端。
+
+| 文件 | 行数 | 职责 | 读它的理由 |
+|---|---|---|---|
+| `workbench/sku/__init__.py` | 14 | 域包门面，导出对外符号 | 看清模块边界 |
+| `workbench/sku/market.py` | 108 | 6 个出口市场、各自币种、`supported` 标记 | 「市场」这个词在这里被定义，中国内地不参与比价 |
+| `workbench/sku/service.py` | 712 | **纯函数核算**：到岸成本、商品毛利、保本价、四类建议；不碰数据库 | 全部算术都在这，可直接单测 |
+| `workbench/sku/store.py` | 775 | 数据库读写：整份状态装配、patch 落库、清单/成本导入、期间费用、设置、汇率快照 | 表结构与「0 vs 空白」在这落地 |
+| `workbench/sku/api.py` | 400 | 14 条 HTTP 接口、`ok/error_code` 契约、JSON 体校验 | 前端只认这里的返回 |
+| `workbench/sku/fx.py` | 208 | 三源并行取汇率、取中位数、偏离校验、断网回退上次快照 | 「缓存的汇率」从哪来 |
+| `workbench/sku/duty_lookup.py` | 726 | 按 HS 向 USITC / UK Trade Tariff / TARIC 查基础税与附加税 | 自动取税率只覆盖美英欧 |
+| `workbench/sku/catalog.py` | 108 | 商品清单 CSV 解析、官网后台推送 | 清单为什么能重建 |
+| `workbench/templates/workbench/products.html` | 340 | 页面骨架：统计条、市场条、14 列表格、期间费用、选品建议 | 一眼看清页面由哪几块拼成 |
+| `workbench/static/workbench/sku-ledger.js` | 1372 | 交互层：`applyState` 全量渲染、自动保存、筛选、税率弹窗 | 改 DOM 与保存的时序都在这 |
+| `workbench/static/workbench/sku-ledger.css` | 640 | 台账表格、市场芯片、折叠区样式 | 样式名与模板一一对应 |
+| `workbench/tests/test_sku_ledger.py` | 312 | 15 条回归：黄金数字、口径、导出、建议 | 改算法先跑它 |
+
+一次请求的数据流：
+
+```
+浏览器 GET /api/sku
+  → sku/api.py::library
+    → store.load_state()      读 7 张表 + 汇率快照（过期才刷新）
+    → service.compute()       逐 SKU 算到岸成本 / 毛利 / 保本价
+    → service.advice()        跨市场比价，产出四类建议
+  ← 一份完整 state（设置 + 市场条 + 14 列行 + 统计 + 期间费用 + 关税缺口）
+浏览器渲染 ← sku-ledger.js::applyState(state)
+```
+
+写操作走同一条路：`POST /api/sku/rows` → `store.save_cost_patch()` 落库 → **重算整份 state 返回**，前端局部替换，不整页刷新。所以「自动保存」不会打断光标，也不会出现只更新一格、合计没跟着变的情况。
+
+想在桌面版里看效果：双击桌面「织贸助手（桌面版）」→ 左侧「商品」→「产品资料」，首屏就是这份台账。
