@@ -1551,3 +1551,84 @@ class SkuFxSnapshot(models.Model):
     divergent = models.BooleanField(default=False)
     spread = models.DecimalField(max_digits=18, decimal_places=6, default=0)
     checked_at = models.DateTimeField(null=True, blank=True)
+
+
+# ------------------------------------------------------------------ UN Comtrade
+
+class SkuTradeSnapshot(models.Model):
+    """UN Comtrade 的一条贸易观测：HS6 × 报告国 × 伙伴国 × 流向 × 年份。
+
+    只存**原始观测**，不存推导值。份额、增速、单价带都是「同一批行怎么算」，
+    放在 service 层，口径要改时不用回写全表——上游一年才更新一次，
+    但口径（比如用 CIF 还是 FOB、要不要剔掉转口）随时会调整。
+
+    ``partner_code=0`` 是世界合计，``156`` 是中国。需求侧就看这两行：
+    世界合计是市场容量，中国那行是「这块蛋糕里我们占多少」。
+    ``primary_value`` 单位统一是美元——Comtrade 自己按报告国本币折算后给的美元值，
+    不在这里做汇率换算，否则跨年比较会被汇率波动污染。
+    """
+
+    id = models.CharField(primary_key=True, max_length=32, default=hex_uuid, editable=False)
+    hs6 = models.CharField(max_length=6, db_index=True)
+    reporter_code = models.PositiveIntegerField()          # Comtrade 数字码，842=美国
+    reporter_name = models.CharField(max_length=80, blank=True, default="")
+    partner_code = models.PositiveIntegerField(default=0)  # 0 = World
+    partner_name = models.CharField(max_length=80, blank=True, default="")
+    flow = models.CharField(max_length=2, default="M")     # M 进口 / X 出口
+    period = models.PositiveIntegerField()                 # 四位年份
+    primary_value = models.DecimalField(max_digits=26, decimal_places=2, default=0)
+    net_wgt = models.DecimalField(max_digits=26, decimal_places=3, null=True, blank=True)
+    qty = models.DecimalField(max_digits=26, decimal_places=3, null=True, blank=True)
+    qty_unit = models.CharField(max_length=16, blank=True, default="")
+    source = models.CharField(max_length=32, default="UN Comtrade")
+    fetched_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["hs6", "period", "reporter_code", "partner_code"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["hs6", "reporter_code", "partner_code", "flow", "period"],
+                name="sku_trade_obs_unique",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["hs6", "period"], name="sku_trade_hs_period"),
+            models.Index(fields=["period"], name="sku_trade_period"),
+        ]
+
+
+class SkuTradeRun(models.Model):
+    """一次同步流水。页面只显示最近几条，用来回答「数据是哪天拉的、缺了哪些」。
+
+    ``failed`` 记的是 HS6 列表而不是计数：知道「哪几个编码没拉到」才能重试，
+    只知道「失败了 3 个」等于没记。
+    """
+
+    id = models.CharField(primary_key=True, max_length=32, default=hex_uuid, editable=False)
+    mode = models.CharField(max_length=16, default="preview")   # preview / subscription
+    years = models.CharField(max_length=64, blank=True, default="")
+    requested = models.PositiveIntegerField(default=0)
+    fetched = models.PositiveIntegerField(default=0)
+    observations = models.PositiveIntegerField(default=0)
+    failed = models.JSONField(default=list, blank=True)
+    note = models.CharField(max_length=300, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "id"]
+
+
+class SkuTradeSetting(models.Model):
+    """Comtrade 接入设置（单例）。
+
+    ``api_key`` 不填也能用：public preview 端点免 key，只是限制「一次一个编码、
+    一个年份、500 行」——正好是我们的查询形状，所以默认走 preview。
+    填了 key 才走正式端点，可以一次多编码多年份，也不受 preview 的 500 行限制。
+
+    key 只落本地库：桌面版是单机数据库，不上传、不进日志（日志只记 mode）。
+    """
+
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+    api_key = models.CharField(max_length=120, blank=True, default="")
+    lookback_years = models.PositiveSmallIntegerField(default=3)  # 回看年数（含最新一年）
+    updated_at = models.DateTimeField(auto_now=True)

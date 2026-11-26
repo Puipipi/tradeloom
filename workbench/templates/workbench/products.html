@@ -1,8 +1,9 @@
 {% extends "workbench/base.html" %}
 {% load business_urls %}
-{% block page_eyebrow %}产品资料 / SKU 成本台账{% endblock %}
+{% block page_eyebrow %}产品资料 / SKU · UN Comtrade · 选品建议{% endblock %}
 {% block page_title %}产品资料{% endblock %}
 {% block stylesheets %}{{ block.super }}<link rel="stylesheet" href="{% business_path '/static/workbench/sku-ledger.css' %}">
+<link rel="stylesheet" href="{% business_path '/static/workbench/trade-ledger.css' %}">
 <script>
   /* 折叠状态记在本机：先给根元素打类，body 一渲染就是收起的，不会先铺开再塌回去 */
   try {
@@ -15,9 +16,18 @@
   } catch (e) { /* 隐私模式禁读：按展开处理 */ }
 </script>{% endblock %}
 {% block content %}
+{# 三个模块各自一块，切换只改 hidden 不重载：SKU 表格有 144 行，重载一次很贵 #}
+<div class="pd-tabs" role="tablist" aria-label="产品资料模块">
+  <button type="button" class="pd-tab is-on" role="tab" data-pd-tab="sku"
+          aria-controls="sku-panel" aria-selected="true" data-testid="pd-tab-sku">SKU 成本台账</button>
+  <button type="button" class="pd-tab" role="tab" data-pd-tab="trade"
+          aria-controls="trade-panel" aria-selected="false" data-testid="pd-tab-trade">UN Comtrade</button>
+  <button type="button" class="pd-tab" role="tab" data-pd-tab="advice"
+          aria-controls="advice-panel" aria-selected="false" data-testid="pd-tab-advice">选品建议</button>
+</div>
 <div class="page-stack">
   {% if sku_ledger %}
-  <section class="panel sku-panel" id="sku-panel" data-testid="sku-panel" data-api="{% business_path '/api/sku' %}">
+  <section class="panel sku-panel pd-view" id="sku-panel" data-pd-view="sku" data-testid="sku-panel" data-api="{% business_path '/api/sku' %}">
 
     <div class="panel-heading sku-head">
       <div>
@@ -204,25 +214,6 @@
       </div>{# /sku-period-body #}
     </section>
 
-    <section class="sku-advice" id="sku-advice" data-testid="sku-advice">
-      <div class="sku-advice-head">
-        <h3>
-          <button class="sku-advice-toggle" type="button" id="sku-advice-toggle"
-                  aria-expanded="false" aria-controls="sku-advice-body">
-            <span class="sku-caret" aria-hidden="true">▾</span><span>选品建议</span>
-            <span class="sku-advice-badge" id="sku-advice-badge">正在算…</span>
-          </button>
-        </h3>
-        <button type="button" class="button secondary" id="sku-advice-refresh" data-testid="sku-advice-refresh">重算</button>
-      </div>
-      <div id="sku-advice-body" hidden>
-        <p class="sku-advice-headline" id="sku-advice-headline">正在按各市场算一遍…</p>
-        <p class="sku-advice-hint" id="sku-advice-hint" hidden></p>
-        <div class="sku-advice-markets" id="sku-advice-markets"></div>
-        <ul class="sku-advice-list" id="sku-advice-list"></ul>
-      </div>
-    </section>
-
     <form style="display:none">{% csrf_token %}</form>
 
     <dialog id="sku-catalog-dlg" style="border:1px solid var(--line);border-radius:12px;padding:0;max-width:660px;width:92%">
@@ -325,7 +316,7 @@
 
   </section>
   {% else %}
-  <section class="panel">
+  <section class="panel pd-view" data-pd-view="sku">
     <div class="panel-heading">
       <div>
         <h2>SKU 成本台账</h2>
@@ -335,6 +326,112 @@
   </section>
   {% endif %}
 
+  {% comment %}
+  模块二：UN Comtrade 需求侧。
+  表格由 trade-ledger.js 用注入的 JSON 渲染——单元格要按「市场 × 编码」取，
+  Django 模板做不了动态键，硬塞会变成一堆 if 标签。
+  {% endcomment %}
+  <section class="panel pd-view" id="trade-panel" data-pd-view="trade"
+           data-testid="trade-panel" data-api="{% business_path '/api/trade' %}" hidden>
+    <div class="panel-heading sku-head">
+      <div>
+        <h2>UN Comtrade 需求侧</h2>
+        <p class="sku-sub">
+          按台账的 HS 编码查各国进口额，回答「这个市场一年吃掉多少」。
+          年度数据、滞后 1–2 年；欧盟按德法意西荷五国合计，不含转口国单列。
+        </p>
+      </div>
+      <div class="sku-actions">
+        <button class="button primary" type="button" id="trade-sync" data-testid="trade-sync">同步数据</button>
+        <button class="button secondary" type="button" id="trade-settings" data-testid="trade-settings">接入设置</button>
+      </div>
+    </div>
+
+    <div class="trade-stats" id="trade-stats"></div>
+
+    <div class="trade-progress" id="trade-progress" hidden>
+      <div class="trade-progress-track"><i id="trade-progress-fill"></i></div>
+      <span id="trade-progress-text"></span>
+    </div>
+
+    <p class="trade-note" id="trade-note" hidden></p>
+
+    <div class="trade-empty" id="trade-empty" hidden></div>
+
+    <div class="trade-table-wrap" id="trade-table-wrap" hidden>
+      <table class="trade-table" data-testid="trade-table">
+        <thead id="trade-thead"></thead>
+        <tbody id="trade-tbody"></tbody>
+      </table>
+      <p class="trade-legend">
+        <span class="trade-chip is-big">大</span>≥ 3 亿美元
+        <span class="trade-chip is-mid">中</span>2000 万 – 3 亿
+        <span class="trade-chip is-small">小</span>&lt; 2000 万
+        <span class="trade-chip is-none">—</span>无进口记录
+        ·「同比」是最新一年对上一年的变化 · 鼠标停在格子上可看单价带与口径
+      </p>
+    </div>
+
+    <dialog id="trade-settings-dlg" style="border:1px solid var(--line);border-radius:12px;padding:0;max-width:560px;width:92%">
+      <div style="padding:14px 18px;border-bottom:1px solid var(--line);font-weight:620">UN Comtrade 接入设置</div>
+      <div style="padding:14px 18px">
+        <p style="margin:0 0 12px;color:#6b7480;font-size:12.5px">
+          不填 Key 也能用：公共预览端点免 key，限制「一次一个编码、一个年份、500 行」，
+          正好是这里的查询形状。填了 Key 走正式端点，可以一次多编码多年份。
+          Key 只存本地库，不上传，也不写进日志。
+        </p>
+        <label class="trade-field">
+          <span>Subscription Key（可选）</span>
+          <input type="password" id="trade-key" autocomplete="off" placeholder="留空 = 用免 key 的预览端点">
+        </label>
+        <label class="trade-field">
+          <span>回看年数</span>
+          <input type="number" id="trade-lookback" min="1" max="10" step="1">
+        </label>
+        <p id="trade-settings-out" style="color:#6b7480;font-size:12px;margin:8px 0 0"></p>
+      </div>
+      <div style="padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end">
+        <button type="button" class="button secondary" id="trade-settings-clear" style="margin-right:auto">改用免 Key</button>
+        <button type="button" class="button secondary" id="trade-settings-cancel">取消</button>
+        <button type="button" class="button primary" id="trade-settings-ok">保存</button>
+      </div>
+    </dialog>
+
+    {{ trade_state|json_script:"trade-data" }}
+  </section>
+
+  {% comment %}
+  模块三：选品建议。
+  从 SKU 台账里搬出来独立成页：它读两份数据（成本 + 需求），
+  和台账的「一行一个 SKU」不是一回事，混在一起会让人以为它只是台账的附注。
+  {% endcomment %}
+  <section class="panel pd-view" id="advice-panel" data-pd-view="advice"
+           data-testid="advice-panel" data-api="{% business_path '/api/advice' %}" hidden>
+    <div class="panel-heading sku-head">
+      <div>
+        <h2>选品建议</h2>
+        <p class="sku-sub">
+          成本侧看各市场毛利，需求侧看 HS 编码在那边一年进口多少。
+          「毛利最高但没量」会单独标出来——这是只看成本最容易踩的坑。
+        </p>
+      </div>
+      <div class="sku-actions">
+        <button class="button secondary" type="button" id="advice-refresh" data-testid="advice-refresh">重算</button>
+      </div>
+    </div>
+
+    <p class="sku-advice-headline" id="advice-headline">切到本页时开始计算…</p>
+    <p class="sku-advice-hint" id="advice-hint" hidden></p>
+    <div class="sku-advice-markets" id="advice-markets"></div>
+    <ul class="sku-advice-list" id="advice-list"></ul>
+  </section>
+
 </div>
 {% endblock %}
-{% block scripts %}<script src="{% business_path '/static/workbench/sku-ledger.js' %}" defer></script>{% endblock %}
+{% block scripts %}
+<script src="{% business_path '/static/workbench/trade-ledger.js' %}" defer></script>
+<script src="{% business_path '/static/workbench/advice-panel.js' %}" defer></script>
+<script src="{% business_path '/static/workbench/sku-ledger.js' %}" defer></script>
+{# tabs 放最后：它初始化时会派发 pd:show，前面几个面板得先把监听注册好 #}
+<script src="{% business_path '/static/workbench/products-tabs.js' %}" defer></script>
+{% endblock %}

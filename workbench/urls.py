@@ -12,6 +12,7 @@ from .execution_plans import api as execution_plan_api
 from .procurement import api as procurement_api
 from .materials import api as material_api
 from .sku import api as sku_api
+from .trade import api as trade_api
 from . import canvas_workflow_api, native_artifact_api, dispatch_api, canvas_workflow_definition_api
 from . import orders_api
 
@@ -65,7 +66,16 @@ urlpatterns = [
     path("api/sku/duty/lookup", sku_api.duty_lookup),
     path("api/sku/hs-bulk", sku_api.hs_bulk),
     path("api/sku/period", sku_api.period_cost),
-    path("api/sku/advice", sku_api.advice),
+    # ── UN Comtrade 需求侧 ──────────────────────────────────────────────────
+    # 面板状态、分批同步（前端带 offset 续跑）、接入设置。
+    path("api/trade", trade_api.state),
+    path("api/trade/sync", trade_api.sync),
+    path("api/trade/settings", trade_api.settings_update),
+    path("api/trade/clear", trade_api.clear),
+    # 选品建议已独立成模块：成本侧（SKU 毛利）× 需求侧（Comtrade 进口额）。
+    # /api/sku/advice 保留为兼容别名——旧页面与外部脚本还打这个地址。
+    path("api/advice", trade_api.advice),
+    path("api/sku/advice", trade_api.advice),
     path("api/intake/sources", intake_api.source_collection),
     path("api/intake/narratives", intake_api.narrative_collection),
     path("api/intake/narratives/<str:narrative_id>/lines", intake_api.narrative_lines),

@@ -141,6 +141,24 @@ def load_preferred_map(mk: str) -> dict[str, float]:
     return out
 
 
+def all_duty_prefixes() -> list[dict]:
+    """所有市场配过的 HS 前缀（去重）。
+
+    这些编码是**这批货真实报关用过的**——台账里逐 SKU 填的 hs_code 可能还没填，
+    但关税表里有就说明确实按这个编码出口。UN Comtrade 面板用它兜底，
+    否则「没填 HS」会被误判成「没有商品」。
+    """
+    seen: dict[str, dict] = {}
+    for rate in SkuDutyRate.objects.all().order_by("hs_prefix", "market"):
+        prefix = str(rate.hs_prefix or "").strip()
+        if not prefix:
+            continue
+        item = seen.setdefault(prefix, {"prefix": prefix, "markets": []})
+        if rate.market not in item["markets"]:
+            item["markets"].append(rate.market)
+    return list(seen.values())
+
+
 def list_duty_rates(mk: str) -> list[dict]:
     market_code = market.normalize_market(mk)
     rows = []

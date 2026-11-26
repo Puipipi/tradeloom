@@ -304,7 +304,10 @@ class SkuLedgerApiTests(SkuLedgerCase):
         self.assertIn("US", codes)
         self.assertEqual(
             set(payload),
-            {"month", "current_market", "current_name", "headline", "hint", "markets", "suggestions"},
+            # has_demand / coverage 是需求侧接入后新增的：一个给前端判断「要不要提示去同步」，
+            # 一个给选品页显示「几个编码有数据」。老字段一个没少。
+            {"month", "current_market", "current_name", "headline", "hint",
+             "has_demand", "coverage", "markets", "suggestions"},
         )
         # 香港是默认零关税，只能作参考：必须带 assumed_zero 标出来
         hk = next((item for item in payload["markets"] if item["code"] == "HK"), None)

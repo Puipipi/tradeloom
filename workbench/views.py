@@ -26,6 +26,8 @@ from .models import (
 from .intake.schemas import FIELD_SCHEMAS
 from .services import WorkbenchNotFoundError, WorkbenchService
 from .sku import store as sku_store
+from .trade import service as trade_service
+from .trade import store as trade_store
 
 logger = logging.getLogger(__name__)
 
@@ -224,24 +226,30 @@ def orders(request):
 
 @ensure_csrf_cookie
 def products(request):
-    """SKU 成本台账：单件成本、各市场毛利、期间费用与选品建议。
+    """产品资料：SKU 成本台账 / UN Comtrade 需求侧 / 选品建议 三个模块。
 
     商品身份（货号、名称、系列、规格、在售状态）以官网主数据为准，页面只维护
     主数据里没有的价格与成本；清单从 CSV 导入或官网后台推送进来，界面不提供
     单条增删——两个入口各改一份，最后没人说得清哪份是真的。
 
-    台账读不出来也要出页面：表还没迁移或本地库有问题时，显示「暂无数据」比
-    整页 500 更容易让人知道下一步该做什么。
+    三个模块各自读一份数据，**互不阻塞**：台账读不出来只影响第一个 tab，
+    Comtrade 状态读失败也只是那个面板显示空态，不会让整页 500。
     """
     try:
         sku_ledger = sku_store.snapshot()
     except Exception:  # noqa: BLE001 — 见上：宁可空页面，不要白屏
         logger.exception("SKU 台账读取失败")
         sku_ledger = None
+    try:
+        entries, invalid = trade_service.ledger_hs6()
+        trade_state = trade_store.state(entries, invalid)
+    except Exception:  # noqa: BLE001 — 需求侧的库表还没迁移时不该拖垮整个页面
+        logger.exception("UN Comtrade 状态读取失败")
+        trade_state = None
     return render(
         request,
         "workbench/products.html",
-        _page_context("products", sku_ledger=sku_ledger),
+        _page_context("products", sku_ledger=sku_ledger, trade_state=trade_state),
     )
 
 

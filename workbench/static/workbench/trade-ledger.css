@@ -1,0 +1,268 @@
+/* 产品资料页的三模块骨架 + UN Comtrade 面板。
+ *
+ * 与 sku-ledger.css 分开：一个管「一行一个 SKU 的成本台账」，一个管
+ * 「编码 × 国家的贸易矩阵」，两者唯一的交叉是选品建议的市场行——
+ * 那部分在这里覆盖，因为需求列是新加的。
+ */
+
+/* ── 模块切换 ─────────────────────────────────────────────────────────── */
+
+.pd-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 0 0 14px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f7f8fa;
+  width: fit-content;
+}
+
+.pd-tab {
+  padding: 7px 16px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 520;
+  color: #55606e;
+  cursor: pointer;
+  transition: background .12s, color .12s;
+}
+
+.pd-tab:hover { background: #eceff3; color: #2c3e50; }
+
+.pd-tab.is-on {
+  background: #fff;
+  color: #185fa5;
+  font-weight: 620;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, .08);
+}
+
+.pd-view[hidden] { display: none !important; }
+
+/* ── Comtrade 统计条 ─────────────────────────────────────────────────── */
+
+.trade-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.trade-stat {
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fbfcfd;
+}
+
+.trade-stat span { display: block; font-size: 11.5px; color: #6b7480; }
+.trade-stat strong { display: block; margin-top: 3px; font-size: 15px; font-weight: 620; color: #22303f; }
+
+/* ── 同步进度 ────────────────────────────────────────────────────────── */
+
+.trade-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0;
+  font-size: 12.5px;
+  color: #4a5563;
+}
+
+.trade-progress[hidden] { display: none; }
+
+.trade-progress-track {
+  flex: 0 0 220px;
+  height: 6px;
+  border-radius: 3px;
+  background: #eceff3;
+  overflow: hidden;
+}
+
+.trade-progress-track i {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 3px;
+  background: #185fa5;
+  transition: width .25s ease;
+}
+
+.trade-note {
+  margin: 6px 0 10px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: #fff8e8;
+  color: #8a5b00;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.trade-note[hidden] { display: none; }
+
+.trade-empty {
+  margin: 14px 0;
+  padding: 22px 20px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  background: #fbfcfd;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #4a5563;
+}
+
+.trade-empty[hidden] { display: none; }
+.trade-empty b { display: block; margin-bottom: 4px; color: #22303f; font-weight: 620; }
+.trade-empty span { color: #6b7480; font-size: 12.5px; }
+
+/* ── 贸易矩阵 ────────────────────────────────────────────────────────── */
+
+.trade-table-wrap {
+  margin: 8px 0 0;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.trade-table-wrap[hidden] { display: none; }
+
+.trade-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.trade-table thead th {
+  position: sticky;
+  top: 0;
+  padding: 9px 10px;
+  background: #f7f8fa;
+  border-bottom: 1px solid var(--line);
+  font-size: 11.5px;
+  font-weight: 620;
+  color: #55606e;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.trade-table tbody td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #f0f2f5;
+  vertical-align: top;
+}
+
+.trade-table tbody tr:last-child td { border-bottom: 0; }
+.trade-table tbody tr:hover { background: #fafbfc; }
+
+.trade-hs { white-space: nowrap; }
+.trade-hs b { font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace); font-size: 12.5px; }
+
+.trade-badge {
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #fff4e5;
+  color: #b26a00;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.trade-cover { color: #6b7480; white-space: nowrap; }
+
+.trade-cell { min-width: 118px; }
+.trade-cell b { display: block; font-weight: 620; font-size: 12.5px; color: #22303f; }
+.trade-cell .trade-sub { display: block; margin-top: 2px; font-size: 11px; color: #6b7480; }
+.trade-cell.is-void b { display: none; }
+
+.trade-void { font-size: 11.5px; color: #a8b0ba; }
+
+/* 档位配色：绿 = 有量，蓝 = 中等，橙 = 小池子，灰 = 没有 */
+.trade-cell.is-big b { color: #1f7a4d; }
+.trade-cell.is-mid b { color: #185fa5; }
+.trade-cell.is-small b { color: #b26a00; }
+.trade-cell.is-none b { color: #98a1ab; }
+.trade-cell.is-none .trade-sub { color: #a8b0ba; }
+
+.trade-legend {
+  margin: 0;
+  padding: 9px 12px;
+  border-top: 1px solid #f0f2f5;
+  background: #fbfcfd;
+  font-size: 11.5px;
+  color: #6b7480;
+  line-height: 1.8;
+}
+
+.trade-chip {
+  display: inline-block;
+  min-width: 18px;
+  margin: 0 3px 0 10px;
+  padding: 0 5px;
+  border-radius: 4px;
+  font-size: 10.5px;
+  font-weight: 620;
+  text-align: center;
+}
+
+.trade-chip:first-child { margin-left: 0; }
+.trade-chip.is-big { background: #e7f6ee; color: #1f7a4d; }
+.trade-chip.is-mid { background: #e8f4ff; color: #185fa5; }
+.trade-chip.is-small { background: #fff4e5; color: #b26a00; }
+.trade-chip.is-none { background: #f0f2f5; color: #98a1ab; }
+
+.trade-field { display: block; margin: 0 0 10px; }
+.trade-field span { display: block; margin-bottom: 4px; font-size: 12.5px; color: #4a5563; }
+.trade-field input {
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  font: inherit;
+  font-size: 13px;
+}
+
+/* ── 选品建议：市场行加了「需求」一列 ──────────────────────────────── */
+
+.sku-advice-market {
+  grid-template-columns: 104px 1fr 56px 130px 108px;
+}
+
+.sku-advice-market .demand {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  font-size: 11.5px;
+  color: #6b7480;
+  white-space: nowrap;
+}
+
+.sku-advice-market .demand b { font-weight: 600; }
+.sku-advice-market .demand i {
+  font-style: normal;
+  padding: 0 4px;
+  border-radius: 4px;
+  font-size: 10px;
+}
+
+.sku-advice-market .demand.is-big b { color: #1f7a4d; }
+.sku-advice-market .demand.is-big i { background: #e7f6ee; color: #1f7a4d; }
+.sku-advice-market .demand.is-mid b { color: #185fa5; }
+.sku-advice-market .demand.is-mid i { background: #e8f4ff; color: #185fa5; }
+.sku-advice-market .demand.is-small b { color: #b26a00; }
+.sku-advice-market .demand.is-small i { background: #fff4e5; color: #b26a00; }
+.sku-advice-market .demand.is-none b,
+.sku-advice-market .demand.is-void b { color: #98a1ab; }
+.sku-advice-market .demand.is-none i,
+.sku-advice-market .demand.is-void i { background: #f0f2f5; color: #98a1ab; }
+
+/* 「没量」是需求侧唯一能推翻成本结论的判断，配色要比亏损更醒目 */
+.sku-advice-item.is-starved { border-left: 3px solid #b26a00; }
+.sku-advice-item.is-starved .tag { background: #fff4e5; color: #b26a00; }
+
+@media (max-width: 900px) {
+  .sku-advice-market { grid-template-columns: 96px 1fr 52px 118px; }
+  .sku-advice-market .meta { display: none; }
+}

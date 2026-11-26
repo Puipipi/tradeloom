@@ -159,19 +159,6 @@ def rows_update(request: HttpRequest) -> JsonResponse:
     return JsonResponse(_state(body.get("month")))
 
 
-@require_GET
-@_guard
-def advice(request: HttpRequest) -> JsonResponse:
-    """选品建议：把同一批 SKU 放到每个出口市场各算一遍（中国内地不参与），只输出「该做什么」。
-
-    不做的两件事，免得看起来像自动决策：
-      1. 不猜未配税率的市场——那会把「没查」算成「零关税」，得出假的高毛利；
-      2. 不给「建议下架」——下不下架取决于库存和供应链，不属于成本台账的判断。
-    """
-    month = store.normalize_month(request.GET.get("month"))
-    return JsonResponse({"ok": True, "advice": service.advice(store.advice_inputs(month))})
-
-
 @require_POST
 @_guard
 def settings_update(request: HttpRequest) -> JsonResponse:
@@ -396,5 +383,5 @@ def period_cost(request: HttpRequest) -> JsonResponse:
 __all__ = [
     "library", "catalog_template", "export_csv", "rows_update", "settings_update",
     "catalog_import", "catalog_push", "import_csv", "fx_rates", "duty_rates",
-    "duty_lookup", "hs_bulk", "period_cost", "advice", "ERROR_STATUS",
+    "duty_lookup", "hs_bulk", "period_cost", "ERROR_STATUS",
 ]
