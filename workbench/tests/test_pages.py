@@ -164,6 +164,28 @@ class PageTests(TestCase):
             r'<a[^>]*data-testid="nav-products"[^>]*aria-current="page"',
         )
 
+    def test_customers_is_a_top_level_module_not_a_products_tab(self):
+        """客户从「商品」里独立成一级模块。
+
+        之前 /products 和 /customers 共用一条「产品资料 | 客户洞察」切换条，
+        客户是商品的子页；现在客户有自己的模块入口（桌面端由 scenes.json 提供），
+        商品页只剩产品资料，那条切换条要整条消失——否则会出现两套入口。
+        """
+        products = self.client.get("/products")
+
+        self.assertEqual(products.status_code, 200)
+        self.assertNotContains(products, "customer-context-nav")
+        self.assertNotContains(products, "客户洞察")
+
+        customers = self.client.get("/customers")
+
+        self.assertEqual(customers.status_code, 200)
+        self.assertNotContains(customers, "customer-context-nav")
+        self.assertRegex(
+            customers.content.decode(),
+            r'<a[^>]*data-testid="nav-customers"[^>]*aria-current="page"',
+        )
+
     def test_agent_center_shows_real_records_and_capability_link(self):
         batch = self.make_batch(title="业务批次")
         workflow = self.make_workflow(batch, status="running")

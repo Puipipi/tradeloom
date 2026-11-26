@@ -16,7 +16,7 @@ export function sceneConfigurationRevision(config) {
   return createHash('sha256').update(JSON.stringify(stable(validateSceneConfig(config)))).digest('hex')
 }
 
-export const BUSINESS_ROUTE_PATHS = Object.freeze(['/home', '/products', '/orders', '/agent-center', '/artifacts', '/runs'])
+export const BUSINESS_ROUTE_PATHS = Object.freeze(['/home', '/products', '/orders', '/customers', '/agent-center', '/artifacts', '/runs'])
 const LEGACY_BUSINESS_ROUTE_PATHS = Object.freeze(['/home', '/products', '/agent-center', '/artifacts', '/runs'])
 export const PANEL_TYPES = Object.freeze(['business-iframe', 'placeholder', 'native-chat', 'native-workspace', 'erpnext-status'])
 export const SCENE_COMPONENT_CATALOG = Object.freeze([
