@@ -288,7 +288,7 @@ select count(*) from workbench_batchitem;                                       
 
 ```
 GET /public/v1/preview/C/A/HS
-  ?reporterCode=842,276,250,380,724,528,826,392,36,344
+  ?reporterCode=842,276,251,380,724,528,826,392,36,344
   &period=2025
   &partnerCode=0,156
   &cmdCode=580632
@@ -304,7 +304,7 @@ GET /public/v1/preview/C/A/HS
 | 市场 | reporterCode | 说明 |
 |---|---|---|
 | 美国 | 842 | |
-| 欧盟 | 276 / 250 / 380 / 724 / 528 | **德法意西荷五国合计**。Comtrade 里没有「EU 作为进口国」的年度商品数据，表头显示「EU」、tooltip 写清是五国 |
+| 欧盟 | 276 / 251 / 380 / 724 / 528 | **德法意西荷五国合计**。Comtrade 里没有「EU 作为进口国」的年度商品数据，表头显示「EU」、tooltip 写清是五国。法国是 **251**——250 在 M49 里是「France, Monaco」历史条目，[Reporters.json](https://comtradeapi.un.org/files/v1/app/reference/Reporters.json) 里没有它，查回来恒为 0 行 |
 | 英国 | 826 | 脱欧后单独报告 |
 | 日本 | 392 | |
 | 澳大利亚 | 36 | |

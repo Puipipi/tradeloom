@@ -65,12 +65,22 @@ class TradeMetricsCase(TestCase):
     def test_eu_aggregates_five_reporters(self):
         rows = (
             world_china("580632", 276, 2025, 100_000_000, 10_000_000, 10_000_000)
-            + world_china("580632", 250, 2025, 50_000_000, 5_000_000, 5_000_000)
+            + world_china("580632", 251, 2025, 50_000_000, 5_000_000, 5_000_000)
         )
         cell = service.market_metrics(rows, "EU")
         self.assertAlmostEqual(cell["import_value"], 150_000_000, places=2)
         self.assertAlmostEqual(cell["cn_share"], 0.1, places=4)
         self.assertEqual(cell["reporter_count"], 5)
+
+    def test_france_uses_reporter_251(self):
+        """法国在 Comtrade 是 251；250 是 M49 历史条目，查回来恒为空。
+
+        这条是回归锁：写错成 250 时欧盟会静默少算一国，数字看着正常，
+        只是偏小——不做断言根本发现不了。
+        """
+        self.assertIn(251, client.MARKET_REPORTERS["EU"])
+        self.assertNotIn(250, client.MARKET_REPORTERS["EU"])
+        self.assertEqual(client.REPORTER_LABEL[251], "法国")
 
     def test_missing_weight_leaves_unit_price_empty(self):
         rows = world_china("580632", 842, 2025, 250_000_000, 25_000_000, None)
