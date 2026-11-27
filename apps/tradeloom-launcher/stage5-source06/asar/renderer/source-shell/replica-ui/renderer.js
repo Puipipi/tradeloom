@@ -834,6 +834,7 @@ const TAB_COLLAPSED_W = 33
 const SCENE_ICONS = Object.freeze({
   center: 'M3 3h5v5H3zM12 3h5v5h-5zM3 12h5v5H3zM12 12h5v5h-5z',
   products: 'm10 2.5 7 4v7l-7 4-7-4v-7l7-4ZM3 6.5l7 4 7-4M10 10.5v7',
+  customers: 'M13 6.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0ZM3.5 17c.7-3.1 3.1-4.8 6.5-4.8s5.8 1.7 6.5 4.8',
   'agent-center': 'M7 3.5H5a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-12a1 1 0 0 0-1-1h-2M7 2.5h6v3H7zM7 8h6M7 11h6M7 14h4',
   deliverables: 'M3 4.5h14v3H3zM4 7.5v9h12v-9M8 11h4m-2-2v5m-2-2 2 2 2-2',
   runs: 'M17.5 10a7.5 7.5 0 1 1-15 0 7.5 7.5 0 0 1 15 0ZM10 5.5v5l3.5 2',
