@@ -14,9 +14,8 @@ from workbench.models import (
     Artifact,
     ArtifactVersion,
     EventLog,
+    BatchItem,
     HumanReview,
-    Product,
-    ProductRevision,
     SubTask,
     Task,
     TaskFile,
@@ -26,7 +25,7 @@ from workbench.models import (
 from workbench.workflows.events import record_workflow_event
 from workbench.workflows.states import transition_workflow
 
-from .catalog import EnglishNameRequired, build_catalog_html, build_catalog_markdown
+from .catalog import build_catalog_html, build_catalog_markdown
 from .checklist import build_checklist_csv, build_checklist_json
 from .quality import (
     DeliveryQualityError,
@@ -115,46 +114,22 @@ def _step_source_ids(step: WorkflowStep, key: str) -> list[str]:
 
 
 def _lock_sources(workflow: WorkflowTask) -> SourceBundle:
-    """Lock source rows in Workflow → Task → Product → Revision → TaskFile order."""
+    """Lock source rows: Workflow → 批次 → 批次产品行 → 图片 TaskFile。
+
+    版本体系已下线：不再要求「已确认的当前版本」，改由批次产品行本身
+    （`BatchItem`）作为唯一来源；图片按 `image_stored_name` 关联批次内的
+    TaskFile。批次必须已确认、两个子任务已完成、没有未解决人审。
+    """
     batch = Task.objects.select_for_update().get(pk=workflow.batch_id)
     if batch.status != "confirmed":
         raise DeliveryConflict("批次尚未确认")
-    products = list(
-        Product.objects.select_for_update()
+    items = list(
+        BatchItem.objects.select_for_update()
         .filter(task_id=batch.id)
         .order_by("id")
     )
-    if not products:
+    if not items:
         raise DeliveryConflict("空批次不能生成交付物")
-
-    revisions: dict[str, ProductRevision] = {}
-    for product in products:
-        revision = (
-            ProductRevision.objects.select_for_update()
-            .filter(product_id=product.id)
-            .order_by("-version")
-            .first()
-        )
-        if revision is None or revision.status != "confirmed":
-            raise DeliveryConflict("全批次必须拥有当前已确认产品版本")
-        revisions[product.id] = revision
-
-    task_file_ids = []
-    for revision in revisions.values():
-        image = revision.source_refs.get("image") if isinstance(revision.source_refs, dict) else None
-        file_id = image.get("task_file_id") if isinstance(image, dict) else None
-        if not isinstance(file_id, str) or not file_id:
-            raise DeliveryConflict("已确认版本缺少图片来源引用")
-        task_file_ids.append(file_id)
-    task_file_ids = sorted(set(task_file_ids))
-    files_by_id = {
-        item.id: item
-        for item in TaskFile.objects.select_for_update()
-        .filter(id__in=task_file_ids)
-        .order_by("id")
-    }
-    if len(files_by_id) != len(task_file_ids):
-        raise DeliveryConflict("已确认图片来源不存在")
 
     subtasks = {
         item.agent_role: item
@@ -169,111 +144,36 @@ def _lock_sources(workflow: WorkflowTask) -> SourceBundle:
     if HumanReview.objects.filter(task=workflow, status__in=["pending", "submitted"]).exists():
         raise DeliveryConflict("存在未解决的人审事项，不能生成交付文件")
 
-    ids = [item.id for item in products]
-    revision_ids = [revisions[item.id].id for item in products]
-    revision_versions = [revisions[item.id].version for item in products]
-    if len(set(ids)) != len(ids) or len(set(revision_ids)) != len(revision_ids):
-        raise DeliveryConflict("批次产品或版本引用不唯一")
+    image_files = {
+        item.stored_name: item
+        for item in TaskFile.objects.select_for_update()
+        .filter(task_id=batch.id, kind="image")
+        .order_by("id")
+    }
 
-    plan_step = WorkflowStep.objects.filter(
-        task=workflow, step_key="center_plan", status="completed"
-    ).order_by("-created_at", "-id").first()
-    plan = plan_step.output_refs.get("plan") if plan_step and isinstance(plan_step.output_refs, dict) else None
-    plan_refs = plan.get("source_refs", {}).get("product_revisions") if isinstance(plan, dict) else None
-    if not isinstance(plan_refs, list):
-        raise DeliveryConflict("已保存计划缺少产品版本来源")
-    plan_map = {row.get("product_id"): row for row in plan_refs if isinstance(row, dict)}
-    if set(plan_map) != set(ids) or any(
-        plan_map[item.id].get("revision_id") != revisions[item.id].id
-        or plan_map[item.id].get("revision_version") != revisions[item.id].version
-        or plan_map[item.id].get("revision_status") != "confirmed"
-        for item in products
-    ):
-        raise DeliveryConflict("产品版本已不同于工作流计划来源，请新建计划")
-
-    product_subtask = subtasks["product_profile"]
-    delivery_subtask = subtasks["delivery_quality"]
-    product_inputs = product_subtask.input_refs if isinstance(product_subtask.input_refs, dict) else {}
-    delivery_inputs = delivery_subtask.input_refs if isinstance(delivery_subtask.input_refs, dict) else {}
-    if (
-        product_inputs.get("scope") != "full_batch"
-        or set(product_inputs.get("product_ids", [])) != set(ids)
-        or set(product_inputs.get("product_revision_ids", [])) != set(revision_ids)
-        or delivery_inputs.get("scope") != "full_batch"
-        or set(delivery_inputs.get("all_product_ids", [])) != set(ids)
-        or set(delivery_inputs.get("all_revision_ids", [])) != set(revision_ids)
-        or set(delivery_inputs.get("confirmed_revision_ids", [])) != set(revision_ids)
-        or delivery_inputs.get("unconfirmed_product_ids") != []
-        or delivery_inputs.get("requires_all_products_confirmed") is not True
-    ):
-        raise DeliveryConflict("角色输入来源与当前全批次版本不一致")
-
-    product_output = product_subtask.output_refs if isinstance(product_subtask.output_refs, dict) else {}
-    product_result = product_output.get("result")
-    product_rows = product_result.get("products") if isinstance(product_result, dict) else None
-    if not isinstance(product_rows, list) or len(product_rows) != len(products):
-        raise DeliveryConflict("产品资料结果没有覆盖完整批次")
-    product_result_map = {row.get("product_id"): row for row in product_rows if isinstance(row, dict)}
-    if set(product_result_map) != set(ids):
-        raise DeliveryConflict("产品资料结果产品范围不一致")
-
-    delivery_output = delivery_subtask.output_refs if isinstance(delivery_subtask.output_refs, dict) else {}
-    delivery_result = delivery_output.get("result")
-    scope = delivery_result.get("scope") if isinstance(delivery_result, dict) else None
-    if (
-        not isinstance(delivery_result, dict)
-        or delivery_result.get("status") != "ready_for_generation"
-        or delivery_result.get("data_readiness") != "ready"
-        or delivery_result.get("quality_scope") != "data_readiness"
-        or delivery_result.get("artifacts_generated") is not False
-        or not isinstance(scope, dict)
-        or set(scope.get("all_product_ids", [])) != set(ids)
-        or set(scope.get("confirmed_revision_ids", [])) != set(revision_ids)
-        or scope.get("unconfirmed_product_ids") != []
-    ):
-        raise DeliveryConflict("交付角色没有为当前来源报告 ready_for_generation")
-
-    file_snapshots = []
-    products_snapshot = []
-    for product in sorted(products, key=lambda item: (item.position, item.id)):
-        revision = revisions[product.id]
-        source_snapshot = revision.snapshot if isinstance(revision.snapshot, dict) else {}
-        english_name = source_snapshot.get("english_name")
-        if not isinstance(english_name, str) or not english_name.strip():
-            raise DeliveryConflict("当前已确认版本缺少英文名；请先完成现有交付就绪人审")
-        product_result_row = product_result_map[product.id]
-        result_revision = product_result_row.get("current_revision")
-        if (
-            not isinstance(result_revision, dict)
-            or result_revision.get("revision_id") != revision.id
-            or result_revision.get("version") != revision.version
-            or result_revision.get("snapshot") != source_snapshot
-            or product_result_row.get("status") != "candidate"
-        ):
-            raise DeliveryConflict("产品资料结果与当前已确认版本不一致")
-
-        image_ref = revision.source_refs.get("image")
-        task_file = files_by_id[image_ref["task_file_id"]]
-        if task_file.task_id != batch.id or task_file.kind != "image":
-            raise DeliveryConflict("图片 TaskFile 不属于当前批次")
-        if task_file.stored_name != image_ref.get("stored_name"):
-            raise DeliveryConflict("图片 TaskFile 存储引用已变化")
-        if task_file.original_name != source_snapshot.get("image_filename"):
-            raise DeliveryConflict("图片原名与已确认版本不一致")
-
-        readiness_products = delivery_result.get("products")
-        readiness_row = next(
-            (item for item in readiness_products if isinstance(item, dict) and item.get("product_id") == product.id),
-            None,
-        ) if isinstance(readiness_products, list) else None
-        candidate_ids = {
-            item.get("task_file_id")
-            for item in (readiness_row or {}).get("image_candidates", [])
-            if isinstance(item, dict)
+    file_snapshots: list[dict[str, Any]] = []
+    products_snapshot: list[dict[str, Any]] = []
+    revisions_snapshot: list[dict[str, Any]] = []
+    for item in sorted(items, key=lambda row: (row.position, row.id)):
+        if item.missing_fields:
+            raise DeliveryConflict(
+                f"{item.sku or item.name} 仍有待补字段：{'、'.join(item.missing_fields)}"
+            )
+        source_snapshot = {
+            "sku": item.sku,
+            "name": item.name,
+            "category": item.category,
+            "material": item.material,
+            "size": item.size,
+            "color": item.color,
+            "image_filename": item.image_filename,
+            "image_stored_name": item.image_stored_name,
         }
-        if candidate_ids != {task_file.id}:
-            raise DeliveryConflict("交付就绪图片来源与已确认图片不一致")
-
+        task_file = image_files.get(item.image_stored_name)
+        if task_file is None:
+            raise DeliveryConflict(f"{item.sku or item.name} 缺少批次图片文件")
+        if task_file.original_name != item.image_filename:
+            raise DeliveryConflict(f"{item.sku or item.name} 的图片来源与任务文件不一致")
         file_snapshots.append(
             {
                 "task_file_id": task_file.id,
@@ -286,27 +186,27 @@ def _lock_sources(workflow: WorkflowTask) -> SourceBundle:
             {
                 "workflow_task_id": workflow.id,
                 "batch_id": batch.id,
-                "product_id": product.id,
-                "revision_id": revision.id,
-                "version": revision.version,
+                "product_id": item.id,
+                "revision_id": item.id,
+                "version": 1,
                 "snapshot": source_snapshot,
                 "task_file_id": task_file.id,
                 "filename": task_file.original_name,
                 "stored_name": task_file.stored_name,
             }
         )
+        revisions_snapshot.append(
+            {
+                "product_id": item.id,
+                "revision_id": item.id,
+                "version": 1,
+                "snapshot": source_snapshot,
+            }
+        )
 
     return SourceBundle(
         products=tuple(products_snapshot),
-        revisions=tuple(
-            {
-                "product_id": product.id,
-                "revision_id": revisions[product.id].id,
-                "version": revisions[product.id].version,
-                "snapshot": revisions[product.id].snapshot,
-            }
-            for product in sorted(products, key=lambda item: (item.position, item.id))
-        ),
+        revisions=tuple(revisions_snapshot),
         files=tuple(file_snapshots),
     )
 
@@ -762,9 +662,6 @@ def generate_deliverables(workflow_id: str, idempotency_key: str) -> dict[str, A
                 summary="delivery bundle ready for review",
             )
         return _generation_result(current_step, replayed=False)
-    except EnglishNameRequired as exc:
-        _record_generation_failure(workflow_id, step.id, "english_name_missing")
-        raise DeliveryConflict("已确认版本与交付就绪结果不一致；请处理现有英文名审核") from exc
     except DeliveryConflict as exc:
         _record_generation_failure(workflow_id, step.id, type(exc).__name__)
         raise

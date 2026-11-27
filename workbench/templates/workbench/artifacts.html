@@ -14,9 +14,7 @@
     data-candidate-create-url="{% business_path '/api/intake/mappings/__MAPPING__/candidates' %}"
     data-candidates-url="{% business_path '/api/intake/candidates' %}"
     data-candidate-url="{% business_path '/api/intake/candidates/__CANDIDATE__' %}"
-    data-candidate-apply-url="{% business_path '/api/intake/candidates/__CANDIDATE__/apply' %}"
     data-tasks-url="{% business_path '/api/tasks' %}"
-    data-products-url="{% business_path '/api/product-library' %}"
     data-candidate-links-url="{% business_path '/api/intake/candidates/__CANDIDATE__/links' %}"
     data-narratives-url="{% business_path '/api/intake/narratives' %}"
     data-narrative-lines-url="{% business_path '/api/intake/narratives/__NARRATIVE__/lines' %}"
@@ -329,4 +327,4 @@
   </section>
 </div>
 {% endblock %}
-{% block scripts %}<script src="{{ '/static/workbench/execution-plans.js?v=source-references1'|business_url }}" defer></script><script src="{{ '/static/workbench/intake-product-application.js?v=intake-application2'|business_url }}" defer></script><script src="{{ '/static/workbench/intake.js?v=material-lines1'|business_url }}" defer></script><script src="{{ '/static/workbench/intake-links.js'|business_url }}" defer></script><script src="{{ '/static/workbench/documents.js?v=documents1'|business_url }}" defer></script><script src="{{ '/static/workbench/artifact-browser.js?v=files-browser16'|business_url }}" defer></script>{% endblock %}
+{% block scripts %}<script src="{{ '/static/workbench/execution-plans.js?v=source-references1'|business_url }}" defer></script><script src="{{ '/static/workbench/intake.js?v=material-lines1'|business_url }}" defer></script><script src="{{ '/static/workbench/intake-links.js'|business_url }}" defer></script><script src="{{ '/static/workbench/documents.js?v=documents1'|business_url }}" defer></script><script src="{{ '/static/workbench/artifact-browser.js?v=files-browser16'|business_url }}" defer></script>{% endblock %}

@@ -4708,32 +4708,6 @@ html[data-business-iframe="true"] .tag.demo-tag { margin-left: calc(8px * var(--
   }
 }
 
-.customer-context-nav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--wb-space-2);
-  margin: 0 0 var(--wb-space-3);
-  padding: 0 0 var(--wb-space-2);
-  border-bottom: 1px solid var(--line);
-}
-html[data-business-iframe="true"][data-business-browser-mode] .customer-context-nav {
-  display: none;
-}
-.customer-context-link {
-  display: inline-flex;
-  align-items: center;
-  min-height: calc(32px * var(--wb-ui-scale));
-  padding: calc(5px * var(--wb-ui-scale)) calc(10px * var(--wb-ui-scale));
-  border-radius: 6px;
-  color: var(--muted);
-  text-decoration: none;
-}
-.customer-context-link:hover,
-.customer-context-link.is-active {
-  color: var(--ink);
-  background: var(--surface-soft);
-}
-
 /* Nested alias forms follow their actual column width, not the guest viewport. */
 .customer-analysis-grid > div { min-width: 0; container: customer-analysis-column / inline-size; }
 @container customer-analysis-column (max-width: 540px) {

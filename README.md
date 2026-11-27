@@ -26,7 +26,8 @@ TradeLoom supports manufacturing and trade work, with product catalogs and sampl
 
 | Area | Purpose | Current status |
 |---|---|---|
-| Product information | Organize product facts and identify missing information | Implemented flows have scoped acceptance records; business rules still need validation. |
+| Product information | Organize product facts and identify missing information | Data models, traceability APIs and delivery flows remain; the `/products` page itself now shows the SKU cost ledger. |
+| SKU cost ledger | Unit cost, duty lookup, market margin and sourcing hints | Implemented with regression tests; automatic duty lookup covers US, UK and EU only. |
 | Deliverables | Prepare catalogs and sample lists with human review | Selected generation, preview and review flows verified; quotations and the complete business cycle remain in progress. |
 | AI workspace | Connect conversation, files and task workflows | Fresh role binding and scoped native attachment previews are verified; business end-to-end and broader file flows remain under acceptance. |
 | Persistence and execution | Keep task history and resume work | Real runners and PostgreSQL restart recovery require further end-to-end acceptance. |
@@ -49,6 +50,7 @@ The GitHub repository contains source code; cloning it does not install or launc
 |---|---|
 | [Windows desktop deployment](docs/windows-desktop-deployment.md) | Full package download, checksum, launch, data and upgrade steps |
 | [Django enterprise service](docs/enterprise-service.md) | Authentication, accounts/groups, loopback and HTTPS deployment |
+| [SKU cost ledger](docs/sku-cost-ledger.md) | Cost model, duty and FX lookups, API contract, acceptance checks |
 | [Competition scope and goals](docs/00-赛题与目标.md) | Current Topic 1 direction, official sources and remaining evidence |
 | [Acceptance matrix](docs/acceptance-matrix.md) | Scoped checks and their limits; historical entries retain their dates |
 | [Agent development](docs/agent-development.md) | Integration background and developer contracts |

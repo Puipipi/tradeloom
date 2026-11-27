@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 
-from django.db.models import Count
 from django.conf import settings
 from django.http import Http404
 from django.shortcuts import render
@@ -18,18 +18,18 @@ from .models import (
     ArtifactVersion,
     EventLog,
     HumanReview,
-    Product,
+    BatchItem,
     SubTask,
     Task,
     WorkflowTask,
 )
 from .intake.schemas import FIELD_SCHEMAS
-from .products.query import (
-    PRODUCT_LIBRARY_STATUSES,
-    InvalidProductFilter,
-    query_product_library,
-)
 from .services import WorkbenchNotFoundError, WorkbenchService
+from .sku import store as sku_store
+from .trade import service as trade_service
+from .trade import store as trade_store
+
+logger = logging.getLogger(__name__)
 
 
 PLATFORM_CONTEXT = {
@@ -208,7 +208,7 @@ def home(request):
         _page_context(
             "home",
             batch_count=len(tasks),
-            product_count=Product.objects.count(),
+            product_count=BatchItem.objects.count(),
             pending_count=len(pending_batches),
             workflow_count=WorkflowTask.objects.count(),
             actionable_count=len(actionable_batches),
@@ -226,94 +226,30 @@ def orders(request):
 
 @ensure_csrf_cookie
 def products(request):
-    q = request.GET.get("q", "").strip()
-    state = request.GET.get("state", "").strip()
-    batch = request.GET.get("batch", "").strip()
-    filter_error = ""
+    """产品资料：SKU 成本台账 / UN Comtrade 需求侧 / 选品建议 三个模块。
+
+    商品身份（货号、名称、系列、规格、在售状态）以官网主数据为准，页面只维护
+    主数据里没有的价格与成本；清单从 CSV 导入或官网后台推送进来，界面不提供
+    单条增删——两个入口各改一份，最后没人说得清哪份是真的。
+
+    三个模块各自读一份数据，**互不阻塞**：台账读不出来只影响第一个 tab，
+    Comtrade 状态读失败也只是那个面板显示空态，不会让整页 500。
+    """
     try:
-        rows = query_product_library(
-            q=q,
-            status=state,
-            batch_id=batch,
-            include_revisions=True,
-        )
-    except InvalidProductFilter as exc:
-        rows = []
-        filter_error = str(exc)
-
-    for product in rows:
-        latest = product["latest_revision"]
-        raw_status = product["revision_status"]
-        product["batch_id"] = product["batch"]["id"]
-        product["batch_title"] = product["batch"]["title"]
-        product["batch_status_raw"] = product["batch"]["status"]
-        product["batch_status"] = _label(
-            STATUS_LABELS,
-            product["batch"]["status"],
-        )
-        product["version"] = product["current_version"]
-        product["revision_status_raw"] = raw_status or "draft"
-        product["revision_status"] = (
-            _label(STATUS_LABELS, raw_status) if raw_status else "无版本"
-        )
-        raw_source = latest["source"] if latest else ""
-        product["source"] = (
-            _label(SOURCE_LABELS, raw_source) if raw_source else "—"
-        )
-        product["revision_updated_at"] = (
-            latest["updated_at"] if latest else None
-        )
-        for revision in product["revisions"]:
-            revision["status_raw"] = revision["status"]
-            revision["status_label"] = _label(
-                STATUS_LABELS,
-                revision["status"],
-            )
-            revision["source_label"] = _label(
-                SOURCE_LABELS,
-                revision["source"],
-            )
-
-    batch_options = []
-    for batch_obj in (
-        Task.objects.filter(products__isnull=False)
-        .annotate(product_total=Count("products"))
-        .order_by("-created_at")
-    ):
-        batch_options.append(
-            {
-                "id": batch_obj.id,
-                "label": (
-                    f"{batch_obj.title} · {batch_obj.id[:8]} · "
-                    f"{timezone.localtime(batch_obj.updated_at).strftime('%m-%d %H:%M')}"
-                ),
-                "product_total": batch_obj.product_total,
-            }
-        )
-
-    status_options = [
-        {"value": value, "label": STATUS_LABELS[value]}
-        for value in PRODUCT_LIBRARY_STATUSES
-    ]
-    product_total = Product.objects.count()
-    empty_library = not (q or state or batch) and product_total == 0
+        sku_ledger = sku_store.snapshot()
+    except Exception:  # noqa: BLE001 — 见上：宁可空页面，不要白屏
+        logger.exception("SKU 台账读取失败")
+        sku_ledger = None
+    try:
+        entries, invalid = trade_service.ledger_hs6()
+        trade_state = trade_store.state(entries, invalid)
+    except Exception:  # noqa: BLE001 — 需求侧的库表还没迁移时不该拖垮整个页面
+        logger.exception("UN Comtrade 状态读取失败")
+        trade_state = None
     return render(
         request,
         "workbench/products.html",
-        _page_context(
-            "products",
-            products=rows,
-            result_count=len(rows),
-            product_total=product_total,
-            empty_library=empty_library,
-            revision_count=sum(row["version"] is not None for row in rows),
-            missing_count=sum(bool(row["missing_fields"]) for row in rows),
-            batch_count=len({row["batch_id"] for row in rows}),
-            filters={"q": q, "state": state, "batch": batch},
-            status_options=status_options,
-            batch_options=batch_options,
-            filter_error=filter_error,
-        ),
+        _page_context("products", sku_ledger=sku_ledger, trade_state=trade_state),
     )
 
 
@@ -343,7 +279,7 @@ def agent_center(request):
             ),
         }
         for batch in (
-            Task.objects.filter(products__isnull=False)
+            Task.objects.filter(batch_items__isnull=False)
             .distinct()
             .order_by("-created_at")
         )

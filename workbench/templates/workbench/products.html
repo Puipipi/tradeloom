@@ -1,120 +1,437 @@
 {% extends "workbench/base.html" %}
 {% load business_urls %}
-{% block page_eyebrow %}产品资料 / 只读总览{% endblock %}
+{% block page_eyebrow %}产品资料 / SKU · UN Comtrade · 选品建议{% endblock %}
 {% block page_title %}产品资料{% endblock %}
+{% block stylesheets %}{{ block.super }}<link rel="stylesheet" href="{% business_path '/static/workbench/sku-ledger.css' %}">
+<link rel="stylesheet" href="{% business_path '/static/workbench/trade-ledger.css' %}">
+<script>
+  /* 折叠状态记在本机：先给根元素打类，body 一渲染就是收起的，不会先铺开再塌回去 */
+  try {
+    if (localStorage.getItem('tradeloom.sku.collapsed') === '1') {
+      document.documentElement.classList.add('sku-table-collapsed')
+    }
+    if (localStorage.getItem('tradeloom.sku.period.collapsed') === '1') {
+      document.documentElement.classList.add('sku-period-collapsed')
+    }
+  } catch (e) { /* 隐私模式禁读：按展开处理 */ }
+</script>{% endblock %}
 {% block content %}
+{# 三个模块各自一块，切换只改 hidden 不重载：SKU 表格有 144 行，重载一次很贵 #}
+<div class="pd-tabs" role="tablist" aria-label="产品资料模块">
+  <button type="button" class="pd-tab is-on" role="tab" data-pd-tab="sku"
+          aria-controls="sku-panel" aria-selected="true" data-testid="pd-tab-sku">SKU 成本台账</button>
+  <button type="button" class="pd-tab" role="tab" data-pd-tab="trade"
+          aria-controls="trade-panel" aria-selected="false" data-testid="pd-tab-trade">UN Comtrade</button>
+  <button type="button" class="pd-tab" role="tab" data-pd-tab="advice"
+          aria-controls="advice-panel" aria-selected="false" data-testid="pd-tab-advice">选品建议</button>
+</div>
 <div class="page-stack">
-  <section class="panel">
+  {% if sku_ledger %}
+  <section class="panel sku-panel pd-view" id="sku-panel" data-pd-view="sku" data-testid="sku-panel" data-api="{% business_path '/api/sku' %}">
+
+    <div class="panel-heading sku-head">
+      <div>
+        <h2>SKU 成本台账</h2>
+        <p class="sku-sub">
+          商品清单 {{ sku_ledger.meta.sku_total_all|default:0 }} 个 SKU{% if sku_ledger.summary.archived %}（在售 {{ sku_ledger.summary.active }} · 停用 {{ sku_ledger.summary.archived }}）{% endif %}
+          · 清单更新于 {{ sku_ledger.meta.generated_at|default:"—" }}{% if sku_ledger.meta.source %}（{{ sku_ledger.meta.source }}）{% endif %}
+        </p>
+      </div>
+      <div class="sku-actions">
+        <button class="button secondary" type="button" id="sku-catalog" data-testid="sku-catalog">导入商品清单</button>
+        <button class="button secondary" type="button" id="sku-fx" data-testid="sku-fx">刷新汇率</button>
+        <button class="button secondary" type="button" id="sku-import" data-testid="sku-import">导入成本 CSV</button>
+        <a class="button secondary" id="sku-export" href="{% business_path '/api/sku/export.csv' %}">导出 CSV</a>
+      </div>
+    </div>
+
+    <div class="sku-offline" id="sku-offline"></div>
+
+    <div class="sku-stats">
+      <div class="sku-stat"><span>SKU 总数</span><strong id="sku-k-total">{{ sku_ledger.summary.total }}</strong></div>
+      <div class="sku-stat is-good"><span>已可算</span><strong id="sku-k-ok">{{ sku_ledger.summary.ok }}</strong></div>
+      <div class="sku-stat is-warn"><span>待补字段</span><strong id="sku-k-pending">{{ sku_ledger.summary.pending }}</strong></div>
+      <div class="sku-stat"><span>平均商品毛利率</span><strong id="sku-k-margin">{{ sku_ledger.summary.avg_margin_text }}</strong></div>
+      <div class="sku-stat is-bad"><span>亏损 SKU</span><strong id="sku-k-loss">{{ sku_ledger.summary.loss_count }}</strong></div>
+      <div class="sku-stat"><span>月商品毛利</span><strong id="sku-k-gross">{{ sku_ledger.summary.gross_month_text }}</strong></div>
+    </div>
+
+    <div class="sku-fxbar" id="sku-fxbar" data-testid="sku-fxbar">
+      <span class="sku-fxbar-label">目的市场</span>
+      {% for m in sku_ledger.markets %}
+      <button type="button" class="sku-fxchip{% if m.selected %} on{% endif %}" data-market="{{ m.code }}"
+              data-testid="sku-market-{{ m.code }}" aria-pressed="{{ m.selected|yesno:'true,false' }}"
+              title="{{ m.name }}：1 {{ m.unit_text }} ≈ {{ m.shown_text|default:'—' }} CNY　{{ m.hint }}">
+        <span class="sku-fxchip-code">{{ m.name }}{% if m.selected %}<i>✓</i>{% endif %}</span>
+        <span class="sku-fxchip-rate">{{ m.shown_text|default:"—" }}</span>
+        <span class="sku-fxchip-sub">{{ m.currency }} · {% if m.duty_configured %}关税已配{% else %}<b class="warn">关税未配</b>{% endif %}</span>
+      </button>
+      {% endfor %}
+      <button type="button" class="button secondary" id="sku-duty-open" data-testid="sku-duty-open">关税率…</button>
+      <span class="sku-fxbar-hint">点一个市场，汇率与关税同时按该目的地重算</span>
+    </div>
+
+    {# 提示条常驻，靠 hidden 控制：切换市场时前端直接开关，不必整页重载 #}
+    <div class="sku-duty-missing" id="sku-duty-missing"{% if sku_ledger.duty_ready %} hidden{% endif %}>
+      <b id="sku-duty-market">{{ sku_ledger.market_name }}</b>
+      <span id="sku-duty-missing-text">{% if sku_ledger.duty_missing_text %}这些 HS 编码还没配税率：{{ sku_ledger.duty_missing_text }}，对应 SKU 的毛利率暂时算不出来（不按 0 蒙一个）。{% else %}还没配关税率，所以毛利率暂时算不出来（不按 0 蒙一个）。{% endif %}</span>
+      点上面的「关税率…」，按编码逐条录入。
+    </div>
+
+    {# 折叠开关紧跟目的市场条：收起的是「表格」，市场与统计始终可见 #}
+    <div class="sku-togglebar">
+      <button class="sku-toggle" type="button" id="sku-collapse" data-testid="sku-collapse"
+              aria-expanded="true" aria-controls="sku-body">
+        <span class="sku-caret" aria-hidden="true">▾</span><span id="sku-collapse-text">收起表格</span>
+        <span class="sku-toggle-count">{{ sku_ledger.summary.total }} 行</span>
+      </button>
+    </div>
+
+    {# 折叠区：搜索、筛选与 144 行表格一起收起，统计条与市场条保持可见 #}
+    <div class="sku-body" id="sku-body">
+      <div class="sku-toolbar">
+        <input type="search" id="sku-q" placeholder="搜索 SKU / 商品名称" data-testid="sku-search">
+        <select id="sku-series" data-testid="sku-series" aria-label="按系列筛选">
+          <option value="">全部系列</option>
+        </select>
+        <select id="sku-state" data-testid="sku-state">
+          <option value="">全部状态</option>
+          <option value="ok">仅可算</option>
+          <option value="pend">仅待补</option>
+          <option value="loss">仅亏损</option>
+        </select>
+        <button type="button" class="button secondary" id="sku-hs-open" data-testid="sku-hs-open"
+                title="同一子系列的 SKU 通常同一个 HS 编码：按系列一次写完，不用逐行填">按系列设 HS…</button>
+        <span class="sku-fx-note" id="sku-fx-note">
+          {% if sku_ledger.fx_meta.mode == "auto" %}
+            1 {{ sku_ledger.currency }} = <b>{{ sku_ledger.fx_meta.rate|floatformat:4 }}</b> CNY{% if sku_ledger.fx_meta.sources %} · {{ sku_ledger.fx_meta.sources|join:"/" }}{% endif %}{% if sku_ledger.fx_meta.stale %}（缓存，未联网）{% endif %}
+          {% else %}
+            1 {{ sku_ledger.currency }} = <b>{{ sku_ledger.fx_meta.rate|floatformat:4 }}</b> CNY 手填
+          {% endif %}
+        </span>
+      </div>
+
+      <div class="sku-table-wrap">
+        <table class="sku-table" data-testid="sku-table">
+          <thead>
+            <tr>
+              <th>SKU</th><th>商品名称</th><th>系列</th><th>HS编码</th>
+              <th id="sku-th-price">{{ sku_ledger.price_label }}</th><th>采购价CNY</th><th>头程CNY</th>
+              <th title="预估月销只用来把单件商品毛利放大成月毛利，不参与单件成本">月销</th>
+              <th>佣金%</th>
+              <th title="到岸成本 = 采购价（可扣退税）+ 头程 + 关税；关税按目的市场与 HS 编码查表">到岸成本</th>
+              <th>佣金CNY</th>
+              <th>商品毛利</th>
+              <th title="商品毛利率 =（售价 − 到岸成本 − 佣金）÷ 售价。不含广告与退货——那两项在下面的「期间费用」里按实际填，不摊进单件">商品毛利率</th>
+              <th>状态</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in sku_ledger.rows %}
+            <tr data-sku="{{ r.sku }}" data-status="{{ r.status }}" data-loss="{{ r.is_loss|yesno:'1,0' }}"
+                data-series="{{ r.sub|default:r.series }}" class="{% if not r.active %}sku-archived{% endif %}">
+              <td class="sku-id" title="{{ r.size }}">{{ r.sku }}{% if not r.active %}<span class="sku-tag-new" style="background:#f2f4f7;color:#6b7480">停用</span>{% endif %}</td>
+              <td class="sku-name" title="{{ r.name }}">{{ r.name }}</td>
+              <td class="sku-series" title="{{ r.category }}">{{ r.sub|default:r.series|default:"—" }}</td>
+              <td><input data-f="hs_code" value="{{ r.hs_code|default_if_none:'' }}" placeholder="{{ r.hs_suggest }}" title="{{ r.hs_note }}"></td>
+              <td><input data-f="price" inputmode="decimal" value="{{ r.price|default_if_none:'' }}"{% if r.price_prev_text %} placeholder="{{ r.price_prev_text }}" title="这个 SKU 的售价原本记的是 {{ r.price_prev_currency }}，切到结算币种 {{ sku_ledger.currency }} 后请按新币种重填；旧值未被覆盖，切回原币种即可恢复" class="mismatch"{% endif %}></td>
+              <td><input data-f="cost_cny" inputmode="decimal" value="{{ r.cost_cny|default_if_none:'' }}"></td>
+              <td><input data-f="freight_cny" inputmode="decimal" value="{{ r.freight_cny|default_if_none:'' }}"></td>
+              <td><input data-f="units" inputmode="numeric" value="{{ r.units|default_if_none:'' }}"></td>
+              <td><input data-f="commission" inputmode="decimal" value="{{ r.commission|default_if_none:'' }}"></td>
+              <td class="num" data-c="landed"
+                  title="关税 {% if r.duty_rate_text %}{{ r.duty_rate_text }}{% else %}未设{% endif %}（{{ r.duty_source }}）；按 HS {{ r.duty_hs }}{% if r.duty_hs_from_suggest %}（建议值）{% endif %}，计征基数 ¥{{ r.duty_base|default_if_none:0|floatformat:2 }}（关税 ¥{{ r.duty_cny_text|default:'—' }}）；保本售价 ¥{{ r.bep_text|default:'—' }}">{{ r.landed_text }}</td>
+              <td class="num" data-c="commission_cny">{{ r.commission_cny_text }}</td>
+              <td class="num {% if r.is_loss %}sku-neg{% endif %}" data-c="profit">{{ r.profit_text }}</td>
+              <td class="num {{ r.margin_class }}" data-c="margin">{{ r.margin_text }}</td>
+              <td data-c="status">{% if r.status == "可算" %}<span class="sku-badge">可算</span>{% else %}<span class="sku-badge pend" title="缺：{{ r.missing_text }}">待补 {{ r.missing|length }}</span>{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>{# /sku-body #}
+
+    <section class="sku-period" id="sku-period" data-testid="sku-period">
+      <div class="sku-period-head">
+        <h3><button class="sku-period-title" type="button" id="sku-period-toggle"
+                    aria-expanded="true" aria-controls="sku-period-body"><span class="sku-caret" aria-hidden="true">▾</span>期间费用</button></h3>
+        <label class="sku-period-month">
+          <span>月份</span>
+          <input type="month" id="sku-period-month" value="{{ sku_ledger.period.month }}">
+        </label>
+      </div>
+
+      <div class="sku-period-body" id="sku-period-body">
+        <div class="sku-period-grid">
+          <label>
+            <span>广告花费 CNY</span>
+            <input data-p="ad_spend_cny" inputmode="decimal" value="{{ sku_ledger.period.data.text.ad_spend_cny }}" placeholder="平台广告账单">
+          </label>
+          <label>
+            <span>退货损失 CNY</span>
+            <input data-p="returns_cny" inputmode="decimal" value="{{ sku_ledger.period.data.text.returns_cny }}" placeholder="退货造成的净损失">
+          </label>
+          <label>
+            <span>店铺月费 CNY</span>
+            <input data-p="shop_fee_cny" inputmode="decimal" value="{{ sku_ledger.period.data.text.shop_fee_cny }}" placeholder="{{ sku_ledger.period.shop_fee_hint|default_if_none:'按实际' }}">
+          </label>
+          <label>
+            <span>其他费用 CNY</span>
+            <input data-p="other_cny" inputmode="decimal" value="{{ sku_ledger.period.data.text.other_cny }}" placeholder="可选">
+          </label>
+          <label class="sku-period-note">
+            <span>备注</span>
+            <input data-p="note" type="text" value="{{ sku_ledger.period.data.note }}" placeholder="数据来源 / 口径说明">
+          </label>
+        </div>
+
+        <div class="sku-period-sum">
+          <div class="sku-period-cell">
+            <span>本月销售额<small>按预估月销</small></span>
+            <strong data-p-out="revenue">{{ sku_ledger.period.summary.revenue_text|default:"—" }}</strong>
+          </div>
+          <div class="sku-period-cell">
+            <span>商品毛利<small data-p-out="gross-margin">{{ sku_ledger.period.summary.gross_margin_text }}</small></span>
+            <strong data-p-out="gross">{{ sku_ledger.period.summary.gross_profit_text|default:"—" }}</strong>
+          </div>
+          <div class="sku-period-cell is-minus">
+            <span>期间费用<small>广告 + 退货 + 月费 + 其他</small></span>
+            <strong data-p-out="expense">{% if sku_ledger.period.summary.expense_total_text %}−{{ sku_ledger.period.summary.expense_total_text }}{% else %}—{% endif %}</strong>
+          </div>
+          <div class="sku-period-cell is-net">
+            <span>经营净利<small data-p-out="net-margin">{{ sku_ledger.period.summary.net_margin_text }}</small></span>
+            <strong data-p-out="net">{% if sku_ledger.period.summary.net_profit is None %}—{% else %}{% if sku_ledger.period.summary.missing and sku_ledger.period.summary.net_profit > 0 %}≤{% endif %}{{ sku_ledger.period.summary.net_profit_text }}{% endif %}</strong>
+          </div>
+          <div class="sku-period-cell">
+            <span>实际广告费率<small>广告 ÷ 销售额</small></span>
+            <strong data-p-out="ad-ratio">{{ sku_ledger.period.summary.ad_ratio_text|default:"—" }}</strong>
+          </div>
+        </div>
+
+        {# 只在「该填的没填」时才出现，正常状态不留文字 #}
+        <p class="sku-period-hint is-warn" id="sku-period-hint"{% if not sku_ledger.period.summary.missing or not sku_ledger.period.summary.has_expense %} hidden{% endif %}>{% if sku_ledger.period.summary.missing and sku_ledger.period.summary.has_expense %}还有 {{ sku_ledger.period.summary.missing|join:"、" }} 没登记，净利只会更少，这里的数是上限。{% endif %}</p>
+      </div>{# /sku-period-body #}
+    </section>
+
+    <form style="display:none">{% csrf_token %}</form>
+
+    <dialog id="sku-catalog-dlg" style="border:1px solid var(--line);border-radius:12px;padding:0;max-width:660px;width:92%">
+      <div style="padding:14px 18px;border-bottom:1px solid var(--line);font-weight:620;display:flex;justify-content:space-between;align-items:center">
+        <span>导入商品清单</span>
+        <a href="{% business_path '/api/sku/catalog/template.csv' %}" style="font-weight:400;font-size:12.5px">下载模板</a>
+      </div>
+      <div style="padding:14px 18px">
+        <p style="margin:0 0 8px;color:#6b7480;font-size:12.5px">
+          一行一个 SKU，首行表头需含 <b>SKU</b>、<b>商品名称</b>、<b>系列</b>、<b>规格</b>。
+          已存在的 SKU 只更新有值的格子，<b>不会动你填的成本</b>；新 SKU 追加在表格末尾。
+        </p>
+        <textarea id="sku-catalog-text" spellcheck="false" placeholder="SKU,商品名称,系列,子系列,规格,材质,在售&#10;VFR-01-38,VFR-01 – Wired Velvet Ribbon,Christmas & Winter Collections,Velvet Ribbon,38mm,Polyester,是"></textarea>
+        <p id="sku-catalog-out" style="color:#6b7480;font-size:12px;margin:8px 0 0"></p>
+      </div>
+      <div style="padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end">
+        <button type="button" class="button secondary" id="sku-catalog-cancel">取消</button>
+        <button type="button" class="button primary" id="sku-catalog-ok">导入</button>
+      </div>
+    </dialog>
+
+    <dialog id="sku-import-dlg" style="border:1px solid var(--line);border-radius:12px;padding:0;max-width:660px;width:92%">
+      <div style="padding:14px 18px;border-bottom:1px solid var(--line);font-weight:620">导入成本 CSV</div>
+      <div style="padding:14px 18px">
+        <p style="margin:0 0 8px;color:#6b7480;font-size:12.5px">
+          从 Excel 直接复制粘贴即可，首行为表头（sku、采购价CNY、头程CNY、{{ sku_ledger.price_label }}…）。按 SKU 匹配，只覆盖有值的格子，空白不覆盖原数据。表头里的币种后缀换成别的（如 售价EUR）也能认，售价一律按<b>当前结算币种</b>入账。
+        </p>
+        <textarea id="sku-import-text" spellcheck="false" placeholder="sku,{{ sku_ledger.price_label }},采购价CNY,头程CNY&#10;VFR-01-38,2.50,8.00,1.20"></textarea>
+        <p id="sku-import-out" style="color:#6b7480;font-size:12px;margin:8px 0 0"></p>
+      </div>
+      <div style="padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end">
+        <button type="button" class="button secondary" id="sku-import-cancel">取消</button>
+        <button type="button" class="button primary" id="sku-import-ok">导入</button>
+      </div>
+    </dialog>
+
+    <dialog id="sku-duty-dlg" data-market="{{ sku_ledger.market }}" style="border:1px solid var(--line);border-radius:12px;padding:0;max-width:800px;width:94%">
+      <div style="padding:14px 18px;border-bottom:1px solid var(--line);font-weight:620;display:flex;justify-content:space-between;align-items:center">
+        <span><b id="sku-duty-title">{{ sku_ledger.market_name }}</b> 进口关税率</span>
+        <span style="font-weight:400;font-size:12px;color:#6b7480">点「查」取官方现行税率 · 最长前缀优先</span>
+      </div>
+      <div style="padding:14px 18px">
+        <p style="margin:0 0 10px;color:#6b7480;font-size:12.5px">
+          关税按<b>到岸价</b>（采购价 + 头程）计征。下面先把<b>本市场在用的 HS 编码</b>列出来
+          （按覆盖 SKU 数排，未配的在最前），照着填即可；不在列表里的编码用「+ 添加一行」。
+          基础税率与附加税分开填——美国那类市场是「基础税率 + 301 附加税」，两栏加起来才是实际税负。
+          税率可写 <b>12.5</b> 或 <b>12.5%</b>；<b>两个税率都留空的行不会保存</b>（保持未配，不按 0 蒙），
+          真要按 0 算就明确写 <b>0</b>。
+        </p>
+        <div class="sku-duty-groups" id="sku-duty-groups" hidden></div>
+        <table class="sku-duty-table">
+          <thead><tr><th style="width:126px">HS 前缀</th><th style="width:82px">基础%</th><th style="width:82px">附加%</th><th style="width:82px" title="自贸协定项下税率（RCEP / ChAFTA 等），要凭原产地证才用得上，不参与计算">优惠%</th><th>备注</th><th style="width:40px"></th></tr></thead>
+          <tbody id="sku-duty-rows"></tbody>
+        </table>
+        <button type="button" class="button secondary" id="sku-duty-add" style="margin-top:10px">+ 添加一行</button>
+
+        <div class="sku-duty-pick" id="sku-duty-pick" hidden>
+          <div class="sku-duty-pick-head">
+            <span id="sku-duty-pick-title">查询结果</span>
+            <button type="button" class="duty-del" id="sku-duty-pick-close" title="关闭">×</button>
+          </div>
+          <div id="sku-duty-pick-list"></div>
+          <p class="sku-duty-pick-foot" id="sku-duty-pick-foot"></p>
+        </div>
+
+        <p id="sku-duty-out" style="color:#6b7480;font-size:12px;margin:8px 0 0"></p>
+      </div>
+      <div style="padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end">
+        <button type="button" class="button secondary" id="sku-duty-cancel">取消</button>
+        <button type="button" class="button primary" id="sku-duty-ok">保存</button>
+      </div>
+    </dialog>
+
+    <dialog id="sku-hs-dlg" style="border:1px solid var(--line);border-radius:12px;padding:0;max-width:760px;width:94%">
+      <div style="padding:14px 18px;border-bottom:1px solid var(--line);font-weight:620;display:flex;justify-content:space-between;align-items:center">
+        <span>按子系列批量设 HS 编码</span>
+        <span style="font-weight:400;font-size:12px;color:#6b7480">HS 是商品属性：同一编码 = 同一档关税</span>
+      </div>
+      <div style="padding:14px 18px">
+        <p style="margin:0 0 10px;color:#6b7480;font-size:12.5px">
+          同一个子系列的 SKU 通常同一个编码，按系列一次写完，不用 144 行逐行敲。
+          保存后回到表格，HS 列会跟着变，关税按编码自动重算。
+        </p>
+        <table class="sku-duty-table">
+          <thead><tr><th>子系列</th><th style="width:66px">SKU</th><th style="width:170px">当前 HS</th><th style="width:140px">设为</th></tr></thead>
+          <tbody id="sku-hs-rows"></tbody>
+        </table>
+        <label style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:12.5px;color:#4a5563">
+          <input type="checkbox" id="sku-hs-only-empty" checked> 只补空白的（不覆盖逐行手工改过的编码）
+        </label>
+        <p id="sku-hs-out" style="color:#6b7480;font-size:12px;margin:8px 0 0"></p>
+      </div>
+      <div style="padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end">
+        <button type="button" class="button secondary" id="sku-hs-cancel">取消</button>
+        <button type="button" class="button primary" id="sku-hs-ok">保存</button>
+      </div>
+    </dialog>
+
+    <div class="sku-toast" id="sku-toast"></div>
+
+  </section>
+  {% else %}
+  <section class="panel pd-view" data-pd-view="sku">
     <div class="panel-heading">
       <div>
-        <h2>产品资料库</h2>
-        {% if empty_library %}
-        <p>尚未导入产品资料。</p>
-        {% else %}
-        <p>{{ result_count }} 个产品匹配当前筛选 · {{ revision_count }} 个已有最新版本 · {{ missing_count }} 个存在缺项。</p>
-        {% endif %}
+        <h2>SKU 成本台账</h2>
+        <p>台账数据暂时读取失败，关掉软件重开再试。</p>
       </div>
-      {% if empty_library %}
-      <span class="tag demo-tag">等待导入</span>
-      {% else %}
-      <span class="tag demo-tag">{{ batch_count }} 个批次</span>
-      {% endif %}
     </div>
-    {% if empty_library %}
-    <div class="empty-state" data-testid="empty-library">
-      <h3>尚未导入产品资料</h3>
-      <p>新建任务并导入产品 CSV 后，产品与版本会显示在这里。</p>
-      <a class="button primary" href="{% business_path '/tasks/new' %}" data-testid="import-products-link">新建任务 / 导入产品</a>
-    </div>
-    {% else %}
-    <p class="count-note" data-testid="product-result-count">{{ result_count }} 个产品匹配当前筛选。</p>
-    <form class="filter-form" method="get" action="{% business_path '/products' %}" data-testid="product-filter">
-      <div class="filter-field filter-search">
-        <label for="product-q">搜索</label>
-        <input id="product-q" name="q" type="search" value="{{ filters.q }}" placeholder="SKU 或产品名称">
-      </div>
-      <div class="filter-field">
-        <label for="product-state">状态</label>
-        <select id="product-state" name="state">
-          <option value="">全部状态</option>
-          {% for option in status_options %}<option value="{{ option.value }}"{% if filters.state == option.value %} selected{% endif %}>{{ option.label }}</option>{% endfor %}
-        </select>
-      </div>
-      <div class="filter-field">
-        <label for="product-batch">批次</label>
-        <select id="product-batch" name="batch">
-          <option value="">全部批次</option>
-          {% for batch in batch_options %}<option value="{{ batch.id }}"{% if filters.batch == batch.id %} selected{% endif %}>{{ batch.label }}</option>{% endfor %}
-        </select>
-      </div>
-      <div class="filter-actions">
-        <button class="button primary" type="submit">筛选</button>
-        <a class="button secondary" href="{% business_path '/products' %}" data-testid="clear-product-filter">清空筛选</a>
-      </div>
-    </form>
-    {% if filter_error %}<p class="inline-alert warning" data-testid="product-filter-error">{{ filter_error }}</p>{% endif %}
-    <p class="timezone-note">时间均为上海时间（UTC+8）。</p>
-    {% if products %}
-    <div class="table-wrap">
-      <table class="product-table" data-testid="products-table" aria-label="产品资料列表">
-        <thead>
-          <tr><th>产品</th><th>批次</th><th>最新版本</th><th>版本状态</th><th>来源</th><th>缺项</th></tr>
-        </thead>
-        <tbody>
-          {% for product in products %}
-          <tr data-testid="product-row-{{ product.id }}">
-            <td>
-              <strong class="mono">{{ product.sku }}</strong>
-              <span class="cell-subtitle">{{ product.name }}</span>
-            </td>
-            <td>
-              <a class="task-link" href="{% business_path '/tasks/' product.batch_id %}">{{ product.batch_title }}</a>
-              <span class="cell-subtitle">{{ product.batch_status }}</span>
-            </td>
-            <td>
-              <span class="mono" data-testid="product-version-{{ product.id }}">{{ product.version|default:"—" }}</span>
-              {% if product.revision_updated_at %}<span class="cell-subtitle mono" data-testid="product-time-{{ product.id }}">{{ product.revision_updated_at|date:"Y-m-d H:i" }}</span>{% endif %}
-              {% if product.revisions %}
-              <details class="version-history" data-testid="version-history-{{ product.id }}">
-                <summary>版本历史（{{ product.revisions|length }}）</summary>
-                <div class="revision-list">
-                  {% for revision in product.revisions %}
-                  <article class="revision-item" data-testid="revision-{{ product.id }}-{{ revision.version }}">
-                    <div class="revision-heading">
-                      <strong class="mono">v{{ revision.version }}</strong>
-                      <span class="status-pill {{ revision.status_raw }}">{{ revision.status_label }}</span>
-                    </div>
-                    <p class="revision-meta"><span class="mono">{{ revision.updated_at|date:"Y-m-d H:i" }}</span> · {{ revision.source_label }}</p>
-                    <p class="revision-snapshot">{{ revision.snapshot.sku }} · {{ revision.snapshot.name }} · {{ revision.snapshot.size }} · {{ revision.snapshot.color }}</p>
-                  </article>
-                  {% endfor %}
-                </div>
-              </details>
-              {% endif %}
-            </td>
-            <td><span class="status-pill {{ product.revision_status_raw }}" data-testid="product-status-{{ product.id }}">{{ product.revision_status }}</span></td>
-            <td><span class="mono" data-testid="product-source-{{ product.id }}">{{ product.source }}</span></td>
-            <td>
-              {% if product.missing_fields %}
-              <span class="missing-chips">{% for field in product.missing_fields %}<span class="missing-chip">{{ field }}</span>{% endfor %}</span>
-              {% else %}
-              <span class="muted-text">无</span>
-              {% endif %}
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    <p class="scroll-hint">表格可横向滚动查看完整列。</p>
-    {% else %}
-    <div class="empty-state" data-testid="product-empty-state">
-      <h3>没有符合筛选条件的产品</h3>
-      <p>调整搜索、状态或批次，或清空筛选后重试。</p>
-      <a class="button secondary" href="{% business_path '/products' %}" data-testid="clear-empty-filter">清空筛选</a>
-    </div>
-    {% endif %}
-    {% endif %}
   </section>
+  {% endif %}
+
+  {% comment %}
+  模块二：UN Comtrade 需求侧。
+  表格由 trade-ledger.js 用注入的 JSON 渲染——单元格要按「市场 × 编码」取，
+  Django 模板做不了动态键，硬塞会变成一堆 if 标签。
+  {% endcomment %}
+  <section class="panel pd-view" id="trade-panel" data-pd-view="trade"
+           data-testid="trade-panel" data-api="{% business_path '/api/trade' %}" hidden>
+    <div class="panel-heading sku-head">
+      <div>
+        <h2>UN Comtrade 需求侧</h2>
+        <p class="sku-sub">
+          按台账的 HS 编码查各国进口额，回答「这个市场一年吃掉多少」。
+          年度数据、滞后 1–2 年；欧盟按德法意西荷五国合计，不含转口国单列。
+        </p>
+      </div>
+      <div class="sku-actions">
+        <button class="button primary" type="button" id="trade-sync" data-testid="trade-sync">同步数据</button>
+        <button class="button secondary" type="button" id="trade-settings" data-testid="trade-settings">接入设置</button>
+      </div>
+    </div>
+
+    <div class="trade-stats" id="trade-stats"></div>
+
+    <div class="trade-progress" id="trade-progress" hidden>
+      <div class="trade-progress-track"><i id="trade-progress-fill"></i></div>
+      <span id="trade-progress-text"></span>
+    </div>
+
+    <p class="trade-note" id="trade-note" hidden></p>
+
+    <div class="trade-empty" id="trade-empty" hidden></div>
+
+    <div class="trade-table-wrap" id="trade-table-wrap" hidden>
+      <table class="trade-table" data-testid="trade-table">
+        <thead id="trade-thead"></thead>
+        <tbody id="trade-tbody"></tbody>
+      </table>
+      <p class="trade-legend">
+        <span class="trade-chip is-big">大</span>≥ 3 亿美元
+        <span class="trade-chip is-mid">中</span>2000 万 – 3 亿
+        <span class="trade-chip is-small">小</span>&lt; 2000 万
+        <span class="trade-chip is-none">—</span>无进口记录
+        ·「同比」是最新一年对上一年的变化 · 鼠标停在格子上可看单价带与口径
+      </p>
+    </div>
+
+    <dialog id="trade-settings-dlg" style="border:1px solid var(--line);border-radius:12px;padding:0;max-width:560px;width:92%">
+      <div style="padding:14px 18px;border-bottom:1px solid var(--line);font-weight:620">UN Comtrade 接入设置</div>
+      <div style="padding:14px 18px">
+        <p style="margin:0 0 12px;color:#6b7480;font-size:12.5px">
+          不填 Key 也能用：公共预览端点免 key，限制「一次一个编码、一个年份、500 行」，
+          正好是这里的查询形状。填了 Key 走正式端点，可以一次多编码多年份。
+          Key 只存本地库，不上传，也不写进日志。
+        </p>
+        <label class="trade-field">
+          <span>Subscription Key（可选）</span>
+          <input type="password" id="trade-key" autocomplete="off" placeholder="留空 = 用免 key 的预览端点">
+        </label>
+        <label class="trade-field">
+          <span>回看年数</span>
+          <input type="number" id="trade-lookback" min="1" max="10" step="1">
+        </label>
+        <p id="trade-settings-out" style="color:#6b7480;font-size:12px;margin:8px 0 0"></p>
+      </div>
+      <div style="padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end">
+        <button type="button" class="button secondary" id="trade-settings-clear" style="margin-right:auto">改用免 Key</button>
+        <button type="button" class="button secondary" id="trade-settings-cancel">取消</button>
+        <button type="button" class="button primary" id="trade-settings-ok">保存</button>
+      </div>
+    </dialog>
+
+    {{ trade_state|json_script:"trade-data" }}
+  </section>
+
+  {% comment %}
+  模块三：选品建议。
+  从 SKU 台账里搬出来独立成页：它读两份数据（成本 + 需求），
+  和台账的「一行一个 SKU」不是一回事，混在一起会让人以为它只是台账的附注。
+  {% endcomment %}
+  <section class="panel pd-view" id="advice-panel" data-pd-view="advice"
+           data-testid="advice-panel" data-api="{% business_path '/api/advice' %}" hidden>
+    <div class="panel-heading sku-head">
+      <div>
+        <h2>选品建议</h2>
+        <p class="sku-sub">
+          成本侧看各市场毛利，需求侧看 HS 编码在那边一年进口多少。
+          「毛利最高但没量」会单独标出来——这是只看成本最容易踩的坑。
+        </p>
+      </div>
+      <div class="sku-actions">
+        <button class="button secondary" type="button" id="advice-refresh" data-testid="advice-refresh">重算</button>
+      </div>
+    </div>
+
+    <p class="sku-advice-headline" id="advice-headline">切到本页时开始计算…</p>
+    <p class="sku-advice-hint" id="advice-hint" hidden></p>
+    <div class="sku-advice-markets" id="advice-markets"></div>
+    <ul class="sku-advice-list" id="advice-list"></ul>
+  </section>
+
 </div>
+{% endblock %}
+{% block scripts %}
+<script src="{% business_path '/static/workbench/trade-ledger.js' %}" defer></script>
+<script src="{% business_path '/static/workbench/advice-panel.js' %}" defer></script>
+<script src="{% business_path '/static/workbench/sku-ledger.js' %}" defer></script>
+{# tabs 放最后：它初始化时会派发 pd:show，前面几个面板得先把监听注册好 #}
+<script src="{% business_path '/static/workbench/products-tabs.js' %}" defer></script>
 {% endblock %}

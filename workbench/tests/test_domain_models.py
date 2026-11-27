@@ -11,9 +11,7 @@ from workbench.models import (
     ArtifactVersion,
     EventLog,
     HumanReview,
-    Product,
-    ProductBatch,
-    ProductRevision,
+    BatchItem,
     SubTask,
     Task,
     WorkflowStep,
@@ -37,9 +35,9 @@ def make_product(
     *,
     sku: str = "SKU-001",
     position: int = 0,
-) -> Product:
+) -> BatchItem:
     now = timezone.now()
-    return Product.objects.create(
+    return BatchItem.objects.create(
         task=batch,
         position=position,
         sku=sku,
@@ -66,12 +64,6 @@ def make_workflow_task(batch: Task) -> WorkflowTask:
 
 
 class DomainModelTests(TestCase):
-    def test_product_batch_reads_legacy_task_status_through_proxy(self):
-        batch = make_batch(status="confirmed")
-
-        self.assertTrue(ProductBatch._meta.proxy)
-        self.assertEqual(ProductBatch._meta.db_table, Task._meta.db_table)
-        self.assertEqual(ProductBatch.objects.get(pk=batch.pk).status, "confirmed")
 
     def test_workflow_task_and_step_get_default_timestamps(self):
         batch = make_batch()
@@ -91,21 +83,6 @@ class DomainModelTests(TestCase):
         self.assertIsNotNone(step.updated_at)
         self.assertEqual(step.task_id, task.id)
 
-    def test_product_revision_version_is_unique_per_product(self):
-        batch = make_batch()
-        product = make_product(batch)
-        ProductRevision.objects.create(
-            product=product,
-            version=1,
-            snapshot={"sku": "SKU-001"},
-        )
-
-        with self.assertRaises(IntegrityError), transaction.atomic():
-            ProductRevision.objects.create(
-                product=product,
-                version=1,
-                snapshot={"sku": "SKU-001"},
-            )
 
     def test_artifact_version_is_unique_per_artifact(self):
         batch = make_batch()
@@ -184,82 +161,15 @@ class DomainModelTests(TestCase):
             review_key="english-name-1",
         )
 
-    def test_product_revision_save_cannot_change_immutable_fact_fields(self):
-        batch = make_batch()
-        product = make_product(batch)
-        other_product = make_product(batch, sku="SKU-002", position=1)
-        revision = ProductRevision.objects.create(
-            product=product,
-            version=1,
-            snapshot={"sku": "SKU-001", "name": "样品"},
-            source_refs={"source": "legacy_backfill"},
-        )
 
-        revision.snapshot = {"sku": "SKU-001", "name": "被覆盖"}
-        with self.assertRaises(ValidationError):
-            revision.save()
-        revision.refresh_from_db()
-        self.assertEqual(revision.snapshot["name"], "样品")
-
-        revision.product = other_product
-        with self.assertRaises(ValidationError):
-            revision.save()
-        revision.refresh_from_db()
-        self.assertEqual(revision.product_id, product.id)
-
-        revision.version = 2
-        with self.assertRaises(ValidationError):
-            revision.save()
-        revision.refresh_from_db()
-        self.assertEqual(revision.version, 1)
-
-        revision.status = "needs_review"
-        revision.reviewer = "reviewer"
-        revision.save()
-        revision.refresh_from_db()
-        self.assertEqual(revision.status, "needs_review")
-        self.assertEqual(revision.reviewer, "reviewer")
-
-    def test_product_revision_queryset_writes_cannot_change_immutable_fields(self):
-        batch = make_batch()
-        product = make_product(batch)
-        other_product = make_product(batch, sku="SKU-002", position=1)
-        revision = ProductRevision.objects.create(
-            product=product,
-            version=1,
-            snapshot={"sku": "SKU-001"},
-        )
-
-        with self.assertRaises(ValidationError):
-            ProductRevision.objects.filter(pk=revision.pk).update(
-                snapshot={"sku": "SKU-001", "name": "被覆盖"}
-            )
-        with self.assertRaises(ValidationError):
-            ProductRevision.objects.filter(pk=revision.pk).update(product=other_product)
-        with self.assertRaises(ValidationError):
-            ProductRevision.objects.filter(pk=revision.pk).update(version=2)
-        with self.assertRaises(ValidationError):
-            ProductRevision.objects.bulk_update([revision], ["snapshot"])
-
-        ProductRevision.objects.filter(pk=revision.pk).update(status="confirmed")
-        revision.refresh_from_db()
-        self.assertEqual(revision.status, "confirmed")
-
-        revision.reviewer = "bulk-reviewer"
-        ProductRevision.objects.bulk_update([revision], ["reviewer"])
-        revision.refresh_from_db()
-        self.assertEqual(revision.reviewer, "bulk-reviewer")
 
     def test_new_foreign_keys_protect_audit_evidence(self):
         batch = make_batch()
         product = make_product(batch)
         make_workflow_task(batch)
-        ProductRevision.objects.create(product=product, version=1, snapshot={"sku": "SKU-001"})
 
         with self.assertRaises(ProtectedError):
             batch.delete()
-        with self.assertRaises(ProtectedError):
-            product.delete()
 
     def test_subtask_dependencies_are_asymmetric(self):
         batch = make_batch()

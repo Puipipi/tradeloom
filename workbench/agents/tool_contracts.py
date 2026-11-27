@@ -42,11 +42,11 @@ _image_candidate = _object(
 )
 _source_refs = _object(
     {
-        "product": {"type": "string", "const": "workbench.Product"},
+        "product": {"type": "string", "const": "workbench.BatchItem"},
         "product_id": _string,
         "revision": {
             "anyOf": [
-                {"type": "string", "const": "workbench.ProductRevision"},
+                {"type": "string", "const": "workbench.BatchItem"},
                 {"type": "null"},
             ]
         },

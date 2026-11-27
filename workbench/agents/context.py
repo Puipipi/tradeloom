@@ -24,9 +24,7 @@ from workbench.models import (
     CustomerEvent,
     CustomerMetricSnapshot,
     CustomerPrediction,
-    HumanReview,
-    Product,
-    ProductRevision,
+    BatchItem,
     Task,
     TaskFile,
     WorkflowStep,
@@ -109,35 +107,75 @@ def _id_list(value: Any, field_name: str) -> list[str]:
 
 
 @dataclass(frozen=True)
+class BatchItemSnapshot:
+    """批次产品行的只读视图。
+
+    取代原来的 ProductRevision：没有版本号、没有字段来源、没有草稿/确认状态。
+    ``version`` 恒为 1、``status`` 恒为 "confirmed"，只是为了兼容仍在读取这些
+    字段的 Agent 工具契约；它们不再带任何评审含义。
+    """
+
+    item: BatchItem
+
+    @property
+    def id(self) -> str:
+        return self.item.id
+
+    @property
+    def product_id(self) -> str:
+        return self.item.id
+
+    @property
+    def version(self) -> int:
+        return 1
+
+    @property
+    def status(self) -> str:
+        return "confirmed"
+
+    @property
+    def snapshot(self) -> dict[str, Any]:
+        return {
+            "sku": self.item.sku,
+            "name": self.item.name,
+            "category": self.item.category,
+            "material": self.item.material,
+            "size": self.item.size,
+            "color": self.item.color,
+            "image_filename": self.item.image_filename,
+            "image_stored_name": self.item.image_stored_name,
+        }
+
+    @property
+    def field_sources(self) -> dict[str, Any]:
+        return {}
+
+    @property
+    def source_refs(self) -> dict[str, Any]:
+        return {}
+
+
+@dataclass(frozen=True)
 class WorkflowContext:
     workflow: WorkflowTask
-    products: tuple[Product, ...]
+    products: tuple[BatchItem, ...]
     files: tuple[TaskFile, ...]
-    current_revisions: dict[str, ProductRevision]
 
     @classmethod
     def from_workflow(cls, workflow: WorkflowTask) -> WorkflowContext:
-        products = tuple(
-            Product.objects.filter(task_id=workflow.batch_id).order_by("position", "id")
-        )
-        files = tuple(
-            TaskFile.objects.filter(task_id=workflow.batch_id).order_by(
-                "created_at",
-                "id",
-            )
-        )
-        product_ids = [product.id for product in products]
-        current_revisions: dict[str, ProductRevision] = {}
-        if product_ids:
-            for revision in ProductRevision.objects.filter(
-                product_id__in=product_ids
-            ).order_by("product_id", "version"):
-                current_revisions[revision.product_id] = revision
         return cls(
             workflow=workflow,
-            products=products,
-            files=files,
-            current_revisions=current_revisions,
+            products=tuple(
+                BatchItem.objects.filter(task_id=workflow.batch_id).order_by(
+                    "position", "id"
+                )
+            ),
+            files=tuple(
+                TaskFile.objects.filter(task_id=workflow.batch_id).order_by(
+                    "created_at",
+                    "id",
+                )
+            ),
         )
 
     @property
@@ -146,33 +184,23 @@ class WorkflowContext:
 
     @property
     def product_ids(self) -> list[str]:
-        return [product.id for product in self.products]
+        return [item.id for item in self.products]
+
+    @property
+    def current_revisions(self) -> dict[str, BatchItemSnapshot]:
+        return {item.id: BatchItemSnapshot(item) for item in self.products}
 
     @property
     def current_revision_ids(self) -> list[str]:
-        return [
-            self.current_revisions[product.id].id
-            for product in self.products
-            if product.id in self.current_revisions
-        ]
+        return [item.id for item in self.products]
 
     @property
     def confirmed_revision_ids(self) -> list[str]:
-        return [
-            self.current_revisions[product.id].id
-            for product in self.products
-            if product.id in self.current_revisions
-            and self.current_revisions[product.id].status == "confirmed"
-        ]
+        return [item.id for item in self.products]
 
     @property
     def unconfirmed_product_ids(self) -> list[str]:
-        return [
-            product.id
-            for product in self.products
-            if product.id not in self.current_revisions
-            or self.current_revisions[product.id].status != "confirmed"
-        ]
+        return []
 
     def validate_refs(self, input_refs: dict[str, Any] | None) -> None:
         refs = input_refs or {}
@@ -203,29 +231,10 @@ class WorkflowContext:
         ):
             referenced_revision_ids.extend(_id_list(refs.get(key), key))
         referenced_revision_ids = list(dict.fromkeys(referenced_revision_ids))
-        if not referenced_revision_ids:
-            return
-
-        found = {
-            revision.id: revision
-            for revision in ProductRevision.objects.filter(
-                id__in=referenced_revision_ids
-            ).select_related("product")
-        }
-        current_ids = set(self.current_revision_ids)
         for revision_id in referenced_revision_ids:
-            revision = found.get(revision_id)
-            if revision is None:
+            if revision_id not in context_product_ids:
                 raise StaleRevisionReferenceError(
-                    f"修订不存在或已过期：{revision_id}"
-                )
-            if revision.product.task_id != self.batch.id:
-                raise CrossBatchReferenceError(
-                    f"修订不属于当前批次：{revision_id}"
-                )
-            if revision.id not in current_ids:
-                raise StaleRevisionReferenceError(
-                    f"修订不是当前版本：{revision_id}"
+                    f"产品行不存在或不属于当前批次：{revision_id}"
                 )
 
 
@@ -333,7 +342,7 @@ def _read_batch_products(context: WorkflowContext) -> list[dict[str, Any]]:
     ]
 
 
-def _revision_payload(revision: ProductRevision) -> dict[str, Any]:
+def _revision_payload(revision: BatchItemSnapshot) -> dict[str, Any]:
     snapshot = revision.snapshot if isinstance(revision.snapshot, dict) else {}
     return {
         "revision_id": revision.id,
@@ -409,143 +418,6 @@ def _match_image_candidates(
     for product in context.products:
         if product.id not in selected:
             continue
-        revision = context.current_revisions.get(product.id)
-        revision_sources = (
-            getattr(revision, "source_refs", None)
-            if revision and isinstance(getattr(revision, "source_refs", None), dict)
-            else {}
-        )
-        manual_selection = revision_sources.get("human_image_selection")
-        if manual_selection is not None:
-            required_keys = {
-                "human_review_id",
-                "task_file_id",
-                "original_name",
-                "stored_name",
-            }
-            if not isinstance(manual_selection, dict) or set(manual_selection) != required_keys:
-                raise InputContractError("当前产品的人工作图来源无效")
-            task_file = next(
-                (item for item in image_files if item.id == manual_selection.get("task_file_id")),
-                None,
-            )
-            image_ref = revision_sources.get("image")
-            if (
-                revision_sources.get("source") != "human_review"
-                or not isinstance(revision_sources.get("human_review_ids"), list)
-                or task_file is None
-                or task_file.original_name != manual_selection["original_name"]
-                or task_file.stored_name != manual_selection["stored_name"]
-                or product.image_filename != task_file.original_name
-                or product.image_stored_name != task_file.stored_name
-                or not isinstance(revision.snapshot, dict)
-                or revision.snapshot.get("image_filename") != task_file.original_name
-                or not isinstance(image_ref, dict)
-                or image_ref.get("task_file_id") != task_file.id
-                or image_ref.get("original_name") != task_file.original_name
-                or image_ref.get("stored_name") != task_file.stored_name
-            ):
-                raise InputContractError("当前产品的人工作图与产品版本或批次文件不一致")
-            from workbench.workflows.validation import frozen_image_candidates_for_review
-
-            review = HumanReview.objects.filter(
-                pk=manual_selection["human_review_id"],
-                task__batch_id=context.batch.id,
-                status="approved",
-            ).select_related("task").first()
-            answer = review.answer if review and isinstance(review.answer, dict) else {}
-            response = answer.get("response") if isinstance(answer, dict) else None
-            source_refs = (
-                review.source_conflict.get("source_refs")
-                if review and isinstance(review.source_conflict, dict)
-                else None
-            )
-            frozen_candidates = []
-            if review and isinstance(source_refs, dict) and source_refs.get("product_id") == product.id:
-                try:
-                    frozen_candidates = frozen_image_candidates_for_review(review.task, review)
-                except ValueError:
-                    frozen_candidates = []
-            chosen_candidate = next(
-                (item for item in frozen_candidates if item["task_file_id"] == task_file.id),
-                None,
-            )
-            if (
-                not isinstance(response, dict)
-                or response != {
-                    "type": "select_image_candidate",
-                    "task_file_id": task_file.id,
-                }
-                or chosen_candidate is None
-                or chosen_candidate["original_name"] != task_file.original_name
-                or chosen_candidate["stored_name"] != task_file.stored_name
-            ):
-                raise InputContractError("当前产品的人工作图没有对应的同批已应用审核回执")
-            result[product.id] = [
-                {
-                    "task_file_id": task_file.id,
-                    "original_name": task_file.original_name,
-                    "stored_name": task_file.stored_name,
-                    "match_types": ["human_review"],
-                }
-            ]
-            continue
-        manual_upload = revision_sources.get("human_image_upload")
-        if manual_upload is not None:
-            required_keys = {
-                "human_review_id", "upload_step_id", "task_file_id", "original_name",
-                "stored_name", "sha256", "mime_type", "origin_step_id", "revision_id",
-            }
-            if not isinstance(manual_upload, dict) or set(manual_upload) != required_keys:
-                raise InputContractError("当前产品的人审补图来源无效")
-            review = HumanReview.objects.filter(
-                pk=manual_upload.get("human_review_id"), task__batch_id=context.batch.id,
-                status="approved",
-            ).select_related("task").first()
-            if review is None:
-                raise InputContractError("当前产品的人审补图没有同批已批准回执")
-            answer = review.answer if isinstance(review.answer, dict) else {}
-            response = answer.get("response") if isinstance(answer, dict) else None
-            if not isinstance(response, dict) or response != {
-                "type": "provide_image", "upload_step_id": manual_upload["upload_step_id"]
-            }:
-                raise InputContractError("当前产品的人审补图回答与凭据不匹配")
-            from workbench.workflows.review_images import ReviewImageConflict, validate_upload_credential
-
-            try:
-                upload_step, task_file, file_info = validate_upload_credential(
-                    review.task, review, manual_upload["upload_step_id"],
-                    allowed_review_statuses=("approved",),
-                )
-            except ReviewImageConflict as exc:
-                raise InputContractError(f"当前产品的人审补图凭据无效：{exc}") from exc
-            proof = upload_step.output_refs
-            if (
-                task_file.id != manual_upload["task_file_id"]
-                or task_file.original_name != manual_upload["original_name"]
-                or task_file.stored_name != manual_upload["stored_name"]
-                or file_info["sha256"] != manual_upload["sha256"]
-                or file_info["mime_type"] != manual_upload["mime_type"]
-                or proof.get("origin_step_id") != manual_upload["origin_step_id"]
-                or proof.get("revision_id") != manual_upload["revision_id"]
-                or proof.get("product_id") != product.id
-                or product.image_filename != task_file.original_name
-                or product.image_stored_name != task_file.stored_name
-                or not isinstance(revision.snapshot, dict)
-                or revision.snapshot.get("image_filename") != task_file.original_name
-                or not isinstance(revision_sources.get("image"), dict)
-                or revision_sources["image"].get("task_file_id") != task_file.id
-                or revision_sources["image"].get("original_name") != task_file.original_name
-                or revision_sources["image"].get("stored_name") != task_file.stored_name
-            ):
-                raise InputContractError("当前产品的人审补图与已确认产品版本不一致")
-            result[product.id] = [{
-                "task_file_id": task_file.id,
-                "original_name": task_file.original_name,
-                "stored_name": task_file.stored_name,
-                "match_types": ["human_review_upload"],
-            }]
-            continue
         candidates = []
         for task_file in image_files:
             match_types = []
@@ -620,8 +492,6 @@ def _validate_product_data(
                 value = getattr(product, field)
             if not str(value or "").strip() and field not in missing_fields:
                 missing_fields.append(field)
-        if not str(snapshot.get("english_name", "")).strip() and "english_name" not in missing_fields:
-            missing_fields.append("english_name")
         if not candidates and "图片" not in missing_fields:
             missing_fields.append("图片")
 
@@ -630,8 +500,6 @@ def _validate_product_data(
             uncertainties.append("missing_current_revision")
         elif revision.status != "confirmed":
             uncertainties.append("current_revision_not_confirmed")
-        if not str(snapshot.get("english_name", "")).strip():
-            uncertainties.append("missing_english_name")
         if not candidates:
             uncertainties.append("no_image_candidate")
         elif len(candidates) > 1:
@@ -649,9 +517,9 @@ def _validate_product_data(
             }
 
         source_refs = {
-            "product": "workbench.Product",
+            "product": "workbench.BatchItem",
             "product_id": product.id,
-            "revision": "workbench.ProductRevision" if revision else None,
+            "revision": "workbench.BatchItem" if revision else None,
             "revision_id": revision.id if revision else None,
             "task_file_ids": [item["task_file_id"] for item in candidates],
         }

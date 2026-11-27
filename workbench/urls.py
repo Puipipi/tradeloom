@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from django.urls import path
 
-from . import api, views, workflow_views, product_fact_restore_api
+from . import api, views, workflow_views
 from .customers import api as customer_api
 from .customers import views as customer_views
 from .erpnext import api as erpnext_api
@@ -11,6 +11,8 @@ from .requirements import api as requirement_api
 from .execution_plans import api as execution_plan_api
 from .procurement import api as procurement_api
 from .materials import api as material_api
+from .sku import api as sku_api
+from .trade import api as trade_api
 from . import canvas_workflow_api, native_artifact_api, dispatch_api, canvas_workflow_definition_api
 from . import orders_api
 
@@ -48,6 +50,32 @@ urlpatterns = [
     path("api/materials/items", material_api.items),
     path("api/materials/items/<str:item_code>/update", material_api.item_update),
     path("api/materials/check", material_api.check),
+    # ── SKU 成本台账 ────────────────────────────────────────────────────────
+    # 读整份状态（含 144 行核算结果、期间费用、关税缺口），写接口各自回同一份 state，
+    # 前端据此局部刷新而不整页 reload。
+    path("api/sku", sku_api.library),
+    path("api/sku/rows", sku_api.rows_update),
+    path("api/sku/import", sku_api.import_csv),
+    path("api/sku/export.csv", sku_api.export_csv),
+    path("api/sku/catalog/import", sku_api.catalog_import),
+    path("api/sku/catalog/push", sku_api.catalog_push),
+    path("api/sku/catalog/template.csv", sku_api.catalog_template),
+    path("api/sku/settings", sku_api.settings_update),
+    path("api/sku/fx", sku_api.fx_rates),
+    path("api/sku/duty", sku_api.duty_rates),
+    path("api/sku/duty/lookup", sku_api.duty_lookup),
+    path("api/sku/hs-bulk", sku_api.hs_bulk),
+    path("api/sku/period", sku_api.period_cost),
+    # ── UN Comtrade 需求侧 ──────────────────────────────────────────────────
+    # 面板状态、分批同步（前端带 offset 续跑）、接入设置。
+    path("api/trade", trade_api.state),
+    path("api/trade/sync", trade_api.sync),
+    path("api/trade/settings", trade_api.settings_update),
+    path("api/trade/clear", trade_api.clear),
+    # 选品建议已独立成模块：成本侧（SKU 毛利）× 需求侧（Comtrade 进口额）。
+    # /api/sku/advice 保留为兼容别名——旧页面与外部脚本还打这个地址。
+    path("api/advice", trade_api.advice),
+    path("api/sku/advice", trade_api.advice),
     path("api/intake/sources", intake_api.source_collection),
     path("api/intake/narratives", intake_api.narrative_collection),
     path("api/intake/narratives/<str:narrative_id>/lines", intake_api.narrative_lines),
@@ -60,7 +88,6 @@ urlpatterns = [
     path("api/intake/mappings/<str:mapping_id>/candidates", intake_api.create_candidate),
     path("api/intake/candidates", intake_api.candidates),
     path("api/intake/candidates/<str:candidate_id>", intake_api.candidate),
-    path("api/intake/candidates/<str:candidate_id>/apply", intake_api.apply_product_candidate),
     path("api/intake/candidates/<str:candidate_id>/apply-material", material_api.apply_material),
     path("api/intake/candidates/<str:candidate_id>/requirement-lines", requirement_api.apply_requirement_lines_view),
     path("api/intake/candidates/<str:candidate_id>/links", intake_api.create_candidate_link),
@@ -91,10 +118,6 @@ urlpatterns = [
     path("api/workflow-tasks", api.create_workflow_task),
     path("api/workflow-intent/preview", api.preview_workflow_intent),
     path("api/workflow-tasks/<str:workflow_id>", api.get_workflow_task),
-    path(
-        "api/workflow-tasks/<str:workflow_id>/task-files/<str:task_file_id>/preview",
-        api.preview_workflow_task_image,
-    ),
     path("api/workflow-tasks/<str:workflow_id>/deliverables", api.workflow_deliverables),
     path(
         "api/workflow-tasks/<str:workflow_id>/deliverables/<str:step_id>/takeover",
@@ -128,28 +151,9 @@ urlpatterns = [
         "api/workflow-tasks/<str:workflow_id>/subtasks/<str:subtask_id>/interrupt",
         api.interrupt_workflow_subtask,
     ),
-    path(
-        "api/workflow-tasks/<str:workflow_id>/reviews/<str:review_id>/submit",
-        api.submit_workflow_review,
-    ),
-    path(
-        "api/workflow-tasks/<str:workflow_id>/reviews/<str:review_id>/image",
-        api.upload_workflow_review_image,
-    ),
-    path(
-        "api/workflow-tasks/<str:workflow_id>/reviews/apply",
-        api.apply_workflow_review_cycle,
-    ),
     path("api/tasks/demo", api.create_demo_task),
     path("api/tasks/<str:task_id>", api.get_task),
-    path("api/product-library", api.product_library),
-    path("api/products/<str:product_id>/fact-restoration/preview", product_fact_restore_api.preview),
-    path("api/products/<str:product_id>/fact-restoration/apply", product_fact_restore_api.apply),
-    path(
-        "api/products/<str:product_id>/revisions",
-        api.product_revisions,
-    ),
-    path("api/products/<str:product_id>", api.update_product),
+    path("api/batch-items/<str:item_id>", api.update_batch_item),
     path("api/tasks/<str:task_id>/confirm", api.confirm_task),
     path("api/tasks/<str:task_id>/export.csv", api.export_csv),
     path("api/tasks/<str:task_id>/runs", api.list_runs),

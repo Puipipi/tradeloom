@@ -18,13 +18,7 @@ from .agents.registry import (
     build_default_registry,
 )
 from .business_urls import public_url
-from .models import AgentRun, Product, Task, TaskFile
-from .products.versions import (
-    LEGACY_API_ACTOR,
-    LEGACY_CSV_ACTOR,
-    confirm_batch_revisions,
-    sync_revision_from_product,
-)
+from .models import AgentRun, BatchItem, Task, TaskFile
 
 
 CSV_FIELDS = (
@@ -93,7 +87,7 @@ class WorkbenchService:
 
     def get_task(self, task_id: str) -> dict:
         try:
-            task = Task.objects.prefetch_related("products", "files").get(
+            task = Task.objects.prefetch_related("batch_items", "files").get(
                 id=task_id
             )
         except Task.DoesNotExist as exc:
@@ -165,7 +159,7 @@ class WorkbenchService:
                 image_filename = matched.original_name if matched else ""
                 stored_name = matched.stored_name if matched else ""
                 missing = self._missing_fields(row, bool(matched))
-                product = Product.objects.create(
+                BatchItem.objects.create(
                     task=task,
                     position=position,
                     sku=row["sku"],
@@ -180,10 +174,9 @@ class WorkbenchService:
                     created_at=now,
                     updated_at=now,
                 )
-                sync_revision_from_product(product, actor=LEGACY_CSV_ACTOR)
         return self.get_task(task.id)
 
-    def update_product(self, product_id: str, changes: dict[str, str]) -> dict:
+    def update_batch_item(self, item_id: str, changes: dict[str, str]) -> dict:
         allowed = {"sku", "name", "category", "material", "size", "color"}
         unexpected = set(changes) - allowed
         if unexpected:
@@ -192,57 +185,56 @@ class WorkbenchService:
             )
         with transaction.atomic():
             task_id = (
-                Product.objects.filter(id=product_id)
+                BatchItem.objects.filter(id=item_id)
                 .values_list("task_id", flat=True)
                 .first()
             )
             if task_id is None:
-                raise WorkbenchNotFoundError("产品不存在")
+                raise WorkbenchNotFoundError("产品行不存在")
             try:
                 task = Task.objects.select_for_update().get(id=task_id)
             except Task.DoesNotExist as exc:
                 raise WorkbenchNotFoundError("任务不存在") from exc
             try:
-                product = Product.objects.select_for_update().get(id=product_id)
-            except Product.DoesNotExist as exc:
-                raise WorkbenchNotFoundError("产品不存在") from exc
-            if product.task_id != task.id:
-                raise WorkbenchConflictError("产品所属任务已变化，请重试")
-            product.task = task
+                item = BatchItem.objects.select_for_update().get(id=item_id)
+            except BatchItem.DoesNotExist as exc:
+                raise WorkbenchNotFoundError("产品行不存在") from exc
+            if item.task_id != task.id:
+                raise WorkbenchConflictError("产品行所属任务已变化，请重试")
+            item.task = task
             for field, value in changes.items():
-                setattr(product, field, str(value).strip())
+                setattr(item, field, str(value).strip())
             if "sku" in changes:
-                matched = self._find_task_image(product.task, product.sku)
+                matched = self._find_task_image(item.task, item.sku)
                 if matched is None:
-                    product.image_filename = ""
-                    product.image_stored_name = ""
+                    item.image_filename = ""
+                    item.image_stored_name = ""
                 else:
-                    product.image_filename = matched.original_name
-                    product.image_stored_name = matched.stored_name
-            product.missing_fields = self._missing_fields(
+                    item.image_filename = matched.original_name
+                    item.image_stored_name = matched.stored_name
+            item.missing_fields = self._missing_fields(
                 {
-                    "sku": product.sku,
-                    "name": product.name,
-                    "category": product.category,
-                    "material": product.material,
-                    "size": product.size,
-                    "color": product.color,
+                    "sku": item.sku,
+                    "name": item.name,
+                    "category": item.category,
+                    "material": item.material,
+                    "size": item.size,
+                    "color": item.color,
                 },
-                bool(product.image_stored_name),
+                bool(item.image_stored_name),
             )
-            product.updated_at = _now()
-            product.save()
+            item.updated_at = _now()
+            item.save()
             task.status = "awaiting_confirmation"
-            task.updated_at = product.updated_at
+            task.updated_at = item.updated_at
             task.save(update_fields=["status", "updated_at"])
-            sync_revision_from_product(product, actor=LEGACY_API_ACTOR)
-        return self._product_dict(product)
+        return self._product_dict(item)
 
-    def get_product(self, product_id: str) -> dict:
+    def get_batch_item(self, item_id: str) -> dict:
         try:
-            return self._product_dict(Product.objects.get(id=product_id))
-        except Product.DoesNotExist as exc:
-            raise WorkbenchNotFoundError("产品不存在") from exc
+            return self._product_dict(BatchItem.objects.get(id=item_id))
+        except BatchItem.DoesNotExist as exc:
+            raise WorkbenchNotFoundError("产品行不存在") from exc
 
     def confirm_task(self, task_id: str) -> dict:
         with transaction.atomic():
@@ -251,25 +243,24 @@ class WorkbenchService:
             except Task.DoesNotExist as exc:
                 raise WorkbenchNotFoundError("任务不存在") from exc
             if task.status != "confirmed":
-                products = list(task.products.all())
-                if not products:
+                items = list(task.batch_items.all())
+                if not items:
                     raise WorkbenchConflictError("任务中没有产品，不能确认")
-                pending = [product for product in products if product.missing_fields]
+                pending = [item for item in items if item.missing_fields]
                 if pending:
                     parts = [
-                        f"{product.name}：{'、'.join(product.missing_fields)}"
-                        for product in pending
+                        f"{item.name}：{'、'.join(item.missing_fields)}"
+                        for item in pending
                     ]
                     raise WorkbenchConflictError("存在待确认项：" + "；".join(parts))
                 task.status = "confirmed"
                 task.updated_at = _now()
                 task.save(update_fields=["status", "updated_at"])
-            confirm_batch_revisions(task.id, reviewer=LEGACY_API_ACTOR)
         return self.get_task(task_id)
 
     def export_csv(self, task_id: str) -> str:
         try:
-            task = Task.objects.prefetch_related("products").get(id=task_id)
+            task = Task.objects.prefetch_related("batch_items").get(id=task_id)
         except Task.DoesNotExist as exc:
             raise WorkbenchNotFoundError("任务不存在") from exc
         if task.status != "confirmed":
@@ -281,16 +272,16 @@ class WorkbenchService:
             lineterminator="\n",
         )
         writer.writeheader()
-        for product in task.products.all():
+        for item in task.batch_items.all():
             writer.writerow(
                 {
-                    "sku": product.sku,
-                    "name": product.name,
-                    "category": product.category,
-                    "material": product.material,
-                    "size": product.size,
-                    "color": product.color,
-                    "image_filename": product.image_filename,
+                    "sku": item.sku,
+                    "name": item.name,
+                    "category": item.category,
+                    "material": item.material,
+                    "size": item.size,
+                    "color": item.color,
+                    "image_filename": item.image_filename,
                 }
             )
         return buffer.getvalue()
@@ -517,7 +508,7 @@ class WorkbenchService:
         return missing
 
     def _task_summary(self, task: Task) -> dict:
-        products = list(task.products.all())
+        products = list(task.batch_items.all())
         return {
             "id": task.id,
             "title": task.title,
@@ -530,7 +521,7 @@ class WorkbenchService:
         }
 
     def _task_detail(self, task: Task) -> dict:
-        products = [self._product_dict(item) for item in task.products.all()]
+        products = [self._product_dict(item) for item in task.batch_items.all()]
         files = [
             {
                 "id": item.id,
@@ -548,22 +539,22 @@ class WorkbenchService:
         summary.update({"products": products, "files": files})
         return summary
 
-    def _product_dict(self, product: Product) -> dict:
+    def _product_dict(self, item: BatchItem) -> dict:
         return {
-            "id": product.id,
-            "task_id": product.task_id,
-            "sku": product.sku,
-            "name": product.name,
-            "category": product.category,
-            "material": product.material,
-            "size": product.size,
-            "color": product.color,
-            "image_filename": product.image_filename,
+            "id": item.id,
+            "task_id": item.task_id,
+            "sku": item.sku,
+            "name": item.name,
+            "category": item.category,
+            "material": item.material,
+            "size": item.size,
+            "color": item.color,
+            "image_filename": item.image_filename,
             "image_url": (
-                public_url(f"{settings.MEDIA_URL}{product.image_stored_name}")
-                if product.image_stored_name
+                public_url(f"{settings.MEDIA_URL}{item.image_stored_name}")
+                if item.image_stored_name
                 else None
             ),
-            "missing_fields": product.missing_fields,
-            "updated_at": _iso(product.updated_at),
+            "missing_fields": item.missing_fields,
+            "updated_at": _iso(item.updated_at),
         }

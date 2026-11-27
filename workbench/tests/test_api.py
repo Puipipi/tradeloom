@@ -9,7 +9,7 @@ from unittest.mock import patch
 from django.db import DatabaseError
 from django.test import TestCase, override_settings
 
-from workbench.models import AgentRun, Product, Task, TaskFile
+from workbench.models import AgentRun, BatchItem, Task, TaskFile
 from workbench.services import WorkbenchService
 
 
@@ -29,7 +29,7 @@ class WorkbenchApiTests(TestCase):
 
         product = task["products"][1]
         updated = self.client.patch(
-            f"/api/products/{product['id']}",
+            f"/api/batch-items/{product['id']}",
             data=json.dumps({"material": "缎面织物"}),
             content_type="application/json",
         )
@@ -51,7 +51,7 @@ class WorkbenchApiTests(TestCase):
             text,
         )
         edited_again = self.client.patch(
-            f"/api/products/{product['id']}",
+            f"/api/batch-items/{product['id']}",
             data=json.dumps({"material": "缎面织物更新"}),
             content_type="application/json",
         )
@@ -69,13 +69,13 @@ class WorkbenchApiTests(TestCase):
         task = self.client.post("/api/tasks/demo").json()
         product = next(item for item in task["products"] if item["sku"] == "DEMO-001")
         rejected = self.client.patch(
-            f"/api/products/{product['id']}",
+            f"/api/batch-items/{product['id']}",
             data=json.dumps({"image_filename": "wrong.svg"}),
             content_type="application/json",
         )
         self.assertEqual(rejected.status_code, 422)
         changed = self.client.patch(
-            f"/api/products/{product['id']}",
+            f"/api/batch-items/{product['id']}",
             data=json.dumps({"sku": "UNMATCHED-001"}),
             content_type="application/json",
         )
@@ -84,7 +84,7 @@ class WorkbenchApiTests(TestCase):
         self.assertEqual(changed.json()["image_filename"], "")
         self.assertIn("图片", changed.json()["missing_fields"])
         restored = self.client.patch(
-            f"/api/products/{product['id']}",
+            f"/api/batch-items/{product['id']}",
             data=json.dumps({"sku": "DEMO-001"}),
             content_type="application/json",
         )
@@ -170,7 +170,7 @@ class WorkbenchApiTests(TestCase):
         first = self.client.post(url, HTTP_IDEMPOTENCY_KEY="stable")
         product = task["products"][0]
         self.client.patch(
-            f"/api/products/{product['id']}",
+            f"/api/batch-items/{product['id']}",
             data=json.dumps({"name": "后来修改"}),
             content_type="application/json",
         )
@@ -292,7 +292,7 @@ class WorkbenchApiTests(TestCase):
             updated_at="2026-10-18T00:00:00+00:00",
         )
         for index in [2, 0, 1]:
-            Product.objects.create(
+            BatchItem.objects.create(
                 task=task,
                 position=index,
                 sku=f"SKU-{index}",
@@ -307,6 +307,6 @@ class WorkbenchApiTests(TestCase):
                 updated_at=task.updated_at,
             )
         self.assertEqual(
-            list(task.products.values_list("sku", flat=True)),
+            list(task.batch_items.values_list("sku", flat=True)),
             ["SKU-0", "SKU-1", "SKU-2"],
         )

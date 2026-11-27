@@ -22,12 +22,7 @@ from .agents.collaboration import collaboration_event_metadata, project_collabor
 from .agents.adapters import safe_adapter_capabilities
 from .agents.registry import CapabilityUnavailableError, UnknownCapabilityError
 from .agents.runtime import UnknownSubTaskError
-from .models import Product, TaskFile
-from .products.query import (
-    InvalidProductFilter,
-    get_product_with_revisions,
-    query_product_library,
-)
+from .models import TaskFile
 from .services import (
     AgentRunInProgressError,
     AgentRunReplayError,
@@ -54,24 +49,6 @@ from .intent.parser import (
     InvalidIntentConfirmation,
     preview_intent,
 )
-from .workflows.reviews import (
-    InvalidReviewSubmission,
-    ReviewNotFound,
-    ReviewSubmissionConflict,
-    submit_review,
-)
-from .workflows.review_images import (
-    ReviewImageConflict,
-    upload_review_image,
-    validate_upload_credential,
-)
-from .workflows.fact_application import (
-    FactApplicationConflict,
-    FactApplicationNotFound,
-    InvalidFactApplication,
-    apply_fact_review_cycle,
-)
-from .workflows.validation import frozen_image_candidates_for_review
 from .workflows.execution import (
     DispatchTargetNotFound,
     NativeAssignmentRequired,
@@ -398,115 +375,6 @@ def get_workflow_task(_request: HttpRequest, workflow_id: str) -> JsonResponse:
         payload, collaboration_event_metadata(workflow.id)
     )
     return JsonResponse(payload)
-
-
-@require_http_methods(["GET"])
-def preview_workflow_task_image(
-    _request: HttpRequest,
-    workflow_id: str,
-    task_file_id: str,
-) -> HttpResponse:
-    try:
-        workflow = get_prepared_workflow(workflow_id)
-    except UnknownPreparedWorkflowError:
-        return error("工作流不存在", 404)
-
-    frozen_candidate = None
-    for review in workflow.human_reviews.order_by("id"):
-        refs = review.source_conflict.get("source_refs") if isinstance(review.source_conflict, dict) else None
-        file_ids = refs.get("task_file_ids") if isinstance(refs, dict) else None
-        if not isinstance(file_ids, list) or task_file_id not in file_ids:
-            continue
-        signal = refs.get("signal") if isinstance(refs.get("signal"), dict) else {}
-        if signal.get("uncertainty") != "ambiguous_image_candidate":
-            continue
-        try:
-            candidates = frozen_image_candidates_for_review(workflow, review)
-        except ValueError:
-            return error("冻结图片候选的文件身份已变化", 409)
-        frozen_candidate = next(
-            (item for item in candidates if item["task_file_id"] == task_file_id),
-            None,
-        )
-        if frozen_candidate is not None:
-            break
-    image_file = None
-    validated_upload = None
-    if frozen_candidate is not None:
-        image_file = TaskFile.objects.filter(
-            pk=task_file_id,
-            task_id=workflow.batch_id,
-            kind="image",
-        ).first()
-        if (
-            image_file is None
-            or image_file.original_name != frozen_candidate["original_name"]
-            or image_file.stored_name != frozen_candidate["stored_name"]
-        ):
-            return error("冻结图片候选的文件身份已变化", 409)
-    else:
-        for review in workflow.human_reviews.order_by("id"):
-            try:
-                upload_step, upload_file, file_info = validate_upload_credential(
-                    workflow, review,
-                    next((step.id for step in workflow.steps.all()
-                          if isinstance(step.output_refs, dict)
-                          and step.output_refs.get("task_file_id") == task_file_id), None),
-                )
-            except (ReviewImageConflict, AttributeError):
-                continue
-            if upload_file.id == task_file_id:
-                image_file = upload_file
-                validated_upload = (upload_step, file_info)
-                break
-        if image_file is None:
-            return error("图片文件不是此工作流的人审候选或补图凭据", 404)
-
-    mime_types = {
-        ".gif": "image/gif",
-        ".jpeg": "image/jpeg",
-        ".jpg": "image/jpeg",
-        ".png": "image/png",
-        ".svg": "image/svg+xml",
-        ".webp": "image/webp",
-    }
-    content_type = (
-        validated_upload[1]["mime_type"]
-        if validated_upload is not None
-        else mime_types.get(Path(image_file.original_name).suffix.lower())
-    )
-    if content_type is None:
-        return error("图片格式不受支持", 404)
-    media_root = Path(settings.MEDIA_ROOT).resolve()
-    image_path = (media_root / image_file.stored_name).resolve()
-    try:
-        image_path.relative_to(media_root)
-    except ValueError:
-        return error("图片路径无效", 404)
-    if not image_path.is_file():
-        return error("图片文件不可用", 404)
-    if validated_upload is not None:
-        try:
-            upload_step, _ = validated_upload
-            expected_hash = upload_step.output_refs.get("sha256")
-            if hashlib.sha256(image_path.read_bytes()).hexdigest() != expected_hash:
-                return error("人审补图文件哈希与凭据不一致", 409)
-        except OSError:
-            return error("图片文件不可用", 404)
-    try:
-        handle = image_path.open("rb")
-    except OSError:
-        return error("图片文件不可用", 404)
-    response = FileResponse(
-        handle,
-        content_type=content_type,
-        filename=Path(image_file.original_name).name,
-        as_attachment=False,
-    )
-    response["Content-Security-Policy"] = "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'"
-    response["X-Content-Type-Options"] = "nosniff"
-    response["X-Frame-Options"] = "DENY"
-    return response
 
 
 @require_POST
@@ -848,136 +716,6 @@ def interrupt_workflow_subtask(
     return JsonResponse(result)
 
 
-@require_POST
-def submit_workflow_review(
-    request: HttpRequest, workflow_id: str, review_id: str
-) -> JsonResponse:
-    def reject_constant(value: str):
-        raise ValueError(f"非标准 JSON 常量：{value}")
-
-    try:
-        body = json.loads(
-            request.body.decode("utf-8"),
-            parse_constant=reject_constant,
-        )
-    except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
-        return error("请求体必须是标准 JSON", 422)
-    if not isinstance(body, dict):
-        return error("请求体必须是 JSON 对象", 422)
-    if set(body) != {"review_key", "answer", "reviewer"}:
-        return error("仅接受 review_key、answer 和 reviewer 字段", 422)
-    review_key = body.get("review_key")
-    answer = body.get("answer")
-    reviewer = body.get("reviewer")
-    if not isinstance(review_key, str) or not review_key.strip():
-        return error("review_key 必须是非空字符串", 422)
-    if not isinstance(answer, dict) or not answer:
-        return error("answer 必须是非空 JSON 对象", 422)
-    if not isinstance(reviewer, str) or not reviewer.strip() or len(reviewer) > 120:
-        return error("reviewer 必须是非空且不超过 120 个字符的标签", 422)
-
-    try:
-        receipt = submit_review(
-            workflow_id=workflow_id,
-            review_id=review_id,
-            review_key=review_key,
-            answer=answer,
-            reviewer=reviewer,
-        )
-    except ReviewNotFound as exc:
-        return error(str(exc), 404)
-    except (ReviewSubmissionConflict, InvalidReviewSubmission) as exc:
-        return error(str(exc), 409 if isinstance(exc, ReviewSubmissionConflict) else 422)
-    return JsonResponse(receipt)
-
-
-@require_POST
-def upload_workflow_review_image(
-    request: HttpRequest, workflow_id: str, review_id: str
-) -> JsonResponse:
-    image = request.FILES.get("image")
-    if image is None:
-        return error("缺少补图文件", 422)
-    if set(request.POST) != {"review_key", "idempotency_key", "reviewer"}:
-        return error("仅接受 review_key、idempotency_key 和 reviewer 字段", 422)
-    try:
-        receipt = upload_review_image(
-            workflow_id=workflow_id,
-            review_id=review_id,
-            review_key=request.POST["review_key"],
-            idempotency_key=request.POST["idempotency_key"],
-            reviewer=request.POST["reviewer"],
-            original_name=image.name,
-            content=image.read(),
-        )
-    except ReviewNotFound as exc:
-        return error(str(exc), 404)
-    except ReviewImageConflict as exc:
-        return JsonResponse({"code": "review_image_conflict", "detail": str(exc)}, status=409)
-    return JsonResponse(receipt, status=201)
-
-
-@require_POST
-def apply_workflow_review_cycle(
-    request: HttpRequest, workflow_id: str
-) -> JsonResponse:
-    def reject_constant(value: str):
-        raise ValueError(f"非标准 JSON 常量：{value}")
-
-    try:
-        body = json.loads(
-            request.body.decode("utf-8"),
-            parse_constant=reject_constant,
-        )
-    except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
-        return error("请求体必须是标准 JSON", 422)
-    if not isinstance(body, dict):
-        return error("请求体必须是 JSON 对象", 422)
-    if set(body) != {"review_ids", "idempotency_key", "decision", "reviewer"}:
-        return error(
-            "仅接受 review_ids、idempotency_key、decision 和 reviewer 字段",
-            422,
-        )
-    review_ids = body.get("review_ids")
-    idempotency_key = body.get("idempotency_key")
-    decision = body.get("decision")
-    reviewer = body.get("reviewer")
-    if (
-        not isinstance(review_ids, list)
-        or not review_ids
-        or any(not isinstance(item, str) or not item.strip() for item in review_ids)
-        or len(review_ids) != len(set(review_ids))
-    ):
-        return error("review_ids 必须是非空且无重复的 ID 列表", 422)
-    if not isinstance(idempotency_key, str) or not idempotency_key.strip():
-        return error("idempotency_key 必须是非空字符串", 422)
-    if decision != "apply_and_confirm":
-        return error("decision 必须是 apply_and_confirm", 422)
-    if not isinstance(reviewer, str) or not reviewer.strip() or len(reviewer) > 120:
-        return error("reviewer 必须是非空且不超过 120 个字符的标签", 422)
-
-    try:
-        receipt = apply_fact_review_cycle(
-            workflow_id=workflow_id,
-            review_ids=review_ids,
-            idempotency_key=idempotency_key,
-            decision=decision,
-            reviewer=reviewer,
-        )
-    except FactApplicationNotFound as exc:
-        return error(str(exc), 404)
-    except FactApplicationConflict as exc:
-        return error(str(exc), 409)
-    except InvalidFactApplication as exc:
-        return error(str(exc), 422)
-    except Exception:
-        return JsonResponse(
-            {"code": "internal_error", "detail": "事实应用失败，请刷新后重试"},
-            status=500,
-        )
-    return JsonResponse(receipt)
-
-
 def _service() -> WorkbenchService:
     return WorkbenchService()
 
@@ -1065,52 +803,25 @@ def get_task(_request: HttpRequest, task_id: str) -> JsonResponse:
         return error(str(exc), 404)
 
 
-@require_http_methods(["GET"])
-def product_library(request: HttpRequest) -> JsonResponse:
+@require_http_methods(["PATCH", "POST"])
+def update_batch_item(request: HttpRequest, item_id: str) -> JsonResponse:
     try:
-        items = query_product_library(
-            q=request.GET.get("q", ""),
-            status=request.GET.get("status", ""),
-            batch_id=request.GET.get("batch_id", ""),
-        )
-    except InvalidProductFilter as exc:
-        return error(str(exc), 400)
-    return JsonResponse(items, safe=False)
-
-
-@require_http_methods(["GET"])
-def product_revisions(
-    _request: HttpRequest,
-    product_id: str,
-) -> JsonResponse:
+        body = json.loads(request.body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return error("请求体必须是 JSON", 422)
+    if not isinstance(body, dict) or not body:
+        return error("请求体必须是非空 JSON 对象", 422)
     try:
-        payload = get_product_with_revisions(product_id)
-    except Product.DoesNotExist:
-        return error("产品不存在", 404)
+        payload = _service().update_batch_item(item_id, body)
+    except WorkbenchNotFoundError as exc:
+        return error(str(exc), 404)
+    except WorkbenchConflictError as exc:
+        return error(str(exc), 409)
+    except UploadValidationError as exc:
+        return error(str(exc), 422)
     return JsonResponse(payload)
 
 
-@require_http_methods(["PATCH"])
-def update_product(request: HttpRequest, product_id: str) -> JsonResponse:
-    try:
-        body = json.loads(request.body.decode("utf-8"))
-    except Exception:
-        return error("请求体必须是 JSON", 422)
-    if not isinstance(body, dict):
-        return error("请求体必须是 JSON 对象", 422)
-    if "image_filename" in body:
-        return error("image_filename 是只读派生字段", 422)
-    if not all(isinstance(value, str) for value in body.values()):
-        return error("产品字段必须是字符串", 422)
-    try:
-        return JsonResponse(_service().update_product(product_id, body))
-    except WorkbenchNotFoundError as exc:
-        return error(str(exc), 404)
-    except UploadValidationError as exc:
-        return error(str(exc), 422)
-
-
-@require_POST
 def confirm_task(_request: HttpRequest, task_id: str) -> JsonResponse:
     try:
         return JsonResponse(_service().confirm_task(task_id))

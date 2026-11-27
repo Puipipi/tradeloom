@@ -247,7 +247,7 @@ def preview_intent(*, batch: Task, user_goal: str, task_type: str | None = None,
         "rules": {"version": config["rules_version"], "sha256": config["rules_sha256"]},
         "sources": [
             {"kind": "batch", "model": "workbench.Task", "id": batch.id, "title": batch.title},
-            {"kind": "products", "model": "workbench.Product", "count": batch.products.count()},
+            {"kind": "batch_items", "model": "workbench.BatchItem", "count": batch.batch_items.count()},
             {"kind": "files", "model": "workbench.TaskFile", "count": batch.files.count()},
         ],
     }

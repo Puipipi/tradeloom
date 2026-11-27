@@ -22,6 +22,7 @@ export const BUSINESS_MENUS = Object.freeze([
   { id: 'home', label: '总览', path: '/home' },
   { id: 'products', label: '商品', path: '/products' },
   { id: 'orders', label: '订单与生产', path: '/orders' },
+  { id: 'customers', label: '客户', path: '/customers' },
   { id: 'agent-center', label: 'Agent 中心', path: '/agent-center' },
   { id: 'artifacts', label: '资料', path: '/artifacts' },
   { id: 'runs', label: '运行记录', path: '/runs' },

@@ -98,7 +98,14 @@ class Task(models.Model):
         ordering = ["-created_at"]
 
 
-class Product(models.Model):
+class BatchItem(models.Model):
+    """批次产品行：这一批货包含哪些 SKU。
+
+    取代原来的 Product 模型。只保留清单字段，**不再有版本历史、评审状态与
+    字段来源**（原 ProductRevision 已下线）；产品资料库的查询/还原/版本接口
+    一并移除。缺字段仍记在 missing_fields 里，供批次确认前提示。
+    """
+
     id = models.CharField(
         primary_key=True,
         max_length=32,
@@ -108,7 +115,7 @@ class Product(models.Model):
     task = models.ForeignKey(
         Task,
         on_delete=models.CASCADE,
-        related_name="products",
+        related_name="batch_items",
     )
     position = models.PositiveIntegerField()
     sku = models.CharField(max_length=120)
@@ -727,11 +734,6 @@ class AgentRun(models.Model):
         ordering = ["-started_at"]
 
 
-class ProductBatch(Task):
-    class Meta:
-        proxy = True
-
-
 class WorkflowTask(models.Model):
     id = models.CharField(
         primary_key=True,
@@ -767,77 +769,6 @@ class WorkflowTask(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
-
-
-class ProductRevisionQuerySet(models.QuerySet):
-    def update(self, **kwargs):
-        blocked = self.model.immutable_fields.intersection(kwargs)
-        if blocked:
-            raise ValidationError(
-                "ProductRevision 的 snapshot/product/version 不可改写。"
-            )
-        return super().update(**kwargs)
-
-    def bulk_update(self, objs, fields, batch_size=None):
-        blocked = self.model.immutable_fields.intersection(fields)
-        if blocked:
-            raise ValidationError(
-                "ProductRevision 的 snapshot/product/version 不可改写。"
-            )
-        return super().bulk_update(objs, fields, batch_size=batch_size)
-
-
-class ProductRevision(models.Model):
-    immutable_fields = frozenset({"snapshot", "product", "product_id", "version"})
-
-    id = models.CharField(
-        primary_key=True,
-        max_length=32,
-        default=hex_uuid,
-        editable=False,
-    )
-    product = models.ForeignKey(
-        Product,
-        on_delete=models.PROTECT,
-        related_name="revisions",
-    )
-    version = models.PositiveIntegerField()
-    snapshot = models.JSONField(default=dict)
-    field_sources = models.JSONField(default=dict)
-    status = models.CharField(max_length=32, default="draft")
-    source_refs = models.JSONField(default=dict)
-    reviewer = models.CharField(max_length=120, blank=True, default="")
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    objects = ProductRevisionQuerySet.as_manager()
-
-    class Meta:
-        ordering = ["product", "version"]
-        constraints = [
-            models.UniqueConstraint(
-                fields=["product", "version"],
-                name="uniq_productrev_prod_ver",
-            )
-        ]
-
-    def save(self, *args, **kwargs):
-        if not self._state.adding:
-            stored = (
-                type(self)
-                .objects.filter(pk=self.pk)
-                .values("snapshot", "product_id", "version")
-                .first()
-            )
-            if stored is not None and (
-                stored["snapshot"] != self.snapshot
-                or stored["product_id"] != self.product_id
-                or stored["version"] != self.version
-            ):
-                raise ValidationError(
-                    "ProductRevision 的 snapshot/product/version 不可改写。"
-                )
-        return super().save(*args, **kwargs)
 
 
 class SubTask(models.Model):
@@ -1445,3 +1376,259 @@ class MaterialItem(models.Model):
 
     class Meta:
         ordering = ["item_code"]
+
+
+class SkuCatalogItem(models.Model):
+    """SKU 商品清单（官网主数据的本地镜像）。
+
+    由商品清单 CSV 或官网后台推送写入，可随时重建，**不含任何人工成本数据**。
+    停用只打标记不删行：留着才能解释历史成本。position 用于保持导入顺序。
+    """
+
+    id = models.CharField(primary_key=True, max_length=32, default=hex_uuid, editable=False)
+    sku = models.CharField(max_length=120, unique=True)
+    name = models.CharField(max_length=300, blank=True, default="")
+    series = models.CharField(max_length=200, blank=True, default="")
+    sub_category = models.CharField(max_length=200, blank=True, default="")
+    material = models.CharField(max_length=300, blank=True, default="")
+    size = models.CharField(max_length=120, blank=True, default="")
+    url = models.CharField(max_length=500, blank=True, default="")
+    image = models.CharField(max_length=500, blank=True, default="")
+    active = models.BooleanField(default=True)
+    position = models.PositiveIntegerField(default=0)
+    source = models.CharField(max_length=64, default="manual")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["position", "sku"]
+
+
+class SkuCatalogImport(models.Model):
+    """清单导入流水。页面只显示最近几条，用来回答「这批 SKU 什么时候进来的」。"""
+
+    id = models.CharField(primary_key=True, max_length=32, default=hex_uuid, editable=False)
+    source = models.CharField(max_length=64)
+    added = models.PositiveIntegerField(default=0)
+    updated = models.PositiveIntegerField(default=0)
+    skipped = models.PositiveIntegerField(default=0)
+    total = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "id"]
+
+
+class SkuCostEntry(models.Model):
+    """SKU 商品成本台账的人工字段——**这份是真正要备份的业务数据**。
+
+    两条硬规矩：
+      1. 0 与空白含义不同。0 是"真的是 0"，空白（NULL）是"还没填"。
+      2. 缺必要字段不出利润率（由 service 层判定，这里只存事实）。
+
+    price 的币种记在 price_currency：切了结算币种后旧数字不再参与计算，
+    否则会把 10 美元当成 10 欧元算出一份漂亮但假的毛利。
+
+    只存**商品成本**：采购价、头程。关税按「HS × 目的国」查表，广告/退货/店铺月费
+    属于期间费用（见 SkuPeriodCost），都不在这里——逐 SKU 留格子只会让人以为必须填，
+    填了又会被当成固定费率摊进单件成本，算出一个解释不了的数。
+    """
+
+    id = models.CharField(primary_key=True, max_length=32, default=hex_uuid, editable=False)
+    sku = models.CharField(max_length=120, unique=True)
+    hs_code = models.CharField(max_length=40, blank=True, default="")
+    price = models.DecimalField(max_digits=18, decimal_places=6, null=True, blank=True)
+    price_currency = models.CharField(max_length=3, blank=True, default="")
+    cost_cny = models.DecimalField(max_digits=18, decimal_places=6, null=True, blank=True)
+    freight_cny = models.DecimalField(max_digits=18, decimal_places=6, null=True, blank=True)
+    units = models.DecimalField(max_digits=18, decimal_places=6, null=True, blank=True)
+    commission = models.DecimalField(max_digits=18, decimal_places=6, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["sku"]
+
+
+class SkuPeriodCost(models.Model):
+    """期间费用：广告花费、退货损失、店铺月费、其他——按月实际发生，**不进单件成本**。
+
+    为什么不摊到 SKU：这三项逐单都不一样（同一件货今天 ACOS 8%、明天 40%），
+    把均值乘进售价得到的是假设模型，既解释不了也没法校准。真实答案只在
+    「这个月到底花了多少」里，所以按「市场 × 月份」登记实际发生额。
+
+    市场维度必须有：美国店和欧洲店的广告账户、退货政策、月租都是分开的。
+    0 与 NULL 仍然区分：填 0 表示这个月确实没花，NULL 表示还没登记。
+    """
+
+    id = models.CharField(primary_key=True, max_length=32, default=hex_uuid, editable=False)
+    market = models.CharField(max_length=8)
+    month = models.CharField(max_length=7)          # YYYY-MM
+    ad_spend_cny = models.DecimalField(max_digits=18, decimal_places=2, null=True, blank=True)
+    returns_cny = models.DecimalField(max_digits=18, decimal_places=2, null=True, blank=True)
+    shop_fee_cny = models.DecimalField(max_digits=18, decimal_places=2, null=True, blank=True)
+    other_cny = models.DecimalField(max_digits=18, decimal_places=2, null=True, blank=True)
+    note = models.CharField(max_length=200, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-month", "market"]
+        constraints = [
+            models.UniqueConstraint(fields=["market", "month"], name="sku_period_market_month_unique"),
+        ]
+
+
+class SkuSetting(models.Model):
+    """SKU 台账口径设置（单例，pk 固定为 1）。
+
+    手填汇率按币种分开存在 fx_manual 里，切币种不会互相覆盖。
+    market 决定报价币种与用哪套关税税率（见 SkuDutyRate）。
+    """
+
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+    market = models.CharField(max_length=8, default="US")
+    currency = models.CharField(max_length=3, default="USD")
+    channel = models.CharField(max_length=40, default="domestic_wholesale")
+    fx_mode = models.CharField(max_length=10, default="auto")
+    fx_manual = models.JSONField(default=dict, blank=True)
+    rebate = models.DecimalField(max_digits=18, decimal_places=6, default=0)
+    fixed_fee = models.DecimalField(max_digits=18, decimal_places=6, null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class SkuDutyRate(models.Model):
+    """进口关税税率：**同一 SKU 发往不同国家，税率完全不同**，所以它既不在 SKU 上，
+    也不在订单里，而是独立成「HS 编码 × 目的国」的规则表。
+
+    为什么不放订单：税率是规则、订单是结果。规则放结果上会导致每单手填、改一次
+    政策翻遍历史单、报价阶段（还没有订单）根本算不出来。订单将来只需存一份
+    「当时用了哪条税率」的快照。
+
+    hs_prefix 支持前缀匹配：只录 ``5806`` 就能命中 ``5806.32`` 和 ``5806.32.10``，
+    匹配时取最长前缀。
+
+    base_rate 与 extra_rate 分开，是因为美国那类市场是「基础税率 + 301 附加税」，
+    欧盟还会有反倾销税；展示时要能说清是哪几段加起来的。
+    """
+
+    id = models.CharField(primary_key=True, max_length=32, default=hex_uuid, editable=False)
+    market = models.CharField(max_length=8)
+    hs_prefix = models.CharField(max_length=20)
+    base_rate = models.DecimalField(max_digits=9, decimal_places=6, default=0)
+    extra_rate = models.DecimalField(max_digits=9, decimal_places=6, default=0)
+    # 优惠税率（自贸协定项下，如 RCEP / 中澳 ChAFTA）：只有凭原产地证才用得上。
+    # 允许为空是因为「没有优惠」和「优惠 0%」是两件事；也**不参与计算**——
+    # 按没办的证去算毛利，会得到一个漂亮但兑不出来的数。
+    preferred_rate = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True, default=None,
+    )
+    note = models.CharField(max_length=200, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["market", "hs_prefix"]
+        constraints = [
+            models.UniqueConstraint(fields=["market", "hs_prefix"], name="sku_duty_market_hs_unique"),
+        ]
+
+
+class SkuFxSnapshot(models.Model):
+    """汇率快照缓存（单例）。30 分钟 TTL，**可随时删除重建**。
+
+    统一存「1 单位外币兑 CNY」，日元牌价乘 100 只是显示习惯，计算永远按 1 单位。
+    """
+
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+    base = models.CharField(max_length=3, default="USD")
+    rates = models.JSONField(default=dict, blank=True)
+    prev_rates = models.JSONField(default=dict, blank=True)
+    quotes = models.JSONField(default=list, blank=True)
+    sources = models.JSONField(default=dict, blank=True)
+    source = models.CharField(max_length=64, blank=True, default="")
+    source_count = models.PositiveSmallIntegerField(default=0)
+    divergent = models.BooleanField(default=False)
+    spread = models.DecimalField(max_digits=18, decimal_places=6, default=0)
+    checked_at = models.DateTimeField(null=True, blank=True)
+
+
+# ------------------------------------------------------------------ UN Comtrade
+
+class SkuTradeSnapshot(models.Model):
+    """UN Comtrade 的一条贸易观测：HS6 × 报告国 × 伙伴国 × 流向 × 年份。
+
+    只存**原始观测**，不存推导值。份额、增速、单价带都是「同一批行怎么算」，
+    放在 service 层，口径要改时不用回写全表——上游一年才更新一次，
+    但口径（比如用 CIF 还是 FOB、要不要剔掉转口）随时会调整。
+
+    ``partner_code=0`` 是世界合计，``156`` 是中国。需求侧就看这两行：
+    世界合计是市场容量，中国那行是「这块蛋糕里我们占多少」。
+    ``primary_value`` 单位统一是美元——Comtrade 自己按报告国本币折算后给的美元值，
+    不在这里做汇率换算，否则跨年比较会被汇率波动污染。
+    """
+
+    id = models.CharField(primary_key=True, max_length=32, default=hex_uuid, editable=False)
+    hs6 = models.CharField(max_length=6, db_index=True)
+    reporter_code = models.PositiveIntegerField()          # Comtrade 数字码，842=美国
+    reporter_name = models.CharField(max_length=80, blank=True, default="")
+    partner_code = models.PositiveIntegerField(default=0)  # 0 = World
+    partner_name = models.CharField(max_length=80, blank=True, default="")
+    flow = models.CharField(max_length=2, default="M")     # M 进口 / X 出口
+    period = models.PositiveIntegerField()                 # 四位年份
+    primary_value = models.DecimalField(max_digits=26, decimal_places=2, default=0)
+    net_wgt = models.DecimalField(max_digits=26, decimal_places=3, null=True, blank=True)
+    qty = models.DecimalField(max_digits=26, decimal_places=3, null=True, blank=True)
+    qty_unit = models.CharField(max_length=16, blank=True, default="")
+    source = models.CharField(max_length=32, default="UN Comtrade")
+    fetched_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["hs6", "period", "reporter_code", "partner_code"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["hs6", "reporter_code", "partner_code", "flow", "period"],
+                name="sku_trade_obs_unique",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["hs6", "period"], name="sku_trade_hs_period"),
+            models.Index(fields=["period"], name="sku_trade_period"),
+        ]
+
+
+class SkuTradeRun(models.Model):
+    """一次同步流水。页面只显示最近几条，用来回答「数据是哪天拉的、缺了哪些」。
+
+    ``failed`` 记的是 HS6 列表而不是计数：知道「哪几个编码没拉到」才能重试，
+    只知道「失败了 3 个」等于没记。
+    """
+
+    id = models.CharField(primary_key=True, max_length=32, default=hex_uuid, editable=False)
+    mode = models.CharField(max_length=16, default="preview")   # preview / subscription
+    years = models.CharField(max_length=64, blank=True, default="")
+    requested = models.PositiveIntegerField(default=0)
+    fetched = models.PositiveIntegerField(default=0)
+    observations = models.PositiveIntegerField(default=0)
+    failed = models.JSONField(default=list, blank=True)
+    note = models.CharField(max_length=300, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "id"]
+
+
+class SkuTradeSetting(models.Model):
+    """Comtrade 接入设置（单例）。
+
+    ``api_key`` 不填也能用：public preview 端点免 key，只是限制「一次一个编码、
+    一个年份、500 行」——正好是我们的查询形状，所以默认走 preview。
+    填了 key 才走正式端点，可以一次多编码多年份，也不受 preview 的 500 行限制。
+
+    key 只落本地库：桌面版是单机数据库，不上传、不进日志（日志只记 mode）。
+    """
+
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+    api_key = models.CharField(max_length=120, blank=True, default="")
+    lookback_years = models.PositiveSmallIntegerField(default=3)  # 回看年数（含最新一年）
+    updated_at = models.DateTimeField(auto_now=True)

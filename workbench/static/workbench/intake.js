@@ -843,14 +843,6 @@
     }
     container.append(list);
 
-    if (candidate.candidate_type === "product_identity" && globalThis.TradeLoomIntakeProductApplication) {
-      globalThis.TradeLoomIntakeProductApplication.attach({
-        container, candidate, applications: body.applications || [],
-        applicationsNextOffset: body.applications_next_offset,
-        root, request, keyFactory: key,
-      });
-    }
-
     if (Array.isArray(body.links) && body.links.length) {
       const links = document.createElement("p");
       links.className = "intake-muted";

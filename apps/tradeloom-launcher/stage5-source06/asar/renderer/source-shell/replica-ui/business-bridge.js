@@ -8,6 +8,7 @@
     center: '/home',
     products: '/products',
     'order-production': '/orders',
+    customers: '/customers',
     'agent-center': '/agent-center',
     deliverables: '/artifacts',
     runs: '/runs',

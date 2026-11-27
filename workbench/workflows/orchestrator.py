@@ -15,10 +15,9 @@ from workbench.agents.result_contracts import (
 )
 from workbench.agents.workflow_contracts import workflow_markers
 from workbench.models import (
+    BatchItem,
     EventLog,
     HumanReview,
-    Product,
-    ProductRevision,
     SubTask,
     Task,
     TaskFile,
@@ -262,19 +261,12 @@ class WorkflowOrchestrator:
     def _lock_native_sources(workflow: WorkflowTask) -> None:
         """Serialize source reads against edits while an assignment is begun or submitted."""
         Task.objects.select_for_update().get(pk=workflow.batch_id)
-        product_ids = list(
-            Product.objects.select_for_update()
+        list(
+            BatchItem.objects.select_for_update()
             .filter(task_id=workflow.batch_id)
             .order_by("id")
             .values_list("id", flat=True)
         )
-        if product_ids:
-            list(
-                ProductRevision.objects.select_for_update()
-                .filter(product_id__in=product_ids)
-                .order_by("product_id", "version")
-                .values_list("id", flat=True)
-            )
         list(
             TaskFile.objects.select_for_update()
             .filter(task_id=workflow.batch_id)
@@ -306,30 +298,20 @@ class WorkflowOrchestrator:
             "image_upload_steps": [],
             "reviews": [],
         }
-        for product in context.products:
-            revision = context.current_revisions.get(product.id)
+        for item in context.products:
             source["products"].append({
-                "id": product.id,
-                "position": product.position,
-                "sku": product.sku,
-                "name": product.name,
-                "category": product.category,
-                "material": product.material,
-                "size": product.size,
-                "color": product.color,
-                "image_filename": product.image_filename,
-                "image_stored_name": product.image_stored_name,
-                "missing_fields": product.missing_fields,
-                "updated_at": product.updated_at.isoformat(),
-                "current_revision": ({
-                    "id": revision.id,
-                    "version": revision.version,
-                    "snapshot": revision.snapshot,
-                    "field_sources": revision.field_sources,
-                    "status": revision.status,
-                    "source_refs": revision.source_refs,
-                    "updated_at": revision.updated_at.isoformat(),
-                } if revision else None),
+                "id": item.id,
+                "position": item.position,
+                "sku": item.sku,
+                "name": item.name,
+                "category": item.category,
+                "material": item.material,
+                "size": item.size,
+                "color": item.color,
+                "image_filename": item.image_filename,
+                "image_stored_name": item.image_stored_name,
+                "missing_fields": item.missing_fields,
+                "updated_at": item.updated_at.isoformat(),
             })
 
         media_root = Path(settings.MEDIA_ROOT).resolve()

@@ -15,7 +15,7 @@ from django.test import Client, TransactionTestCase, override_settings
 from openpyxl import Workbook
 
 from workbench.intake.storage import INTAKE_MARKER, INTAKE_MARKER_CONTENT
-from workbench.models import (EvidenceRecord, ErpNextDraftOperation, IntakeCandidate, Product, ProductRevision,
+from workbench.models import (BatchItem, EvidenceRecord, ErpNextDraftOperation, IntakeCandidate,
                               ProductionRequirementDraft, ProductionRequirementRevision)
 from workbench.requirements.calculations import packaging_check, source_arithmetic_check
 
@@ -100,8 +100,7 @@ class ProductionRequirementApiTests(TransactionTestCase):
 
     def test_explicit_historical_reference_draft_is_idempotent_and_keeps_source_arithmetic_unverified(self):
         _source, _preview, candidate = self.create_production_candidate("historical")
-        products_before = Product.objects.count()
-        revisions_before = ProductRevision.objects.count()
+        products_before = BatchItem.objects.count()
         erp_operations_before = ErpNextDraftOperation.objects.count()
         path = f"/api/intake/candidates/{candidate['id']}/requirement-drafts"
         body = {"record_kind": "historical_reference"}
@@ -138,8 +137,7 @@ class ProductionRequirementApiTests(TransactionTestCase):
             HTTP_IDEMPOTENCY_KEY="requirement-create-historical-001",
         )
         self.assertEqual(different_payload.status_code, 409, different_payload.content)
-        self.assertEqual(Product.objects.count(), products_before)
-        self.assertEqual(ProductRevision.objects.count(), revisions_before)
+        self.assertEqual(BatchItem.objects.count(), products_before)
         self.assertEqual(ErpNextDraftOperation.objects.count(), erp_operations_before)
 
     def test_draft_lookup_and_bounded_revision_history_are_read_only(self):
@@ -529,6 +527,5 @@ class ProductionRequirementApiTests(TransactionTestCase):
             "state": "calculated", "whole_packages": "2", "remainder": "0", "source_carton_count": "2",
         })
         self.assertEqual(confirmed.json()["packaging_check"], "passed")
-        self.assertEqual(Product.objects.count(), 0)
-        self.assertEqual(ProductRevision.objects.count(), 0)
+        self.assertEqual(BatchItem.objects.count(), 0)
         self.assertEqual(ErpNextDraftOperation.objects.count(), 0)

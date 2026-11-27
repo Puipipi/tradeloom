@@ -11,8 +11,7 @@ from workbench.models import (
     ArtifactVersion,
     EventLog,
     HumanReview,
-    Product,
-    ProductRevision,
+    BatchItem,
     SubTask,
     Task,
     WorkflowTask,
@@ -42,9 +41,9 @@ class PageTests(TestCase):
         sku: str,
         position: int = 0,
         missing_fields: list[str] | None = None,
-    ) -> Product:
+    ) -> BatchItem:
         now = timezone.now()
-        return Product.objects.create(
+        return BatchItem.objects.create(
             task=batch,
             position=position,
             sku=sku,
@@ -72,30 +71,6 @@ class PageTests(TestCase):
             task_type="prepare_product_data",
             status=status,
             current_step="plan",
-        )
-
-    def make_revision(
-        self,
-        product: Product,
-        *,
-        version: int,
-        status: str,
-        source: str,
-    ) -> ProductRevision:
-        return ProductRevision.objects.create(
-            product=product,
-            version=version,
-            snapshot={
-                "sku": product.sku,
-                "name": product.name,
-                "category": product.category,
-                "material": product.material,
-                "size": product.size,
-                "color": product.color,
-                "image_filename": product.image_filename,
-            },
-            status=status,
-            source_refs={"source": source},
         )
 
     def test_five_new_pages_and_global_navigation(self):
@@ -168,46 +143,22 @@ class PageTests(TestCase):
         self.assertContains(response, "可确认")
         self.assertContains(response, "待补 1 项")
 
-    def test_products_page_shows_latest_revision_and_missing_fields(self):
-        batch = self.make_batch(title="产品批次")
-        product = self.make_product(
-            batch,
-            sku="P-100",
-            missing_fields=["材质"],
-        )
-        self.make_revision(
-            product,
-            version=1,
-            status="needs_review",
-            source="legacy_backfill",
-        )
-        self.make_revision(
-            product,
-            version=2,
-            status="confirmed",
-            source="legacy_product",
-        )
+    def test_products_page_renders_sku_cost_ledger(self):
+        """商品/产品资料页面已被 SKU 成本台账取代。
 
+        老的产品资料库表格与筛选条不再渲染，「产品资料」只剩数据模型与 /api/products
+        追溯接口；页面本体是成本台账。这里盯住三件事：台账外壳在、市场条在、
+        老表格确实下线了。
+        """
         response = self.client.get("/products")
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'data-testid="products-table"')
-        self.assertContains(response, "P-100")
-        self.assertContains(
-            response,
-            f'data-testid="product-version-{product.id}">2<',
-        )
-        self.assertContains(
-            response,
-            f'data-testid="product-status-{product.id}">已确认<',
-        )
-        self.assertContains(
-            response,
-            f'data-testid="product-source-{product.id}">产品资料更新<',
-        )
-        self.assertContains(response, "材质")
-        self.assertNotContains(response, "Django + PostgreSQL")
-        self.assertNotContains(response, "legacy")
+        self.assertContains(response, 'data-testid="sku-panel"')
+        self.assertContains(response, "SKU 成本台账")
+        self.assertContains(response, 'data-testid="sku-market-US"')
+        self.assertContains(response, 'data-testid="sku-period"')
+        self.assertNotContains(response, 'data-testid="products-table"')
+        self.assertNotContains(response, "个产品匹配当前筛选")
         self.assertRegex(
             response.content.decode(),
             r'<a[^>]*data-testid="nav-products"[^>]*aria-current="page"',
@@ -364,15 +315,6 @@ class PageTests(TestCase):
         batch.updated_at = utc_start
         batch.save(update_fields=["created_at", "updated_at"])
         product = self.make_product(batch, sku="TZ-1")
-        revision = self.make_revision(
-            product,
-            version=1,
-            status="needs_review",
-            source="legacy_backfill",
-        )
-        ProductRevision.objects.filter(pk=revision.pk).update(
-            updated_at=utc_start
-        )
         AgentRun.objects.create(
             task=batch,
             capability_id="product_profile",
@@ -397,16 +339,12 @@ class PageTests(TestCase):
         Artifact.objects.filter(pk=artifact.pk).update(updated_at=utc_start)
 
         home = self.client.get("/home")
-        products = self.client.get("/products")
         runs = self.client.get("/runs")
         artifacts = self.client.get("/artifacts")
 
         self.assertContains(home, "2026-10-18 22:09")
         self.assertContains(home, "上海时间")
         self.assertNotContains(home, "2026-10-18T14:09")
-        self.assertContains(products, "2026-10-18 22:09")
-        self.assertContains(products, "上海时间")
-        self.assertNotContains(products, "2026-10-18T14:09")
         self.assertContains(runs, "2026-10-18 22:09")
         self.assertContains(runs, "2026-10-18 22:10")
         self.assertContains(runs, "上海时间")
@@ -441,21 +379,13 @@ class PageTests(TestCase):
         self.assertContains(runs, "仅显示最近 50 条，共 51 条")
         self.assertContains(runs, "仅显示最近 20 条，共 21 条")
 
-    def test_unknown_status_and_source_labels_do_not_error(self):
+    def test_product_library_endpoint_is_gone(self):
+        # 产品资料库（含查询/版本/还原接口）已随 0027 迁移下线。
         batch = self.make_batch(status="custom_status")
-        product = self.make_product(batch, sku="UNKNOWN-1")
-        self.make_revision(
-            product,
-            version=1,
-            status="custom_status",
-            source="custom_source",
-        )
+        self.make_product(batch, sku="UNKNOWN-1")
 
-        response = self.client.get("/products")
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "custom_status")
-        self.assertContains(response, "custom_source")
+        self.assertEqual(self.client.get("/api/product-library").status_code, 404)
+        self.assertEqual(self.client.get(f"/api/batch-items/{batch.id}").status_code, 405)
 
     def test_old_routes_and_js_testids_remain(self):
         batch = self.make_batch(title="旧任务")

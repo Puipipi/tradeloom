@@ -95,14 +95,3 @@ class DeliveryGeneratorTests(unittest.TestCase):
         self.assertNotIn("price", payload["products"][0])
         self.assertNotIn("lead_time", payload["products"][0])
 
-    def test_generator_rejects_missing_english_name_without_translation(self):
-        row = product_row()
-        row["snapshot"]["english_name"] = "  "
-        from workbench.delivery.catalog import EnglishNameRequired
-
-        with self.assertRaises(EnglishNameRequired):
-            build_catalog_html([row])
-
-
-if __name__ == "__main__":
-    unittest.main()

@@ -1,0 +1,640 @@
+/* SKU 成本台账：产品资料页顶部区块。沿用 styles.css 的变量，缺省才回落本地值。 */
+.sku-panel {
+  --sku-line: var(--line, #e3e6ea);
+  --sku-muted: #6b7480;
+  --sku-accent: #1a6ee0;
+}
+
+.sku-panel .sku-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.sku-panel .sku-head h2 { margin: 0 0 4px; }
+.sku-panel .sku-sub { color: var(--sku-muted); font-size: 13px; margin: 0; }
+
+.sku-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.sku-actions .button { white-space: nowrap; }
+
+/* ---- 折叠 ----
+   两张表都会很长（SKU 144 行、期间费用 12 个月），收起后各自只留一行开关。
+   用 display:none 而不是 height 过渡：几千像素的高度动画只会掉帧，反而更卡。
+   状态挂在根元素的类上（模板 head 里的内联脚本先打类），首帧就是收起的，不会闪一下。 */
+html.sku-table-collapsed .sku-body { display: none; }
+html.sku-period-collapsed .sku-period-body { display: none; }
+
+/* 开关按钮：贴着它在管的那块内容，不跟其它操作按钮挤在标题右边 */
+.sku-togglebar { margin: 12px 0 0; }
+.sku-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px 5px 9px;
+  border: 1px solid var(--sku-line);
+  border-radius: 8px;
+  background: var(--surface, #fff);
+  color: var(--sku-muted);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.3;
+  cursor: pointer;
+}
+.sku-toggle:hover { border-color: #c9d6ea; color: var(--sku-accent); }
+.sku-toggle:focus-visible { outline: 2px solid var(--sku-accent); outline-offset: 1px; }
+.sku-toggle-count {
+  margin-left: 2px;
+  padding-left: 7px;
+  border-left: 1px solid var(--sku-line);
+  font-variant-numeric: tabular-nums;
+}
+.sku-panel .sku-caret {
+  display: inline-block;
+  font-size: 10px;
+  line-height: 1;
+  transition: transform .16s ease;
+}
+.sku-panel [aria-expanded="false"] .sku-caret { transform: rotate(-90deg); }
+
+/* ---- 统计条 ---- */
+.sku-stats { display: flex; gap: 10px; flex-wrap: wrap; margin: 14px 0 12px; }
+.sku-stat {
+  flex: 1 1 108px;
+  border: 1px solid var(--sku-line);
+  border-radius: 10px;
+  padding: 8px 12px;
+  background: var(--surface, #fff);
+}
+.sku-stat span { display: block; color: var(--sku-muted); font-size: 11.5px; letter-spacing: .2px; }
+.sku-stat strong {
+  display: block;
+  font-size: 18px;
+  font-weight: 640;
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+.sku-stat.is-good strong { color: #127a5b; }
+.sku-stat.is-warn strong { color: #b26a00; }
+.sku-stat.is-bad strong { color: #c0392b; }
+
+/* ---- 币种条 ---- */
+.sku-fxbar { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 0 0 10px; }
+.sku-fxbar-label { font-size: 11.5px; color: var(--sku-muted); letter-spacing: .2px; margin-right: 2px; }
+.sku-fxbar-hint { font-size: 11.5px; color: var(--sku-muted); margin-left: 4px; }
+.sku-fxchip {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  align-items: flex-start;
+  cursor: pointer;
+  border: 1px solid var(--sku-line);
+  background: var(--surface, #fff);
+  color: inherit;
+  border-radius: 9px;
+  padding: 5px 10px;
+  font: inherit;
+  line-height: 1.15;
+  min-width: 88px;
+  text-align: left;
+  /* 切换市场是局部重算，选中态要「点了就亮」——过渡只做颜色，不做位移，避免拖慢感知 */
+  transition: border-color .12s ease, background-color .12s ease, box-shadow .12s ease;
+}
+.sku-fxchip:active { transform: translateY(1px); }
+.sku-fxchip:hover { border-color: #c9d6ea; background: #fcfdff; }
+.sku-fxchip:disabled { opacity: .6; cursor: progress; }
+.sku-fxchip.on {
+  border-color: var(--sku-accent);
+  background: #eef5ff;
+  box-shadow: inset 0 0 0 1px var(--sku-accent);
+}
+.sku-fxchip-code { font-size: 11px; font-weight: 650; letter-spacing: .4px; display: flex; gap: 5px; align-items: center; }
+.sku-fxchip-code i { font-style: normal; color: var(--sku-accent); font-size: 11px; }
+.sku-fxchip-rate { font-size: 14px; font-weight: 640; font-variant-numeric: tabular-nums; }
+.sku-fxchip-sub { font-size: 10.5px; color: var(--sku-muted); font-variant-numeric: tabular-nums; }
+.sku-fxchip-sub .up { color: #c0392b; }
+.sku-fxchip-sub .down { color: #127a5b; }
+
+/* ---- 工具栏 ---- */
+.sku-toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 0 0 10px; }
+.sku-toolbar input,
+.sku-toolbar select {
+  padding: 6px 9px;
+  border: 1px solid var(--sku-line);
+  border-radius: 7px;
+  font-size: 13px;
+  background: var(--surface, #fff);
+  color: inherit;
+}
+.sku-toolbar input { width: 210px; }
+/* 系列名可能很长（Christmas & Winter Collections），下拉别把整行撑开 */
+.sku-toolbar #sku-series { max-width: 230px; }
+.sku-fx-note { color: var(--sku-muted); font-size: 12px; margin-left: auto; }
+.sku-fx-note b { color: #127a5b; font-weight: 600; }
+.sku-fx-note.is-warn b { color: #b26a00; }
+.sku-fx-note.is-bad b { color: #c0392b; }
+
+/* ---- 表格 ---- */
+.sku-table-wrap { overflow: auto; max-height: 62vh; border: 1px solid var(--sku-line); border-radius: 10px; }
+.sku-table { border-collapse: separate; border-spacing: 0; font-size: 12.5px; white-space: nowrap; width: 100%; }
+.sku-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface-alt, #f9fafb);
+  border-bottom: 1px solid var(--sku-line);
+  padding: 8px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 11.5px;
+  color: #39424c;
+}
+.sku-table tbody td {
+  border-bottom: 1px solid color-mix(in srgb, var(--sku-line) 55%, transparent);
+  padding: 2px 6px;
+  vertical-align: middle;
+}
+.sku-table tbody tr:hover td { background: color-mix(in srgb, var(--sku-accent) 4%, transparent); }
+.sku-table td.sku-id {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--surface, #fff);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.sku-table tbody tr:hover td.sku-id { background: color-mix(in srgb, var(--sku-accent) 4%, #fff); }
+.sku-table td.sku-name { max-width: 230px; overflow: hidden; text-overflow: ellipsis; }
+.sku-table td.sku-series {
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #4a5560;
+}
+.sku-table input {
+  width: 100%;
+  min-width: 50px;
+  border: 1px solid transparent;
+  background: transparent;
+  padding: 4px 5px;
+  border-radius: 5px;
+  font: inherit;
+  color: inherit;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.sku-table input[data-f="hs_code"] { text-align: left; min-width: 66px; }
+.sku-table input:hover { border-color: var(--sku-line); }
+.sku-table input:focus {
+  outline: none;
+  border-color: var(--sku-accent);
+  background: #fff;
+  box-shadow: 0 0 0 2px #eaf2fe;
+}
+.sku-table input.dirty { border-color: #c9d6ea; background: #fcfdff; }
+.sku-table input.mismatch { border-color: #f0c36d; background: #fffaf0; }
+.sku-table input.mismatch::placeholder { color: #b26a00; opacity: .85; }
+.sku-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+.sku-neg { color: #c0392b; font-weight: 600; }
+.sku-low { color: #b26a00; }
+.sku-good { color: #127a5b; }
+
+.sku-badge {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  background: #e9f7f1;
+  color: #127a5b;
+}
+.sku-badge.pend { background: #fff7e6; color: #b26a00; cursor: help; }
+.sku-badge.off { background: #f2f4f7; color: #6b7480; }
+
+.sku-table tr.sku-archived td { opacity: .45; }
+.sku-table tr.sku-archived td.sku-id { text-decoration: line-through; }
+.sku-table tr.sku-flash td { animation: skuFlash 2.2s ease-out; }
+@keyframes skuFlash {
+  0%, 35% { background: #e9f7f1; }
+  100% { background: transparent; }
+}
+
+/* 切市场：整块表格淡一下再回来，代替页面重载的「白屏—重绘」。
+   只动 opacity（走合成层），144 行也不会掉帧；不做逐格闪光，那才是自己给自己添卡。 */
+.sku-table tbody { transition: opacity .15s ease; }
+.sku-panel.is-refreshing .sku-table tbody { opacity: .42; pointer-events: none; }
+.sku-panel.is-refreshing .sku-fxbar { cursor: progress; }
+
+.sku-tag-new {
+  display: inline-block;
+  margin-left: 5px;
+  padding: 0 5px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  background: #e9f7f1;
+  color: #127a5b;
+}
+/* ---- 期间费用 ----
+   和 SKU 表视觉上分开：这里是「本月实际花了多少」，上面是「一件货成本多少」，
+   两块各自独立，只在最下面一行「经营净利」相加。 */
+.sku-period {
+  margin: 16px 0 0;
+  border: 1px solid var(--sku-line);
+  border-radius: 12px;
+  padding: 12px 14px 14px;
+  background: var(--surface-alt, #fafbfc);
+}
+.sku-period-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.sku-period-head h3 {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 650;
+}
+/* 标题本身当开关用：键盘可聚焦，位置就在原来的标题处，不额外占一行 */
+.sku-period-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.sku-period-title:hover { color: var(--sku-accent); }
+.sku-period-title:focus-visible { outline: 2px solid var(--sku-accent); outline-offset: 2px; border-radius: 4px; }
+.sku-period-month { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--sku-muted); }
+.sku-period-month input {
+  padding: 5px 8px;
+  border: 1px solid var(--sku-line);
+  border-radius: 7px;
+  font: inherit;
+  color: inherit;
+  background: var(--surface, #fff);
+}
+.sku-period-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+  gap: 8px;
+  margin: 12px 0 0;
+}
+.sku-period-grid label { display: flex; flex-direction: column; gap: 3px; }
+.sku-period-grid label > span { font-size: 11px; color: var(--sku-muted); }
+.sku-period-grid input {
+  padding: 6px 8px;
+  border: 1px solid var(--sku-line);
+  border-radius: 7px;
+  font: inherit;
+  font-size: 13px;
+  color: inherit;
+  background: var(--surface, #fff);
+  font-variant-numeric: tabular-nums;
+}
+.sku-period-grid input:focus { outline: none; border-color: var(--sku-accent); box-shadow: 0 0 0 2px #eaf2fe; }
+.sku-period-grid input.dirty { border-color: #c9d6ea; background: #fcfdff; }
+.sku-period-grid .sku-period-note { grid-column: 1 / -1; }
+
+.sku-period-sum {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 8px;
+  margin: 12px 0 0;
+  padding-top: 12px;
+  border-top: 1px dashed var(--sku-line);
+}
+.sku-period-cell span { display: block; font-size: 11px; color: var(--sku-muted); }
+.sku-period-cell small { display: block; font-size: 10.5px; color: #8b929c; margin-top: 1px; }
+.sku-period-cell strong {
+  display: block;
+  margin-top: 3px;
+  font-size: 16px;
+  font-weight: 640;
+  font-variant-numeric: tabular-nums;
+}
+.sku-period-cell.is-minus strong { color: #b26a00; }
+.sku-period-cell.is-net strong { color: #127a5b; }
+.sku-period-cell.is-net.is-loss strong { color: #c0392b; }
+.sku-period-hint { margin: 10px 0 0; font-size: 11.5px; color: var(--sku-muted); line-height: 1.6; }
+.sku-period-hint.is-warn { color: #8a5a00; }
+
+/* ---- 提示 ---- */
+.sku-toast {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  background: #1c2126;
+  color: #fff;
+  padding: 9px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: .18s;
+  z-index: 99;
+  pointer-events: none;
+}
+.sku-toast.show { opacity: 1; transform: translateY(0); }
+
+.sku-offline {
+  display: none;
+  margin: 0 0 10px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  background: #fdecea;
+  border: 1px solid #f2c9c4;
+  color: #8f2b20;
+  font-size: 12.5px;
+}
+.sku-offline.show { display: block; }
+
+/* ---- 导入对话框 ---- */
+#sku-import-text,
+#sku-catalog-text {
+  width: 100%;
+  height: 180px;
+  resize: vertical;
+  font: 12px/1.5 ui-monospace, Consolas, monospace;
+  border: 1px solid var(--sku-line);
+  border-radius: 8px;
+  padding: 9px;
+  color: inherit;
+  background: var(--surface, #fff);
+}
+.sku-panel dialog::backdrop { background: rgba(20, 24, 28, .32); }
+
+/* 市场 chip 上的「关税未配」提醒：橙色，别用红色——还没配不等于算错 */
+.sku-fxchip-sub .warn { color: #b26a00; font-weight: 620; }
+
+/* 当前市场没有税率时的顶部提示条 */
+.sku-duty-missing {
+  margin: 0 0 10px;
+  padding: 9px 12px;
+  border: 1px solid #f0d9a8;
+  border-left: 3px solid #d99b20;
+  border-radius: 8px;
+  background: #fffbf0;
+  color: #8a5a00;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+.sku-duty-missing b { color: #6d4700; }
+/* 常驻 DOM、靠 hidden 开关：切换市场时前端直接切换，不再整页重载 */
+.sku-duty-missing[hidden] { display: none; }
+
+/* 关税率维护表 */
+.sku-duty-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.sku-duty-table th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--sku-muted);
+  font-size: 11.5px;
+  padding: 6px 6px;
+  border-bottom: 1px solid var(--sku-line);
+}
+.sku-duty-table td { padding: 4px 4px; border-bottom: 1px solid #f1f3f6; }
+.sku-duty-table input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 5px 7px;
+  border: 1px solid var(--sku-line);
+  border-radius: 6px;
+  font: inherit;
+  color: inherit;
+  background: var(--surface, #fff);
+}
+.sku-duty-table input:focus { outline: 2px solid var(--sku-accent); outline-offset: -1px; }
+.sku-duty-table .duty-del {
+  width: 26px; height: 26px;
+  border: 1px solid var(--sku-line);
+  border-radius: 6px;
+  background: #fff;
+  color: #8b929c;
+  cursor: pointer;
+  line-height: 1;
+}
+.sku-duty-table .duty-del:hover { border-color: #e3b4ae; color: #c0392b; background: #fff6f5; }
+
+/* 本市场在用的 HS 编码清单：未配的给橙色左边条，和顶部提示条同一套语义 */
+.sku-duty-groups { margin: 0 0 12px; }
+.sku-duty-groups[hidden] { display: none; }
+.sku-duty-groups-title { margin: 0 0 6px; font-size: 12px; color: var(--sku-muted); }
+.sku-duty-group {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 8px;
+  border-bottom: 1px solid #f1f3f6;
+  font-size: 12.5px;
+}
+.sku-duty-group.is-missing { background: #fffbf0; border-left: 3px solid #d99b20; }
+.sku-duty-group b { font-weight: 620; font-variant-numeric: tabular-nums; }
+.sku-duty-group span { color: #6b7480; font-size: 12px; }
+.sku-duty-group .sku-duty-group-rate { margin-left: auto; white-space: nowrap; }
+.sku-duty-group.is-missing .sku-duty-group-rate { color: #b26a00; font-weight: 620; }
+/* 待填行淡黄底：一眼看出这几行是「还没填」，不是「已经配了 0」 */
+.sku-duty-table tr.is-missing td { background: #fffdf7; }
+
+/* 按系列设 HS：当前编码可能列出好几个，允许换行 */
+.sku-hs-now { color: var(--sku-muted); font-size: 12px; line-height: 1.5; word-break: break-all; }
+
+/* HS 输入框旁的「查」：查官方税则，查回来的只有基础税率 */
+.duty-hs-wrap { display: flex; align-items: center; gap: 4px; }
+.duty-hs-wrap .duty-hs { flex: 1; min-width: 0; }
+.duty-hs-wrap .duty-fetch {
+  flex: none;
+  padding: 0 7px;
+  height: 26px;
+  border: 1px solid var(--sku-line);
+  border-radius: 6px;
+  background: #f7f9fb;
+  color: #3b4652;
+  font-size: 12px;
+  cursor: pointer;
+  line-height: 1;
+}
+.duty-hs-wrap .duty-fetch:hover { border-color: var(--sku-accent); color: var(--sku-accent); background: #fff; }
+.duty-hs-wrap .duty-fetch:disabled { opacity: .5; cursor: default; }
+
+.sku-duty-pick {
+  margin-top: 10px;
+  border: 1px solid var(--sku-line);
+  border-radius: 8px;
+  background: #fbfcfd;
+  overflow: hidden;
+}
+.sku-duty-pick[hidden] { display: none; }
+.sku-duty-pick-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px 6px 10px;
+  border-bottom: 1px solid var(--sku-line);
+  font-size: 12px;
+  color: #4a5563;
+}
+.sku-duty-pick-head span { font-weight: 600; }
+.sku-pick-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  border-bottom: 1px solid #f1f3f6;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  font-size: 12.5px;
+  color: inherit;
+  cursor: pointer;
+}
+.sku-pick-row:hover { background: #f2f7ff; }
+.sku-pick-group {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0;
+  padding: 5px 10px;
+  background: #f7f8fa;
+  border-bottom: 1px solid #eef0f3;
+  font-size: 11.5px;
+  color: #6b7480;
+}
+.sku-pick-group b { font-size: 12px; color: #37414f; }
+.sku-pick-row b { font-variant-numeric: tabular-nums; font-weight: 620; white-space: nowrap; }
+.sku-pick-desc { color: #6b7480; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sku-pick-rate { margin-left: auto; font-weight: 620; font-variant-numeric: tabular-nums; }
+.sku-pick-tag {
+  font-style: normal;
+  font-size: 11px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #fff4e5;
+  color: #b26a00;
+}
+/* 反倾销/反补贴进「附加%」，单独一个色，别和「含从量税」混一起 */
+.sku-pick-tag.is-extra { background: #fdecea; color: #a13b2e; }
+.sku-pick-empty { margin: 0; padding: 8px 10px; color: #6b7480; font-size: 12.5px; }
+.sku-duty-pick-foot { margin: 0; padding: 7px 10px; border-top: 1px solid var(--sku-line); color: var(--sku-muted); font-size: 11.5px; line-height: 1.6; }
+.sku-pick-link { color: var(--sku-accent); }
+
+/* ---- 选品建议 ----
+   放在页面最下面，独立成块，默认收起。 */
+.sku-advice {
+  margin-top: 18px;
+  padding: 14px 16px 12px;
+  border: 1px solid var(--sku-line);
+  border-radius: 12px;
+  background: var(--surface, #fff);
+}
+/* 只在内容区变淡：收起时整块闪一下会让人以为出了问题 */
+.sku-advice.is-loading #sku-advice-body { opacity: .6; }
+.sku-advice-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.sku-advice-head h3 { margin: 0; font-size: 14px; font-weight: 620; }
+/* 整个标题就是一个折叠按钮：点文字也能展开，热区比一个小三角大得多 */
+.sku-advice-toggle {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.sku-advice-toggle:hover { color: var(--sku-accent); }
+/* 收起时也能看出「有没有东西」：有建议数就标蓝，数据不足就灰着 */
+.sku-advice-badge {
+  font-size: 11px;
+  font-weight: 400;
+  padding: 1px 7px;
+  border-radius: 9px;
+  background: #f0f2f5;
+  color: #6b7480;
+  white-space: nowrap;
+}
+.sku-advice-badge.is-on { background: #e8f4ff; color: #185fa5; }
+.sku-advice-head .button { padding: 4px 12px; font-size: 12.5px; }
+.sku-advice-headline { margin: 8px 0 4px; font-size: 13px; color: #2c3e50; line-height: 1.65; }
+.sku-advice-hint {
+  margin: 0 0 8px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: #fff8e8;
+  color: #8a5b00;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+.sku-advice-hint[hidden] { display: none; }
+
+.sku-advice-markets { display: grid; gap: 4px; margin: 10px 0 4px; }
+.sku-advice-market {
+  display: grid;
+  grid-template-columns: 120px 1fr 62px 132px;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+  color: #3c4654;
+}
+.sku-advice-market .name { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.sku-advice-market.is-top .name { font-weight: 620; }
+.sku-advice-zero {
+  font-style: normal;
+  font-size: 10px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: #fff4e5;
+  color: #b26a00;
+  white-space: nowrap;
+}
+.sku-advice-market .bar {
+  height: 7px;
+  border-radius: 4px;
+  background: #eef1f5;
+  overflow: hidden;
+}
+.sku-advice-market .bar i { display: block; height: 100%; background: #1a6ee0; border-radius: 4px; }
+.sku-advice-market .bar i.neg { background: #c0392b; }
+.sku-advice-market .val { text-align: right; font-variant-numeric: tabular-nums; font-weight: 620; }
+.sku-advice-market .meta { color: var(--sku-muted); font-size: 11.5px; }
+
+.sku-advice-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 6px; }
+.sku-advice-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: #f7f8fa;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+.sku-advice-item .tag {
+  font-style: normal;
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #e6f1fb;
+  color: #185fa5;
+  white-space: nowrap;
+}
+.sku-advice-item .sku { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sku-advice-item .txt { color: #3c4654; }
+.sku-advice-item.is-loss { background: #fdf1f0; }
+.sku-advice-item.is-loss .tag { background: #fdecea; color: #a13b2e; }
+.sku-advice-item.is-thin { background: #fff8ec; }
+.sku-advice-item.is-thin .tag { background: #fff1d6; color: #8a5b00; }
+.sku-advice-item.is-fill { background: #fff9e9; }
+.sku-advice-item.is-fill .tag { background: #fff1d6; color: #8a5b00; }
+.sku-advice-empty { padding: 10px; color: var(--sku-muted); font-size: 12.5px; }
