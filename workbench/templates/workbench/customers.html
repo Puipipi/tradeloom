@@ -1,7 +1,7 @@
 {% extends "workbench/base.html" %}
 {% load business_urls %}
-{% block page_eyebrow %}客户知识 / 事实与判断{% endblock %}
-{% block page_title %}客户洞察{% endblock %}
+{% block page_eyebrow %}客户 / 事实与判断{% endblock %}
+{% block page_title %}客户{% endblock %}
 {% block content %}
 <div class="page-stack" id="customer-list-page">
   <section class="panel">
@@ -73,9 +73,9 @@
     {% else %}<div class="empty-state"><h3>没有可入账的商业候选</h3><p>先通过现有资料导入流程生成 commercial_source 候选。</p></div>{% endif %}
   </section>
 
-  {% if pending_aliases %}
-  <section class="panel">
+  <section class="panel" data-testid="pending-aliases-panel">
     <div class="panel-heading"><div><h2>待归并别名</h2><p>确认到已有客户或建立新客户；拒绝只表示该名称不归入客户台账。</p></div></div>
+    {% if pending_aliases %}
     <div class="alias-resolve-list">
     {% for alias in pending_aliases %}
       <article class="alias-resolve-card" data-testid="alias-{{ alias.id }}">
@@ -92,8 +92,13 @@
       </article>
     {% endfor %}
     </div>
+    {% else %}
+    <div class="empty-state" data-testid="pending-alias-empty">
+      <h3>没有待归并别名</h3>
+      <p>候选单据里出现的新名称会先落到这里；确认归属后才写入客户台账。</p>
+    </div>
+    {% endif %}
   </section>
-  {% endif %}
   <p id="customer-page-error" class="inline-alert error" role="alert" hidden></p>
 </div>
 {% endblock %}
